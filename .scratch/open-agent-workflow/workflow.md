@@ -10,7 +10,7 @@ ecc_addons:
   - security-review
 ecc_build_resolver: none
 current_stage: implementation
-active_ticket: 01-installer-foundation-and-check
+active_ticket: 02-claude-user-lifecycle
 spec: .scratch/open-agent-workflow/spec.md
 tickets: .scratch/open-agent-workflow/issues/
 execution_plans: docs/superpowers/plans/
