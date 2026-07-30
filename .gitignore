@@ -1,0 +1,16 @@
+# OS and editor debris
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Test-owned temporary output
+tests/.tmp/
+tests/tmp/
+
+# Lifecycle evidence is intentionally tracked.
+!.scratch/
+!.scratch/**
