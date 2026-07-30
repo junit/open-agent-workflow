@@ -8,15 +8,25 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 trap cleanup_sandbox EXIT HUP INT TERM
 
-setup_sandbox
-run_oaw install --target codex,codex
-assert_status 69 "duplicate comma-separated install before multi-target support"
-assert_contains "Ticket 03 install does not yet support multiple targets" \
-  "duplicate comma-separated install reports the Task 1 boundary"
-assert_read_only_roots
-pass "single-target install rejects duplicate comma-separated selections before mutation"
+assert_state_targets() {
+  state_file=$1
+  expected_targets=$2
+  description=$3
+  actual_targets=$(awk -F '\t' '
+    $1 == "target" {
+      if (targets == "") {
+        targets = $2
+      } else {
+        targets = targets "," $2
+      }
+    }
+    END { print targets }
+  ' "$state_file")
+  if [ "$actual_targets" != "$expected_targets" ]; then
+    fail "$description (expected $expected_targets, got $actual_targets)"
+  fi
+}
 
-cleanup_sandbox
 setup_sandbox
 mkdir -p "$OAW_HOME/.codex"
 printf 'personal instruction\n' >"$OAW_HOME/.codex/AGENTS.md"
@@ -195,10 +205,105 @@ pass "OpenCode installs a target-native entrypoint idempotently"
 
 cleanup_sandbox
 setup_sandbox
-run_oaw install --target claude,codex
-assert_status 69 "multi-target install before state merging is implemented"
-assert_contains "Ticket 03 install does not yet support multiple targets" \
-  "multi-target install reports the temporary Task 1 boundary"
-assert_read_only_roots
+mkdir -p "$OAW_HOME/.claude" "$OAW_HOME/.codex" "$OAW_HOME/.gemini" "$OAW_CONFIG/opencode"
+printf 'personal Claude instruction\n' >"$OAW_HOME/.claude/CLAUDE.md"
+printf 'personal Codex instruction\n' >"$OAW_HOME/.codex/AGENTS.md"
+printf 'personal Gemini instruction\n' >"$OAW_HOME/.gemini/GEMINI.md"
+printf 'personal OpenCode instruction\n' >"$OAW_CONFIG/opencode/AGENTS.md"
 
-pass "Task 1 rejects multi-target installs before mutation"
+OAW_GEMINI_BEFORE=$(cksum <"$OAW_HOME/.gemini/GEMINI.md")
+OAW_OPENCODE_BEFORE=$(cksum <"$OAW_CONFIG/opencode/AGENTS.md")
+run_oaw install --target claude,codex
+assert_status 0 "fresh multi-target install"
+
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
+OAW_CODEX=$OAW_HOME/.codex/AGENTS.md
+OAW_GEMINI=$OAW_HOME/.gemini/GEMINI.md
+OAW_OPENCODE=$OAW_CONFIG/opencode/AGENTS.md
+OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+
+assert_state_targets "$OAW_INSTALL_STATE" "claude,codex" \
+  "fresh multi-target state is not in registry order"
+grep -Fx 'personal Claude instruction' "$OAW_CLAUDE" >/dev/null ||
+  fail "multi-target install did not preserve Claude content"
+grep -Fx 'personal Codex instruction' "$OAW_CODEX" >/dev/null ||
+  fail "multi-target install did not preserve Codex content"
+[ "$(cksum <"$OAW_GEMINI")" = "$OAW_GEMINI_BEFORE" ] ||
+  fail "multi-target install changed an unselected Gemini destination"
+[ "$(cksum <"$OAW_OPENCODE")" = "$OAW_OPENCODE_BEFORE" ] ||
+  fail "multi-target install changed an unselected OpenCode destination"
+
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_CLAUDE_BEFORE=$(cksum <"$OAW_CLAUDE")
+OAW_CODEX_BEFORE=$(cksum <"$OAW_CODEX")
+OAW_OPENCODE_BEFORE=$(cksum <"$OAW_OPENCODE")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+run_oaw install --target gemini
+assert_status 0 "add one target to an existing installation"
+assert_state_targets "$OAW_INSTALL_STATE" "claude,codex,gemini" \
+  "merged target state is not unique and registry ordered"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "adding Gemini changed the canonical policy"
+[ "$(cksum <"$OAW_CLAUDE")" = "$OAW_CLAUDE_BEFORE" ] ||
+  fail "adding Gemini changed the retained Claude destination"
+[ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
+  fail "adding Gemini changed the retained Codex destination"
+[ "$(cksum <"$OAW_OPENCODE")" = "$OAW_OPENCODE_BEFORE" ] ||
+  fail "adding Gemini changed the unselected OpenCode destination"
+[ "$(cksum <"$OAW_INSTALL_STATE")" != "$OAW_STATE_BEFORE" ] ||
+  fail "adding Gemini did not update installation state"
+grep -Fx 'personal Gemini instruction' "$OAW_GEMINI" >/dev/null ||
+  fail "adding Gemini did not preserve its existing content"
+
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_CLAUDE_BEFORE=$(cksum <"$OAW_CLAUDE")
+OAW_CODEX_BEFORE=$(cksum <"$OAW_CODEX")
+OAW_GEMINI_BEFORE=$(cksum <"$OAW_GEMINI")
+OAW_OPENCODE_BEFORE=$(cksum <"$OAW_OPENCODE")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+run_oaw install --target codex,claude,claude
+assert_status 0 "repeat a deduplicated multi-target selection"
+assert_contains "unchanged: claude" "deduplicated repeat reports Claude unchanged"
+assert_contains "unchanged: codex" "deduplicated repeat reports Codex unchanged"
+assert_state_targets "$OAW_INSTALL_STATE" "claude,codex,gemini" \
+  "deduplicated repeat changed retained target state"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "deduplicated repeat changed the canonical policy"
+[ "$(cksum <"$OAW_CLAUDE")" = "$OAW_CLAUDE_BEFORE" ] ||
+  fail "deduplicated repeat changed Claude instructions"
+[ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
+  fail "deduplicated repeat changed Codex instructions"
+[ "$(cksum <"$OAW_GEMINI")" = "$OAW_GEMINI_BEFORE" ] ||
+  fail "deduplicated repeat changed retained Gemini instructions"
+[ "$(cksum <"$OAW_OPENCODE")" = "$OAW_OPENCODE_BEFORE" ] ||
+  fail "deduplicated repeat changed unselected OpenCode instructions"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "deduplicated repeat changed installation state"
+
+pass "selected installs merge unique target state in registry order"
+
+cleanup_sandbox
+setup_sandbox
+run_oaw install
+assert_status 0 "default core target install"
+OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+assert_state_targets "$OAW_INSTALL_STATE" "claude,codex,gemini,opencode" \
+  "default install did not select the four core targets"
+for OAW_DEFAULT_TARGET in \
+  "$OAW_HOME/.claude/CLAUDE.md" \
+  "$OAW_HOME/.codex/AGENTS.md" \
+  "$OAW_HOME/.gemini/GEMINI.md" \
+  "$OAW_CONFIG/opencode/AGENTS.md"
+do
+  [ -f "$OAW_DEFAULT_TARGET" ] || fail "default install omitted $OAW_DEFAULT_TARGET"
+done
+pass "default install selects all core user targets"
+
+cleanup_sandbox
+setup_sandbox
+run_oaw install --target all
+assert_status 64 "all is not a target alias"
+assert_contains "unknown target 'all'" "all is rejected as an unknown target"
+assert_read_only_roots
+pass "all remains an unknown target without mutation"

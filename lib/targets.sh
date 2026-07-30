@@ -32,6 +32,21 @@ target_ownership() {
   esac
 }
 
+target_registry_position() {
+  case "$1" in
+    claude) printf '1\n' ;;
+    codex) printf '2\n' ;;
+    gemini) printf '3\n' ;;
+    opencode) printf '4\n' ;;
+    cursor) printf '5\n' ;;
+    windsurf) printf '6\n' ;;
+    cline) printf '7\n' ;;
+    roo) printf '8\n' ;;
+    copilot) printf '9\n' ;;
+    *) die "unknown target '$1'" 65 ;;
+  esac
+}
+
 target_is_known() {
   case "$1" in
     claude|codex|gemini|opencode|cursor|windsurf|cline|roo|copilot) return 0 ;;

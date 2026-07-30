@@ -26,83 +26,174 @@ render_target_artifacts() {
   local target_path=$2
   local target_origin=$3
   local source_version=$4
-  local policy_checksum=
   local block_checksum=
   local target_mode=
 
-  cp "$OAW_SOURCE_DIR/policy/ENGINEERING.md" "$OAW_OPERATION_TEMP/policy"
-  render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" "$OAW_OPERATION_TEMP/block"
-  render_file_with_block "$target_path" "$OAW_OPERATION_TEMP/block" "$OAW_OPERATION_TEMP/target"
-  policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
-  block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/block")
+  [ -n "$source_version" ] || die "VERSION is invalid" 70
+  render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" "$OAW_OPERATION_TEMP/block-$target_id"
+  render_file_with_block "$target_path" "$OAW_OPERATION_TEMP/block-$target_id" \
+    "$OAW_OPERATION_TEMP/target-$target_id"
+  block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/block-$target_id")
   target_mode=$(target_ownership "$target_id")
+  printf '%s\t%s\t%s\t%s\t%s\n' \
+    "$target_id" "$target_path" "$target_mode" "$block_checksum" "$target_origin" \
+    >>"$OAW_OPERATION_TEMP/selected-records"
+}
+
+write_operation_state() {
+  local source_version=$1
+  local target_records=$2
+  local policy_checksum=
+
+  policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
   write_state_file "$OAW_OPERATION_TEMP/state" "$source_version" user \
-    "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_id" "$target_path" \
-    "$target_mode" "$block_checksum" "$target_origin"
+    "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_records"
+}
+
+verify_installed_policy_state() {
+  local actual_policy_checksum=
+
+  [ "$STATE_SCOPE" = user ] || die "installed scope does not match user scope" 65
+  [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] ||
+    die "installed policy path does not match" 65
+  [ -f "$STATE_POLICY_PATH" ] || die "managed policy is missing" 65
+  actual_policy_checksum=$(checksum_file "$STATE_POLICY_PATH")
+  [ "$actual_policy_checksum" = "$STATE_POLICY_CHECKSUM" ] ||
+    die "managed policy has drifted" 65
+}
+
+verify_installed_target_record() {
+  local target_id=$1
+  local target_path=$2
+  local target_mode=$3
+  local target_checksum=$4
+  local expected_target_path=
+  local actual_block_checksum=
+  local target_status=
+
+  expected_target_path=$(target_destination "$target_id")
+  [ "$target_path" = "$expected_target_path" ] || die "installed target path does not match" 65
+  [ "$target_mode" = "$(target_ownership "$target_id")" ] ||
+    die "installed target ownership does not match" 65
+  target_status=$(managed_block_status "$target_path")
+  [ "$target_status" = present ] || die "managed target block has drifted" 65
+  extract_managed_block "$target_path" "$OAW_OPERATION_TEMP/current-block-$target_id"
+  actual_block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/current-block-$target_id")
+  [ "$actual_block_checksum" = "$target_checksum" ] ||
+    die "managed target block has drifted" 65
+}
+
+verify_installed_target_records() {
+  local target_records=$1
+  local tab=
+  local target_id=
+  local target_path=
+  local target_mode=
+  local target_checksum=
+  local target_origin=
+  local extra=
+
+  tab=$(printf '\t')
+  while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
+    verify_installed_target_record "$target_id" "$target_path" "$target_mode" "$target_checksum"
+  done <"$target_records"
 }
 
 verify_current_target_state() {
   local expected_target_id=$1
   local expected_target_path=$2
-  local actual_policy_checksum=
-  local actual_block_checksum=
-  local target_status=
 
-  load_state_file "$OAW_STATE_FILE" || die "no installation state; run install first" 66
-  [ "$STATE_SCOPE" = user ] || die "installed scope does not match user scope" 65
-  [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || die "installed policy path does not match" 65
-  [ "$STATE_TARGET_ID" = "$expected_target_id" ] || die "installed target ID does not match" 65
+  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records" ||
+    die "no installation state; run install first" 66
+  [ "$STATE_TARGET_COUNT" -eq 1 ] ||
+    die "Ticket 03 lifecycle operations do not yet support multi-target state" 69
+  load_target_record "$OAW_OPERATION_TEMP/existing-records" "$expected_target_id" ||
+    die "installed target ID does not match" 65
   [ "$STATE_TARGET_PATH" = "$expected_target_path" ] || die "installed target path does not match" 65
-  [ "$STATE_TARGET_MODE" = "$(target_ownership "$expected_target_id")" ] ||
-    die "installed target ownership does not match" 65
-  [ -f "$STATE_POLICY_PATH" ] || die "managed policy is missing" 65
-  actual_policy_checksum=$(checksum_file "$STATE_POLICY_PATH")
-  [ "$actual_policy_checksum" = "$STATE_POLICY_CHECKSUM" ] || die "managed policy has drifted" 65
-
-  target_status=$(managed_block_status "$expected_target_path")
-  [ "$target_status" = present ] || die "managed target block has drifted" 65
-  extract_managed_block "$expected_target_path" "$OAW_OPERATION_TEMP/current-block"
-  actual_block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/current-block")
-  [ "$actual_block_checksum" = "$STATE_TARGET_CHECKSUM" ] || die "managed target block has drifted" 65
+  verify_installed_policy_state
+  verify_installed_target_record "$STATE_TARGET_ID" "$STATE_TARGET_PATH" \
+    "$STATE_TARGET_MODE" "$STATE_TARGET_CHECKSUM"
 }
 
 operation_install() {
-  local selected_target=$OAW_SELECTED_TARGETS
+  local selected_remaining=$OAW_SELECTED_TARGETS
+  local selected_target=
   local target_path=
-  local target_origin=existing-file
+  local target_origin=
   local source_version=
   local target_status=
+  local recorded_block_checksum=
+  local selected_was_installed=0
+  local tab=
+  local target_id=
+  local target_mode=
+  local target_checksum=
+  local extra=
 
-  case "$OAW_TARGETS" in
-    *,*) die "Ticket 03 install does not yet support multiple targets" 69 ;;
-  esac
-  case "$selected_target" in
-    *,*) die "Ticket 03 install does not yet support multiple targets" 69 ;;
-  esac
   [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] || die "canonical policy source is not readable" 70
   init_oaw_paths
   prepare_operation_temp
-  target_path=$(target_destination "$selected_target")
   source_version=$(read_source_version)
+  cp "$OAW_SOURCE_DIR/policy/ENGINEERING.md" "$OAW_OPERATION_TEMP/policy"
+  : >"$OAW_OPERATION_TEMP/existing-records"
+  : >"$OAW_OPERATION_TEMP/selected-records"
 
   if [ -f "$OAW_STATE_FILE" ]; then
-    verify_current_target_state "$selected_target" "$target_path"
-    target_origin=$STATE_TARGET_ORIGIN
-    render_target_artifacts "$selected_target" "$target_path" "$target_origin" "$source_version"
+    load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
+    verify_installed_policy_state
+    verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
     if ! files_equal "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" ||
-      [ "$(checksum_file "$OAW_OPERATION_TEMP/block")" != "$STATE_TARGET_CHECKSUM" ] ||
+      [ "$(checksum_file "$OAW_OPERATION_TEMP/policy")" != "$STATE_POLICY_CHECKSUM" ] ||
       [ "$source_version" != "$STATE_VERSION" ]; then
       die "installed content differs from this checkout; run update" 65
     fi
-  else
-    target_status=$(managed_block_status "$target_path")
-    [ "$target_status" = absent ] || die "untracked OAW markers already exist: $target_path" 65
-    [ -e "$target_path" ] || target_origin=created-file
-    render_target_artifacts "$selected_target" "$target_path" "$target_origin" "$source_version"
   fi
 
+  while [ -n "$selected_remaining" ]; do
+    case "$selected_remaining" in
+      *,*)
+        selected_target=${selected_remaining%%,*}
+        selected_remaining=${selected_remaining#*,}
+        ;;
+      *)
+        selected_target=$selected_remaining
+        selected_remaining=
+        ;;
+    esac
+
+    target_path=$(target_destination "$selected_target")
+    target_origin=existing-file
+    selected_was_installed=0
+    recorded_block_checksum=
+    if target_record_exists "$OAW_OPERATION_TEMP/existing-records" "$selected_target"; then
+      load_target_record "$OAW_OPERATION_TEMP/existing-records" "$selected_target"
+      [ "$STATE_TARGET_PATH" = "$target_path" ] || die "installed target path does not match" 65
+      target_origin=$STATE_TARGET_ORIGIN
+      recorded_block_checksum=$STATE_TARGET_CHECKSUM
+      selected_was_installed=1
+    else
+      target_status=$(managed_block_status "$target_path")
+      [ "$target_status" = absent ] || die "untracked OAW markers already exist: $target_path" 65
+      [ -e "$target_path" ] || target_origin=created-file
+    fi
+
+    render_target_artifacts "$selected_target" "$target_path" "$target_origin" "$source_version"
+    if [ "$selected_was_installed" -eq 1 ] &&
+      [ "$(checksum_file "$OAW_OPERATION_TEMP/block-$selected_target")" != "$recorded_block_checksum" ]; then
+      die "installed content differs from this checkout; run update" 65
+    fi
+  done
+
+  merge_install_target_records "$OAW_OPERATION_TEMP/existing-records" \
+    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records"
+  write_operation_state "$source_version" "$OAW_OPERATION_TEMP/merged-records"
+
   apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
-  apply_replace "$selected_target" "$OAW_OPERATION_TEMP/target" "$target_path" 644
+  tab=$(printf '\t')
+  while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
+    [ -z "$extra" ] || die "invalid selected target record" 65
+    apply_replace "$target_id" "$OAW_OPERATION_TEMP/target-$target_id" "$target_path" 644
+  done <"$OAW_OPERATION_TEMP/selected-records"
   apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
 }
 
@@ -120,10 +211,13 @@ operation_update() {
   source_version=$(read_source_version)
 
   verify_current_target_state claude "$target_path"
+  cp "$OAW_SOURCE_DIR/policy/ENGINEERING.md" "$OAW_OPERATION_TEMP/policy"
+  : >"$OAW_OPERATION_TEMP/selected-records"
   render_target_artifacts claude "$target_path" "$STATE_TARGET_ORIGIN" "$source_version"
+  write_operation_state "$source_version" "$OAW_OPERATION_TEMP/selected-records"
 
   apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
-  apply_replace claude "$OAW_OPERATION_TEMP/target" "$target_path" 644
+  apply_replace claude "$OAW_OPERATION_TEMP/target-claude" "$target_path" 644
   apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
 }
 
