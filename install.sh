@@ -26,7 +26,15 @@ usage() {
 . "$OAW_SOURCE_DIR/lib/cli.sh"
 . "$OAW_SOURCE_DIR/lib/targets.sh"
 . "$OAW_SOURCE_DIR/lib/detect.sh"
+. "$OAW_SOURCE_DIR/lib/paths.sh"
+. "$OAW_SOURCE_DIR/lib/checksum.sh"
+. "$OAW_SOURCE_DIR/lib/render.sh"
+. "$OAW_SOURCE_DIR/lib/managed.sh"
+. "$OAW_SOURCE_DIR/lib/state.sh"
+. "$OAW_SOURCE_DIR/lib/filesystem.sh"
+. "$OAW_SOURCE_DIR/lib/operations.sh"
 . "$OAW_SOURCE_DIR/lib/commands/check.sh"
+. "$OAW_SOURCE_DIR/lib/commands/mutate.sh"
 
 if [ "$#" -eq 0 ]; then
   usage
@@ -56,6 +64,6 @@ case "$OAW_COMMAND" in
     command_check
     ;;
   install|update|uninstall)
-    die "command not implemented: $OAW_COMMAND" 69
+    command_mutate
     ;;
 esac

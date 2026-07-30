@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+
+# shellcheck disable=SC2034 # Parsed state is consumed by operation modules.
+
+STATE_VERSION=
+STATE_SCOPE=
+STATE_POLICY_PATH=
+STATE_POLICY_CHECKSUM=
+STATE_TARGET_ID=
+STATE_TARGET_PATH=
+STATE_TARGET_MODE=
+STATE_TARGET_CHECKSUM=
+STATE_TARGET_ORIGIN=
+
+state_field_is_safe() {
+  [ "$(printf '%s' "$1" | tr -d '\t\r\n')" = "$1" ]
+}
+
+write_state_file() {
+  local output_file=$1
+  local source_version=$2
+  local scope=$3
+  local policy_path=$4
+  local policy_checksum=$5
+  local target_id=$6
+  local target_path=$7
+  local target_checksum=$8
+  local target_origin=$9
+
+  state_field_is_safe "$policy_path" || die "policy path cannot be serialized" 65
+  state_field_is_safe "$target_path" || die "target path cannot be serialized" 65
+
+  {
+    printf 'format\t1\n'
+    printf 'version\t%s\n' "$source_version"
+    printf 'scope\t%s\n' "$scope"
+    printf 'policy\t%s\t%s\n' "$policy_path" "$policy_checksum"
+    printf 'target\t%s\t%s\tmanaged-block\t%s\t%s\n' \
+      "$target_id" "$target_path" "$target_checksum" "$target_origin"
+  } >"$output_file"
+}
+
+load_state_file() {
+  local input_file=$1
+  local tab=
+  local kind=
+  local first=
+  local second=
+  local third=
+  local fourth=
+  local fifth=
+  local extra=
+  local format_count=0
+  local version_count=0
+  local scope_count=0
+  local policy_count=0
+  local target_count=0
+
+  tab=$(printf '\t')
+  STATE_VERSION=
+  STATE_SCOPE=
+  STATE_POLICY_PATH=
+  STATE_POLICY_CHECKSUM=
+  STATE_TARGET_ID=
+  STATE_TARGET_PATH=
+  STATE_TARGET_MODE=
+  STATE_TARGET_CHECKSUM=
+  STATE_TARGET_ORIGIN=
+
+  [ -f "$input_file" ] || return 1
+  while IFS="$tab" read -r kind first second third fourth fifth extra; do
+    [ -z "$extra" ] || die "invalid state record: too many fields" 65
+    case "$kind" in
+      format)
+        [ "$first" = 1 ] && [ -z "$second$third$fourth$fifth" ] || die "invalid state format" 65
+        format_count=$((format_count + 1))
+        ;;
+      version)
+        [ -n "$first" ] && [ -z "$second$third$fourth$fifth" ] || die "invalid state version" 65
+        STATE_VERSION=$first
+        version_count=$((version_count + 1))
+        ;;
+      scope)
+        [ "$first" = user ] && [ -z "$second$third$fourth$fifth" ] || die "invalid state scope" 65
+        STATE_SCOPE=$first
+        scope_count=$((scope_count + 1))
+        ;;
+      policy)
+        [ -n "$first" ] && [ -n "$second" ] && [ -z "$third$fourth$fifth" ] || die "invalid policy state" 65
+        STATE_POLICY_PATH=$first
+        STATE_POLICY_CHECKSUM=$second
+        policy_count=$((policy_count + 1))
+        ;;
+      target)
+        [ "$first" = claude ] && [ -n "$second" ] && [ "$third" = managed-block ] &&
+          [ -n "$fourth" ] && [ -n "$fifth" ] || die "invalid target state" 65
+        STATE_TARGET_ID=$first
+        STATE_TARGET_PATH=$second
+        STATE_TARGET_MODE=$third
+        STATE_TARGET_CHECKSUM=$fourth
+        STATE_TARGET_ORIGIN=$fifth
+        target_count=$((target_count + 1))
+        ;;
+      *) die "invalid state record type: $kind" 65 ;;
+    esac
+  done <"$input_file"
+
+  [ "$format_count" -eq 1 ] && [ "$version_count" -eq 1 ] &&
+    [ "$scope_count" -eq 1 ] && [ "$policy_count" -eq 1 ] &&
+    [ "$target_count" -eq 1 ] || die "state is incomplete or duplicated" 65
+}

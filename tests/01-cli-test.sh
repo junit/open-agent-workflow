@@ -95,8 +95,8 @@ done
 pass "invalid command lines fail before mutation"
 
 run_oaw install --target claude --dry-run --force
-assert_status 69 "install accepts mutating options until its implementation lands"
-assert_contains "command not implemented: install" "install reports its temporary status"
+assert_status 0 "install accepts mutating options"
+assert_contains "would-create" "install dry run reports planned creation"
 assert_read_only_roots
 
 run_oaw update --target=codex
