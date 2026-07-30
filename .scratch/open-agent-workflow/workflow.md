@@ -10,7 +10,7 @@ ecc_addons:
   - security-review
 ecc_build_resolver: none
 current_stage: implementation
-active_ticket: 03-core-user-adapters
+active_ticket: 04-project-and-extension-adapters
 spec: .scratch/open-agent-workflow/spec.md
 tickets: .scratch/open-agent-workflow/issues/
 execution_plans: docs/superpowers/plans/

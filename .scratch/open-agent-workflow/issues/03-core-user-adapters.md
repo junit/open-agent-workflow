@@ -6,22 +6,21 @@ the same canonical OAW policy and lifecycle state as Claude Code.
 
 **Blocked by:** 02 - Claude user-scope lifecycle.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Codex installs a model-visible managed bootstrap in
+- [x] Codex installs a model-visible managed bootstrap in
       `~/.codex/AGENTS.md` without claiming undocumented Markdown import
       behavior or overwriting unrelated instructions.
-- [ ] Gemini installs a managed entrypoint in `~/.gemini/GEMINI.md` using its
+- [x] Gemini installs a managed entrypoint in `~/.gemini/GEMINI.md` using its
       documented import behavior.
-- [ ] OpenCode installs a model-visible managed bootstrap in
+- [x] OpenCode installs a model-visible managed bootstrap in
       `~/.config/opencode/AGENTS.md` without relying on automatic Markdown
       reference parsing.
-- [ ] `--target` accepts one target or a deterministic comma-separated target
+- [x] `--target` accepts one target or a deterministic comma-separated target
       set, and the default user install selects the four core adapters only.
-- [ ] Install, repeat install, local update, dry run, and clean uninstall work
+- [x] Install, repeat install, local update, dry run, and clean uninstall work
       for each core adapter and for a multi-target installation.
-- [ ] Shared destination files are mutated once per operation and uninstalling
+- [x] Shared destination files are mutated once per operation and uninstalling
       one target never removes content still owned by another installed target.
-- [ ] Black-box tests assert the exact target-native entrypoints and preserved
+- [x] Black-box tests assert the exact target-native entrypoints and preserved
       user content for all four core targets.
-
