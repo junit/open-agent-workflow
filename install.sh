@@ -22,13 +22,32 @@ usage() {
     '  -h, --help       Show this help'
 }
 
-case "${1:-}" in
-  ''|help|-h|--help)
-    usage
-    exit 0
+. "$OAW_SOURCE_DIR/lib/common.sh"
+. "$OAW_SOURCE_DIR/lib/cli.sh"
+
+if [ "$#" -eq 0 ]; then
+  usage
+  exit 0
+fi
+
+case "$1" in
+  help|-h|--help)
+    if [ "$#" -eq 1 ]; then
+      usage
+      exit 0
+    fi
     ;;
-  *)
-    usage
-    exit 0
+esac
+
+parse_cli "$@"
+
+if [ "$OAW_HELP" -eq 1 ]; then
+  usage
+  exit 0
+fi
+
+case "$OAW_COMMAND" in
+  check|install|update|uninstall)
+    die "command not implemented: $OAW_COMMAND" 69
     ;;
 esac
