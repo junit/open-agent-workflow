@@ -9,6 +9,15 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 trap cleanup_sandbox EXIT HUP INT TERM
 
 setup_sandbox
+run_oaw install --target codex,codex
+assert_status 69 "duplicate comma-separated install before multi-target support"
+assert_contains "Ticket 03 install does not yet support multiple targets" \
+  "duplicate comma-separated install reports the Task 1 boundary"
+assert_read_only_roots
+pass "single-target install rejects duplicate comma-separated selections before mutation"
+
+cleanup_sandbox
+setup_sandbox
 mkdir -p "$OAW_HOME/.codex"
 printf 'personal instruction\n' >"$OAW_HOME/.codex/AGENTS.md"
 

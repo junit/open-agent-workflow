@@ -73,6 +73,9 @@ operation_install() {
   local source_version=
   local target_status=
 
+  case "$OAW_TARGETS" in
+    *,*) die "Ticket 03 install does not yet support multiple targets" 69 ;;
+  esac
   case "$selected_target" in
     *,*) die "Ticket 03 install does not yet support multiple targets" 69 ;;
   esac
