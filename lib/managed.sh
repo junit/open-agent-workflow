@@ -62,23 +62,46 @@ render_file_with_block() {
   local block_file=$2
   local rendered_file=$3
   local current_status=
+  local trailing_newline=0
 
   current_status=$(managed_block_status "$current_file")
   case "$current_status" in
     absent)
       : >"$rendered_file"
-      if [ -f "$current_file" ]; then
-        cp "$current_file" "$rendered_file"
-        if ! file_has_trailing_newline "$current_file"; then
-          printf '\n' >>"$rendered_file"
+      if [ -s "$current_file" ] && ! file_has_trailing_newline "$current_file"; then
+        cat "$block_file" >>"$rendered_file"
+        cat "$current_file" >>"$rendered_file"
+      else
+        if [ -f "$current_file" ]; then
+          cp "$current_file" "$rendered_file"
         fi
+        cat "$block_file" >>"$rendered_file"
       fi
-      cat "$block_file" >>"$rendered_file"
       ;;
     present)
+      if file_has_trailing_newline "$current_file"; then
+        trailing_newline=1
+      fi
       awk -v begin="$OAW_BEGIN_MARKER" '$0 == begin { exit } { print }' "$current_file" >"$rendered_file"
       cat "$block_file" >>"$rendered_file"
-      awk -v end="$OAW_END_MARKER" 'found { print } $0 == end { found = 1 }' "$current_file" >>"$rendered_file"
+      awk -v end="$OAW_END_MARKER" -v trailing_newline="$trailing_newline" '
+        $0 == end { found = 1; next }
+        found {
+          if (have_previous) {
+            print previous
+          }
+          previous = $0
+          have_previous = 1
+        }
+        END {
+          if (have_previous) {
+            printf "%s", previous
+            if (trailing_newline) {
+              printf "\n"
+            }
+          }
+        }
+      ' "$current_file" >>"$rendered_file"
       ;;
     drift)
       die "managed markers are invalid: $current_file" 65
@@ -100,10 +123,30 @@ extract_managed_block() {
 render_file_without_block() {
   local managed_file=$1
   local rendered_file=$2
+  local trailing_newline=0
 
-  awk -v begin="$OAW_BEGIN_MARKER" -v end="$OAW_END_MARKER" '
+  if file_has_trailing_newline "$managed_file"; then
+    trailing_newline=1
+  fi
+
+  awk -v begin="$OAW_BEGIN_MARKER" -v end="$OAW_END_MARKER" \
+    -v trailing_newline="$trailing_newline" '
     $0 == begin { skipping = 1; next }
     $0 == end && skipping { skipping = 0; next }
-    !skipping { print }
+    !skipping {
+      if (have_previous) {
+        print previous
+      }
+      previous = $0
+      have_previous = 1
+    }
+    END {
+      if (have_previous) {
+        printf "%s", previous
+        if (trailing_newline) {
+          printf "\n"
+        }
+      }
+    }
   ' "$managed_file" >"$rendered_file"
 }

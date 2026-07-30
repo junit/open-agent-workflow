@@ -114,6 +114,27 @@ pass "uninstall preserves an existing Claude file and is idempotent"
 cleanup_sandbox
 setup_sandbox
 OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+mkdir -p "$OAW_HOME/.claude"
+OAW_NO_NEWLINE_EXPECTED=$OAW_SANDBOX/expected-without-final-newline
+OAW_NO_NEWLINE_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
+printf 'personal instruction without final newline' >"$OAW_NO_NEWLINE_EXPECTED"
+cp "$OAW_NO_NEWLINE_EXPECTED" "$OAW_NO_NEWLINE_CLAUDE"
+run_oaw install --target claude
+assert_status 0 "install around user content without a final newline"
+OAW_NO_NEWLINE_INSTALLED=$(cksum <"$OAW_NO_NEWLINE_CLAUDE")
+run_oaw install --target claude
+assert_status 0 "repeat install around user content without a final newline"
+[ "$(cksum <"$OAW_NO_NEWLINE_CLAUDE")" = "$OAW_NO_NEWLINE_INSTALLED" ] ||
+  fail "repeated install changed user content without a final newline"
+run_oaw uninstall --target claude
+assert_status 0 "uninstall around user content without a final newline"
+cmp -s "$OAW_NO_NEWLINE_CLAUDE" "$OAW_NO_NEWLINE_EXPECTED" ||
+  fail "uninstall changed user content without a final newline"
+pass "uninstall preserves exact user bytes without a final newline"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
 run_oaw install --target claude
 assert_status 0 "install into an empty home"
 OAW_CREATED_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
