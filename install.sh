@@ -24,6 +24,7 @@ usage() {
 
 . "$OAW_SOURCE_DIR/lib/common.sh"
 . "$OAW_SOURCE_DIR/lib/cli.sh"
+. "$OAW_SOURCE_DIR/lib/targets.sh"
 
 if [ "$#" -eq 0 ]; then
   usage
@@ -46,8 +47,18 @@ if [ "$OAW_HELP" -eq 1 ]; then
   exit 0
 fi
 
+resolve_scope_and_targets
+
 case "$OAW_COMMAND" in
-  check|install|update|uninstall)
+  check)
+    if [ "$OAW_SCOPE" = project ]; then
+      printf 'scope: project (%s)\n' "$OAW_PROJECT_ROOT"
+    else
+      printf 'scope: user\n'
+    fi
+    printf 'targets: %s\n' "$OAW_SELECTED_TARGETS"
+    ;;
+  install|update|uninstall)
     die "command not implemented: $OAW_COMMAND" 69
     ;;
 esac

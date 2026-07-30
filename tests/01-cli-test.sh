@@ -114,3 +114,60 @@ assert_status 0 "command-scoped help exits successfully"
 assert_contains "Usage: ./install.sh <command> [options]" "command-scoped help shows usage"
 assert_read_only_roots
 pass "command-scoped help is inert"
+
+run_oaw check
+assert_status 0 "check accepts the user-scope defaults"
+assert_contains "scope: user" "check reports user scope"
+assert_contains "targets: claude,codex,gemini,opencode" "user defaults are the four core targets"
+assert_read_only_roots
+
+run_oaw check --target opencode,claude,codex,claude,gemini
+assert_status 0 "check accepts an explicit core target selection"
+assert_contains "targets: claude,codex,gemini,opencode" "user targets are deduplicated in registry order"
+assert_read_only_roots
+pass "user target selection is deterministic"
+
+OAW_PROJECT_WITH_SPACES=$OAW_SANDBOX/real\ project
+OAW_PROJECT_LINK=$OAW_SANDBOX/project\ link
+mkdir -p "$OAW_PROJECT_WITH_SPACES"
+ln -s "$OAW_PROJECT_WITH_SPACES" "$OAW_PROJECT_LINK"
+OAW_PROJECT_PHYSICAL=$(CDPATH= cd -P -- "$OAW_PROJECT_WITH_SPACES" && pwd -P)
+
+run_oaw check --project="$OAW_PROJECT_LINK"
+assert_status 0 "check accepts a project path containing spaces"
+assert_contains "scope: project ($OAW_PROJECT_PHYSICAL)" "project scope uses the physical path"
+assert_contains "targets: claude,codex,gemini,opencode,cursor,windsurf,cline,roo,copilot" "project defaults include all targets in registry order"
+assert_read_only_roots
+
+run_oaw check --project "$OAW_PROJECT_WITH_SPACES" --target=copilot,roo,cline,windsurf,cursor,opencode,gemini,codex,claude,copilot
+assert_status 0 "check accepts every registered project target"
+assert_contains "targets: claude,codex,gemini,opencode,cursor,windsurf,cline,roo,copilot" "explicit project targets normalize in registry order"
+assert_read_only_roots
+pass "project target selection is deterministic"
+
+for invalid_targets in \
+  ',claude' \
+  'claude,' \
+  'claude,,codex'
+do
+  assert_cli_error "target selection contains an empty member" "empty target member '$invalid_targets'" check --target="$invalid_targets"
+done
+
+assert_cli_error "target selection must not contain whitespace" "space in target selection" check --target='claude, codex'
+assert_cli_error "target selection must not contain whitespace" "tab in target selection" check --target="claude	codex"
+assert_cli_error "unknown target 'vscode'" "unknown target" check --target=claude,vscode
+
+for extension_target in cursor windsurf cline roo copilot; do
+  assert_cli_error "target '$extension_target' does not support user scope" "user-scope $extension_target" check --target="$extension_target"
+done
+pass "invalid target selections fail before mutation"
+
+assert_cli_error "project directory does not exist" "missing project directory" check --project "$OAW_SANDBOX/missing project"
+
+OAW_NOT_A_DIRECTORY=$OAW_SANDBOX/not-a-directory
+: >"$OAW_NOT_A_DIRECTORY"
+assert_cli_error "project directory does not exist" "project path is not a directory" check --project "$OAW_NOT_A_DIRECTORY"
+
+OAW_CONTROL_PROJECT=$(printf '%s\nbad' "$OAW_PROJECT")
+assert_cli_error "project path contains control characters" "control character in project path" check --project "$OAW_CONTROL_PROJECT"
+pass "invalid project scopes fail before mutation"
