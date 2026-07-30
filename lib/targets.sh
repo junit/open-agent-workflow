@@ -54,8 +54,12 @@ contains_control_characters() {
 }
 
 normalize_targets() {
-  selection=$1
-  selection_scope=$2
+  local selection=$1
+  local selection_scope=$2
+  local selection_remaining=
+  local selection_member=
+  local normalized_selection=
+  local registry_target=
 
   if [ -z "$selection" ]; then
     default_targets "$selection_scope"
@@ -100,7 +104,6 @@ normalize_targets() {
     fi
   done
 
-  normalized_selection=
   for registry_target in $(target_ids); do
     case ",$selection," in
       *",$registry_target,"*)

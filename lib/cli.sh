@@ -13,11 +13,11 @@ cli_error() {
 }
 
 parse_cli() {
-  target_seen=0
-  project_seen=0
-  dry_run_seen=0
-  force_seen=0
-  help_seen=0
+  local target_seen=0
+  local project_seen=0
+  local dry_run_seen=0
+  local force_seen=0
+  local help_seen=0
 
   case "$1" in
     check|install|update|uninstall)

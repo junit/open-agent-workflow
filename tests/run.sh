@@ -4,4 +4,8 @@ set -eu
 
 TEST_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
 
-bash "$TEST_DIR/01-cli-test.sh"
+for test_script in 01-cli-test.sh 02-check-test.sh; do
+  bash "$TEST_DIR/$test_script"
+done
+
+printf 'PASS: all Ticket 01 cases passed\n'

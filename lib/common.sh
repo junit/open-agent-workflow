@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 
 die() {
-  oaw_die_message=$1
-  oaw_die_status=${2:-1}
+  local oaw_die_message=$1
+  local oaw_die_status=${2:-1}
   printf 'oaw: error: %s\n' "$oaw_die_message" >&2
   exit "$oaw_die_status"
 }

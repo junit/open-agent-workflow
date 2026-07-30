@@ -32,6 +32,14 @@ assert_contains() {
   esac
 }
 
+assert_output_equals() {
+  expected_output=$1
+  description=$2
+  if [ "$OAW_OUTPUT" != "$expected_output" ]; then
+    fail "$description (expected: $expected_output; got: $OAW_OUTPUT)"
+  fi
+}
+
 assert_empty_dir() {
   directory=$1
   description=$2
@@ -71,6 +79,11 @@ run_oaw() {
 
 assert_read_only_roots() {
   assert_empty_dir "$OAW_HOME" "HOME must remain unchanged"
+  assert_empty_dir "$OAW_CONFIG" "XDG_CONFIG_HOME must remain unchanged"
+  assert_empty_dir "$OAW_STATE" "XDG_STATE_HOME must remain unchanged"
+}
+
+assert_empty_xdg_roots() {
   assert_empty_dir "$OAW_CONFIG" "XDG_CONFIG_HOME must remain unchanged"
   assert_empty_dir "$OAW_STATE" "XDG_STATE_HOME must remain unchanged"
 }
