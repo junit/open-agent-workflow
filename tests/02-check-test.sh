@@ -49,7 +49,11 @@ assert_output_equals "$(printf '%s\n' \
   'target claude: missing (user, project)' \
   'target codex: missing (user, project)' \
   'target gemini: missing (user, project)' \
-  'target opencode: missing (user, project)')" "empty detection output is stable"
+  'target opencode: missing (user, project)' \
+  'installed claude: not-installed' \
+  'installed codex: not-installed' \
+  'installed gemini: not-installed' \
+  'installed opencode: not-installed')" "empty detection output is stable"
 assert_read_only_roots
 pass "empty readiness is reported without mutation"
 

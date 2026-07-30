@@ -513,3 +513,80 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
     fail "final default uninstall changed $OAW_MATRIX_TARGET user content"
 done
 pass "default lifecycle supports selected removal and final cleanup"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+run_oaw install
+assert_status 0 "default install before health diagnostics"
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+for OAW_HEALTH_TARGET in claude codex gemini opencode; do
+  OAW_HEALTH_PATH=$(target_path_for_test "$OAW_HEALTH_TARGET")
+  cksum <"$OAW_HEALTH_PATH" >"$OAW_SANDBOX/health-$OAW_HEALTH_TARGET-before"
+done
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+
+run_oaw check
+assert_status 0 "check after default install"
+for OAW_HEALTH_TARGET in claude codex gemini opencode; do
+  assert_contains "target $OAW_HEALTH_TARGET: detected (user, project)" \
+    "check keeps $OAW_HEALTH_TARGET tool readiness separate"
+  assert_contains "installed $OAW_HEALTH_TARGET: clean" \
+    "check reports clean $OAW_HEALTH_TARGET installation"
+  OAW_HEALTH_PATH=$(target_path_for_test "$OAW_HEALTH_TARGET")
+  OAW_HEALTH_BEFORE=$(cat "$OAW_SANDBOX/health-$OAW_HEALTH_TARGET-before")
+  [ "$(cksum <"$OAW_HEALTH_PATH")" = "$OAW_HEALTH_BEFORE" ] ||
+    fail "clean check changed $OAW_HEALTH_TARGET instructions"
+done
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "clean check changed the canonical policy"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "clean check changed installation state"
+
+OAW_CODEX=$OAW_HOME/.codex/AGENTS.md
+awk '
+  $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { in_block = 1 }
+  in_block && $0 != "<!-- BEGIN OPEN AGENT WORKFLOW -->" &&
+    $0 != "<!-- END OPEN AGENT WORKFLOW -->" {
+    print "drifted Codex managed instruction"
+    in_block = 0
+    next
+  }
+  { print }
+' "$OAW_CODEX" >"$OAW_SANDBOX/drifted-codex"
+mv "$OAW_SANDBOX/drifted-codex" "$OAW_CODEX"
+OAW_CODEX_BEFORE=$(cksum <"$OAW_CODEX")
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+
+run_oaw check --target codex
+assert_status 0 "check with managed target drift"
+assert_contains "target codex: detected (user, project)" \
+  "drift does not alter Codex tool readiness"
+assert_contains "installed codex: drift" "check reports Codex managed drift"
+[ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
+  fail "drift check changed Codex instructions"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "drift check changed the canonical policy"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "drift check changed installation state"
+
+printf 'invalid\tstate\trecord\n' >>"$OAW_INSTALL_STATE"
+OAW_CODEX_BEFORE=$(cksum <"$OAW_CODEX")
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+run_oaw check
+assert_status 0 "check with invalid installation state"
+for OAW_HEALTH_TARGET in claude codex gemini opencode; do
+  assert_contains "installed $OAW_HEALTH_TARGET: invalid-state" \
+    "check reports invalid state for $OAW_HEALTH_TARGET"
+done
+[ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
+  fail "invalid-state check changed Codex instructions"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "invalid-state check changed the canonical policy"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "invalid-state check changed installation state"
+pass "check reports installation health without mutation"
