@@ -257,6 +257,126 @@ target_record_exists() {
   ' "$records_file"
 }
 
+target_id_is_selected() {
+  local selected_ids=$1
+  local expected_target_id=$2
+  awk -v target_id="$expected_target_id" '
+    $0 == target_id { found++ }
+    END { exit(found == 1 ? 0 : 1) }
+  ' "$selected_ids"
+}
+
+select_target_records() {
+  local existing_records=$1
+  local selected_ids=$2
+  local selected_records=$3
+  local selected_target_id=
+
+  : >"$selected_records"
+  while IFS= read -r selected_target_id; do
+    target_record_exists "$existing_records" "$selected_target_id" ||
+      die "selected target is not installed: $selected_target_id" 65
+    awk -F '\t' -v target_id="$selected_target_id" '$1 == target_id' \
+      "$existing_records" >>"$selected_records"
+  done <"$selected_ids"
+  validate_target_records "$selected_records" user
+}
+
+filter_target_records() {
+  local existing_records=$1
+  local selected_ids=$2
+  local remaining_records=$3
+  local removed_records=$4
+  local tab=
+  local target_id=
+  local target_path=
+  local target_mode=
+  local target_checksum=
+  local target_origin=
+  local extra=
+
+  tab=$(printf '\t')
+  : >"$remaining_records"
+  : >"$removed_records"
+  while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
+    if target_id_is_selected "$selected_ids" "$target_id"; then
+      printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin" \
+        >>"$removed_records"
+    else
+      printf '%s\t%s\t%s\t%s\t%s\n' \
+        "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin" \
+        >>"$remaining_records"
+    fi
+  done <"$existing_records"
+  validate_target_records "$remaining_records" user 0
+  validate_target_records "$removed_records" user 0
+}
+
+target_path_is_referenced() {
+  local target_records=$1
+  local expected_target_path=$2
+  awk -F '\t' -v target_path="$expected_target_path" '
+    $2 == target_path { found = 1 }
+    END { exit(found ? 0 : 1) }
+  ' "$target_records"
+}
+
+destination_checksum_from_records() {
+  local target_records=$1
+  local expected_target_path=$2
+  awk -F '\t' -v target_path="$expected_target_path" '
+    $2 == target_path {
+      if (!found) {
+        checksum = $4
+        found = 1
+      } else if ($4 != checksum) {
+        conflict = 1
+      }
+    }
+    END {
+      if (conflict) {
+        exit 2
+      }
+      if (!found) {
+        exit 1
+      }
+      print checksum
+    }
+  ' "$target_records"
+}
+
+normalize_destination_checksums() {
+  local base_records=$1
+  local changed_records=$2
+  local normalized_records=$3
+  local tab=
+  local target_id=
+  local target_path=
+  local target_mode=
+  local target_checksum=
+  local target_origin=
+  local extra=
+  local changed_checksum=
+  local checksum_status=0
+
+  tab=$(printf '\t')
+  : >"$normalized_records"
+  while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
+    if changed_checksum=$(destination_checksum_from_records "$changed_records" "$target_path"); then
+      target_checksum=$changed_checksum
+    else
+      checksum_status=$?
+      [ "$checksum_status" -eq 1 ] ||
+        die "selected targets render conflicting checksums for $target_path" 65
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\n' \
+      "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin" \
+      >>"$normalized_records"
+  done <"$base_records"
+  validate_target_records "$normalized_records" user
+}
+
 merge_install_target_records() {
   local existing_records=$1
   local selected_records=$2

@@ -100,13 +100,13 @@ assert_contains "would-create" "install dry run reports planned creation"
 assert_read_only_roots
 
 run_oaw update --target=codex
-assert_status 69 "the equals target form parses"
-assert_contains "Ticket 02 update supports only target 'claude'" "unsupported update target is explicit"
+assert_status 66 "the equals target form parses"
+assert_contains "no installation state; run install first" "supported update without state is explicit"
 assert_read_only_roots
 
 run_oaw uninstall --project "$OAW_PROJECT"
 assert_status 69 "a project value containing no shell expansion parses"
-assert_contains "Ticket 02 uninstall supports only target 'claude'" "unsupported uninstall scope is explicit"
+assert_contains "Ticket 03 uninstall supports only user scope" "unsupported uninstall scope is explicit"
 assert_read_only_roots
 pass "mutating command lines parse without mutation"
 

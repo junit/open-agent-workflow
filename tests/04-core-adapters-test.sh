@@ -27,6 +27,25 @@ assert_state_targets() {
   fi
 }
 
+target_path_for_test() {
+  case "$1" in
+    claude) printf '%s/.claude/CLAUDE.md\n' "$OAW_HOME" ;;
+    codex) printf '%s/.codex/AGENTS.md\n' "$OAW_HOME" ;;
+    gemini) printf '%s/.gemini/GEMINI.md\n' "$OAW_HOME" ;;
+    opencode) printf '%s/opencode/AGENTS.md\n' "$OAW_CONFIG" ;;
+    *) fail "unknown test target $1" ;;
+  esac
+}
+
+seed_target_for_test() {
+  seed_target_id=$1
+  seed_target_path=$(target_path_for_test "$seed_target_id")
+  seed_expected_file=$2
+  mkdir -p "$(dirname -- "$seed_target_path")"
+  printf 'personal %s instruction\n' "$seed_target_id" >"$seed_expected_file"
+  cp "$seed_expected_file" "$seed_target_path"
+}
+
 setup_sandbox
 mkdir -p "$OAW_HOME/.codex"
 printf 'personal instruction\n' >"$OAW_HOME/.codex/AGENTS.md"
@@ -307,3 +326,190 @@ assert_status 64 "all is not a target alias"
 assert_contains "unknown target 'all'" "all is rejected as an unknown target"
 assert_read_only_roots
 pass "all remains an unknown target without mutation"
+
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  cleanup_sandbox
+  setup_sandbox
+  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_EXPECTED=$OAW_SANDBOX/expected-$OAW_MATRIX_TARGET
+  seed_target_for_test "$OAW_MATRIX_TARGET" "$OAW_MATRIX_EXPECTED"
+
+  OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  run_oaw install --target "$OAW_MATRIX_TARGET" --dry-run
+  assert_status 0 "$OAW_MATRIX_TARGET install dry run"
+  assert_contains "would-update: $OAW_MATRIX_PATH" \
+    "$OAW_MATRIX_TARGET install dry run reports its destination"
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET install dry run changed user instructions"
+  [ ! -e "$OAW_CONFIG/open-agent-workflow/ENGINEERING.md" ] ||
+    fail "$OAW_MATRIX_TARGET install dry run created the canonical policy"
+  [ ! -e "$OAW_STATE/open-agent-workflow/installations/user.state" ] ||
+    fail "$OAW_MATRIX_TARGET install dry run created installation state"
+
+  run_oaw install --target "$OAW_MATRIX_TARGET"
+  assert_status 0 "$OAW_MATRIX_TARGET install before lifecycle update"
+  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+
+  OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-$OAW_MATRIX_TARGET
+  cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
+  printf '0.1.1-%s\n' "$OAW_MATRIX_TARGET" >"$OAW_UPDATE_CHECKOUT/VERSION"
+  printf '\nTASK 3 %s UPDATE SENTINEL\n' "$OAW_MATRIX_TARGET" \
+    >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+  OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
+
+  OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+  OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+  run_oaw update --target "$OAW_MATRIX_TARGET" --dry-run
+  assert_status 0 "$OAW_MATRIX_TARGET update dry run"
+  assert_contains "would-update" "$OAW_MATRIX_TARGET update dry run reports planned writes"
+  [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET update dry run changed the canonical policy"
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET update dry run changed user instructions"
+  [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET update dry run changed installation state"
+
+  run_oaw update --target "$OAW_MATRIX_TARGET"
+  assert_status 0 "$OAW_MATRIX_TARGET copied-checkout update"
+  grep -F "TASK 3 $OAW_MATRIX_TARGET UPDATE SENTINEL" "$OAW_POLICY" >/dev/null ||
+    fail "$OAW_MATRIX_TARGET update did not use the copied checkout policy"
+  grep -F "$(printf 'version\t0.1.1-%s' "$OAW_MATRIX_TARGET")" "$OAW_INSTALL_STATE" >/dev/null ||
+    fail "$OAW_MATRIX_TARGET update did not record the copied checkout version"
+  grep -Fx "personal $OAW_MATRIX_TARGET instruction" "$OAW_MATRIX_PATH" >/dev/null ||
+    fail "$OAW_MATRIX_TARGET update did not preserve user instructions"
+
+  OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+  OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+  run_oaw uninstall --target "$OAW_MATRIX_TARGET" --dry-run
+  assert_status 0 "$OAW_MATRIX_TARGET uninstall dry run"
+  assert_contains "would-" "$OAW_MATRIX_TARGET uninstall dry run reports planned writes"
+  [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET uninstall dry run changed the canonical policy"
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET uninstall dry run changed user instructions"
+  [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET uninstall dry run changed installation state"
+
+  run_oaw uninstall --target "$OAW_MATRIX_TARGET"
+  assert_status 0 "$OAW_MATRIX_TARGET final uninstall"
+  cmp -s "$OAW_MATRIX_PATH" "$OAW_MATRIX_EXPECTED" ||
+    fail "$OAW_MATRIX_TARGET final uninstall changed user content"
+  [ ! -e "$OAW_POLICY" ] || fail "$OAW_MATRIX_TARGET final uninstall retained policy"
+  [ ! -e "$OAW_INSTALL_STATE" ] || fail "$OAW_MATRIX_TARGET final uninstall retained state"
+done
+pass "each core target completes copied-update and dry-run lifecycle operations"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  seed_target_for_test "$OAW_MATRIX_TARGET" "$OAW_SANDBOX/default-$OAW_MATRIX_TARGET"
+done
+
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  cksum <"$OAW_MATRIX_PATH" >"$OAW_SANDBOX/default-$OAW_MATRIX_TARGET-before"
+done
+run_oaw install --dry-run
+assert_status 0 "default install dry run"
+[ ! -e "$OAW_CONFIG/open-agent-workflow/ENGINEERING.md" ] ||
+  fail "default install dry run created the canonical policy"
+[ ! -e "$OAW_STATE/open-agent-workflow/installations/user.state" ] ||
+  fail "default install dry run created installation state"
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_BEFORE=$(cat "$OAW_SANDBOX/default-$OAW_MATRIX_TARGET-before")
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
+    fail "default install dry run changed $OAW_MATRIX_TARGET instructions"
+done
+
+run_oaw install
+assert_status 0 "default install before lifecycle matrix"
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-default
+cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
+printf '0.1.1-default\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
+printf '\nTASK 3 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
+
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+run_oaw update --dry-run
+assert_status 0 "default update dry run"
+assert_contains "would-update" "default update dry run reports planned writes"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "default update dry run changed the canonical policy"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "default update dry run changed installation state"
+
+run_oaw update
+assert_status 0 "default copied-checkout update"
+grep -F 'TASK 3 DEFAULT UPDATE SENTINEL' "$OAW_POLICY" >/dev/null ||
+  fail "default update did not use copied checkout policy"
+grep -F "$(printf 'version\t0.1.1-default')" "$OAW_INSTALL_STATE" >/dev/null ||
+  fail "default update did not record copied checkout version"
+
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  cksum <"$OAW_MATRIX_PATH" >"$OAW_SANDBOX/installed-$OAW_MATRIX_TARGET-before"
+done
+run_oaw uninstall --dry-run
+assert_status 0 "default uninstall dry run"
+assert_contains "would-" "default uninstall dry run reports planned writes"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "default uninstall dry run changed the canonical policy"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "default uninstall dry run changed installation state"
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_BEFORE=$(cat "$OAW_SANDBOX/installed-$OAW_MATRIX_TARGET-before")
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
+    fail "default uninstall dry run changed $OAW_MATRIX_TARGET instructions"
+done
+
+run_oaw uninstall --target codex
+assert_status 0 "selected Codex uninstall from default state"
+assert_state_targets "$OAW_INSTALL_STATE" "claude,gemini,opencode" \
+  "selected uninstall did not retain remaining target rows"
+[ -f "$OAW_POLICY" ] || fail "selected uninstall removed the shared policy"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "selected uninstall changed the shared policy"
+cmp -s "$OAW_HOME/.codex/AGENTS.md" "$OAW_SANDBOX/default-codex" ||
+  fail "selected uninstall did not preserve Codex user content"
+for OAW_RETAINED_TARGET in claude gemini opencode; do
+  OAW_RETAINED_PATH=$(target_path_for_test "$OAW_RETAINED_TARGET")
+  OAW_RETAINED_BEFORE=$(cat "$OAW_SANDBOX/installed-$OAW_RETAINED_TARGET-before")
+  [ "$(cksum <"$OAW_RETAINED_PATH")" = "$OAW_RETAINED_BEFORE" ] ||
+    fail "selected uninstall changed retained $OAW_RETAINED_TARGET content"
+  grep -F '<!-- BEGIN OPEN AGENT WORKFLOW -->' "$OAW_RETAINED_PATH" >/dev/null ||
+    fail "selected uninstall removed retained $OAW_RETAINED_TARGET content"
+done
+
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
+run_oaw update --target codex
+assert_status 65 "update rejects a selected target absent from state"
+assert_contains "selected target is not installed: codex" \
+  "absent selected update reports the missing target"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "rejected absent-target update changed the canonical policy"
+[ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "rejected absent-target update changed installation state"
+
+run_oaw uninstall
+assert_status 0 "final default uninstall after selected removal"
+[ ! -e "$OAW_POLICY" ] || fail "final default uninstall retained the shared policy"
+[ ! -e "$OAW_INSTALL_STATE" ] || fail "final default uninstall retained installation state"
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  cmp -s "$OAW_MATRIX_PATH" "$OAW_SANDBOX/default-$OAW_MATRIX_TARGET" ||
+    fail "final default uninstall changed $OAW_MATRIX_TARGET user content"
+done
+pass "default lifecycle supports selected removal and final cleanup"
