@@ -6,6 +6,7 @@ Thumbs.db
 *~
 .idea/
 .vscode/
+.worktrees/
 
 # Test-owned temporary output
 tests/.tmp/
