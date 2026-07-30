@@ -9,7 +9,7 @@ bundle: MATT-SP-HYBRID + ECC(security-review)
 ecc_addons:
   - security-review
 ecc_build_resolver: none
-current_stage: workspace-setup
+current_stage: implementation
 active_ticket: 01-installer-foundation-and-check
 spec: .scratch/open-agent-workflow/spec.md
 tickets: .scratch/open-agent-workflow/issues/
