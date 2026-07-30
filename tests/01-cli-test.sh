@@ -101,7 +101,7 @@ assert_read_only_roots
 
 run_oaw update --target=codex
 assert_status 69 "the equals target form parses"
-assert_contains "command not implemented: update" "update reports its temporary status"
+assert_contains "Ticket 02 update supports only target 'claude'" "unsupported update target is explicit"
 assert_read_only_roots
 
 run_oaw uninstall --project "$OAW_PROJECT"

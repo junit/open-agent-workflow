@@ -92,3 +92,24 @@ operation_install() {
   apply_replace claude "$OAW_OPERATION_TEMP/target" "$target_path" 644
   apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
 }
+
+operation_update() {
+  local target_path=
+  local source_version=
+
+  [ "$OAW_SELECTED_TARGETS" = claude ] ||
+    die "Ticket 02 update supports only target 'claude'" 69
+  [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] ||
+    die "canonical policy source is not readable" 70
+  init_oaw_paths
+  prepare_operation_temp
+  target_path=$(target_destination claude)
+  source_version=$(read_source_version)
+
+  verify_current_claude_state "$target_path"
+  render_claude_artifacts "$target_path" "$STATE_TARGET_ORIGIN" "$source_version"
+
+  apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
+  apply_replace claude "$OAW_OPERATION_TEMP/target" "$target_path" 644
+  apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+}
