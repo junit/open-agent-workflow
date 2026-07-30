@@ -2,7 +2,8 @@
 
 set -eu
 
-TEST_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=tests/test-helper.sh
 . "$TEST_DIR/test-helper.sh"
 
 trap cleanup_sandbox EXIT HUP INT TERM
@@ -131,7 +132,7 @@ OAW_PROJECT_WITH_SPACES=$OAW_SANDBOX/real\ project
 OAW_PROJECT_LINK=$OAW_SANDBOX/project\ link
 mkdir -p "$OAW_PROJECT_WITH_SPACES"
 ln -s "$OAW_PROJECT_WITH_SPACES" "$OAW_PROJECT_LINK"
-OAW_PROJECT_PHYSICAL=$(CDPATH= cd -P -- "$OAW_PROJECT_WITH_SPACES" && pwd -P)
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT_WITH_SPACES" && pwd -P)
 
 run_oaw check --project="$OAW_PROJECT_LINK"
 assert_status 0 "check accepts a project path containing spaces"

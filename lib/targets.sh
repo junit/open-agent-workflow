@@ -2,6 +2,7 @@
 
 OAW_SCOPE=
 OAW_PROJECT_ROOT=
+# shellcheck disable=SC2034 # Read by command modules after this file is sourced.
 OAW_SELECTED_TARGETS=
 
 target_ids() {
@@ -133,7 +134,7 @@ resolve_scope_and_targets() {
       return 64
     fi
 
-    OAW_PROJECT_ROOT=$(CDPATH= cd -P -- "$OAW_PROJECT" 2>/dev/null && pwd -P) || {
+    OAW_PROJECT_ROOT=$(CDPATH='' cd -P -- "$OAW_PROJECT" 2>/dev/null && pwd -P) || {
       cli_error "project directory could not be resolved: $OAW_PROJECT"
       return 64
     }
@@ -145,5 +146,6 @@ resolve_scope_and_targets() {
     OAW_SCOPE=project
   fi
 
+  # shellcheck disable=SC2034 # Consumed by command modules after resolution.
   OAW_SELECTED_TARGETS=$(normalize_targets "$OAW_TARGETS" "$OAW_SCOPE") || return $?
 }

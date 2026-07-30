@@ -2,8 +2,8 @@
 
 set -eu
 
-TEST_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
-OAW_REPOSITORY=$(CDPATH= cd -P -- "$TEST_DIR/.." && pwd)
+TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
+OAW_REPOSITORY=$(CDPATH='' cd -P -- "$TEST_DIR/.." && pwd)
 OAW_INSTALLER=${OAW_INSTALLER:-"$OAW_REPOSITORY/install.sh"}
 
 fail() {

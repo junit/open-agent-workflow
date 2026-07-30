@@ -2,7 +2,8 @@
 
 set -eu
 
-TEST_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
+# shellcheck source=tests/test-helper.sh
 . "$TEST_DIR/test-helper.sh"
 
 trap cleanup_sandbox EXIT HUP INT TERM
@@ -31,6 +32,7 @@ make_fake_executable() {
   mkdir -p "$OAW_SANDBOX/bin"
   printf '%s\n' '#!/bin/sh' 'exit 0' >"$OAW_SANDBOX/bin/$executable_name"
   chmod +x "$OAW_SANDBOX/bin/$executable_name"
+  # shellcheck disable=SC2034 # Read by run_oaw from test-helper.sh.
   OAW_PATH=$OAW_SANDBOX/bin:$OAW_SANDBOX/system-bin
 }
 
@@ -91,7 +93,7 @@ for core_tool in claude codex gemini opencode; do
   make_fake_executable "$core_tool"
 done
 
-OAW_PROJECT_PHYSICAL=$(CDPATH= cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 run_oaw check --project "$OAW_PROJECT"
 assert_status 0 "all detected providers and tools remain diagnostic"
 assert_output_equals "$(printf '%s\n' \

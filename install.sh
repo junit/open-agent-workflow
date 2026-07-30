@@ -2,7 +2,7 @@
 
 set -eu
 
-OAW_SOURCE_DIR=$(CDPATH= cd -P -- "$(dirname -- "$0")" && pwd)
+OAW_SOURCE_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 usage() {
   printf '%s\n' \

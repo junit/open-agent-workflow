@@ -5,6 +5,7 @@ OAW_TARGETS=
 OAW_PROJECT=
 OAW_DRY_RUN=0
 OAW_FORCE=0
+# shellcheck disable=SC2034 # Read by install.sh after this module is sourced.
 OAW_HELP=0
 
 cli_error() {
@@ -119,6 +120,7 @@ parse_cli() {
           cli_error "--help may be specified only once"
           return 64
         fi
+        # shellcheck disable=SC2034 # Consumed by install.sh after parsing.
         OAW_HELP=1
         help_seen=1
         shift
