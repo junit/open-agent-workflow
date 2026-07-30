@@ -113,3 +113,49 @@ operation_update() {
   apply_replace claude "$OAW_OPERATION_TEMP/target" "$target_path" 644
   apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
 }
+
+operation_uninstall() {
+  local target_path=
+  local target_status=
+  local target_origin=
+  local policy_checksum=
+  local reference_status=0
+  local retain_policy=0
+
+  [ "$OAW_SCOPE" = user ] && [ "$OAW_SELECTED_TARGETS" = claude ] ||
+    die "Ticket 02 uninstall supports only target 'claude'" 69
+  init_oaw_paths
+  target_path=$(target_destination claude)
+
+  if [ ! -f "$OAW_STATE_FILE" ]; then
+    target_status=$(managed_block_status "$target_path")
+    [ "$target_status" = absent ] ||
+      die "untracked OAW markers already exist: $target_path" 65
+    note "unchanged: claude"
+    return 0
+  fi
+
+  prepare_operation_temp
+  verify_current_claude_state "$target_path"
+  target_origin=$STATE_TARGET_ORIGIN
+  policy_checksum=$STATE_POLICY_CHECKSUM
+  render_file_without_block "$target_path" "$OAW_OPERATION_TEMP/target"
+
+  if other_state_references_policy "$OAW_INSTALLATIONS_DIR" "$OAW_STATE_FILE" \
+    "$OAW_POLICY_DESTINATION" "$policy_checksum"; then
+    retain_policy=1
+  else
+    reference_status=$?
+    [ "$reference_status" -eq 1 ] || exit "$reference_status"
+  fi
+
+  if [ "$target_origin" = created-file ] && [ ! -s "$OAW_OPERATION_TEMP/target" ]; then
+    apply_remove "$target_path"
+  else
+    apply_replace claude "$OAW_OPERATION_TEMP/target" "$target_path" 644
+  fi
+  if [ "$retain_policy" -eq 0 ]; then
+    apply_remove "$OAW_POLICY_DESTINATION"
+  fi
+  apply_remove "$OAW_STATE_FILE"
+}

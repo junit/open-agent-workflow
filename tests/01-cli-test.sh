@@ -106,7 +106,7 @@ assert_read_only_roots
 
 run_oaw uninstall --project "$OAW_PROJECT"
 assert_status 69 "a project value containing no shell expansion parses"
-assert_contains "command not implemented: uninstall" "uninstall reports its temporary status"
+assert_contains "Ticket 02 uninstall supports only target 'claude'" "unsupported uninstall scope is explicit"
 assert_read_only_roots
 pass "mutating command lines parse without mutation"
 

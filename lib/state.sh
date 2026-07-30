@@ -94,6 +94,10 @@ load_state_file() {
       target)
         [ "$first" = claude ] && [ -n "$second" ] && [ "$third" = managed-block ] &&
           [ -n "$fourth" ] && [ -n "$fifth" ] || die "invalid target state" 65
+        case "$fifth" in
+          created-file|existing-file) ;;
+          *) die "invalid target ownership" 65 ;;
+        esac
         STATE_TARGET_ID=$first
         STATE_TARGET_PATH=$second
         STATE_TARGET_MODE=$third
@@ -108,4 +112,38 @@ load_state_file() {
   [ "$format_count" -eq 1 ] && [ "$version_count" -eq 1 ] &&
     [ "$scope_count" -eq 1 ] && [ "$policy_count" -eq 1 ] &&
     [ "$target_count" -eq 1 ] || die "state is incomplete or duplicated" 65
+}
+
+state_file_references_policy() (
+  local input_file=$1
+  local policy_path=$2
+  local policy_checksum=$3
+
+  load_state_file "$input_file"
+
+  [ "$STATE_POLICY_PATH" = "$policy_path" ] &&
+    [ "$STATE_POLICY_CHECKSUM" = "$policy_checksum" ]
+)
+
+other_state_references_policy() {
+  local installations_dir=$1
+  local excluded_state=$2
+  local policy_path=$3
+  local policy_checksum=$4
+  local candidate_state=
+  local reference_status=0
+
+  for candidate_state in "$installations_dir"/*.state; do
+    [ -e "$candidate_state" ] || continue
+    [ "$candidate_state" = "$excluded_state" ] && continue
+
+    if state_file_references_policy "$candidate_state" "$policy_path" "$policy_checksum"; then
+      return 0
+    else
+      reference_status=$?
+      [ "$reference_status" -eq 1 ] || return "$reference_status"
+    fi
+  done
+
+  return 1
 }
