@@ -10,12 +10,27 @@ render_claude() {
     "@$policy_path"
 }
 
+render_codex() {
+  printf 'For every new top-level engineering task that may use workflow skills, first read `%s`, run its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n' "$1"
+}
+
+render_gemini() {
+  printf 'Follow the Open Agent Workflow policy before engineering lifecycle work:\n@%s\n' "$1"
+}
+
+render_opencode() {
+  printf 'Before engineering lifecycle work, use the Read tool to read `%s`, then follow its blocking selection gate and lifecycle lock.\n' "$1"
+}
+
 render_target_content() {
   local render_target=$1
   local render_policy=$2
 
   case "$render_target" in
     claude) render_claude "$render_policy" ;;
+    codex) render_codex "$render_policy" ;;
+    gemini) render_gemini "$render_policy" ;;
+    opencode) render_opencode "$render_policy" ;;
     *) die "no renderer for target '$render_target'" 69 ;;
   esac
 }

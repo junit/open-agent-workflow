@@ -25,6 +25,13 @@ target_supports_user() {
   esac
 }
 
+target_ownership() {
+  case "$1" in
+    claude|codex|gemini|opencode) printf '%s\n' managed-block ;;
+    *) die "target '$1' has no ownership mode" 69 ;;
+  esac
+}
+
 target_is_known() {
   case "$1" in
     claude|codex|gemini|opencode|cursor|windsurf|cline|roo|copilot) return 0 ;;

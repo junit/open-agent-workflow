@@ -20,6 +20,9 @@ init_oaw_paths() {
 target_destination() {
   case "$OAW_SCOPE:$1" in
     user:claude) printf '%s/.claude/CLAUDE.md\n' "$HOME" ;;
+    user:codex) printf '%s/.codex/AGENTS.md\n' "$HOME" ;;
+    user:gemini) printf '%s/.gemini/GEMINI.md\n' "$HOME" ;;
+    user:opencode) printf '%s/opencode/AGENTS.md\n' "$OAW_XDG_CONFIG_HOME" ;;
     *) die "target '$1' is not implemented for $OAW_SCOPE scope" 69 ;;
   esac
 }

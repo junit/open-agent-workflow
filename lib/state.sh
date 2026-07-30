@@ -24,19 +24,22 @@ write_state_file() {
   local policy_checksum=$5
   local target_id=$6
   local target_path=$7
-  local target_checksum=$8
-  local target_origin=$9
+  local target_mode=$8
+  local target_checksum=$9
+  local target_origin=${10}
 
   state_field_is_safe "$policy_path" || die "policy path cannot be serialized" 65
   state_field_is_safe "$target_path" || die "target path cannot be serialized" 65
+  target_supports_user "$target_id" || die "invalid target state" 65
+  [ "$target_mode" = "$(target_ownership "$target_id")" ] || die "invalid target ownership" 65
 
   {
     printf 'format\t1\n'
     printf 'version\t%s\n' "$source_version"
     printf 'scope\t%s\n' "$scope"
     printf 'policy\t%s\t%s\n' "$policy_path" "$policy_checksum"
-    printf 'target\t%s\t%s\tmanaged-block\t%s\t%s\n' \
-      "$target_id" "$target_path" "$target_checksum" "$target_origin"
+    printf 'target\t%s\t%s\t%s\t%s\t%s\n' \
+      "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin"
   } >"$output_file"
 }
 
@@ -92,7 +95,8 @@ load_state_file() {
         policy_count=$((policy_count + 1))
         ;;
       target)
-        [ "$first" = claude ] && [ -n "$second" ] && [ "$third" = managed-block ] &&
+        target_supports_user "$first" && [ -n "$second" ] &&
+          [ "$third" = "$(target_ownership "$first")" ] &&
           [ -n "$fourth" ] && [ -n "$fifth" ] || die "invalid target state" 65
         case "$fifth" in
           created-file|existing-file) ;;
