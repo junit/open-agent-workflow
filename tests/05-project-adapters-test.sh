@@ -10,16 +10,244 @@ trap cleanup_sandbox EXIT HUP INT TERM
 
 setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
-mkdir -p "$OAW_PROJECT"
+mkdir -p "$OAW_PROJECT/.cursor/rules"
+printf 'personal Cursor rule\n' >"$OAW_PROJECT/.cursor/rules/personal.mdc"
+OAW_CURSOR_SIBLING_BEFORE=$(cksum <"$OAW_PROJECT/.cursor/rules/personal.mdc")
 
 run_oaw install --project "$OAW_PROJECT" --target cursor
-assert_status 69 "unsupported project target preserves destination resolution failure"
-assert_output_equals "oaw: error: target 'cursor' is not implemented for project scope" \
-  "unsupported project target reports one precise error"
-assert_read_only_roots
-assert_empty_dir "$OAW_PROJECT" "unsupported project target must not mutate the project"
+assert_status 0 "fresh project Cursor install"
 
-pass "unsupported project target fails before destination preflight"
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_CURSOR=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_EXPECTED_CURSOR=$OAW_SANDBOX/expected-cursor.mdc
+
+printf '%s\n' \
+  '---' \
+  'description: Open Agent Workflow lifecycle policy' \
+  'globs: "**/*"' \
+  'alwaysApply: true' \
+  '---' \
+  '' \
+  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  >"$OAW_EXPECTED_CURSOR"
+cmp -s "$OAW_EXPECTED_CURSOR" "$OAW_CURSOR" || fail "Cursor adapter bytes are invalid"
+grep -F "$(printf 'target\tcursor\t%s\towned-file' "$OAW_CURSOR")" \
+  "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Cursor ownership"
+[ "$(cksum <"$OAW_PROJECT/.cursor/rules/personal.mdc")" = "$OAW_CURSOR_SIBLING_BEFORE" ] ||
+  fail "Cursor install changed a sibling rule"
+
+OAW_CURSOR_BEFORE=$(cksum <"$OAW_CURSOR")
+OAW_CURSOR_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw install --project "$OAW_PROJECT" --target cursor
+assert_status 0 "repeated project Cursor install"
+assert_contains "unchanged: cursor" "repeated project install reports Cursor unchanged"
+[ "$(cksum <"$OAW_CURSOR")" = "$OAW_CURSOR_BEFORE" ] ||
+  fail "repeated Cursor install changed adapter bytes"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_CURSOR_STATE_BEFORE" ] ||
+  fail "repeated Cursor install changed project state"
+
+printf 'local Cursor drift\n' >"$OAW_CURSOR"
+OAW_CURSOR_DRIFT=$(cksum <"$OAW_CURSOR")
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_CURSOR_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw install --project "$OAW_PROJECT" --target cursor
+assert_status 65 "drifted Cursor destination"
+assert_contains "owned target file has drifted" "owned-file drift is explicit"
+[ "$(cksum <"$OAW_CURSOR")" = "$OAW_CURSOR_DRIFT" ] ||
+  fail "Cursor drift was overwritten during failed install"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "Cursor drift changed canonical policy"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_CURSOR_STATE_BEFORE" ] ||
+  fail "Cursor drift changed project state"
+
+pass "project Cursor install renders an owned MDC rule"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+OAW_CURSOR="$OAW_PROJECT/.cursor/rules/open-agent-workflow.mdc"
+OAW_CURSOR_SIBLING="$OAW_PROJECT/.cursor/rules/personal.mdc"
+mkdir -p "$OAW_PROJECT/.cursor/rules"
+printf 'pre-existing Cursor destination\n' >"$OAW_CURSOR"
+printf 'personal Cursor rule\n' >"$OAW_CURSOR_SIBLING"
+OAW_CURSOR_BEFORE=$(cksum <"$OAW_CURSOR")
+OAW_CURSOR_SIBLING_BEFORE=$(cksum <"$OAW_CURSOR_SIBLING")
+
+run_oaw install --project "$OAW_PROJECT" --target cursor
+assert_status 65 "pre-existing Cursor destination"
+assert_contains "owned target already exists" "pre-existing owned destination is explicit"
+[ "$(cksum <"$OAW_CURSOR")" = "$OAW_CURSOR_BEFORE" ] ||
+  fail "Cursor conflict changed the owned destination"
+[ "$(cksum <"$OAW_CURSOR_SIBLING")" = "$OAW_CURSOR_SIBLING_BEFORE" ] ||
+  fail "Cursor conflict changed a sibling rule"
+assert_read_only_roots
+
+pass "pre-existing owned Cursor destination fails before mutation"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT/.devin/rules"
+printf 'personal Windsurf rule\n' >"$OAW_PROJECT/.devin/rules/personal.md"
+OAW_WINDSURF_SIBLING_BEFORE=$(cksum <"$OAW_PROJECT/.devin/rules/personal.md")
+
+run_oaw install --project "$OAW_PROJECT" --target windsurf
+assert_status 0 "fresh project Windsurf install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_WINDSURF=$OAW_PROJECT_PHYSICAL/.devin/rules/open-agent-workflow.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_EXPECTED_WINDSURF=$OAW_SANDBOX/expected-windsurf.md
+
+printf '%s\n' \
+  '---' \
+  'trigger: always_on' \
+  '---' \
+  '' \
+  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  >"$OAW_EXPECTED_WINDSURF"
+cmp -s "$OAW_EXPECTED_WINDSURF" "$OAW_WINDSURF" || fail "Windsurf adapter bytes are invalid"
+grep -F "$(printf 'target\twindsurf\t%s\towned-file' "$OAW_WINDSURF")" \
+  "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Windsurf ownership"
+[ "$(cksum <"$OAW_PROJECT/.devin/rules/personal.md")" = "$OAW_WINDSURF_SIBLING_BEFORE" ] ||
+  fail "Windsurf install changed a sibling rule"
+
+OAW_WINDSURF_BEFORE=$(cksum <"$OAW_WINDSURF")
+OAW_WINDSURF_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw install --project "$OAW_PROJECT" --target windsurf
+assert_status 0 "repeated project Windsurf install"
+assert_contains "unchanged: windsurf" "repeated project install reports Windsurf unchanged"
+[ "$(cksum <"$OAW_WINDSURF")" = "$OAW_WINDSURF_BEFORE" ] ||
+  fail "repeated Windsurf install changed adapter bytes"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_WINDSURF_STATE_BEFORE" ] ||
+  fail "repeated Windsurf install changed project state"
+
+pass "project Windsurf install renders an always-on rule"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT/.clinerules"
+printf 'personal Cline rule\n' >"$OAW_PROJECT/.clinerules/personal.md"
+OAW_CLINE_SIBLING_BEFORE=$(cksum <"$OAW_PROJECT/.clinerules/personal.md")
+
+run_oaw install --project "$OAW_PROJECT" --target cline
+assert_status 0 "fresh project Cline install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_CLINE=$OAW_PROJECT_PHYSICAL/.clinerules/open-agent-workflow.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_EXPECTED_CLINE=$OAW_SANDBOX/expected-cline.md
+
+printf '%s\n' \
+  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  >"$OAW_EXPECTED_CLINE"
+cmp -s "$OAW_EXPECTED_CLINE" "$OAW_CLINE" || fail "Cline adapter bytes are invalid"
+grep -F "$(printf 'target\tcline\t%s\towned-file' "$OAW_CLINE")" \
+  "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Cline ownership"
+[ "$(cksum <"$OAW_PROJECT/.clinerules/personal.md")" = "$OAW_CLINE_SIBLING_BEFORE" ] ||
+  fail "Cline install changed a sibling rule"
+
+OAW_CLINE_BEFORE=$(cksum <"$OAW_CLINE")
+OAW_CLINE_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw install --project "$OAW_PROJECT" --target cline
+assert_status 0 "repeated project Cline install"
+assert_contains "unchanged: cline" "repeated project install reports Cline unchanged"
+[ "$(cksum <"$OAW_CLINE")" = "$OAW_CLINE_BEFORE" ] ||
+  fail "repeated Cline install changed adapter bytes"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_CLINE_STATE_BEFORE" ] ||
+  fail "repeated Cline install changed project state"
+
+pass "project Cline install renders an owned rule"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT/.roo/rules"
+printf 'personal Roo rule\n' >"$OAW_PROJECT/.roo/rules/personal.md"
+OAW_ROO_SIBLING_BEFORE=$(cksum <"$OAW_PROJECT/.roo/rules/personal.md")
+
+run_oaw install --project "$OAW_PROJECT" --target roo
+assert_status 0 "fresh project Roo install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_ROO=$OAW_PROJECT_PHYSICAL/.roo/rules/open-agent-workflow.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_EXPECTED_ROO=$OAW_SANDBOX/expected-roo.md
+
+printf '%s\n' \
+  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  >"$OAW_EXPECTED_ROO"
+cmp -s "$OAW_EXPECTED_ROO" "$OAW_ROO" || fail "Roo adapter bytes are invalid"
+grep -F "$(printf 'target\troo\t%s\towned-file' "$OAW_ROO")" \
+  "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Roo ownership"
+[ "$(cksum <"$OAW_PROJECT/.roo/rules/personal.md")" = "$OAW_ROO_SIBLING_BEFORE" ] ||
+  fail "Roo install changed a sibling rule"
+
+OAW_ROO_BEFORE=$(cksum <"$OAW_ROO")
+OAW_ROO_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw install --project "$OAW_PROJECT" --target roo
+assert_status 0 "repeated project Roo install"
+assert_contains "unchanged: roo" "repeated project install reports Roo unchanged"
+[ "$(cksum <"$OAW_ROO")" = "$OAW_ROO_BEFORE" ] ||
+  fail "repeated Roo install changed adapter bytes"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_ROO_STATE_BEFORE" ] ||
+  fail "repeated Roo install changed project state"
+
+pass "project Roo install renders an owned rule"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT/.github/instructions"
+printf 'personal Copilot instruction\n' \
+  >"$OAW_PROJECT/.github/instructions/personal.instructions.md"
+OAW_COPILOT_SIBLING_BEFORE=$(cksum \
+  <"$OAW_PROJECT/.github/instructions/personal.instructions.md")
+
+run_oaw install --project "$OAW_PROJECT" --target copilot
+assert_status 0 "fresh project Copilot install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_COPILOT=$OAW_PROJECT_PHYSICAL/.github/instructions/open-agent-workflow.instructions.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_EXPECTED_COPILOT=$OAW_SANDBOX/expected-copilot.instructions.md
+
+printf '%s\n' \
+  '---' \
+  'applyTo: "**"' \
+  '---' \
+  '' \
+  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  >"$OAW_EXPECTED_COPILOT"
+cmp -s "$OAW_EXPECTED_COPILOT" "$OAW_COPILOT" || fail "Copilot adapter bytes are invalid"
+grep -F "$(printf 'target\tcopilot\t%s\towned-file' "$OAW_COPILOT")" \
+  "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Copilot ownership"
+[ "$(cksum <"$OAW_PROJECT/.github/instructions/personal.instructions.md")" = \
+  "$OAW_COPILOT_SIBLING_BEFORE" ] || fail "Copilot install changed a sibling instruction"
+
+OAW_COPILOT_BEFORE=$(cksum <"$OAW_COPILOT")
+OAW_COPILOT_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw install --project "$OAW_PROJECT" --target copilot
+assert_status 0 "repeated project Copilot install"
+assert_contains "unchanged: copilot" "repeated project install reports Copilot unchanged"
+[ "$(cksum <"$OAW_COPILOT")" = "$OAW_COPILOT_BEFORE" ] ||
+  fail "repeated Copilot install changed adapter bytes"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_COPILOT_STATE_BEFORE" ] ||
+  fail "repeated Copilot install changed project state"
+
+pass "project Copilot install renders a path-specific instruction"
 
 cleanup_sandbox
 setup_sandbox

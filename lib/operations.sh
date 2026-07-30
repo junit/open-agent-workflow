@@ -21,23 +21,43 @@ prepare_operation_temp() {
   trap cleanup_operation_temp EXIT HUP INT TERM
 }
 
+checksum_rendered_target_artifact() {
+  local target_id=$1
+  local target_mode=$2
+
+  case "$target_mode" in
+    managed-block) checksum_file "$OAW_OPERATION_TEMP/block-$target_id" ;;
+    owned-file) checksum_file "$OAW_OPERATION_TEMP/target-$target_id" ;;
+    *) die "unknown target ownership mode: $target_mode" 65 ;;
+  esac
+}
+
 render_target_artifacts() {
   local target_id=$1
   local target_path=$2
   local target_origin=$3
   local source_version=$4
-  local block_checksum=
+  local target_checksum=
   local target_mode=
 
   [ -n "$source_version" ] || die "VERSION is invalid" 70
-  render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" \
-    "$OAW_OPERATION_TEMP/block-$target_id" "$OAW_SCOPE"
-  render_file_with_block "$target_path" "$OAW_OPERATION_TEMP/block-$target_id" \
-    "$OAW_OPERATION_TEMP/target-$target_id"
-  block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/block-$target_id")
   target_mode=$(target_ownership "$target_id")
+  case "$target_mode" in
+    managed-block)
+      render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" \
+        "$OAW_OPERATION_TEMP/block-$target_id" "$OAW_SCOPE"
+      render_file_with_block "$target_path" "$OAW_OPERATION_TEMP/block-$target_id" \
+        "$OAW_OPERATION_TEMP/target-$target_id"
+      ;;
+    owned-file)
+      render_target_content "$target_id" "$OAW_POLICY_DESTINATION" "$OAW_SCOPE" \
+        >"$OAW_OPERATION_TEMP/target-$target_id"
+      ;;
+    *) die "unknown target ownership mode: $target_mode" 65 ;;
+  esac
+  target_checksum=$(checksum_rendered_target_artifact "$target_id" "$target_mode")
   printf '%s\t%s\t%s\t%s\t%s\n' \
-    "$target_id" "$target_path" "$target_mode" "$block_checksum" "$target_origin" \
+    "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin" \
     >>"$OAW_OPERATION_TEMP/selected-records"
 }
 
@@ -163,19 +183,30 @@ verify_installed_target_record() {
   local target_mode=$3
   local target_checksum=$4
   local expected_target_path=
-  local actual_block_checksum=
+  local actual_target_checksum=
   local target_status=
 
   expected_target_path=$(target_destination "$target_id")
   [ "$target_path" = "$expected_target_path" ] || die "installed target path does not match" 65
   [ "$target_mode" = "$(target_ownership "$target_id")" ] ||
     die "installed target ownership does not match" 65
-  target_status=$(managed_block_status "$target_path")
-  [ "$target_status" = present ] || die "managed target block has drifted" 65
-  extract_managed_block "$target_path" "$OAW_OPERATION_TEMP/current-block-$target_id"
-  actual_block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/current-block-$target_id")
-  [ "$actual_block_checksum" = "$target_checksum" ] ||
-    die "managed target block has drifted" 65
+  case "$target_mode" in
+    managed-block)
+      target_status=$(managed_block_status "$target_path")
+      [ "$target_status" = present ] || die "managed target block has drifted" 65
+      extract_managed_block "$target_path" "$OAW_OPERATION_TEMP/current-block-$target_id"
+      actual_target_checksum=$(checksum_file "$OAW_OPERATION_TEMP/current-block-$target_id")
+      [ "$actual_target_checksum" = "$target_checksum" ] ||
+        die "managed target block has drifted" 65
+      ;;
+    owned-file)
+      [ -f "$target_path" ] || die "owned target file has drifted" 65
+      actual_target_checksum=$(checksum_file "$target_path")
+      [ "$actual_target_checksum" = "$target_checksum" ] ||
+        die "owned target file has drifted" 65
+      ;;
+    *) die "unknown target ownership mode: $target_mode" 65 ;;
+  esac
 }
 
 verify_installed_target_records() {
@@ -199,9 +230,11 @@ operation_install() {
   local selected_target=
   local target_path=
   local target_origin=
+  local target_mode=
   local source_version=
   local target_status=
-  local recorded_block_checksum=
+  local recorded_target_checksum=
+  local rendered_target_checksum=
   local selected_was_installed=0
 
   [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] || die "canonical policy source is not readable" 70
@@ -237,26 +270,38 @@ operation_install() {
     esac
 
     target_path=$(target_destination "$selected_target")
+    target_mode=$(target_ownership "$selected_target")
     target_origin=existing-file
     selected_was_installed=0
-    recorded_block_checksum=
+    recorded_target_checksum=
     if target_record_exists "$OAW_OPERATION_TEMP/existing-records" "$selected_target"; then
       load_target_record "$OAW_OPERATION_TEMP/existing-records" "$selected_target"
       [ "$STATE_TARGET_PATH" = "$target_path" ] || die "installed target path does not match" 65
       target_origin=$STATE_TARGET_ORIGIN
-      recorded_block_checksum=$STATE_TARGET_CHECKSUM
+      recorded_target_checksum=$STATE_TARGET_CHECKSUM
       selected_was_installed=1
     else
-      target_status=$(managed_block_status "$target_path")
-      [ "$target_status" = absent ] || die "untracked OAW markers already exist: $target_path" 65
-      [ -e "$target_path" ] || target_origin=created-file
+      case "$target_mode" in
+        managed-block)
+          target_status=$(managed_block_status "$target_path")
+          [ "$target_status" = absent ] ||
+            die "untracked OAW markers already exist: $target_path" 65
+          [ -e "$target_path" ] || target_origin=created-file
+          ;;
+        owned-file)
+          [ ! -e "$target_path" ] || die "owned target already exists: $target_path" 65
+          target_origin=created-file
+          ;;
+        *) die "unknown target ownership mode: $target_mode" 65 ;;
+      esac
     fi
 
     render_target_artifacts "$selected_target" "$target_path" "$target_origin" "$source_version"
     add_target_action "$OAW_OPERATION_TEMP/target-actions" replace "$selected_target" \
       "$OAW_OPERATION_TEMP/target-$selected_target" "$target_path" 644
+    rendered_target_checksum=$(checksum_rendered_target_artifact "$selected_target" "$target_mode")
     if [ "$selected_was_installed" -eq 1 ] &&
-      [ "$(checksum_file "$OAW_OPERATION_TEMP/block-$selected_target")" != "$recorded_block_checksum" ]; then
+      [ "$rendered_target_checksum" != "$recorded_target_checksum" ]; then
       die "installed content differs from this checkout; run update" 65
     fi
   done
@@ -368,14 +413,23 @@ operation_uninstall() {
   tab=$(printf '\t')
   while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
     if ! target_path_is_referenced "$OAW_OPERATION_TEMP/remaining-records" "$target_path"; then
-      render_file_without_block "$target_path" "$OAW_OPERATION_TEMP/uninstall-target-$target_id"
-      if [ "$target_origin" = created-file ] &&
-        [ ! -s "$OAW_OPERATION_TEMP/uninstall-target-$target_id" ]; then
-        add_target_action "$OAW_OPERATION_TEMP/target-actions" remove "$target_id" - "$target_path" -
-      else
-        add_target_action "$OAW_OPERATION_TEMP/target-actions" replace "$target_id" \
-          "$OAW_OPERATION_TEMP/uninstall-target-$target_id" "$target_path" 644
-      fi
+      case "$target_mode" in
+        managed-block)
+          render_file_without_block "$target_path" "$OAW_OPERATION_TEMP/uninstall-target-$target_id"
+          if [ "$target_origin" = created-file ] &&
+            [ ! -s "$OAW_OPERATION_TEMP/uninstall-target-$target_id" ]; then
+            add_target_action "$OAW_OPERATION_TEMP/target-actions" remove "$target_id" - "$target_path" -
+          else
+            add_target_action "$OAW_OPERATION_TEMP/target-actions" replace "$target_id" \
+              "$OAW_OPERATION_TEMP/uninstall-target-$target_id" "$target_path" 644
+          fi
+          ;;
+        owned-file)
+          [ "$target_origin" = created-file ] || die "invalid owned target origin" 65
+          add_target_action "$OAW_OPERATION_TEMP/target-actions" remove "$target_id" - "$target_path" -
+          ;;
+        *) die "unknown target ownership mode: $target_mode" 65 ;;
+      esac
     fi
   done <"$OAW_OPERATION_TEMP/removed-records"
 

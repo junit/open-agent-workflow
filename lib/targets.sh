@@ -32,6 +32,7 @@ target_supports_project() {
 target_ownership() {
   case "$1" in
     claude|codex|gemini|opencode) printf '%s\n' managed-block ;;
+    cursor|windsurf|cline|roo|copilot) printf '%s\n' owned-file ;;
     *) die "target '$1' has no ownership mode" 69 ;;
   esac
 }
@@ -57,6 +58,11 @@ target_project_relative_path() {
     codex) printf 'AGENTS.md\n' ;;
     gemini) printf 'GEMINI.md\n' ;;
     opencode) printf 'AGENTS.md\n' ;;
+    cursor) printf '.cursor/rules/open-agent-workflow.mdc\n' ;;
+    windsurf) printf '.devin/rules/open-agent-workflow.md\n' ;;
+    cline) printf '.clinerules/open-agent-workflow.md\n' ;;
+    roo) printf '.roo/rules/open-agent-workflow.md\n' ;;
+    copilot) printf '.github/instructions/open-agent-workflow.instructions.md\n' ;;
     *) die "target '$1' is not implemented for project scope" 69 ;;
   esac
 }

@@ -26,6 +26,49 @@ render_project_bootstrap() {
   printf 'Before engineering lifecycle work, read `%s`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n' "$1"
 }
 
+render_cursor() {
+  local policy_path=$1
+
+  printf '%s\n' \
+    '---' \
+    'description: Open Agent Workflow lifecycle policy' \
+    'globs: "**/*"' \
+    'alwaysApply: true' \
+    '---' \
+    ''
+  render_project_bootstrap "$policy_path"
+}
+
+render_windsurf() {
+  local policy_path=$1
+
+  printf '%s\n' \
+    '---' \
+    'trigger: always_on' \
+    '---' \
+    ''
+  render_project_bootstrap "$policy_path"
+}
+
+render_cline() {
+  render_project_bootstrap "$1"
+}
+
+render_roo() {
+  render_project_bootstrap "$1"
+}
+
+render_copilot() {
+  local policy_path=$1
+
+  printf '%s\n' \
+    '---' \
+    'applyTo: "**"' \
+    '---' \
+    ''
+  render_project_bootstrap "$policy_path"
+}
+
 render_target_content() {
   local render_target=$1
   local render_policy=$2
@@ -37,6 +80,11 @@ render_target_content() {
     project:codex|project:opencode) render_project_bootstrap "$render_policy" ;;
     user:gemini|project:gemini) render_gemini "$render_policy" ;;
     user:opencode) render_opencode "$render_policy" ;;
+    project:cursor) render_cursor "$render_policy" ;;
+    project:windsurf) render_windsurf "$render_policy" ;;
+    project:cline) render_cline "$render_policy" ;;
+    project:roo) render_roo "$render_policy" ;;
+    project:copilot) render_copilot "$render_policy" ;;
     *) die "no renderer for $render_scope target '$render_target'" 69 ;;
   esac
 }
