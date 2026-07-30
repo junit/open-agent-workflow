@@ -469,6 +469,95 @@ pass "project OpenCode install uses the shared AGENTS bootstrap"
 cleanup_sandbox
 setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT"
+printf 'personal shared project instruction\n' >"$OAW_PROJECT/AGENTS.md"
+
+run_oaw install --project "$OAW_PROJECT" --target codex,opencode
+assert_status 0 "shared project AGENTS install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-shared-agents-block
+OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-shared-agents-block
+
+printf '%s\n' \
+  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
+  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+awk '
+  $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
+  copying { print }
+  $0 == "<!-- END OPEN AGENT WORKFLOW -->" && copying { exit }
+' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
+cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
+  fail "shared project AGENTS block is not canonical"
+[ "$(awk '$0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { count++ } END { print count + 0 }' \
+  "$OAW_PROJECT_AGENTS")" -eq 1 ] || fail "shared project AGENTS has duplicate OAW blocks"
+OAW_CODEX_CHECKSUM=$(awk -F '\t' '$1 == "target" && $2 == "codex" { print $4 }' "$OAW_PROJECT_STATE")
+OAW_OPENCODE_CHECKSUM=$(awk -F '\t' '$1 == "target" && $2 == "opencode" { print $4 }' "$OAW_PROJECT_STATE")
+[ -n "$OAW_CODEX_CHECKSUM" ] && [ "$OAW_CODEX_CHECKSUM" = "$OAW_OPENCODE_CHECKSUM" ] ||
+  fail "shared project AGENTS targets do not share one checksum"
+[ "$(awk -F '\t' '$1 == "target" { count++ } END { print count + 0 }' "$OAW_PROJECT_STATE")" -eq 2 ] ||
+  fail "shared project state does not retain both target rows"
+
+OAW_PROJECT_AGENTS_BEFORE=$(cksum <"$OAW_PROJECT_AGENTS")
+run_oaw uninstall --project "$OAW_PROJECT" --target codex
+assert_status 0 "selected shared AGENTS uninstall"
+[ "$(cksum <"$OAW_PROJECT_AGENTS")" = "$OAW_PROJECT_AGENTS_BEFORE" ] ||
+  fail "selected shared AGENTS uninstall changed the block"
+[ "$(awk -F '\t' '$1 == "target" { print $2 }' "$OAW_PROJECT_STATE")" = opencode ] ||
+  fail "selected shared AGENTS uninstall removed the wrong state row"
+
+run_oaw uninstall --project "$OAW_PROJECT" --target opencode
+assert_status 0 "final shared AGENTS uninstall"
+grep -Fx 'personal shared project instruction' "$OAW_PROJECT_AGENTS" >/dev/null ||
+  fail "final shared AGENTS uninstall removed project instructions"
+if grep -F '<!-- BEGIN OPEN AGENT WORKFLOW -->' "$OAW_PROJECT_AGENTS" >/dev/null 2>&1; then
+  fail "final shared AGENTS uninstall left the OAW block"
+fi
+[ ! -e "$OAW_PROJECT_STATE" ] || fail "final shared AGENTS uninstall kept project state"
+[ ! -e "$OAW_POLICY" ] || fail "final shared AGENTS uninstall kept an unreferenced policy"
+
+pass "shared project AGENTS ownership survives selected uninstall"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT"
+printf 'personal cross-scope project instruction\n' >"$OAW_PROJECT/AGENTS.md"
+
+run_oaw install --project "$OAW_PROJECT" --target codex
+assert_status 0 "cross-scope project fixture install"
+run_oaw install --target codex
+assert_status 0 "cross-scope user fixture install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+
+run_oaw uninstall --target codex
+assert_status 0 "cross-scope user uninstall"
+[ -f "$OAW_POLICY" ] || fail "user uninstall removed policy referenced by project state"
+[ -f "$OAW_PROJECT_STATE" ] || fail "user uninstall removed project state"
+[ -f "$OAW_PROJECT_AGENTS" ] || fail "user uninstall changed project adapter"
+[ ! -e "$OAW_USER_STATE" ] || fail "user uninstall kept user state"
+
+run_oaw uninstall --project "$OAW_PROJECT" --target codex
+assert_status 0 "cross-scope project uninstall"
+[ ! -e "$OAW_POLICY" ] || fail "final cross-scope uninstall kept policy"
+[ ! -e "$OAW_PROJECT_STATE" ] || fail "final cross-scope uninstall kept project state"
+
+pass "canonical policy survives until the final cross-scope reference"
+
+cleanup_sandbox
+setup_sandbox
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 OAW_OTHER_PROJECT="$OAW_SANDBOX/other project"
 mkdir -p "$OAW_PROJECT/.claude" "$OAW_OTHER_PROJECT"
 printf 'personal project Claude instruction\n' >"$OAW_PROJECT/.claude/CLAUDE.md"

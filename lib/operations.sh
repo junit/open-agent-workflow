@@ -378,7 +378,6 @@ operation_uninstall() {
   local reference_status=0
   local retain_policy=0
 
-  [ "$OAW_SCOPE" = user ] || die "Ticket 03 uninstall supports only user scope" 69
   init_oaw_paths
   prepare_operation_temp
   : >"$OAW_OPERATION_TEMP/target-actions"

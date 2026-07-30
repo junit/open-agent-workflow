@@ -470,7 +470,9 @@ other_state_references_policy() {
   local candidate_state=
   local reference_status=0
 
-  for candidate_state in "$installations_dir"/*.state; do
+  for candidate_state in \
+    "$installations_dir"/*.state \
+    "$installations_dir"/projects/*.state; do
     [ -e "$candidate_state" ] || continue
     [ "$candidate_state" = "$excluded_state" ] && continue
 

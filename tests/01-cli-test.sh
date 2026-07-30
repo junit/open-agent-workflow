@@ -105,9 +105,10 @@ assert_contains "no installation state; run install first" "supported update wit
 assert_read_only_roots
 
 run_oaw uninstall --project "$OAW_PROJECT"
-assert_status 69 "a project value containing no shell expansion parses"
-assert_contains "Ticket 03 uninstall supports only user scope" "unsupported uninstall scope is explicit"
+assert_status 0 "a project value containing no shell expansion parses"
+assert_contains "unchanged: copilot" "empty project uninstall is idempotent"
 assert_read_only_roots
+assert_empty_dir "$OAW_PROJECT" "empty project uninstall must not mutate the project"
 pass "mutating command lines parse without mutation"
 
 run_oaw check --help
