@@ -4,6 +4,7 @@
 
 STATE_VERSION=
 STATE_SCOPE=
+STATE_PROJECT_ROOT=
 STATE_POLICY_PATH=
 STATE_POLICY_CHECKSUM=
 STATE_TARGET_ID=
@@ -55,7 +56,10 @@ validate_target_records() {
 
   tab=$(printf '\t')
   [ -f "$records_file" ] || die "target records are missing" 65
-  [ "$record_scope" = user ] || die "invalid target scope" 65
+  case "$record_scope" in
+    user|project) ;;
+    *) die "invalid target scope" 65 ;;
+  esac
 
   while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
     [ -z "$extra" ] || die "invalid target record: too many fields" 65
@@ -64,7 +68,10 @@ validate_target_records() {
       ! state_field_is_safe "$target_origin"; then
       die "target record cannot be serialized" 65
     fi
-    target_supports_user "$target_id" || die "invalid target state" 65
+    case "$record_scope" in
+      user) target_supports_user "$target_id" || die "invalid target state" 65 ;;
+      project) target_supports_project "$target_id" || die "invalid target state" 65 ;;
+    esac
     [ -n "$target_path" ] || die "invalid target path" 65
     case "$target_path" in
       /*) ;;
@@ -95,9 +102,10 @@ write_state_file() {
   local output_file=$1
   local source_version=$2
   local scope=$3
-  local policy_path=$4
-  local policy_checksum=$5
-  local target_records=$6
+  local project_root=$4
+  local policy_path=$5
+  local policy_checksum=$6
+  local target_records=$7
   local tab=
   local target_id=
   local target_path=
@@ -108,7 +116,20 @@ write_state_file() {
 
   state_field_is_safe "$source_version" && [ -n "$source_version" ] ||
     die "version cannot be serialized" 65
-  [ "$scope" = user ] || die "invalid state scope" 65
+  case "$scope" in
+    user)
+      [ -z "$project_root" ] || die "user state cannot contain a project root" 65
+      ;;
+    project)
+      state_field_is_safe "$project_root" && [ -n "$project_root" ] ||
+        die "project root cannot be serialized" 65
+      case "$project_root" in
+        /*) ;;
+        *) die "invalid project root" 65 ;;
+      esac
+      ;;
+    *) die "invalid state scope" 65 ;;
+  esac
   state_field_is_safe "$policy_path" || die "policy path cannot be serialized" 65
   case "$policy_path" in
     /*) ;;
@@ -122,6 +143,9 @@ write_state_file() {
     printf 'format\t1\n'
     printf 'version\t%s\n' "$source_version"
     printf 'scope\t%s\n' "$scope"
+    if [ "$scope" = project ]; then
+      printf 'project\t%s\n' "$project_root"
+    fi
     printf 'policy\t%s\t%s\n' "$policy_path" "$policy_checksum"
     while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
       printf 'target\t%s\t%s\t%s\t%s\t%s\n' \
@@ -144,12 +168,14 @@ load_state_file() {
   local format_count=0
   local version_count=0
   local scope_count=0
+  local project_count=0
   local policy_count=0
   local target_count=0
 
   tab=$(printf '\t')
   STATE_VERSION=
   STATE_SCOPE=
+  STATE_PROJECT_ROOT=
   STATE_POLICY_PATH=
   STATE_POLICY_CHECKSUM=
   STATE_TARGET_ID=
@@ -174,9 +200,19 @@ load_state_file() {
         version_count=$((version_count + 1))
         ;;
       scope)
-        [ "$first" = user ] && [ -z "$second$third$fourth$fifth" ] || die "invalid state scope" 65
+        case "$first" in
+          user|project) ;;
+          *) die "invalid state scope" 65 ;;
+        esac
+        [ -z "$second$third$fourth$fifth" ] || die "invalid state scope" 65
         STATE_SCOPE=$first
         scope_count=$((scope_count + 1))
+        ;;
+      project)
+        [ -n "$first" ] && [ -z "$second$third$fourth$fifth" ] ||
+          die "invalid project state" 65
+        STATE_PROJECT_ROOT=$first
+        project_count=$((project_count + 1))
         ;;
       policy)
         [ -n "$first" ] && [ -n "$second" ] && [ -z "$third$fourth$fifth" ] || die "invalid policy state" 65
@@ -197,6 +233,19 @@ load_state_file() {
   [ "$format_count" -eq 1 ] && [ "$version_count" -eq 1 ] &&
     [ "$scope_count" -eq 1 ] && [ "$policy_count" -eq 1 ] &&
     [ "$target_count" -ge 1 ] || die "state is incomplete or duplicated" 65
+  case "$STATE_SCOPE" in
+    user)
+      [ "$project_count" -eq 0 ] || die "user state contains project data" 65
+      ;;
+    project)
+      [ "$project_count" -eq 1 ] || die "project state is incomplete or duplicated" 65
+      state_field_is_safe "$STATE_PROJECT_ROOT" || die "invalid project state" 65
+      case "$STATE_PROJECT_ROOT" in
+        /*) ;;
+        *) die "invalid project root" 65 ;;
+      esac
+      ;;
+  esac
   state_field_is_safe "$STATE_VERSION" || die "invalid state version" 65
   state_field_is_safe "$STATE_POLICY_PATH" || die "invalid policy state" 65
   case "$STATE_POLICY_PATH" in
@@ -270,6 +319,7 @@ select_target_records() {
   local existing_records=$1
   local selected_ids=$2
   local selected_records=$3
+  local record_scope=$4
   local selected_target_id=
 
   : >"$selected_records"
@@ -279,7 +329,7 @@ select_target_records() {
     awk -F '\t' -v target_id="$selected_target_id" '$1 == target_id' \
       "$existing_records" >>"$selected_records"
   done <"$selected_ids"
-  validate_target_records "$selected_records" user
+  validate_target_records "$selected_records" "$record_scope"
 }
 
 filter_target_records() {
@@ -287,6 +337,7 @@ filter_target_records() {
   local selected_ids=$2
   local remaining_records=$3
   local removed_records=$4
+  local record_scope=$5
   local tab=
   local target_id=
   local target_path=
@@ -309,8 +360,8 @@ filter_target_records() {
         >>"$remaining_records"
     fi
   done <"$existing_records"
-  validate_target_records "$remaining_records" user 0
-  validate_target_records "$removed_records" user 0
+  validate_target_records "$remaining_records" "$record_scope" 0
+  validate_target_records "$removed_records" "$record_scope" 0
 }
 
 target_path_is_referenced() {
@@ -350,6 +401,7 @@ normalize_destination_checksums() {
   local base_records=$1
   local changed_records=$2
   local normalized_records=$3
+  local record_scope=$4
   local tab=
   local target_id=
   local target_path=
@@ -374,13 +426,14 @@ normalize_destination_checksums() {
       "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin" \
       >>"$normalized_records"
   done <"$base_records"
-  validate_target_records "$normalized_records" user
+  validate_target_records "$normalized_records" "$record_scope"
 }
 
 merge_install_target_records() {
   local existing_records=$1
   local selected_records=$2
   local merged_records=$3
+  local record_scope=$4
   local registry_target=
 
   : >"$merged_records"
@@ -391,7 +444,7 @@ merge_install_target_records() {
       awk -F '\t' -v target_id="$registry_target" '$1 == target_id' "$existing_records" >>"$merged_records"
     fi
   done
-  validate_target_records "$merged_records" user
+  validate_target_records "$merged_records" "$record_scope"
 }
 
 state_file_references_policy() (

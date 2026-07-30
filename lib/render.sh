@@ -22,16 +22,22 @@ render_opencode() {
   printf 'Before engineering lifecycle work, use the Read tool to read `%s`, then follow its blocking selection gate and lifecycle lock.\n' "$1"
 }
 
+render_project_bootstrap() {
+  printf 'Before engineering lifecycle work, read `%s`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n' "$1"
+}
+
 render_target_content() {
   local render_target=$1
   local render_policy=$2
+  local render_scope=$3
 
-  case "$render_target" in
-    claude) render_claude "$render_policy" ;;
-    codex) render_codex "$render_policy" ;;
-    gemini) render_gemini "$render_policy" ;;
-    opencode) render_opencode "$render_policy" ;;
-    *) die "no renderer for target '$render_target'" 69 ;;
+  case "$render_scope:$render_target" in
+    user:claude|project:claude) render_claude "$render_policy" ;;
+    user:codex) render_codex "$render_policy" ;;
+    project:codex|project:opencode) render_project_bootstrap "$render_policy" ;;
+    user:gemini|project:gemini) render_gemini "$render_policy" ;;
+    user:opencode) render_opencode "$render_policy" ;;
+    *) die "no renderer for $render_scope target '$render_target'" 69 ;;
   esac
 }
 
@@ -39,10 +45,11 @@ render_managed_block() {
   local block_target=$1
   local block_policy=$2
   local block_output=$3
+  local block_scope=$4
 
   {
     printf '%s\n' "$OAW_BEGIN_MARKER"
-    render_target_content "$block_target" "$block_policy"
+    render_target_content "$block_target" "$block_policy" "$block_scope"
     printf '%s\n' "$OAW_END_MARKER"
   } >"$block_output"
 }

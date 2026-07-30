@@ -30,7 +30,8 @@ render_target_artifacts() {
   local target_mode=
 
   [ -n "$source_version" ] || die "VERSION is invalid" 70
-  render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" "$OAW_OPERATION_TEMP/block-$target_id"
+  render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" \
+    "$OAW_OPERATION_TEMP/block-$target_id" "$OAW_SCOPE"
   render_file_with_block "$target_path" "$OAW_OPERATION_TEMP/block-$target_id" \
     "$OAW_OPERATION_TEMP/target-$target_id"
   block_checksum=$(checksum_file "$OAW_OPERATION_TEMP/block-$target_id")
@@ -46,8 +47,8 @@ write_operation_state() {
   local policy_checksum=
 
   policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
-  write_state_file "$OAW_OPERATION_TEMP/state" "$source_version" user \
-    "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_records"
+  write_state_file "$OAW_OPERATION_TEMP/state" "$source_version" "$OAW_SCOPE" \
+    "$OAW_PROJECT_ROOT" "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_records"
 }
 
 write_selected_target_ids() {
@@ -138,7 +139,16 @@ apply_target_actions() {
 verify_installed_policy_state() {
   local actual_policy_checksum=
 
-  [ "$STATE_SCOPE" = user ] || die "installed scope does not match user scope" 65
+  [ "$STATE_SCOPE" = "$OAW_SCOPE" ] || die "installed scope does not match" 65
+  case "$OAW_SCOPE" in
+    user)
+      [ -z "$STATE_PROJECT_ROOT" ] || die "installed project root does not match" 65
+      ;;
+    project)
+      [ "$STATE_PROJECT_ROOT" = "$OAW_PROJECT_ROOT" ] ||
+        die "installed project root does not match" 65
+      ;;
+  esac
   [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] ||
     die "installed policy path does not match" 65
   [ -f "$STATE_POLICY_PATH" ] || die "managed policy is missing" 65
@@ -252,9 +262,9 @@ operation_install() {
   done
 
   merge_install_target_records "$OAW_OPERATION_TEMP/existing-records" \
-    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records"
+    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records" "$OAW_SCOPE"
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
-    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records"
+    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
   write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
 
   apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
@@ -289,7 +299,8 @@ operation_update() {
   verify_installed_policy_state
   verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
   select_target_records "$OAW_OPERATION_TEMP/existing-records" \
-    "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/selected-installed-records"
+    "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/selected-installed-records" \
+    "$OAW_SCOPE"
 
   tab=$(printf '\t')
   while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
@@ -299,9 +310,9 @@ operation_update() {
   done <"$OAW_OPERATION_TEMP/selected-installed-records"
 
   merge_install_target_records "$OAW_OPERATION_TEMP/existing-records" \
-    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records"
+    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records" "$OAW_SCOPE"
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
-    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records"
+    "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
   write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
 
   apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
@@ -346,7 +357,7 @@ operation_uninstall() {
   verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
   filter_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/remaining-records" \
-    "$OAW_OPERATION_TEMP/removed-records"
+    "$OAW_OPERATION_TEMP/removed-records" "$OAW_SCOPE"
 
   while IFS= read -r selected_target; do
     if ! target_record_exists "$OAW_OPERATION_TEMP/existing-records" "$selected_target"; then
@@ -369,8 +380,9 @@ operation_uninstall() {
   done <"$OAW_OPERATION_TEMP/removed-records"
 
   if [ -s "$OAW_OPERATION_TEMP/remaining-records" ]; then
-    write_state_file "$OAW_OPERATION_TEMP/state" "$STATE_VERSION" user \
-      "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" "$OAW_OPERATION_TEMP/remaining-records"
+    write_state_file "$OAW_OPERATION_TEMP/state" "$STATE_VERSION" "$OAW_SCOPE" \
+      "$OAW_PROJECT_ROOT" "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" \
+      "$OAW_OPERATION_TEMP/remaining-records"
   else
     if other_state_references_policy "$OAW_INSTALLATIONS_DIR" "$OAW_STATE_FILE" \
       "$OAW_POLICY_DESTINATION" "$STATE_POLICY_CHECKSUM"; then

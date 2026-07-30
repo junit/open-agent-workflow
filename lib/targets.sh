@@ -25,6 +25,10 @@ target_supports_user() {
   esac
 }
 
+target_supports_project() {
+  target_is_known "$1"
+}
+
 target_ownership() {
   case "$1" in
     claude|codex|gemini|opencode) printf '%s\n' managed-block ;;
@@ -44,6 +48,16 @@ target_registry_position() {
     roo) printf '8\n' ;;
     copilot) printf '9\n' ;;
     *) die "unknown target '$1'" 65 ;;
+  esac
+}
+
+target_project_relative_path() {
+  case "$1" in
+    claude) printf '.claude/CLAUDE.md\n' ;;
+    codex) printf 'AGENTS.md\n' ;;
+    gemini) printf 'GEMINI.md\n' ;;
+    opencode) printf 'AGENTS.md\n' ;;
+    *) die "target '$1' is not implemented for project scope" 69 ;;
   esac
 }
 
