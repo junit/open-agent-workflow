@@ -18,6 +18,7 @@ review_evidence: .scratch/open-agent-workflow/evidence/review.md
 verification_evidence: .scratch/open-agent-workflow/evidence/verification.md
 tdd_owner: matt
 implementation_owner: superpowers
+implementation_executor: superpowers:executing-plans
 debug_owner: matt
 review_owner: superpowers
 completion_owner: superpowers
