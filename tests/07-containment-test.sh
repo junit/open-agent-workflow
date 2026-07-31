@@ -175,15 +175,18 @@ setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with apply race"
 OAW_OUTSIDE=$OAW_SANDBOX/outside-apply-race
 OAW_FAKE_BIN=$OAW_SANDBOX/fake-bin
-mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE/rules" "$OAW_FAKE_BIN"
+mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE" "$OAW_FAKE_BIN"
 printf 'apply race sentinel\n' >"$OAW_OUTSIDE/sentinel"
 OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
 OAW_REAL_MKDIR=$(command -v mkdir)
 {
   printf '%s\n' '#!/usr/bin/env bash'
   printf '%s\n' 'case " $* " in'
-  printf '%s\n' '  *"$OAW_RACE_PROJECT/.cursor/rules"*)'
+  printf '%s\n' '  *"$OAW_RACE_PROJECT/.cursor/rules"*|*" ./rules "*)'
   printf '%s\n' '    if [ ! -L "$OAW_RACE_PROJECT/.cursor" ]; then'
+  printf '%s\n' '      if [ -d "$OAW_RACE_PROJECT/.cursor" ]; then'
+  printf '%s\n' '        mv "$OAW_RACE_PROJECT/.cursor" "$OAW_RACE_PROJECT/.cursor-original"'
+  printf '%s\n' '      fi'
   printf '%s\n' '      ln -s "$OAW_RACE_OUTSIDE" "$OAW_RACE_PROJECT/.cursor"'
   printf '%s\n' '    fi'
   printf '%s\n' '    ;;'
@@ -203,6 +206,7 @@ run_oaw_with_mkdir_race
 assert_contains "$OAW_PROJECT_PHYSICAL/.cursor" \
   "apply-time race diagnostic identifies the swapped component"
 [ ! -e "$OAW_OUTSIDE_TARGET" ] || fail "apply-time parent swap created an outside target"
+[ ! -e "$OAW_OUTSIDE/rules" ] || fail "apply-time parent swap created an outside directory"
 assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
   "apply-time parent swap"
 [ ! -e "$OAW_PROJECT_STATE" ] || fail "apply-time parent swap created installation state"
