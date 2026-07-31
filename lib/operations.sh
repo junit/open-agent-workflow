@@ -235,6 +235,8 @@ operation_install() {
   local target_status=
   local recorded_target_checksum=
   local rendered_target_checksum=
+  local shared_destination_checksum=
+  local selected_joins_shared=0
   local selected_was_installed=0
 
   [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] || die "canonical policy source is not readable" 70
@@ -272,6 +274,8 @@ operation_install() {
     target_path=$(target_destination "$selected_target")
     target_mode=$(target_ownership "$selected_target")
     target_origin=existing-file
+    shared_destination_checksum=
+    selected_joins_shared=0
     selected_was_installed=0
     recorded_target_checksum=
     if target_record_exists "$OAW_OPERATION_TEMP/existing-records" "$selected_target"; then
@@ -284,9 +288,20 @@ operation_install() {
       case "$target_mode" in
         managed-block)
           target_status=$(managed_block_status "$target_path")
-          [ "$target_status" = absent ] ||
-            die "untracked OAW markers already exist: $target_path" 65
-          [ -e "$target_path" ] || target_origin=created-file
+          if target_path_is_referenced "$OAW_OPERATION_TEMP/existing-records" "$target_path"; then
+            [ "$target_status" = present ] || die "managed target block has drifted" 65
+            target_origin=$(destination_origin_from_records \
+              "$OAW_OPERATION_TEMP/existing-records" "$target_path") ||
+              die "conflicting target origins for $target_path" 65
+            shared_destination_checksum=$(destination_checksum_from_records \
+              "$OAW_OPERATION_TEMP/existing-records" "$target_path") ||
+              die "conflicting target checksums for $target_path" 65
+            selected_joins_shared=1
+          else
+            [ "$target_status" = absent ] ||
+              die "untracked OAW markers already exist: $target_path" 65
+            [ -e "$target_path" ] || target_origin=created-file
+          fi
           ;;
         owned-file)
           [ ! -e "$target_path" ] || die "owned target already exists: $target_path" 65
@@ -300,6 +315,10 @@ operation_install() {
     add_target_action "$OAW_OPERATION_TEMP/target-actions" replace "$selected_target" \
       "$OAW_OPERATION_TEMP/target-$selected_target" "$target_path" 644
     rendered_target_checksum=$(checksum_rendered_target_artifact "$selected_target" "$target_mode")
+    if [ "$selected_joins_shared" -eq 1 ] &&
+      [ "$rendered_target_checksum" != "$shared_destination_checksum" ]; then
+      die "conflicting target renders for $target_path" 65
+    fi
     if [ "$selected_was_installed" -eq 1 ] &&
       [ "$rendered_target_checksum" != "$recorded_target_checksum" ]; then
       die "installed content differs from this checkout; run update" 65

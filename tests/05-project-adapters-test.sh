@@ -480,6 +480,32 @@ assert_contains "unchanged: opencode" "repeated project install reports OpenCode
 
 pass "project OpenCode install uses the shared AGENTS bootstrap"
 
+for OAW_SHARED_ORDER in codex:opencode opencode:codex; do
+  cleanup_sandbox
+  setup_sandbox
+  OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+  mkdir -p "$OAW_PROJECT"
+  printf 'personal sequential shared instruction\n' >"$OAW_PROJECT/AGENTS.md"
+  OAW_FIRST_SHARED=${OAW_SHARED_ORDER%%:*}
+  OAW_SECOND_SHARED=${OAW_SHARED_ORDER#*:}
+  run_oaw install --project "$OAW_PROJECT" --target "$OAW_FIRST_SHARED"
+  assert_status 0 "sequential shared $OAW_FIRST_SHARED fixture install"
+  run_oaw install --project "$OAW_PROJECT" --target "$OAW_SECOND_SHARED"
+  assert_status 0 "sequential $OAW_SECOND_SHARED join"
+  OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+  OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+  OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
+  OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+  grep -Fx 'personal sequential shared instruction' "$OAW_PROJECT_AGENTS" >/dev/null ||
+    fail "sequential shared install changed project instructions"
+  [ "$(awk '$0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { count++ } END { print count + 0 }' \
+    "$OAW_PROJECT_AGENTS")" -eq 1 ] || fail "sequential shared install duplicated the OAW block"
+  [ "$(awk -F '\t' '$1 == "target" { count++ } END { print count + 0 }' "$OAW_PROJECT_STATE")" -eq 2 ] ||
+    fail "sequential shared install did not retain both target rows"
+done
+
+pass "later project target joins an installed shared AGENTS destination"
+
 cleanup_sandbox
 setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
@@ -684,6 +710,8 @@ setup_sandbox
 OAW_INSTALLER=$OAW_REPOSITORY/install.sh
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
+run_oaw install --project "$OAW_PROJECT" --target opencode
+assert_status 0 "partial shared project install before default set"
 run_oaw install --project "$OAW_PROJECT"
 assert_status 0 "default nine-target project install"
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)

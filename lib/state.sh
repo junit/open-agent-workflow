@@ -397,6 +397,31 @@ destination_checksum_from_records() {
   ' "$target_records"
 }
 
+destination_origin_from_records() {
+  local target_records=$1
+  local expected_target_path=$2
+
+  awk -F '\t' -v target_path="$expected_target_path" '
+    $2 == target_path {
+      if (!found) {
+        origin = $5
+        found = 1
+      } else if ($5 != origin) {
+        conflict = 1
+      }
+    }
+    END {
+      if (conflict) {
+        exit 2
+      }
+      if (!found) {
+        exit 1
+      }
+      print origin
+    }
+  ' "$target_records"
+}
+
 normalize_destination_checksums() {
   local base_records=$1
   local changed_records=$2
