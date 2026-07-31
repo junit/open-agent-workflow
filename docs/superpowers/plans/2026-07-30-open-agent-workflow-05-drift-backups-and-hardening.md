@@ -108,7 +108,7 @@ git commit -m "fix: fail closed on managed-content drift"
 
 - [ ] **Step 1: Add failing hostile-path tests**
 
-Cover a missing project, a project argument that resolves through `..`, tabs/newlines in roots, a final destination symlink, a symlinked intermediate directory beneath the physical project root, a symlink to an outside file, and `CODEX_HOME`/XDG roots that are relative. Place sentinels outside scope and assert they never change.
+Cover a missing project, a project argument that resolves through `..`, tabs/newlines in roots, a final destination symlink, a symlinked intermediate directory beneath the physical project root, a symlink to an outside file, and relative `HOME`/XDG roots. Place sentinels outside scope and assert they never change. `CODEX_HOME` is not an OAW path override: Ticket 03 and the target registry define the Codex user destination as `$HOME/.codex/AGENTS.md`, so a set `CODEX_HOME` must not redirect OAW reads or writes.
 
 - [ ] **Step 2: Verify RED**
 
@@ -118,7 +118,7 @@ Expected: at least one symlink or invalid root reaches an outside sentinel.
 
 - [ ] **Step 3: Implement explicit root and component checks**
 
-Convert the selected existing project root with `cd -P`; require HOME, XDG overrides, and CODEX_HOME to resolve to absolute roots; reject CR, LF, and TAB. Since every destination suffix comes from the registry, verify its lexical prefix, then walk each existing component from the allowed root with `-L` and reject symlinks. Reject a symlink destination even when its target is inside scope.
+Convert the selected existing project root with `cd -P`; require the roots OAW actually consumes (`HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME`) to be absolute and reject CR, LF, and TAB. Ignore `CODEX_HOME` for destination selection. Since every destination suffix comes from the registry, verify its lexical prefix, then walk each existing component from the allowed root with `-L` and reject symlinks. Reject a symlink destination even when its target is inside scope.
 
 - [ ] **Step 4: Revalidate immediately before atomic replace**
 

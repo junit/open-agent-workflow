@@ -52,3 +52,35 @@ TDD and remediation evidence retained in the task history:
 - A tampered cross-scope project root initially allowed update to exit 0 and
   rewrite policy plus both states; the binding regression now exits 65 before
   any managed fingerprint changes.
+
+## Ticket 05 - Drift and Hardening (Tasks 1-2 Checkpoint)
+
+Verified on 2026-07-31 in Bash 3.2.57 on branch
+`feature/oaw-ticket-02` through commit `c5763b5`.
+
+- `bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh`: exit 0.
+- `shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh`: exit 0.
+- `bash tests/03-claude-lifecycle-test.sh`: 9/9 behavior cases passed.
+- `bash tests/05-policy-coordination-test.sh`: 8/8 behavior cases passed.
+- `bash tests/06-security-test.sh`: 10/10 behavior cases passed.
+- `bash tests/run.sh`: 66/66 behavior cases passed; suite summary passed with
+  exit 0.
+- `git diff --check`: exit 0.
+- Secret-pattern scan across changed implementation and tests: no matches.
+
+TDD and debugging evidence retained in the task history:
+
+- Inconsistent shared-destination state initially reported an installed target
+  as clean before the closed state schema rejected it.
+- Managed block drift initially failed without the required target/path
+  diagnostic.
+- Update with untracked markers and no state initially stopped at the generic
+  no-state error before inspecting the selected destination.
+- Cross-scope update initially accepted and rewrote a drifted candidate state.
+- Final uninstall initially accepted a drifted retention candidate and could
+  delete the current scope while retaining policy.
+- Multi-candidate retention initially returned after an early healthy state
+  and failed to inspect a later drifted state.
+- The full regression suite exposed a historical noncanonical `other.state`
+  fixture. Replacing it with a public-CLI project installation restored the
+  intended policy-retention test without weakening candidate validation.

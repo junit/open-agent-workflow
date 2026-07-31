@@ -82,3 +82,42 @@ Tracked Ticket 05 release work:
   synchronization and retention state. Requiring clean targets directly in
   Ticket 04 was rejected because it could delete policy needed to recover a
   legitimate drifted installation.
+
+## Ticket 05 - Drift and Hardening (Tasks 1-2 Checkpoint)
+
+- Task 1 reviewed range: `aea6788..fa6182c`
+- Task 2 reviewed range: `fa6182c..c5763b5`
+- Canonical ticket: `.scratch/open-agent-workflow/issues/05-drift-backups-and-hardening.md`
+- Execution plan: `docs/superpowers/plans/2026-07-30-open-agent-workflow-05-drift-backups-and-hardening.md`
+- Result through Task 2: approved with no open Critical, Important, or security findings
+
+Review coverage:
+
+- Closed, inert state parsing rejects unknown records, malformed field counts,
+  duplicate metadata/targets, scope/root mismatches, unsafe field separators,
+  executable-looking payload text, and inconsistent shared destinations.
+- Managed block bodies, marker loss/reversal/duplication/nesting, owned files,
+  state checksums, missing artifacts, and untracked OAW markers all fail closed
+  before update or uninstall can change a managed fingerprint.
+- Cross-scope policy synchronization and uninstall retention validate canonical
+  state identity, registry-derived target paths, ownership, marker structure,
+  and recorded artifact checksums before any apply step.
+- Retention scans every matching candidate rather than returning after the
+  first healthy reference; a later drifted candidate aborts the operation.
+- A syntactically valid forged project state at its correct identity filename
+  cannot be synchronized or retain policy when its target artifact is absent.
+- The legacy Claude retention fixture was corrected to use a canonical project
+  install instead of a forged second user state; the valid cross-scope behavior
+  remains covered and passes.
+
+Plan note:
+
+- Task 2 listed `lib/managed.sh` and `lib/commands/check.sh`, but review found
+  no missing change: strict marker status and read-only drift reporting already
+  satisfied the new black-box cases.
+
+Remaining release blocker:
+
+- Ticket 05 Task 3 still owns project symlink/component confinement and
+  prepare/apply TOCTOU revalidation. No Task 1-2 finding reclassifies or closes
+  that boundary.
