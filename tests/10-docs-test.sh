@@ -41,7 +41,7 @@ assert_contains() {
   local relative_path=$1
   local expected_text=$2
 
-  grep -F "$expected_text" "$REPOSITORY/$relative_path" >/dev/null ||
+  grep -F -- "$expected_text" "$REPOSITORY/$relative_path" >/dev/null ||
     fail "$relative_path is missing required text: $expected_text"
 }
 
@@ -436,5 +436,247 @@ for lifecycle_contract in \
 done
 assert_contains docs/zh/lifecycle.md '[English](../en/lifecycle.md)'
 pass "lifecycle documents explain classification, locking, inheritance, add-ons, and switching"
+
+for operating_document in \
+  docs/en/architecture.md \
+  docs/zh/architecture.md \
+  docs/en/installer.md \
+  docs/zh/installer.md \
+  docs/en/adapters.md \
+  docs/zh/adapters.md; do
+  assert_file "$operating_document"
+done
+
+for architecture_file in docs/en/architecture.md docs/zh/architecture.md; do
+  for architecture_contract in \
+    '${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md' \
+    '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state' \
+    '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state' \
+    '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups' \
+    'checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> state/targets' \
+    'pure renderer' \
+    'prepare phase' \
+    'apply phase' \
+    'atomic replacement per destination' \
+    'managed-block' \
+    'owned-file' \
+    '`format`' \
+    '`version`' \
+    '`scope`' \
+    '`project`' \
+    '`policy`' \
+    '`backup`' \
+    '`directory`' \
+    '`target`' \
+    'operation-scoped backup'; do
+    assert_contains "$architecture_file" "$architecture_contract"
+  done
+done
+assert_contains docs/en/architecture.md 'Marker comments do not establish model precedence'
+assert_contains docs/zh/architecture.md 'marker 注释不建立模型优先级'
+pass "architecture documents match storage, rendering, transaction, ownership, and state contracts"
+
+for installer_file in docs/en/installer.md docs/zh/installer.md; do
+  for command_contract in \
+    './install.sh check' \
+    './install.sh install' \
+    './install.sh update' \
+    './install.sh uninstall' \
+    '--target <ids>' \
+    '--target=<ids>' \
+    '--project <path>' \
+    '--project=<path>' \
+    '--dry-run' \
+    '--force' \
+    '-h' \
+    '--help' \
+    'claude,codex,gemini,opencode' \
+    'claude,codex,gemini,opencode,cursor,windsurf,cline,roo,copilot' \
+    'registry order' \
+    '<crc>-<bytes>.state' \
+    'current checkout' \
+    '0, 64, 65, 66, 69, 70, 73, and 74'; do
+    assert_contains "$installer_file" "$command_contract"
+  done
+done
+for installer_contract in \
+  'writes no managed content, state, backups, or directories' \
+  'drift exits 65' \
+  'removes only clean OAW ownership' \
+  'only OAW-created empty directories' \
+  'state is a successful no-op' \
+  'does not add or remove' \
+  '`66` | `update` was requested without installation state'; do
+  assert_contains docs/en/installer.md "$installer_contract"
+done
+for installer_contract in \
+  '不写入 managed content、state、backup 或目录' \
+  'drift 以 65 退出' \
+  '只删除干净的 OAW ownership' \
+  '只清理 OAW 创建的空目录' \
+  '没有 state 的 `uninstall`' \
+  '不添加或删除 target' \
+  '`66` | 没有安装 state 时请求 `update`'; do
+  assert_contains docs/zh/installer.md "$installer_contract"
+done
+pass "installer documents cover commands, options, defaults, isolation, drift, dry-run, uninstall, and exits"
+
+DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home
+DOCS_RUNTIME_CONFIG=$DOCS_TEST_TEMP/runtime/config
+DOCS_RUNTIME_STATE=$DOCS_TEST_TEMP/runtime/state
+mkdir -p "$DOCS_RUNTIME_HOME" "$DOCS_RUNTIME_CONFIG" "$DOCS_RUNTIME_STATE"
+
+if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" 2>&1); then
+  installer_status=0
+else
+  installer_status=$?
+fi
+[ "$installer_status" -eq 0 ] || fail "no-argument help returned $installer_status"
+case "$installer_output" in
+  *'Usage: ./install.sh <command> [options]'*) ;;
+  *) fail "no-argument help omitted usage text" ;;
+esac
+
+for help_form in help short-help long-help command-help; do
+  case "$help_form" in
+    help) set -- help ;;
+    short-help) set -- -h ;;
+    long-help) set -- --help ;;
+    command-help) set -- install --help ;;
+  esac
+  if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+    XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+    bash "$REPOSITORY/install.sh" "$@" 2>&1); then
+    installer_status=0
+  else
+    installer_status=$?
+  fi
+  [ "$installer_status" -eq 0 ] ||
+    fail "$help_form returned $installer_status: $installer_output"
+  case "$installer_output" in
+    *'Usage: ./install.sh <command> [options]'*) ;;
+    *) fail "$help_form omitted usage text" ;;
+  esac
+done
+
+if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" uninstall --target claude 2>&1); then
+  installer_status=0
+else
+  installer_status=$?
+fi
+[ "$installer_status" -eq 0 ] ||
+  fail "uninstall without state returned $installer_status: $installer_output"
+
+if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" update --target claude 2>&1); then
+  installer_status=0
+else
+  installer_status=$?
+fi
+[ "$installer_status" -eq 66 ] ||
+  fail "update without state returned $installer_status instead of 66: $installer_output"
+
+if ! installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" install --target claude 2>&1); then
+  fail "runtime fixture install failed: $installer_output"
+fi
+
+if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" update --target codex 2>&1); then
+  installer_status=0
+else
+  installer_status=$?
+fi
+[ "$installer_status" -eq 65 ] ||
+  fail "update added an uninstalled target or returned $installer_status: $installer_output"
+
+awk '
+  $0 == "<!-- END OPEN AGENT WORKFLOW -->" { print "managed drift" }
+  { print }
+' "$DOCS_RUNTIME_HOME/.claude/CLAUDE.md" >"$DOCS_RUNTIME_HOME/.claude/CLAUDE.md.drift"
+mv "$DOCS_RUNTIME_HOME/.claude/CLAUDE.md.drift" \
+  "$DOCS_RUNTIME_HOME/.claude/CLAUDE.md"
+if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" check --target claude 2>&1); then
+  installer_status=0
+else
+  installer_status=$?
+fi
+[ "$installer_status" -eq 0 ] ||
+  fail "check returned $installer_status while reporting drift: $installer_output"
+case "$installer_output" in
+  *'installed claude: drift'*) ;;
+  *) fail "check did not report target drift: $installer_output" ;;
+esac
+
+printf '%s\n' 'invalid state fixture' \
+  >"$DOCS_RUNTIME_STATE/open-agent-workflow/installations/user.state"
+if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
+  XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
+  bash "$REPOSITORY/install.sh" check --target claude 2>&1); then
+  installer_status=0
+else
+  installer_status=$?
+fi
+[ "$installer_status" -eq 0 ] ||
+  fail "check returned $installer_status while reporting invalid state: $installer_output"
+case "$installer_output" in
+  *'installed claude: invalid-state'*) ;;
+  *) fail "check did not report invalid state: $installer_output" ;;
+esac
+pass "black-box CLI behavior matches documented help, state, target-set, and check exits"
+
+for adapter_file in docs/en/adapters.md docs/zh/adapters.md; do
+  for adapter_path in \
+    '$HOME/.claude/CLAUDE.md' \
+    '$HOME/.codex/AGENTS.md' \
+    '$HOME/.gemini/GEMINI.md' \
+    '$XDG_CONFIG_HOME/opencode/AGENTS.md' \
+    '.claude/CLAUDE.md' \
+    'AGENTS.md' \
+    'GEMINI.md' \
+    '.cursor/rules/open-agent-workflow.mdc' \
+    '.devin/rules/open-agent-workflow.md' \
+    '.clinerules/open-agent-workflow.md' \
+    '.roo/rules/open-agent-workflow.md' \
+    '.github/instructions/open-agent-workflow.instructions.md'; do
+    assert_contains "$adapter_file" "$adapter_path"
+  done
+  for adapter_contract in \
+    'user + project' \
+    'project only' \
+    'documented import' \
+    'OAW bootstrap' \
+    'precedence' \
+    'reload' \
+    'Retrieved: 2026-07-30'; do
+    assert_contains "$adapter_file" "$adapter_contract"
+  done
+done
+for adapter_contract in \
+  'HTML comments are stripped from injected context' \
+  'no documented Markdown import' \
+  'requires `.mdc`' \
+  'prefers `.devin/rules`' \
+  'experimental nested `AGENTS.md` behavior is not used'; do
+  assert_contains docs/en/adapters.md "$adapter_contract"
+done
+for adapter_contract in \
+  'HTML 注释会从注入的上下文中剥离' \
+  '没有文档化的 Markdown import' \
+  '要求 `.mdc`' \
+  '优先使用 `.devin/rules`' \
+  '实验性的嵌套 `AGENTS.md` 行为未被采用'; do
+  assert_contains docs/zh/adapters.md "$adapter_contract"
+done
+pass "adapter documents preserve paths, scopes, source evidence, loading behavior, and caveats"
 
 printf 'PASS: governance documentation contracts passed\n'
