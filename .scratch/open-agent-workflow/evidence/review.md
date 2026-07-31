@@ -201,3 +201,53 @@ Plan adaptations:
   and remains part of `tests/run.sh`.
 - `lib/force.sh` was added to keep force-specific validation separate from the
   operation orchestrator and maintain the 800-line file limit.
+
+## Ticket 05 - Drift and Hardening (Task 5 Final Review)
+
+- Initial reviewed range: 935dabc..657bff5
+- Remediated range: 935dabc..3e3903a
+- Canonical ticket: .scratch/open-agent-workflow/issues/05-drift-backups-and-hardening.md
+- Execution plan: docs/superpowers/plans/2026-07-30-open-agent-workflow-05-drift-backups-and-hardening.md
+- Result: approved with no open Critical or Important findings
+
+Resolved findings:
+
+- Important: a directory absent during preparation could appear before apply
+  and still be recorded as OAW-owned. Prepared and actually-created directory
+  sets are now distinct, every planned component must still be absent at
+  creation, and the sets must match before a real state write completes.
+- Important: full-path directory removal could follow a parent swapped to an
+  outside symlink after revalidation. Removal now walks from the physical
+  allowed root and invokes component-relative rmdir; the adversarial test
+  proves the outside directory survives and policy/state remain unchanged.
+- Important: install/update wrote the canonical policy before a target-parent
+  apply race could fail, leaving an untracked policy without installation
+  state. ECC security review identified the gap; the new RED assertion proved
+  it, and commit 3e3903a applies targets before policy while retaining state
+  as the final commit record.
+- Correctness: namespace inheritance leaked a normal non-namespace predicate
+  status from the final directory record and silently aborted cross-scope
+  installs. The loop now treats non-matches as normal skips.
+- Correctness: forced update re-scanned its current state through strict
+  inherited-namespace validation and rejected the already-authorized drift.
+  The inheritance scan now excludes the current state, whose directory records
+  are already copied and validated by the active force path.
+- Review packet: lib/transaction.sh and tests/09-transaction-test.sh were
+  initially untracked. Both are included in commit 657bff5; .serena/ remains
+  unrelated and untracked.
+
+Review coverage:
+
+- Complete prepare/apply action validation for policy, targets, state,
+  directories, and dry-run simulation.
+- Inert, registry-bound directory state; legacy states without directory
+  records remain valid.
+- Exact uninstall of only empty OAW-created directories, deepest first;
+  pre-existing and nonempty directories survive partial and final uninstall.
+- Shared OAW namespace ownership across user/project states, with empty final
+  cleanup and retention of nonempty backup namespaces.
+- Hostile names, later invalid/drifted targets, directory ownership races,
+  parent-swap removal races, and apply-boundary policy ordering.
+- Bounded ECC checklist found no hardcoded secrets, network fetches, shell
+  evaluation of state, unquoted path expansion in the changed paths, or
+  bypass of symlink containment.

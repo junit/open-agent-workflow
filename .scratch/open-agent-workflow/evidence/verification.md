@@ -146,3 +146,48 @@ TDD and remediation evidence:
 - An adversarial manifest-boundary change leaves the completed backup intact,
   exits nonzero with `backup source changed before mutation`, and leaves state
   unapplied.
+
+## Ticket 05 - Drift and Hardening (Task 5 Final)
+
+Verified on 2026-07-31 in Bash 3.2.57 on branch
+feature/oaw-ticket-02 through commit 3e3903a.
+
+- bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh: exit 0.
+- shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh:
+  exit 0.
+- bash tests/03-claude-lifecycle-test.sh: 9/9 behavior cases passed.
+- bash tests/05-project-adapters-test.sh: all project lifecycle cases passed.
+- bash tests/05-policy-coordination-test.sh: 8/8 behavior cases passed.
+- bash tests/06-security-test.sh: 17/17 behavior cases passed.
+- bash tests/07-containment-test.sh: 5/5 behavior cases passed.
+- bash tests/08-backup-test.sh: 13/13 behavior cases passed.
+- bash tests/09-transaction-test.sh: all 8 transactional behavior cases and
+  its suite summary passed.
+- bash tests/run.sh: every implemented installer case and the suite summary
+  passed with exit 0 after the final security remediation.
+- git diff --check: exit 0.
+- Every implementation, command, and test file remains below 800 lines;
+  lib/operations.sh is 796 lines and lib/transaction.sh is 512 lines.
+- Local security scans found no hardcoded secrets, data evaluation, network
+  fetches, remote Git mutation, or world-writable permissions.
+
+TDD, debugging, and remediation evidence:
+
+- Exact uninstall initially retained OAW-created target directories; dry-run
+  directory removals initially reported unchanged.
+- Forged directory ownership initially appeared clean, and a directory created
+  between prepare/apply was initially claimed by OAW.
+- Full-path rmdir initially deleted an outside directory after a parent swap;
+  the component-relative regression now preserves it.
+- Fresh install dry run initially exited 65 because planned directories were
+  required to exist, and final clean uninstall initially retained empty OAW
+  namespaces.
+- Cross-scope Claude install reproduced a silent exit 1 from namespace
+  predicate status leakage; the original lifecycle test is green after the
+  loop-status fix.
+- Forced update reproduced exit 65 because namespace inheritance revalidated
+  the current drifted state outside the force path; the complete backup suite
+  is green after excluding that already-validated state.
+- ECC review exposed a policy partial-write race. The strengthened containment
+  test failed RED with apply-time parent swap created canonical policy, then
+  passed after target actions moved ahead of the policy write.

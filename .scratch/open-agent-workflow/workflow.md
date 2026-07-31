@@ -9,8 +9,8 @@ bundle: MATT-SP-HYBRID + ECC(security-review)
 ecc_addons:
   - security-review
 ecc_build_resolver: none
-current_stage: implementation
-active_ticket: 05-drift-backups-and-hardening
+current_stage: ticket-complete
+active_ticket: none
 spec: .scratch/open-agent-workflow/spec.md
 tickets: .scratch/open-agent-workflow/issues/
 execution_plans: docs/superpowers/plans/
