@@ -144,6 +144,9 @@ init_oaw_paths() {
   OAW_INSTALLATIONS_DIR=$(
     validated_destination_path "$OAW_XDG_STATE_HOME" open-agent-workflow/installations
   )
+  OAW_BACKUP_ROOT=$(
+    validated_destination_path "$OAW_XDG_STATE_HOME" open-agent-workflow/backups
+  )
   case "$OAW_SCOPE" in
     user)
       OAW_STATE_FILE=$(

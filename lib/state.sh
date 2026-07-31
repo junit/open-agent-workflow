@@ -7,6 +7,7 @@ STATE_SCOPE=
 STATE_PROJECT_ROOT=
 STATE_POLICY_PATH=
 STATE_POLICY_CHECKSUM=
+STATE_BACKUP_PATH=
 STATE_TARGET_ID=
 STATE_TARGET_PATH=
 STATE_TARGET_MODE=
@@ -121,6 +122,7 @@ write_state_file() {
   local policy_path=$5
   local policy_checksum=$6
   local target_records=$7
+  local backup_path=${8:-}
   local tab=
   local target_id=
   local target_path=
@@ -151,6 +153,13 @@ write_state_file() {
     *) die "invalid policy path" 65 ;;
   esac
   state_checksum_is_valid "$policy_checksum" || die "invalid policy checksum" 65
+  if [ -n "$backup_path" ]; then
+    state_field_is_safe "$backup_path" || die "backup path cannot be serialized" 65
+    case "$backup_path" in
+      /*) ;;
+      *) die "invalid backup path" 65 ;;
+    esac
+  fi
   validate_target_records "$target_records" "$scope"
   tab=$(printf '\t')
 
@@ -162,6 +171,9 @@ write_state_file() {
       printf 'project\t%s\n' "$project_root"
     fi
     printf 'policy\t%s\t%s\n' "$policy_path" "$policy_checksum"
+    if [ -n "$backup_path" ]; then
+      printf 'backup\t%s\n' "$backup_path"
+    fi
     while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
       printf 'target\t%s\t%s\t%s\t%s\t%s\n' \
         "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin"
@@ -185,6 +197,7 @@ load_state_file() {
   local scope_count=0
   local project_count=0
   local policy_count=0
+  local backup_count=0
   local target_count=0
 
   tab=$(printf '\t')
@@ -193,6 +206,7 @@ load_state_file() {
   STATE_PROJECT_ROOT=
   STATE_POLICY_PATH=
   STATE_POLICY_CHECKSUM=
+  STATE_BACKUP_PATH=
   STATE_TARGET_ID=
   STATE_TARGET_PATH=
   STATE_TARGET_MODE=
@@ -235,6 +249,12 @@ load_state_file() {
         STATE_POLICY_CHECKSUM=$second
         policy_count=$((policy_count + 1))
         ;;
+      backup)
+        [ -n "$first" ] && [ -z "$second$third$fourth$fifth" ] ||
+          die "invalid backup state" 65
+        STATE_BACKUP_PATH=$first
+        backup_count=$((backup_count + 1))
+        ;;
       target)
         [ -n "$first" ] && [ -n "$second" ] && [ -n "$third" ] &&
           [ -n "$fourth" ] && [ -n "$fifth" ] || die "invalid target state" 65
@@ -268,6 +288,14 @@ load_state_file() {
     *) die "invalid policy path" 65 ;;
   esac
   state_checksum_is_valid "$STATE_POLICY_CHECKSUM" || die "invalid policy checksum" 65
+  [ "$backup_count" -le 1 ] || die "state contains duplicate backup data" 65
+  if [ -n "$STATE_BACKUP_PATH" ]; then
+    state_field_is_safe "$STATE_BACKUP_PATH" || die "invalid backup state" 65
+    case "$STATE_BACKUP_PATH" in
+      /*) ;;
+      *) die "invalid backup state" 65 ;;
+    esac
+  fi
   validate_target_records "$normalized_targets" "$STATE_SCOPE"
   STATE_TARGET_COUNT=$target_count
 

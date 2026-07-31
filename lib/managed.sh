@@ -120,6 +120,71 @@ extract_managed_block() {
   ' "$managed_file" >"$extracted_file"
 }
 
+repair_missing_begin_marker() {
+  local managed_file=$1
+  local expected_block=$2
+  local repaired_file=$3
+  local body_lines=$4
+  local end_line=
+  local fragment_start=
+  local fragment=$repaired_file.fragment
+  local expected_fragment=$repaired_file.expected
+
+  end_line=$(marker_line "$managed_file" "$OAW_END_MARKER")
+  fragment_start=$((end_line - body_lines))
+  [ "$fragment_start" -ge 1 ] || return 1
+  sed -n "${fragment_start},${end_line}p" "$managed_file" >"$fragment"
+  sed '1d' "$expected_block" >"$expected_fragment"
+  cmp -s "$fragment" "$expected_fragment" || return 1
+  : >"$repaired_file"
+  if [ "$fragment_start" -gt 1 ]; then
+    head -n $((fragment_start - 1)) "$managed_file" >>"$repaired_file"
+  fi
+  printf '%s\n' "$OAW_BEGIN_MARKER" >>"$repaired_file"
+  tail -n +"$fragment_start" "$managed_file" >>"$repaired_file"
+}
+
+repair_missing_end_marker() {
+  local managed_file=$1
+  local expected_block=$2
+  local repaired_file=$3
+  local body_lines=$4
+  local begin_line=
+  local fragment_end=
+  local fragment=$repaired_file.fragment
+  local expected_fragment=$repaired_file.expected
+
+  begin_line=$(marker_line "$managed_file" "$OAW_BEGIN_MARKER")
+  fragment_end=$((begin_line + body_lines))
+  sed -n "${begin_line},${fragment_end}p" "$managed_file" >"$fragment"
+  sed '$d' "$expected_block" >"$expected_fragment"
+  cmp -s "$fragment" "$expected_fragment" || return 1
+  head -n "$fragment_end" "$managed_file" >"$repaired_file"
+  printf '%s\n' "$OAW_END_MARKER" >>"$repaired_file"
+  tail -n +$((fragment_end + 1)) "$managed_file" >>"$repaired_file"
+}
+
+repair_managed_marker_structure() {
+  local managed_file=$1
+  local expected_block=$2
+  local repaired_file=$3
+  local begin_count=0
+  local end_count=0
+  local block_lines=0
+  local body_lines=0
+
+  begin_count=$(marker_count "$managed_file" "$OAW_BEGIN_MARKER")
+  end_count=$(marker_count "$managed_file" "$OAW_END_MARKER")
+  block_lines=$(awk 'END { print NR + 0 }' "$expected_block")
+  [ "$block_lines" -ge 2 ] || return 1
+  body_lines=$((block_lines - 2))
+  case "$begin_count:$end_count" in
+    0:1) repair_missing_begin_marker "$managed_file" "$expected_block" "$repaired_file" "$body_lines" ;;
+    1:0) repair_missing_end_marker "$managed_file" "$expected_block" "$repaired_file" "$body_lines" ;;
+    *) return 1 ;;
+  esac
+}
+
 render_file_without_block() {
   local managed_file=$1
   local rendered_file=$2

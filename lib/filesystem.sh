@@ -93,6 +93,48 @@ ensure_destination_directory() {
   [ -d "$destination_dir" ] || die "destination directory is missing: $destination_dir" 65
 }
 
+create_private_destination_directory() {
+  local allowed_root=$1
+  local relative_suffix=$2
+  local expected_directory=$3
+  local remaining_suffix=
+  local path_component=
+  local consumed_suffix=
+
+  validate_relative_suffix "$relative_suffix"
+  [ -d "$allowed_root" ] || mkdir -p "$allowed_root"
+  (
+    CDPATH='' cd -P -- "$allowed_root" ||
+      die "cannot enter allowed root: $allowed_root" 65
+    remaining_suffix=$relative_suffix
+    while [ -n "$remaining_suffix" ]; do
+      case "$remaining_suffix" in
+        */*)
+          path_component=${remaining_suffix%%/*}
+          remaining_suffix=${remaining_suffix#*/}
+          ;;
+        *) path_component=$remaining_suffix; remaining_suffix= ;;
+      esac
+      consumed_suffix=$consumed_suffix$path_component
+      if [ -n "$remaining_suffix" ]; then
+        enter_destination_component "$allowed_root" \
+          "$consumed_suffix" "$path_component"
+        consumed_suffix=$consumed_suffix/
+      else
+        [ ! -e "./$path_component" ] && [ ! -L "./$path_component" ] ||
+          die "destination directory already exists: $expected_directory" 73
+        mkdir "./$path_component"
+        chmod 700 "./$path_component"
+        CDPATH='' cd -P -- "./$path_component" ||
+          die "cannot enter destination directory: $expected_directory" 73
+        verify_current_directory_coordinate "$allowed_root" "$consumed_suffix"
+      fi
+    done
+  ) || return $?
+  [ -d "$expected_directory" ] ||
+    die "destination directory changed during creation: $expected_directory" 65
+}
+
 atomic_install_file() {
   local source_file=$1
   local allowed_root=$2
@@ -150,6 +192,7 @@ apply_replace() {
     note "would-$action: $destination_file"
     return 0
   fi
+  verify_active_backup_destination "$destination_file"
   atomic_install_file "$source_file" "$allowed_root" "$relative_suffix" \
     "$expected_destination" "$destination_mode"
   note "$action: $destination_file"
@@ -171,6 +214,7 @@ apply_remove() {
     destination_file=$(
       revalidated_destination_path "$allowed_root" "$relative_suffix" "$expected_destination"
     ) || return $?
+    verify_active_backup_destination "$destination_file"
     rm -f -- "$destination_file"
     note "remove: $destination_file"
   fi

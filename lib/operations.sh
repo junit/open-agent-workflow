@@ -39,14 +39,18 @@ render_target_artifacts() {
   local source_version=$4
   local target_checksum=
   local target_mode=
+  local current_target_path=$target_path
 
   [ -n "$source_version" ] || die "VERSION is invalid" 70
   target_mode=$(target_ownership "$target_id")
   case "$target_mode" in
     managed-block)
+      if [ -f "$OAW_OPERATION_TEMP/forced-current-$target_id" ]; then
+        current_target_path=$OAW_OPERATION_TEMP/forced-current-$target_id
+      fi
       render_managed_block "$target_id" "$OAW_POLICY_DESTINATION" \
         "$OAW_OPERATION_TEMP/block-$target_id" "$OAW_SCOPE"
-      render_file_with_block "$target_path" "$OAW_OPERATION_TEMP/block-$target_id" \
+      render_file_with_block "$current_target_path" "$OAW_OPERATION_TEMP/block-$target_id" \
         "$OAW_OPERATION_TEMP/target-$target_id"
       ;;
     owned-file)
@@ -65,10 +69,12 @@ write_operation_state() {
   local source_version=$1
   local target_records=$2
   local policy_checksum=
+  local backup_path=${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}
 
   policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
   write_state_file "$OAW_OPERATION_TEMP/state" "$source_version" "$OAW_SCOPE" \
-    "$OAW_PROJECT_ROOT" "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_records"
+    "$OAW_PROJECT_ROOT" "$OAW_POLICY_DESTINATION" "$policy_checksum" \
+    "$target_records" "$backup_path"
 }
 
 verify_policy_state_binding() {
@@ -141,12 +147,15 @@ prepare_policy_state_actions() {
     [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || continue
     verify_policy_state_binding "$candidate_state" "$candidate_records"
     verify_state_target_records "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
+    if [ -n "$OAW_FORCE_POLICY_BASELINE" ]; then
+      installed_policy_checksum=$OAW_FORCE_POLICY_BASELINE
+    fi
     [ -n "$installed_policy_checksum" ] &&
       [ "$STATE_POLICY_CHECKSUM" = "$installed_policy_checksum" ] ||
       die "managed policy has drifted" 65
     write_state_file "$candidate_output" "$source_version" "$STATE_SCOPE" \
       "$STATE_PROJECT_ROOT" "$STATE_POLICY_PATH" "$new_policy_checksum" \
-      "$candidate_records"
+      "$candidate_records" "${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}"
     add_target_action "$actions_file" replace "state-reference-$candidate_index" \
       "$candidate_output" "$candidate_state" 600
   done
@@ -582,8 +591,9 @@ operation_update() {
     die "no installation state; run install first" 66
   fi
   load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
-  verify_installed_policy_state
-  verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
+  verify_mutation_policy_state
+  verify_mutation_target_records "$OAW_OPERATION_TEMP/existing-records" \
+    "$OAW_OPERATION_TEMP/selected-ids"
   select_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/selected-installed-records" \
     "$OAW_SCOPE"
@@ -599,12 +609,19 @@ operation_update() {
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records" "$OAW_SCOPE"
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
+  if [ "$OAW_FORCE_BACKUP_REQUIRED" -eq 1 ]; then
+    reserve_operation_backup_path
+  fi
   write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
   new_policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
   add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
     "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
   prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
     "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
+  if [ "$OAW_FORCE_BACKUP_REQUIRED" -eq 1 ]; then
+    perform_operation_backup update "$OAW_OPERATION_TEMP/policy" \
+      "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions"
+  fi
 
   apply_scoped_replace policy "$OAW_OPERATION_TEMP/policy" \
     "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
@@ -627,6 +644,7 @@ operation_uninstall() {
   init_oaw_paths
   prepare_operation_temp
   : >"$OAW_OPERATION_TEMP/target-actions"
+  : >"$OAW_OPERATION_TEMP/state-actions"
   write_selected_target_ids "$OAW_OPERATION_TEMP/selected-ids"
 
   if [ ! -f "$OAW_STATE_FILE" ]; then
@@ -638,8 +656,9 @@ operation_uninstall() {
   fi
 
   load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
-  verify_installed_policy_state
-  verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
+  verify_mutation_policy_state
+  verify_mutation_target_records "$OAW_OPERATION_TEMP/existing-records" \
+    "$OAW_OPERATION_TEMP/selected-ids"
   filter_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/remaining-records" \
     "$OAW_OPERATION_TEMP/removed-records" "$OAW_SCOPE"
@@ -655,7 +674,13 @@ operation_uninstall() {
     if ! target_path_is_referenced "$OAW_OPERATION_TEMP/remaining-records" "$target_path"; then
       case "$target_mode" in
         managed-block)
-          render_file_without_block "$target_path" "$OAW_OPERATION_TEMP/uninstall-target-$target_id"
+          if [ -f "$OAW_OPERATION_TEMP/forced-current-$target_id" ]; then
+            render_file_without_block "$OAW_OPERATION_TEMP/forced-current-$target_id" \
+              "$OAW_OPERATION_TEMP/uninstall-target-$target_id"
+          else
+            render_file_without_block "$target_path" \
+              "$OAW_OPERATION_TEMP/uninstall-target-$target_id"
+          fi
           if [ "$target_origin" = created-file ] &&
             [ ! -s "$OAW_OPERATION_TEMP/uninstall-target-$target_id" ]; then
             add_target_action "$OAW_OPERATION_TEMP/target-actions" remove "$target_id" - "$target_path" -
@@ -674,9 +699,15 @@ operation_uninstall() {
   done <"$OAW_OPERATION_TEMP/removed-records"
 
   if [ -s "$OAW_OPERATION_TEMP/remaining-records" ]; then
+    if [ "$OAW_FORCE_BACKUP_REQUIRED" -eq 1 ]; then
+      reserve_operation_backup_path
+    fi
     write_state_file "$OAW_OPERATION_TEMP/state" "$STATE_VERSION" "$OAW_SCOPE" \
       "$OAW_PROJECT_ROOT" "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" \
-      "$OAW_OPERATION_TEMP/remaining-records"
+      "$OAW_OPERATION_TEMP/remaining-records" \
+      "${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}"
+    add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
+      "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
   else
     if other_live_state_references_policy "$OAW_INSTALLATIONS_DIR" "$OAW_STATE_FILE" \
       "$OAW_POLICY_DESTINATION"; then
@@ -685,16 +716,30 @@ operation_uninstall() {
       reference_status=$?
       [ "$reference_status" -eq 1 ] || exit "$reference_status"
     fi
+    if [ "$OAW_FORCE_BACKUP_REQUIRED" -eq 1 ]; then
+      reserve_operation_backup_path
+    fi
+    add_target_action "$OAW_OPERATION_TEMP/state-actions" remove state - \
+      "$OAW_STATE_FILE" -
+  fi
+
+  if [ "$OAW_FORCE_BACKUP_REQUIRED" -eq 1 ]; then
+    if [ "$retain_policy" -eq 0 ] && [ ! -s "$OAW_OPERATION_TEMP/remaining-records" ]; then
+      perform_operation_backup uninstall - "$OAW_OPERATION_TEMP/target-actions" \
+        "$OAW_OPERATION_TEMP/state-actions"
+    else
+      perform_operation_backup uninstall "$OAW_POLICY_DESTINATION" \
+        "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions"
+    fi
   fi
 
   apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
   if [ -s "$OAW_OPERATION_TEMP/remaining-records" ]; then
-    apply_scoped_replace state "$OAW_OPERATION_TEMP/state" \
-      "$OAW_XDG_STATE_HOME" "$OAW_STATE_FILE" 600
+    apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
   else
     if [ "$retain_policy" -eq 0 ]; then
       apply_scoped_remove "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION"
     fi
-    apply_scoped_remove "$OAW_XDG_STATE_HOME" "$OAW_STATE_FILE"
+    apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
   fi
 }
