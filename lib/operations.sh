@@ -71,6 +71,42 @@ write_operation_state() {
     "$OAW_PROJECT_ROOT" "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_records"
 }
 
+prepare_policy_state_actions() {
+  local source_version=$1
+  local new_policy_checksum=$2
+  local excluded_state=$3
+  local actions_file=$4
+  local installed_policy_checksum=
+  local candidate_state=
+  local candidate_records=
+  local candidate_output=
+  local candidate_index=0
+
+  if [ -f "$OAW_POLICY_DESTINATION" ]; then
+    installed_policy_checksum=$(checksum_file "$OAW_POLICY_DESTINATION")
+  fi
+
+  for candidate_state in \
+    "$OAW_INSTALLATIONS_DIR"/*.state \
+    "$OAW_INSTALLATIONS_DIR"/projects/*.state; do
+    [ -e "$candidate_state" ] || continue
+    [ "$candidate_state" = "$excluded_state" ] && continue
+    candidate_index=$((candidate_index + 1))
+    candidate_records="$OAW_OPERATION_TEMP/policy-records-$candidate_index"
+    candidate_output="$OAW_OPERATION_TEMP/policy-state-$candidate_index"
+    load_state_file "$candidate_state" "$candidate_records"
+    [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || continue
+    [ -n "$installed_policy_checksum" ] &&
+      [ "$STATE_POLICY_CHECKSUM" = "$installed_policy_checksum" ] ||
+      die "managed policy has drifted" 65
+    write_state_file "$candidate_output" "$source_version" "$STATE_SCOPE" \
+      "$STATE_PROJECT_ROOT" "$STATE_POLICY_PATH" "$new_policy_checksum" \
+      "$candidate_records"
+    add_target_action "$actions_file" replace "state-reference-$candidate_index" \
+      "$candidate_output" "$candidate_state" 600
+  done
+}
+
 write_selected_target_ids() {
   local output_file=$1
   local selected_remaining=$OAW_SELECTED_TARGETS
@@ -238,6 +274,7 @@ operation_install() {
   local shared_destination_checksum=
   local selected_joins_shared=0
   local selected_was_installed=0
+  local new_policy_checksum=
 
   [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] || die "canonical policy source is not readable" 70
   init_oaw_paths
@@ -246,6 +283,7 @@ operation_install() {
   cp "$OAW_SOURCE_DIR/policy/ENGINEERING.md" "$OAW_OPERATION_TEMP/policy"
   : >"$OAW_OPERATION_TEMP/existing-records"
   : >"$OAW_OPERATION_TEMP/selected-records"
+  : >"$OAW_OPERATION_TEMP/state-actions"
   : >"$OAW_OPERATION_TEMP/target-actions"
 
   if [ -f "$OAW_STATE_FILE" ]; then
@@ -330,10 +368,15 @@ operation_install() {
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
   write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
+  new_policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
+  add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
+    "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+  prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
+    "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
 
   apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
   apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
-  apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+  apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
 }
 
 operation_update() {
@@ -345,6 +388,7 @@ operation_update() {
   local target_checksum=
   local target_origin=
   local extra=
+  local new_policy_checksum=
 
   [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] ||
     die "canonical policy source is not readable" 70
@@ -354,6 +398,7 @@ operation_update() {
   cp "$OAW_SOURCE_DIR/policy/ENGINEERING.md" "$OAW_OPERATION_TEMP/policy"
   : >"$OAW_OPERATION_TEMP/existing-records"
   : >"$OAW_OPERATION_TEMP/selected-records"
+  : >"$OAW_OPERATION_TEMP/state-actions"
   : >"$OAW_OPERATION_TEMP/target-actions"
   write_selected_target_ids "$OAW_OPERATION_TEMP/selected-ids"
 
@@ -377,10 +422,15 @@ operation_update() {
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
   write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
+  new_policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
+  add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
+    "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+  prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
+    "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
 
   apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
   apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
-  apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+  apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
 }
 
 operation_uninstall() {
@@ -456,7 +506,7 @@ operation_uninstall() {
       "$OAW_OPERATION_TEMP/remaining-records"
   else
     if other_state_references_policy "$OAW_INSTALLATIONS_DIR" "$OAW_STATE_FILE" \
-      "$OAW_POLICY_DESTINATION" "$STATE_POLICY_CHECKSUM"; then
+      "$OAW_POLICY_DESTINATION"; then
       retain_policy=1
     else
       reference_status=$?

@@ -9,7 +9,8 @@ for test_script in \
   02-check-test.sh \
   03-claude-lifecycle-test.sh \
   04-core-adapters-test.sh \
-  05-project-adapters-test.sh; do
+  05-project-adapters-test.sh \
+  05-policy-coordination-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 

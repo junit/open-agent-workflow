@@ -475,7 +475,6 @@ merge_install_target_records() {
 state_file_references_policy() (
   local input_file=$1
   local policy_path=$2
-  local policy_checksum=$3
   local target_records=
 
   target_records=$(mktemp "${TMPDIR:-/tmp}/oaw-state-records.XXXXXX") ||
@@ -483,15 +482,13 @@ state_file_references_policy() (
   trap 'rm -f -- "$target_records"' EXIT HUP INT TERM
   load_state_file "$input_file" "$target_records"
 
-  [ "$STATE_POLICY_PATH" = "$policy_path" ] &&
-    [ "$STATE_POLICY_CHECKSUM" = "$policy_checksum" ]
+  [ "$STATE_POLICY_PATH" = "$policy_path" ]
 )
 
 other_state_references_policy() {
   local installations_dir=$1
   local excluded_state=$2
   local policy_path=$3
-  local policy_checksum=$4
   local candidate_state=
   local reference_status=0
 
@@ -501,7 +498,7 @@ other_state_references_policy() {
     [ -e "$candidate_state" ] || continue
     [ "$candidate_state" = "$excluded_state" ] && continue
 
-    if state_file_references_policy "$candidate_state" "$policy_path" "$policy_checksum"; then
+    if state_file_references_policy "$candidate_state" "$policy_path"; then
       return 0
     else
       reference_status=$?
