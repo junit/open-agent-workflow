@@ -84,3 +84,29 @@ TDD and debugging evidence retained in the task history:
 - The full regression suite exposed a historical noncanonical `other.state`
   fixture. Replacing it with a public-CLI project installation restored the
   intended policy-retention test without weakening candidate validation.
+
+## Ticket 05 - Drift and Hardening (Task 3 Re-review)
+
+Verified on 2026-07-31 in Bash 3.2.57 on branch
+`feature/oaw-ticket-02` through commit `74ff3ec`.
+
+- `bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh`: exit 0.
+- `shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh`: exit 0.
+- `bash tests/06-security-test.sh`: all 17 behavior cases passed.
+- `bash tests/07-containment-test.sh`: all 5 behavior cases passed.
+- `bash tests/run.sh`: every implemented behavior case and the suite summary
+  passed with exit 0.
+- `git diff --check`: exit 0 before the remediation commit.
+- Secret and dangerous-evaluation scans across the remediation implementation
+  and test found no matches.
+
+TDD and remediation evidence:
+
+- A direct apply-boundary probe exited 65 and avoided the outside target file,
+  but demonstrated the original bug by reporting `outside_rules=created`.
+- After the black-box race fixture stopped pre-creating outside `rules/`,
+  `bash tests/07-containment-test.sh` failed RED with
+  `FAIL: apply-time parent swap created an outside directory`.
+- Component-relative directory creation and per-component physical-coordinate
+  verification made the same race fixture GREEN without weakening the symlink
+  diagnostic or the no-state-mutation assertion.

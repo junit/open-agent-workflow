@@ -121,3 +121,33 @@ Remaining release blocker:
 - Ticket 05 Task 3 still owns project symlink/component confinement and
   prepare/apply TOCTOU revalidation. No Task 1-2 finding reclassifies or closes
   that boundary.
+
+## Ticket 05 - Drift and Hardening (Task 3 Re-review)
+
+- Initial reviewed range: `18d54b2..fe38ec2`
+- Remediated range: `18d54b2..74ff3ec`
+- Canonical ticket: `.scratch/open-agent-workflow/issues/05-drift-backups-and-hardening.md`
+- Execution plan: `docs/superpowers/plans/2026-07-30-open-agent-workflow-05-drift-backups-and-hardening.md`
+- Result through Task 3: approved with no open Critical or Important findings
+
+Resolved finding:
+
+- Important: the apply-time race test pre-created the outside `rules/`
+  directory, so it proved that the final target file was not written but
+  missed that `mkdir -p` had already followed a swapped parent symlink and
+  created an outside directory. Commit `74ff3ec` makes directory creation
+  component-relative from a physically entered allowed root, verifies each
+  component against its prepared coordinate, and strengthens the black-box
+  race assertion to require the outside directory to remain absent.
+
+Review coverage:
+
+- Absolute and control-character root rejection, physical project-root
+  resolution, registry-derived relative destinations, and ignored
+  `CODEX_HOME`.
+- Intermediate and final symlink rejection for user, project, policy, state,
+  and cross-scope candidate-state paths.
+- Prepared allowed-root/relative-suffix action coordinates and apply-boundary
+  revalidation for replace and remove operations.
+- Directory-creation race injection verifies that a swapped project component
+  cannot create either an outside directory or an outside target file.
