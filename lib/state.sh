@@ -96,6 +96,21 @@ validate_target_records() {
   done <"$records_file"
 
   [ "$target_count" -ge "$minimum_records" ] || die "state has no target records" 65
+  awk -F '\t' '
+    {
+      path = $2
+      if (path in checksum_by_path) {
+        if (checksum_by_path[path] != $4 || mode_by_path[path] != $3 ||
+            origin_by_path[path] != $5) {
+          exit 1
+        }
+      } else {
+        checksum_by_path[path] = $4
+        mode_by_path[path] = $3
+        origin_by_path[path] = $5
+      }
+    }
+  ' "$records_file" || die "invalid shared destination state" 65
 }
 
 write_state_file() {
