@@ -679,4 +679,82 @@ for adapter_contract in \
 done
 pass "adapter documents preserve paths, scopes, source evidence, loading behavior, and caveats"
 
+for operations_document in \
+  docs/en/extending-adapters.md \
+  docs/zh/extending-adapters.md \
+  docs/en/security.md \
+  docs/zh/security.md \
+  docs/en/troubleshooting.md \
+  docs/zh/troubleshooting.md; do
+  assert_file "$operations_document"
+done
+
+for extension_file in docs/en/extending-adapters.md docs/zh/extending-adapters.md; do
+  for extension_contract in \
+    'target ID' \
+    'scope support' \
+    '`managed-block`' \
+    '`owned-file`' \
+    'pure renderer' \
+    'shared destination' \
+    'isolated `HOME`' \
+    'official primary source' \
+    'retrieval date' \
+    'precedence' \
+    'reload' \
+    'hostile path' \
+    'symlink' \
+    'inert state' \
+    'candidate -> project extension -> core' \
+    'must not change lifecycle semantics' \
+    'must not vendor a provider'; do
+    assert_contains "$extension_file" "$extension_contract"
+  done
+done
+pass "extension documents define evidence, metadata, rendering, collision, fixtures, security, and graduation"
+
+for security_file in docs/en/security.md docs/zh/security.md; do
+  for security_contract in \
+    '`HOME`' \
+    '`XDG_CONFIG_HOME`' \
+    '`XDG_STATE_HOME`' \
+    'physical project root' \
+    'control characters' \
+    'symlink' \
+    'containment' \
+    'inert tab-separated data' \
+    'never sourced or evaluated' \
+    'prepare phase' \
+    'apply revalidation' \
+    'atomic replacement per destination' \
+    'not operation-wide atomicity' \
+    '`--force`' \
+    '`manifest.tsv`' \
+    'manual recovery' \
+    'same local account' \
+    'does not access the network'; do
+    assert_contains "$security_file" "$security_contract"
+  done
+done
+pass "security documents define trust boundaries, path defenses, inert state, transactions, and recovery limits"
+
+for troubleshooting_file in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  for troubleshooting_contract in \
+    './install.sh check' \
+    './install.sh update --dry-run' \
+    './install.sh update --project /absolute/path --target claude --force' \
+    '`manifest.tsv`' \
+    'check exits 0' \
+    'update exits 66' \
+    'mutation exits 65' \
+    'missing provider' \
+    'restart the target agent' \
+    'restore backups manually' \
+    'uninstall refusal' \
+    'no operation-wide rollback'; do
+    assert_contains "$troubleshooting_file" "$troubleshooting_contract"
+  done
+done
+pass "troubleshooting documents provide exact diagnosis, recovery, provider, reload, and uninstall guidance"
+
 printf 'PASS: governance documentation contracts passed\n'
