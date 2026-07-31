@@ -1,6 +1,6 @@
 # OAW Runtime vNext Specification
 
-**Status:** Approved design, awaiting written-spec review
+**Status:** Approved for ticket decomposition
 **Date:** 2026-08-01
 **Lifecycle:** `MATT-SP-HYBRID`
 **Canonical glossary:** `CONTEXT.md`

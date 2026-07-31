@@ -13,7 +13,7 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: written-spec-user-review
+current_stage: ticket-graph-user-review
 active_ticket: null
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
@@ -77,7 +77,7 @@ completion_owner: superpowers
 
 ## Stage Status
 
-The design sections have been approved interactively. Independent written-spec
-review findings have been remediated, and fresh documentation plus full Bash
-regression verification passed. The canonical specification is awaiting user
-review. No implementation or Superpowers implementation plan has started.
+The canonical written specification was approved by the user on 2026-08-01.
+Independent written-spec findings were remediated, and fresh documentation plus
+full Bash regression verification passed. Matt ticket decomposition is awaiting
+user approval. No implementation or Superpowers per-ticket plan has started.
