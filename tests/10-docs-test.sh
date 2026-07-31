@@ -97,6 +97,9 @@ for governance_file in \
   scripts/check-docs.sh; do
   assert_file "$governance_file"
 done
+for readme_file in README.md README-zh.md; do
+  assert_file "$readme_file"
+done
 
 assert_contains LICENSE "Apache License"
 assert_contains LICENSE "Version 2.0, January 2004"
@@ -198,5 +201,119 @@ case "$checker_output" in
   *) fail "documentation checker gives no missing reference-definition diagnostic" ;;
 esac
 pass "documentation checker rejects missing reference definitions"
+
+for readme_file in README.md README-zh.md; do
+  for command_example in \
+    './install.sh check' \
+    './install.sh install' \
+    './install.sh install --project /path/to/repository' \
+    './install.sh update --dry-run' \
+    './install.sh uninstall'; do
+    assert_contains "$readme_file" "$command_example"
+  done
+  for profile_id in \
+    SP-FULL \
+    MATT-FULL \
+    ECC-FULL \
+    MATT-SP-HYBRID \
+    CUSTOM-LOCKED; do
+    assert_contains "$readme_file" "$profile_id"
+  done
+  for target_id in \
+    claude \
+    codex \
+    gemini \
+    opencode \
+    cursor \
+    windsurf \
+    cline \
+    roo \
+    copilot; do
+    assert_contains "$readme_file" "\`$target_id\`"
+  done
+  for score_row in \
+    '4.8 / 5.0 / 3.8' \
+    '5.0 / 4.2 / 3.7' \
+    '4.8 / 4.9 / 4.1' \
+    '4.7 / 5.0 / 2.8' \
+    '5.0 / 4.8 / 4.4' \
+    '5.0 / 3.6 / 4.0'; do
+    assert_contains "$readme_file" "$score_row"
+  done
+  for detail_document in \
+    background \
+    comparison \
+    lifecycle \
+    architecture \
+    installer \
+    adapters \
+    extending-adapters \
+    security \
+    troubleshooting; do
+    assert_contains "$readme_file" "docs/en/$detail_document.md"
+    assert_contains "$readme_file" "docs/zh/$detail_document.md"
+  done
+done
+pass "both README entrypoints preserve commands, profiles, targets, scores, and document pairs"
+
+for english_heading in \
+  '## Why OAW' \
+  '## Problems It Solves' \
+  '## Capabilities' \
+  '## Quick Start' \
+  '## Task Gate' \
+  '## Lifecycle Profiles' \
+  '## Matt-Superpowers Hybrid' \
+  '## Supported Targets' \
+  '## Safety Model' \
+  '## Update and Uninstall' \
+  '## Provider Prerequisites' \
+  '## Documentation' \
+  '## Contributing' \
+  '## License' \
+  '## Project Status'; do
+  assert_contains README.md "$english_heading"
+done
+assert_contains README.md "[简体中文](README-zh.md)"
+assert_contains README.md "arbitrates independently installed workflow providers across agent tools"
+assert_contains README.md "There is no timeout or silent default."
+assert_contains README.md "OAW does not install Superpowers, Matt Pocock skills, or ECC."
+assert_contains README.md "Updates read artifacts only from the current checkout."
+assert_contains README.md "Drift fails closed before mutation."
+assert_contains README.md '`--force` backs up every affected artifact before mutation.'
+assert_contains README.md "experience-based design inputs"
+assert_contains README.md "Machine-readable status is reserved for a post-v0.1 extension."
+assert_contains README.md "v0.1 output is human-readable only."
+pass "English README covers the complete entrypoint and safety contract"
+
+for chinese_heading in \
+  '## 为什么需要 OAW' \
+  '## 解决的问题' \
+  '## 核心能力' \
+  '## 快速开始' \
+  '## 任务门禁' \
+  '## 生命周期配置' \
+  '## Matt-Superpowers 混合配置' \
+  '## 支持的目标' \
+  '## 安全模型' \
+  '## 更新与卸载' \
+  '## Provider 前置条件' \
+  '## 文档' \
+  '## 贡献' \
+  '## 许可证' \
+  '## 项目状态'; do
+  assert_contains README-zh.md "$chinese_heading"
+done
+assert_contains README-zh.md "[English](README.md)"
+assert_contains README-zh.md "协调多个 agent 工具中独立安装的 workflow provider"
+assert_contains README-zh.md "没有超时自动选择，也没有静默默认项。"
+assert_contains README-zh.md "OAW 不安装 Superpowers、Matt Pocock skills 或 ECC。"
+assert_contains README-zh.md "更新只从当前 checkout 读取构件。"
+assert_contains README-zh.md "检测到 drift 时，会在变更前关闭失败。"
+assert_contains README-zh.md '`--force` 会在变更前先备份所有受影响构件。'
+assert_contains README-zh.md "基于经验的设计输入"
+assert_contains README-zh.md "machine-readable status 保留为 post-v0.1 扩展。"
+assert_contains README-zh.md "v0.1 只输出 human-readable 状态。"
+pass "Chinese README covers the equivalent entrypoint and safety contract"
 
 printf 'PASS: governance documentation contracts passed\n'
