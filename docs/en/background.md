@@ -1,0 +1,98 @@
+# Why Open Agent Workflow Exists
+
+[简体中文](../zh/background.md) | [README](../../README.md)
+
+Open Agent Workflow (OAW) is a provider-neutral governance layer for developers
+who use more than one engineering workflow and more than one coding-agent
+client. It answers two separate questions: who owns this task's lifecycle, and
+how does the same decision reach each supported agent tool?
+
+## One Task, Several Automatic Triggers
+
+A workflow family may bring its own discovery, planning, implementation, TDD,
+debugging, review, and completion procedures. Superpowers, Matt Pocock skills,
+and Everything Claude Code (ECC) each cover several of those responsibilities.
+When they are installed together, overlapping automatic triggers can start more
+than one lifecycle for the same deliverable.
+
+The conflict is about ownership, not whether a provider is useful. Without an
+arbitration gate, one family can draft a specification while another creates a
+different plan; two TDD procedures can establish different seams; or a review
+tool can open a second remediation loop after another family already owns
+completion. A follow-up request can also retrigger selection and silently
+change methods halfway through the work.
+
+OAW prevents that ambiguity before family-specific work begins. It classifies
+the top-level task, shows every lifecycle profile, waits for explicit user
+choice, and locks the selected bundle to the deliverable. A profile assigns one
+owner to every applicable responsibility. Detection can inform the gate, but
+it never makes the choice.
+
+## One Policy, Several Agent Tools
+
+Workflow ownership must remain stable when the same developer moves among
+Claude Code, Codex CLI, Gemini CLI, OpenCode, Cursor, Windsurf, Cline, Roo Code,
+and GitHub Copilot. Those tools do not share one instruction filename or one
+scope model. Some have user and project instruction surfaces; others expose a
+reliable project surface while global configuration is GUI-managed,
+platform-specific, experimental, or less stable.
+
+Hand-maintaining a separate policy for every client creates cross-client drift.
+One file may omit a newly added profile, retain an old hybrid map, or describe
+different switching rules. That difference is especially hard to notice when
+each file is valid for its own tool.
+
+OAW instead keeps one canonical rule source in its own XDG namespace. The
+installer renders thin target-native entrypoints that import, reference, or
+direct the agent to that policy using the supported behavior of each target.
+Adapters translate the instruction surface; they do not fork lifecycle
+semantics. Mechanical marker comments establish filesystem ownership only and
+do not claim model precedence.
+
+## Provider Independence
+
+Workflow providers remain independently installed, licensed, versioned, and
+configured. OAW detects known capability indicators and routes work after the
+user selects a compatible profile. It does not install, update, or remove providers,
+and it does not vendor or patch their skills.
+
+This boundary matters for both trust and maintenance:
+
+- Users choose provider versions and installation channels themselves.
+- Upstream licenses and configuration remain under upstream and user control.
+- OAW can report an unavailable profile without silently substituting another
+  family or omitting a required stage.
+- Updating OAW never becomes permission to download or execute provider code.
+- A bounded specialist add-on can contribute one declared deliverable without
+  becoming a second lifecycle owner.
+
+Agent tools are independent too. OAW installs only its policy and adapters; it
+does not install the clients or mutate GUI-only global rule stores.
+
+## The Boundary OAW Owns
+
+OAW owns the arbitration policy, target-specific entrypoints, checksummed
+installation state, and recoverable backups. That boundary is deliberately
+narrow:
+
+1. Classify the task using the canonical ordinary/complex rules.
+2. Present all profiles and exact proposed add-ons.
+3. Block until the user chooses; never use a timeout or silent default.
+4. Record and persist the bundle across follow-ups and delegated work.
+5. Render the same policy into selected user or project targets.
+6. Fail closed on drift and back up before an explicitly forced mutation.
+7. Remove only OAW-owned artifacts during uninstall.
+
+OAW does not decide which methodology is universally best. Its initial
+three-family assessment is an experience-bounded design input, documented in
+the [comparison](comparison.md). The normative ownership and switching rules
+remain in [policy/ENGINEERING.md](../../policy/ENGINEERING.md); the
+[lifecycle guide](lifecycle.md) explains how to apply them.
+
+## Result
+
+The practical result is one explicit workflow decision per deliverable and one
+policy across supported clients. Providers can coexist without competing for
+the same stage, client configuration can change without creating a second
+governance source, and installation lifecycle operations remain local,
+reviewable, and recoverable.

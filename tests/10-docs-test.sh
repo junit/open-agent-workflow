@@ -316,4 +316,125 @@ assert_contains README-zh.md "machine-readable status 保留为 post-v0.1 扩展
 assert_contains README-zh.md "v0.1 只输出 human-readable 状态。"
 pass "Chinese README covers the equivalent entrypoint and safety contract"
 
+for rationale_document in \
+  docs/en/background.md \
+  docs/zh/background.md \
+  docs/en/comparison.md \
+  docs/zh/comparison.md \
+  docs/en/lifecycle.md \
+  docs/zh/lifecycle.md; do
+  assert_file "$rationale_document"
+done
+
+for background_contract in \
+  'overlapping automatic triggers' \
+  'cross-client drift' \
+  'providers remain independently installed' \
+  'does not install, update, or remove providers'; do
+  assert_contains docs/en/background.md "$background_contract"
+done
+assert_contains docs/en/background.md '[简体中文](../zh/background.md)'
+for background_contract in \
+  '重叠的自动触发' \
+  '跨客户端 drift' \
+  'provider 保持独立安装' \
+  '不安装、更新或删除 provider'; do
+  assert_contains docs/zh/background.md "$background_contract"
+done
+assert_contains docs/zh/background.md '[English](../en/background.md)'
+pass "background documents explain trigger conflicts, client drift, and provider independence"
+
+for comparison_file in docs/en/comparison.md docs/zh/comparison.md; do
+  for comparison_score in \
+    '4.8 | 5.0 | 3.8' \
+    '5.0 | 4.2 | 3.7' \
+    '4.8 | 4.9 | 4.1' \
+    '4.7 | 5.0 | 2.8' \
+    '5.0 | 4.8 | 4.4' \
+    '5.0 | 3.6 | 4.0'; do
+    assert_contains "$comparison_file" "$comparison_score"
+  done
+done
+for comparison_criterion in \
+  'procedure completeness' \
+  'correctness discipline' \
+  'ambiguity handling' \
+  'review closure' \
+  'verification strength' \
+  'operational overhead'; do
+  assert_contains docs/en/comparison.md "$comparison_criterion"
+done
+assert_contains docs/en/comparison.md 'experience-based judgments'
+assert_contains docs/en/comparison.md 'version-sensitive'
+assert_contains docs/en/comparison.md 'not a universal benchmark'
+assert_contains docs/en/comparison.md '| Planning | 4.8 | 5.0 | 3.8 | Matt for complex work |'
+assert_contains docs/en/comparison.md '| Implementation | 5.0 | 4.2 | 3.7 | Superpowers |'
+assert_contains docs/en/comparison.md '| TDD | 4.8 | 4.9 | 4.1 | Matt |'
+assert_contains docs/en/comparison.md '| Debugging | 4.7 | 5.0 | 2.8 | Matt |'
+assert_contains docs/en/comparison.md '| Review | 5.0 | 4.8 | 4.4 | Superpowers |'
+assert_contains docs/en/comparison.md '| Completion | 5.0 | 3.6 | 4.0 | Superpowers |'
+assert_contains docs/en/comparison.md '[简体中文](../zh/comparison.md)'
+
+for comparison_criterion in \
+  '流程完整性' \
+  '正确性纪律' \
+  '歧义处理' \
+  '复核闭环' \
+  '验证强度' \
+  '运维开销'; do
+  assert_contains docs/zh/comparison.md "$comparison_criterion"
+done
+assert_contains docs/zh/comparison.md '基于经验的判断'
+assert_contains docs/zh/comparison.md '会随版本变化'
+assert_contains docs/zh/comparison.md '不是通用 benchmark'
+assert_contains docs/zh/comparison.md '| 规划 | 4.8 | 5.0 | 3.8 | 复杂任务由 Matt 负责 |'
+assert_contains docs/zh/comparison.md '| 实现 | 5.0 | 4.2 | 3.7 | Superpowers |'
+assert_contains docs/zh/comparison.md '| TDD | 4.8 | 4.9 | 4.1 | Matt |'
+assert_contains docs/zh/comparison.md '| 调试 | 4.7 | 5.0 | 2.8 | Matt |'
+assert_contains docs/zh/comparison.md '| 复核 | 5.0 | 4.8 | 4.4 | Superpowers |'
+assert_contains docs/zh/comparison.md '| 完成 | 5.0 | 3.6 | 4.0 | Superpowers |'
+assert_contains docs/zh/comparison.md '[English](../en/comparison.md)'
+pass "comparison documents preserve approved scores, criteria, caveats, and stage owners"
+
+for lifecycle_file in docs/en/lifecycle.md docs/zh/lifecycle.md; do
+  for profile_id in \
+    SP-FULL \
+    MATT-FULL \
+    ECC-FULL \
+    MATT-SP-HYBRID \
+    CUSTOM-LOCKED; do
+    assert_contains "$lifecycle_file" "$profile_id"
+  done
+  assert_contains "$lifecycle_file" 'MATT-SP-HYBRID + ECC(security-review)'
+done
+for lifecycle_contract in \
+  'ordinary task' \
+  'complex task' \
+  'blocking user choice' \
+  'lifecycle lock' \
+  'bundle inheritance' \
+  'bounded add-ons' \
+  'stable switching' \
+  'ticket inheritance' \
+  'stable-boundary switch' \
+  'policy/ENGINEERING.md is normative'; do
+  assert_contains docs/en/lifecycle.md "$lifecycle_contract"
+done
+assert_contains docs/en/lifecycle.md '[简体中文](../zh/lifecycle.md)'
+for lifecycle_contract in \
+  '普通任务' \
+  '复杂任务' \
+  '阻塞式用户选择' \
+  '生命周期锁' \
+  'bundle 继承' \
+  'bounded add-on' \
+  '稳定切换' \
+  'ticket 继承' \
+  'stable boundary 切换' \
+  'policy/ENGINEERING.md 是规范来源'; do
+  assert_contains docs/zh/lifecycle.md "$lifecycle_contract"
+done
+assert_contains docs/zh/lifecycle.md '[English](../en/lifecycle.md)'
+pass "lifecycle documents explain classification, locking, inheritance, add-ons, and switching"
+
 printf 'PASS: governance documentation contracts passed\n'
