@@ -327,7 +327,6 @@ operation_update() {
   local target_origin=
   local extra=
 
-  [ "$OAW_SCOPE" = user ] || die "Ticket 03 update supports only user scope" 69
   [ -r "$OAW_SOURCE_DIR/policy/ENGINEERING.md" ] ||
     die "canonical policy source is not readable" 70
   init_oaw_paths

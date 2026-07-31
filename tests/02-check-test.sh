@@ -10,6 +10,8 @@ trap cleanup_sandbox EXIT HUP INT TERM
 
 OAW_TEST_BASH=$(command -v bash)
 OAW_TEST_DIRNAME=$(command -v dirname)
+OAW_TEST_CKSUM=$(command -v cksum)
+OAW_TEST_AWK=$(command -v awk)
 
 new_fixture() {
   cleanup_sandbox
@@ -18,6 +20,8 @@ new_fixture() {
   mkdir -p "$OAW_SANDBOX/system-bin"
   ln -s "$OAW_TEST_BASH" "$OAW_SANDBOX/system-bin/bash"
   ln -s "$OAW_TEST_DIRNAME" "$OAW_SANDBOX/system-bin/dirname"
+  ln -s "$OAW_TEST_CKSUM" "$OAW_SANDBOX/system-bin/cksum"
+  ln -s "$OAW_TEST_AWK" "$OAW_SANDBOX/system-bin/awk"
   OAW_PATH=$OAW_SANDBOX/system-bin
 }
 
@@ -115,6 +119,15 @@ assert_output_equals "$(printf '%s\n' \
   'target windsurf: adapter-only (project)' \
   'target cline: adapter-only (project)' \
   'target roo: adapter-only (project)' \
-  'target copilot: adapter-only (project)')" "all-provider detection output is stable"
+  'target copilot: adapter-only (project)' \
+  'installed claude: not-installed' \
+  'installed codex: not-installed' \
+  'installed gemini: not-installed' \
+  'installed opencode: not-installed' \
+  'installed cursor: not-installed' \
+  'installed windsurf: not-installed' \
+  'installed cline: not-installed' \
+  'installed roo: not-installed' \
+  'installed copilot: not-installed')" "all-provider detection output is stable"
 assert_empty_xdg_roots
 pass "all readiness indicators are reported without mutation"

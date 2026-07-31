@@ -8,6 +8,20 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 trap cleanup_sandbox EXIT HUP INT TERM
 
+project_target_path_for_test() {
+  case "$1" in
+    claude) printf '.claude/CLAUDE.md\n' ;;
+    codex|opencode) printf 'AGENTS.md\n' ;;
+    gemini) printf 'GEMINI.md\n' ;;
+    cursor) printf '.cursor/rules/open-agent-workflow.mdc\n' ;;
+    windsurf) printf '.devin/rules/open-agent-workflow.md\n' ;;
+    cline) printf '.clinerules/open-agent-workflow.md\n' ;;
+    roo) printf '.roo/rules/open-agent-workflow.md\n' ;;
+    copilot) printf '.github/instructions/open-agent-workflow.instructions.md\n' ;;
+    *) fail "unknown project test target: $1" ;;
+  esac
+}
+
 setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT/.cursor/rules"
@@ -595,3 +609,158 @@ assert_contains "installed project root does not match" "stored project root mis
 assert_empty_dir "$OAW_OTHER_PROJECT" "project root mismatch must not mutate the stored root"
 
 pass "stored project root mismatch fails before mutation"
+
+for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo copilot; do
+  cleanup_sandbox
+  setup_sandbox
+  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+  OAW_MATRIX_RELATIVE=$(project_target_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_PATH=$OAW_PROJECT/$OAW_MATRIX_RELATIVE
+  mkdir -p "$(dirname -- "$OAW_MATRIX_PATH")"
+  case "$OAW_MATRIX_TARGET" in
+    claude|codex|gemini|opencode)
+      printf 'personal %s project instruction\n' "$OAW_MATRIX_TARGET" >"$OAW_MATRIX_PATH"
+      OAW_MATRIX_SIBLING=
+      ;;
+    *)
+      OAW_MATRIX_SIBLING=$(dirname -- "$OAW_MATRIX_PATH")/personal-$OAW_MATRIX_TARGET.md
+      printf 'personal %s sibling\n' "$OAW_MATRIX_TARGET" >"$OAW_MATRIX_SIBLING"
+      ;;
+  esac
+  OAW_MATRIX_SIBLING_BEFORE=
+  [ -z "$OAW_MATRIX_SIBLING" ] || OAW_MATRIX_SIBLING_BEFORE=$(cksum <"$OAW_MATRIX_SIBLING")
+
+  run_oaw install --project "$OAW_PROJECT" --target "$OAW_MATRIX_TARGET"
+  assert_status 0 "$OAW_MATRIX_TARGET project matrix install"
+  OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+  OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  OAW_MATRIX_PATH=$OAW_PROJECT_PHYSICAL/$OAW_MATRIX_RELATIVE
+  OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+  OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-$OAW_MATRIX_TARGET
+  cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
+  printf '0.1.1-project-%s\n' "$OAW_MATRIX_TARGET" >"$OAW_UPDATE_CHECKOUT/VERSION"
+  printf '\nTASK 4 MATRIX %s UPDATE SENTINEL\n' "$OAW_MATRIX_TARGET" \
+    >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+  OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
+
+  OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+  OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  OAW_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+  run_oaw update --project "$OAW_PROJECT" --target "$OAW_MATRIX_TARGET" --dry-run
+  assert_status 0 "$OAW_MATRIX_TARGET project update dry run"
+  [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] || fail "$OAW_MATRIX_TARGET update dry run changed policy"
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] || fail "$OAW_MATRIX_TARGET update dry run changed target"
+  [ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_STATE_BEFORE" ] || fail "$OAW_MATRIX_TARGET update dry run changed state"
+
+  run_oaw update --project "$OAW_PROJECT" --target "$OAW_MATRIX_TARGET"
+  assert_status 0 "$OAW_MATRIX_TARGET project copied-checkout update"
+  grep -F "TASK 4 MATRIX $OAW_MATRIX_TARGET UPDATE SENTINEL" "$OAW_POLICY" >/dev/null || fail "$OAW_MATRIX_TARGET update ignored checkout"
+  grep -F "$(printf 'version\t0.1.1-project-%s' "$OAW_MATRIX_TARGET")" "$OAW_PROJECT_STATE" >/dev/null || fail "$OAW_MATRIX_TARGET update did not record version"
+  [ -z "$OAW_MATRIX_SIBLING" ] || [ "$(cksum <"$OAW_MATRIX_SIBLING")" = "$OAW_MATRIX_SIBLING_BEFORE" ] || fail "$OAW_MATRIX_TARGET update changed sibling"
+
+  OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+  OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  OAW_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+  run_oaw uninstall --project "$OAW_PROJECT" --target "$OAW_MATRIX_TARGET" --dry-run
+  assert_status 0 "$OAW_MATRIX_TARGET project uninstall dry run"
+  [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] || fail "$OAW_MATRIX_TARGET uninstall dry run changed policy"
+  [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] || fail "$OAW_MATRIX_TARGET uninstall dry run changed target"
+  [ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_STATE_BEFORE" ] || fail "$OAW_MATRIX_TARGET uninstall dry run changed state"
+
+  run_oaw uninstall --project "$OAW_PROJECT" --target "$OAW_MATRIX_TARGET"
+  assert_status 0 "$OAW_MATRIX_TARGET project final uninstall"
+  case "$OAW_MATRIX_TARGET" in
+    claude|codex|gemini|opencode) grep -Fx "personal $OAW_MATRIX_TARGET project instruction" "$OAW_MATRIX_PATH" >/dev/null || fail "$OAW_MATRIX_TARGET uninstall changed project content" ;;
+    *) [ ! -e "$OAW_MATRIX_PATH" ] || fail "$OAW_MATRIX_TARGET uninstall kept owned target" ;;
+  esac
+  [ -z "$OAW_MATRIX_SIBLING" ] || [ "$(cksum <"$OAW_MATRIX_SIBLING")" = "$OAW_MATRIX_SIBLING_BEFORE" ] || fail "$OAW_MATRIX_TARGET uninstall changed sibling"
+done
+pass "all nine project targets complete copied-update and dry-run lifecycle"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT"
+run_oaw install --project "$OAW_PROJECT"
+assert_status 0 "default nine-target project install"
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+[ "$(awk -F '\t' '$1 == "target" { count++ } END { print count + 0 }' "$OAW_PROJECT_STATE")" -eq 9 ] || fail "default project install did not record nine targets"
+OAW_DEFAULT_TARGETS=$(awk -F '\t' '$1 == "target" { if (targets == "") targets = $2; else targets = targets "," $2 } END { print targets }' "$OAW_PROJECT_STATE")
+[ "$OAW_DEFAULT_TARGETS" = "claude,codex,gemini,opencode,cursor,windsurf,cline,roo,copilot" ] || fail "default project target order is not deterministic"
+run_oaw install --project "$OAW_PROJECT"
+assert_status 0 "repeated default nine-target project install"
+assert_contains "unchanged: copilot" "repeated default project install reports unchanged targets"
+OAW_DEFAULT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
+OAW_DEFAULT_CURSOR=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
+OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-default
+cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
+printf '0.1.1-project-default\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
+printf '\nTASK 4 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+OAW_AGENTS_BEFORE=$(cksum <"$OAW_DEFAULT_AGENTS")
+OAW_CURSOR_BEFORE=$(cksum <"$OAW_DEFAULT_CURSOR")
+run_oaw update --project "$OAW_PROJECT" --dry-run
+assert_status 0 "default project update dry run"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] || fail "default update dry run changed policy"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_STATE_BEFORE" ] || fail "default update dry run changed state"
+[ "$(cksum <"$OAW_DEFAULT_AGENTS")" = "$OAW_AGENTS_BEFORE" ] || fail "default update dry run changed AGENTS"
+[ "$(cksum <"$OAW_DEFAULT_CURSOR")" = "$OAW_CURSOR_BEFORE" ] || fail "default update dry run changed Cursor"
+run_oaw update --project "$OAW_PROJECT"
+assert_status 0 "default project copied-checkout update"
+grep -F 'TASK 4 DEFAULT UPDATE SENTINEL' "$OAW_POLICY" >/dev/null || fail "default update ignored checkout"
+grep -F "$(printf 'version\t0.1.1-project-default')" "$OAW_PROJECT_STATE" >/dev/null || fail "default update did not record version"
+run_oaw uninstall --project "$OAW_PROJECT" --target cursor
+assert_status 0 "default project selected uninstall"
+[ ! -e "$OAW_DEFAULT_CURSOR" ] || fail "selected uninstall kept Cursor"
+[ -f "$OAW_POLICY" ] || fail "selected uninstall removed referenced policy"
+[ "$(awk -F '\t' '$1 == "target" { count++ } END { print count + 0 }' "$OAW_PROJECT_STATE")" -eq 8 ] || fail "selected uninstall did not retain eight targets"
+run_oaw uninstall --project "$OAW_PROJECT"
+assert_status 0 "default project final uninstall"
+[ ! -e "$OAW_POLICY" ] || fail "default final uninstall kept policy"
+[ ! -e "$OAW_PROJECT_STATE" ] || fail "default final uninstall kept state"
+pass "default project set completes update and selected uninstall lifecycle"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT/.cursor/rules"
+run_oaw install --project "$OAW_PROJECT" --target cursor
+assert_status 0 "project check fixture install"
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_CURSOR=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+run_oaw check --project "$OAW_PROJECT" --target cursor
+assert_status 0 "project check reports clean adapter"
+assert_contains "installed cursor: clean" "project check reports clean state"
+OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
+OAW_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+printf 'drifted Cursor check\n' >"$OAW_CURSOR"
+run_oaw check --project "$OAW_PROJECT" --target cursor
+assert_status 0 "project check reports drift"
+assert_contains "installed cursor: drift" "project check reports owned-file drift"
+[ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] || fail "project check changed policy"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_STATE_BEFORE" ] || fail "project check changed state"
+OAW_OTHER_PROJECT="$OAW_SANDBOX/other project"
+mkdir -p "$OAW_OTHER_PROJECT"
+OAW_TAMPERED_STATE=$OAW_SANDBOX/check-tampered.state
+OAW_OTHER_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_OTHER_PROJECT" && pwd -P)
+awk -F '\t' -v project_root="$OAW_OTHER_PHYSICAL" 'BEGIN { OFS = "\t" } $1 == "project" { $2 = project_root } { print }' \
+  "$OAW_PROJECT_STATE" >"$OAW_TAMPERED_STATE"
+mv "$OAW_TAMPERED_STATE" "$OAW_PROJECT_STATE"
+OAW_TAMPERED_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
+run_oaw check --project "$OAW_PROJECT" --target cursor
+assert_status 0 "project check reports invalid root state"
+assert_contains "installed cursor: invalid-state" "project check rejects stored root mismatch"
+[ "$(cksum <"$OAW_PROJECT_STATE")" = "$OAW_TAMPERED_STATE_BEFORE" ] || fail "project check rewrote invalid state"
+pass "project check reports clean, drift, and invalid-state without writes"

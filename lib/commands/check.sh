@@ -4,6 +4,7 @@ OAW_CHECK_TEMP=
 CHECK_STATE_STATUS=not-installed
 CHECK_POLICY_STATUS=not-installed
 CHECK_STATE_SCOPE=
+CHECK_STATE_PROJECT_ROOT=
 CHECK_POLICY_PATH=
 CHECK_POLICY_CHECKSUM=
 
@@ -22,6 +23,7 @@ prepare_installation_health() {
   CHECK_STATE_STATUS=not-installed
   CHECK_POLICY_STATUS=not-installed
   CHECK_STATE_SCOPE=
+  CHECK_STATE_PROJECT_ROOT=
   CHECK_POLICY_PATH=
   CHECK_POLICY_CHECKSUM=
 
@@ -35,6 +37,7 @@ prepare_installation_health() {
     printf '%s\t%s\t%s\n' \
       "$STATE_SCOPE" "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" \
       >"$OAW_CHECK_TEMP/metadata"
+    printf '%s\n' "$STATE_PROJECT_ROOT" >"$OAW_CHECK_TEMP/project-root"
   ) 2>/dev/null; then
     tab=$(printf '\t')
     IFS="$tab" read -r CHECK_STATE_SCOPE CHECK_POLICY_PATH CHECK_POLICY_CHECKSUM extra \
@@ -42,11 +45,26 @@ prepare_installation_health() {
         CHECK_STATE_STATUS=invalid-state
         return 0
       }
-    if [ -n "$extra" ] || [ "$CHECK_STATE_SCOPE" != user ] ||
-      [ "$CHECK_POLICY_PATH" != "$OAW_POLICY_DESTINATION" ]; then
+    IFS= read -r CHECK_STATE_PROJECT_ROOT <"$OAW_CHECK_TEMP/project-root" || {
+      CHECK_STATE_STATUS=invalid-state
+      return 0
+    }
+    if [ -n "$extra" ] || [ "$CHECK_POLICY_PATH" != "$OAW_POLICY_DESTINATION" ]; then
       CHECK_STATE_STATUS=invalid-state
       return 0
     fi
+    case "$OAW_SCOPE" in
+      user)
+        [ "$CHECK_STATE_SCOPE" = user ] && [ -z "$CHECK_STATE_PROJECT_ROOT" ] ||
+          CHECK_STATE_STATUS=invalid-state
+        ;;
+      project)
+        [ "$CHECK_STATE_SCOPE" = project ] &&
+          [ "$CHECK_STATE_PROJECT_ROOT" = "$OAW_PROJECT_ROOT" ] ||
+          CHECK_STATE_STATUS=invalid-state
+        ;;
+    esac
+    [ "$CHECK_STATE_STATUS" != invalid-state ] || return 0
   else
     CHECK_STATE_STATUS=invalid-state
     return 0
@@ -65,13 +83,27 @@ prepare_installation_health() {
 untracked_target_health() {
   local target_id=$1
   local target_path=
+  local target_mode=
   local target_status=
 
   target_path=$(target_destination "$target_id")
-  target_status=$(managed_block_status "$target_path")
-  case "$target_status" in
-    absent) printf 'not-installed\n' ;;
-    present|drift) printf 'drift\n' ;;
+  target_mode=$(target_ownership "$target_id")
+  case "$target_mode" in
+    managed-block)
+      target_status=$(managed_block_status "$target_path")
+      case "$target_status" in
+        absent) printf 'not-installed\n' ;;
+        present|drift) printf 'drift\n' ;;
+        *) printf 'invalid-state\n' ;;
+      esac
+      ;;
+    owned-file)
+      if [ -e "$target_path" ]; then
+        printf 'drift\n'
+      else
+        printf 'not-installed\n'
+      fi
+      ;;
     *) printf 'invalid-state\n' ;;
   esac
 }
@@ -80,7 +112,7 @@ installed_target_health() {
   local target_id=$1
   local expected_target_path=
   local target_status=
-  local actual_block_checksum=
+  local actual_target_checksum=
 
   case "$CHECK_STATE_STATUS" in
     not-installed)
@@ -108,18 +140,30 @@ installed_target_health() {
     return 0
   fi
 
-  target_status=$(managed_block_status "$STATE_TARGET_PATH")
-  if [ "$target_status" != present ]; then
-    printf 'drift\n'
-    return 0
-  fi
-  extract_managed_block "$STATE_TARGET_PATH" "$OAW_CHECK_TEMP/block-$target_id"
-  actual_block_checksum=$(checksum_file "$OAW_CHECK_TEMP/block-$target_id")
-  if [ "$actual_block_checksum" = "$STATE_TARGET_CHECKSUM" ]; then
-    printf 'clean\n'
-  else
-    printf 'drift\n'
-  fi
+  case "$STATE_TARGET_MODE" in
+    managed-block)
+      target_status=$(managed_block_status "$STATE_TARGET_PATH")
+      if [ "$target_status" != present ]; then
+        printf 'drift\n'
+        return 0
+      fi
+      extract_managed_block "$STATE_TARGET_PATH" "$OAW_CHECK_TEMP/block-$target_id"
+      actual_target_checksum=$(checksum_file "$OAW_CHECK_TEMP/block-$target_id")
+      ;;
+    owned-file)
+      if [ ! -f "$STATE_TARGET_PATH" ]; then
+        printf 'drift\n'
+        return 0
+      fi
+      actual_target_checksum=$(checksum_file "$STATE_TARGET_PATH")
+      ;;
+    *)
+      printf 'invalid-state\n'
+      return 0
+      ;;
+  esac
+  [ "$actual_target_checksum" = "$STATE_TARGET_CHECKSUM" ] &&
+    printf 'clean\n' || printf 'drift\n'
 }
 
 command_check() {
@@ -159,13 +203,13 @@ command_check() {
     fi
   done
 
-  if [ "$OAW_SCOPE" = user ]; then
-    prepare_installation_health
-    for check_target in $(target_ids); do
-      if selected_target "$check_target" && target_supports_user "$check_target"; then
-        printf 'installed %s: ' "$check_target"
-        installed_target_health "$check_target"
-      fi
-    done
-  fi
+  prepare_installation_health
+  for check_target in $(target_ids); do
+    selected_target "$check_target" || continue
+    if [ "$OAW_SCOPE" = user ] && ! target_supports_user "$check_target"; then
+      continue
+    fi
+    printf 'installed %s: ' "$check_target"
+    installed_target_health "$check_target"
+  done
 }
