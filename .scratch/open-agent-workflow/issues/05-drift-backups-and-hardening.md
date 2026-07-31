@@ -20,6 +20,11 @@ mutation boundary.
 - [ ] Modified managed content, malformed markers, duplicate markers,
       out-of-order markers, and mismatched state are reported as drift and
       block update or uninstall by default.
+- [ ] Candidate states used for shared-policy synchronization or retention
+      prove their canonical state location, scope/root identity, registry
+      target paths, and live managed artifacts. Missing or drifted legitimate
+      references fail closed; forged non-live states are never silently
+      synchronized or treated as a successful policy-retention reason.
 - [ ] `--force` creates a timestamped operation backup before the first
       mutation, records it in state or output, and then performs only the
       requested scoped replacement or removal.

@@ -8,28 +8,28 @@ installation-state metadata remain coordinated across scopes.
 
 **Blocked by:** 02 - Claude user-scope lifecycle.
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] `--project <path>` resolves an existing project directory, constructs
+- [x] `--project <path>` resolves an existing project directory, constructs
       adapter destinations only from registry-owned relative paths beneath it,
       and binds its XDG-hosted state to that exact physical project root.
-- [ ] Project adapters work for Claude Code, Codex CLI, Gemini CLI, and
+- [x] Project adapters work for Claude Code, Codex CLI, Gemini CLI, and
       OpenCode without changing their user-level instruction files.
-- [ ] Cursor receives a valid `.mdc` rule with required frontmatter; Windsurf
+- [x] Cursor receives a valid `.mdc` rule with required frontmatter; Windsurf
       uses the current `.devin/rules` surface; Cline uses `.clinerules`; Roo
       Code uses `.roo/rules`; and Copilot uses a path-specific
       `.github/instructions` file.
-- [ ] The default project target set and explicit mixed target sets are
+- [x] The default project target set and explicit mixed target sets are
       deterministic and documented by command output.
-- [ ] Where tools share `AGENTS.md`, OAW installs one coherent managed block
+- [x] Where tools share `AGENTS.md`, OAW installs one coherent managed block
       rather than duplicate or nested blocks.
-- [ ] Install, repeat install, local update, dry run, and clean uninstall work
+- [x] Install, repeat install, local update, dry run, and clean uninstall work
       for every project adapter while preserving unrelated project rules.
-- [ ] When one scope changes the shared canonical policy, every valid user and
+- [x] When one scope changes the shared canonical policy, every valid user and
       project state that references its stable path receives the same version
       and policy checksum without rewriting another scope's adapter files;
       uninstall retains the policy until the final path reference is removed.
-- [ ] Black-box tests exercise all nine project destinations from paths that
+- [x] Black-box tests exercise all nine project destinations from paths that
       contain spaces and prove that user-scope files remain untouched.
 
 Release boundary: hostile symlink components, destination revalidation, and

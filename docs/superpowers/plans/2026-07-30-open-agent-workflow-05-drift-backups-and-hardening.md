@@ -61,7 +61,7 @@ git commit -m "fix: validate installation state as inert data"
 
 - [ ] **Step 1: Add failing drift variants**
 
-Cover changed block body, changed owned file, missing begin marker, missing end marker, reversed markers, duplicate pairs, nested markers, state checksum mismatch, missing recorded file, and an unexpected OAW marker with no state. Assert update and uninstall exit non-zero without changing any file; check reports drift or invalid state.
+Cover changed block body, changed owned file, missing begin marker, missing end marker, reversed markers, duplicate pairs, nested markers, state checksum mismatch, missing recorded file, and an unexpected OAW marker with no state. Add a self-consistent forged project state at its correct identity-derived filename with registry-correct target paths but no target artifact. Assert update and uninstall exit non-zero without changing any file; the forged state is not synchronized and cannot produce a successful final uninstall that silently retains the policy; check reports drift or invalid state.
 
 - [ ] **Step 2: Verify RED**
 
@@ -76,6 +76,14 @@ Count exact full-line marker occurrences, require either zero/zero or one/one in
 - [ ] **Step 4: Add a complete preflight loop**
 
 `prepare_operation` must inspect every selected and shared artifact and return a finalized action manifest before `apply_operation` is callable. Delete the prepared directory on any error; no destination directory may be created during preparation.
+
+Apply the same liveness inspection to every candidate state used by
+cross-scope policy synchronization or uninstall retention. Validate its state
+location, scope/root identity, registry-derived target destinations, marker or
+owned-file status, and recorded target checksums. A legitimate drifted
+reference aborts the operation with its target/path diagnostic; a syntactically
+valid but non-live forged state is never rewritten and never turns final
+uninstall into a successful no-op with a retained policy.
 
 - [ ] **Step 5: Verify fail-closed drift behavior**
 
