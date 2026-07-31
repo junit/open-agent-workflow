@@ -110,3 +110,39 @@ TDD and remediation evidence:
 - Component-relative directory creation and per-component physical-coordinate
   verification made the same race fixture GREEN without weakening the symlink
   diagnostic or the no-state-mutation assertion.
+
+## Ticket 05 - Drift and Hardening (Task 4)
+
+Verified on 2026-07-31 in Bash 3.2.57 on branch
+`feature/oaw-ticket-02` through commit `0bc0862`.
+
+- `bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh`: exit 0.
+- `shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh`: exit 0.
+- `bash tests/08-backup-test.sh`: 13/13 behavior cases passed.
+- `bash tests/06-security-test.sh`: 17/17 behavior cases passed.
+- `bash tests/07-containment-test.sh`: 5/5 behavior cases passed.
+- `bash tests/run.sh`: 91/91 behavior cases passed; suite summary passed with
+  exit 0.
+- `git diff --check`: exit 0 before the implementation commit.
+- Secret-pattern and command-position scans found no secrets, data evaluation,
+  network fetches, remote Git mutations, or world-writable permissions.
+
+TDD and remediation evidence:
+
+- Forced update first failed with exit 65 on the drifted owned target; the
+  operation-scoped backup and state reference made the same test GREEN.
+- Forced uninstall first failed with exit 65; the final flow now backs up both
+  targets, state, and policy before the first removal.
+- A clean update after recovery initially discarded the prior backup record;
+  subsequent state writes now preserve it without creating another backup.
+- A missing begin marker initially stopped at the generic manual-recovery
+  boundary. Exact renderer/checksum/adjacency recovery now covers missing
+  begin and end markers, while duplicate fragments still back up and fail.
+- A selected Codex shared destination initially failed on the unselected
+  OpenCode alias; destination-grouped force validation made both records clean.
+- A drifted canonical policy initially failed at cross-scope candidate
+  preflight; all states must now prove one recorded baseline before coordinated
+  backup and synchronization.
+- An adversarial manifest-boundary change leaves the completed backup intact,
+  exits nonzero with `backup source changed before mutation`, and leaves state
+  unapplied.

@@ -151,3 +151,53 @@ Review coverage:
   revalidation for replace and remove operations.
 - Directory-creation race injection verifies that a swapped project component
   cannot create either an outside directory or an outside target file.
+
+## Ticket 05 - Drift and Hardening (Task 4 Review)
+
+- Reviewed range: `289ea21..0bc0862`
+- Canonical ticket: `.scratch/open-agent-workflow/issues/05-drift-backups-and-hardening.md`
+- Execution plan: `docs/superpowers/plans/2026-07-30-open-agent-workflow-05-drift-backups-and-hardening.md`
+- Result through Task 4: approved with no open Critical or Important findings
+
+Resolved findings:
+
+- Important: force selection originally applied by target ID, so an
+  unselected Codex/OpenCode alias could reject recovery of their one shared
+  `AGENTS.md` destination. Force authorization is now grouped by the prepared
+  physical destination and checksum normalization updates every sharing
+  record.
+- Important: a source could change after its individual copy completed but
+  before apply, leaving the final bytes outside the completed backup. The
+  implementation revalidates every source after the manifest is complete and
+  again immediately before each replacement or removal.
+- Important: creating the timestamped operation directory through a global
+  backup-root path left a parent-swap race. Private directory creation now
+  walks from the allowed state root, pins each physical parent, creates the
+  final component relatively, and refuses existing or symlinked collisions.
+- Quality: force helpers initially pushed `lib/operations.sh` over 800 lines.
+  Commit `0bc0862` isolates that bounded concern in `lib/force.sh`; the
+  operation orchestrator is 745 lines and every changed file remains below the
+  project limit.
+
+Review coverage:
+
+- One private operation backup, unique artifact deduplication, inert manifest
+  fields, pre-mutation checksums, copied-byte verification, permissions, and
+  backup-before-apply ordering.
+- Forced update and final uninstall for multiple drifted owned files, retained
+  state references, clean no-backup behavior, dry-run previews, and complete
+  recovery output when state is removed.
+- Exact managed-marker recovery for one missing begin or end marker when the
+  deterministic prior renderer matches the recorded checksum; ambiguous
+  structures retain a complete backup and require manual recovery.
+- Shared target destinations and canonical policy state across user/project
+  scopes, invalid state schema, symlink containment, and source races between
+  backup and mutation.
+
+Plan adaptations:
+
+- Task 4 named `tests/06-security-test.sh`, but that file already had 799
+  lines. The same approved black-box seam lives in `tests/08-backup-test.sh`
+  and remains part of `tests/run.sh`.
+- `lib/force.sh` was added to keep force-specific validation separate from the
+  operation orchestrator and maintain the 800-line file limit.
