@@ -306,3 +306,56 @@ assert_contains "managed policy has drifted" "stale reference fails with a polic
   fail "stale reference rewrote the project state"
 
 pass "stale policy references fail before every managed write"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+OAW_OTHER_PROJECT="$OAW_SANDBOX/other project"
+mkdir -p "$OAW_PROJECT" "$OAW_OTHER_PROJECT"
+
+run_oaw install --target codex
+assert_status 0 "invalid-binding user fixture install"
+run_oaw install --project "$OAW_PROJECT" --target cursor
+assert_status 0 "invalid-binding project fixture install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_OTHER_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_OTHER_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
+OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
+OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_TAMPERED_STATE=$OAW_SANDBOX/tampered-project.state
+awk -F '\t' -v project_root="$OAW_OTHER_PHYSICAL" \
+  'BEGIN { OFS = "\t" } $1 == "project" { $2 = project_root } { print }' \
+  "$OAW_PROJECT_STATE" >"$OAW_TAMPERED_STATE"
+mv "$OAW_TAMPERED_STATE" "$OAW_PROJECT_STATE"
+OAW_POLICY_BEFORE=$(file_fingerprint "$OAW_POLICY")
+OAW_USER_TARGET_BEFORE=$(file_fingerprint "$OAW_USER_TARGET")
+OAW_PROJECT_TARGET_BEFORE=$(file_fingerprint "$OAW_PROJECT_TARGET")
+OAW_USER_STATE_BEFORE=$(file_fingerprint "$OAW_USER_STATE")
+OAW_PROJECT_STATE_BEFORE=$(file_fingerprint "$OAW_PROJECT_STATE")
+
+OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
+cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
+printf '0.1.8-invalid-binding\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
+printf '\nINVALID PROJECT BINDING SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
+run_oaw update --target codex
+assert_status 65 "invalid cross-scope project binding"
+assert_contains "installed project root does not match" "invalid project binding is explicit"
+[ "$(file_fingerprint "$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "invalid project binding changed the canonical policy"
+[ "$(file_fingerprint "$OAW_USER_TARGET")" = "$OAW_USER_TARGET_BEFORE" ] ||
+  fail "invalid project binding changed the user adapter"
+[ "$(file_fingerprint "$OAW_PROJECT_TARGET")" = "$OAW_PROJECT_TARGET_BEFORE" ] ||
+  fail "invalid project binding changed the project adapter"
+[ "$(file_fingerprint "$OAW_USER_STATE")" = "$OAW_USER_STATE_BEFORE" ] ||
+  fail "invalid project binding changed the user state"
+[ "$(file_fingerprint "$OAW_PROJECT_STATE")" = "$OAW_PROJECT_STATE_BEFORE" ] ||
+  fail "invalid project binding rewrote the project state"
+assert_empty_dir "$OAW_OTHER_PROJECT" "invalid project binding must not mutate the stored root"
+
+pass "invalid cross-scope project bindings fail before every managed write"

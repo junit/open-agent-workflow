@@ -71,6 +71,47 @@ write_operation_state() {
     "$OAW_PROJECT_ROOT" "$OAW_POLICY_DESTINATION" "$policy_checksum" "$target_records"
 }
 
+verify_policy_state_binding() {
+  local candidate_state=$1
+  local target_records=$2
+  local expected_state=
+  local expected_target_path=
+  local project_identity=
+  local tab=
+  local target_id=
+  local target_path=
+  local target_mode=
+  local target_checksum=
+  local target_origin=
+  local extra=
+
+  case "$STATE_SCOPE" in
+    user)
+      expected_state=$OAW_INSTALLATIONS_DIR/user.state
+      [ "$candidate_state" = "$expected_state" ] ||
+        die "installed user state path does not match" 65
+      ;;
+    project)
+      project_identity=$(project_state_identity "$STATE_PROJECT_ROOT")
+      expected_state=$OAW_INSTALLATIONS_DIR/projects/$project_identity.state
+      [ "$candidate_state" = "$expected_state" ] ||
+        die "installed project root does not match" 65
+      ;;
+    *) die "installed scope does not match" 65 ;;
+  esac
+
+  tab=$(printf '\t')
+  while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
+    expected_target_path=$(
+      OAW_SCOPE=$STATE_SCOPE
+      OAW_PROJECT_ROOT=$STATE_PROJECT_ROOT
+      target_destination "$target_id"
+    )
+    [ "$target_path" = "$expected_target_path" ] ||
+      die "installed target path does not match" 65
+  done <"$target_records"
+}
+
 prepare_policy_state_actions() {
   local source_version=$1
   local new_policy_checksum=$2
@@ -96,6 +137,7 @@ prepare_policy_state_actions() {
     candidate_output="$OAW_OPERATION_TEMP/policy-state-$candidate_index"
     load_state_file "$candidate_state" "$candidate_records"
     [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || continue
+    verify_policy_state_binding "$candidate_state" "$candidate_records"
     [ -n "$installed_policy_checksum" ] &&
       [ "$STATE_POLICY_CHECKSUM" = "$installed_policy_checksum" ] ||
       die "managed policy has drifted" 65
