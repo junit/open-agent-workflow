@@ -11,7 +11,8 @@ for test_script in \
   04-core-adapters-test.sh \
   05-project-adapters-test.sh \
   05-policy-coordination-test.sh \
-  06-security-test.sh; do
+  06-security-test.sh \
+  07-containment-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 

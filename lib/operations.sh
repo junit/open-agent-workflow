@@ -85,6 +85,8 @@ verify_policy_state_binding() {
   local target_origin=
   local extra=
 
+  destination_relative_suffix "$OAW_XDG_STATE_HOME" "$candidate_state" >/dev/null || return $?
+
   case "$STATE_SCOPE" in
     user)
       expected_state=$OAW_INSTALLATIONS_DIR/user.state
@@ -214,6 +216,55 @@ verify_untracked_selected_markers() {
   done <"$selected_ids"
 }
 
+prepare_action_coordinates() {
+  local action_label=$1
+  local destination_file=$2
+  local rebuilt_destination=
+
+  case "$action_label" in
+    state|state-reference-*)
+      OAW_ACTION_ALLOWED_ROOT=$OAW_XDG_STATE_HOME
+      OAW_ACTION_RELATIVE_SUFFIX=$(
+        destination_relative_suffix "$OAW_ACTION_ALLOWED_ROOT" "$destination_file"
+      ) || return $?
+      ;;
+    *)
+      target_is_known "$action_label" || die "unknown target action label: $action_label" 65
+      OAW_ACTION_ALLOWED_ROOT=$(target_allowed_root "$action_label") || return $?
+      OAW_ACTION_RELATIVE_SUFFIX=$(target_relative_suffix "$action_label") || return $?
+      rebuilt_destination=$(
+        validated_destination_path "$OAW_ACTION_ALLOWED_ROOT" "$OAW_ACTION_RELATIVE_SUFFIX"
+      ) || return $?
+      [ "$rebuilt_destination" = "$destination_file" ] ||
+        die "target action destination does not match registry: $destination_file" 65
+      ;;
+  esac
+}
+
+apply_scoped_replace() {
+  local action_label=$1
+  local source_file=$2
+  local allowed_root=$3
+  local destination_file=$4
+  local destination_mode=$5
+  local relative_suffix=
+
+  relative_suffix=$(destination_relative_suffix "$allowed_root" "$destination_file") ||
+    return $?
+  apply_replace "$action_label" "$source_file" "$allowed_root" \
+    "$relative_suffix" "$destination_file" "$destination_mode"
+}
+
+apply_scoped_remove() {
+  local allowed_root=$1
+  local destination_file=$2
+  local relative_suffix=
+
+  relative_suffix=$(destination_relative_suffix "$allowed_root" "$destination_file") ||
+    return $?
+  apply_remove "$allowed_root" "$relative_suffix" "$destination_file"
+}
+
 add_target_action() {
   local actions_file=$1
   local action_type=$2
@@ -224,10 +275,18 @@ add_target_action() {
   local existing_type=
   local existing_source=
   local existing_mode=
+  local existing_root=
+  local existing_suffix=
+
+  OAW_ACTION_ALLOWED_ROOT=
+  OAW_ACTION_RELATIVE_SUFFIX=
+  prepare_action_coordinates "$action_label" "$destination_file" || return $?
 
   if ! state_field_is_safe "$action_type" || ! state_field_is_safe "$action_label" ||
     ! state_field_is_safe "$source_file" || ! state_field_is_safe "$destination_file" ||
-    ! state_field_is_safe "$destination_mode"; then
+    ! state_field_is_safe "$destination_mode" ||
+    ! state_field_is_safe "$OAW_ACTION_ALLOWED_ROOT" ||
+    ! state_field_is_safe "$OAW_ACTION_RELATIVE_SUFFIX"; then
     die "target action cannot be serialized" 65
   fi
   existing_type=$(awk -F '\t' -v destination="$destination_file" \
@@ -240,7 +299,13 @@ add_target_action() {
         '$4 == destination { print $3; exit }' "$actions_file")
       existing_mode=$(awk -F '\t' -v destination="$destination_file" \
         '$4 == destination { print $5; exit }' "$actions_file")
+      existing_root=$(awk -F '\t' -v destination="$destination_file" \
+        '$4 == destination { print $6; exit }' "$actions_file")
+      existing_suffix=$(awk -F '\t' -v destination="$destination_file" \
+        '$4 == destination { print $7; exit }' "$actions_file")
       if [ "$existing_mode" != "$destination_mode" ] ||
+        [ "$existing_root" != "$OAW_ACTION_ALLOWED_ROOT" ] ||
+        [ "$existing_suffix" != "$OAW_ACTION_RELATIVE_SUFFIX" ] ||
         ! files_equal "$existing_source" "$source_file"; then
         die "conflicting target renders for $destination_file" 65
       fi
@@ -248,8 +313,9 @@ add_target_action() {
     return 0
   fi
 
-  printf '%s\t%s\t%s\t%s\t%s\n' \
-    "$action_type" "$action_label" "$source_file" "$destination_file" "$destination_mode" \
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$action_type" "$action_label" "$source_file" "$destination_file" \
+    "$destination_mode" "$OAW_ACTION_ALLOWED_ROOT" "$OAW_ACTION_RELATIVE_SUFFIX" \
     >>"$actions_file"
 }
 
@@ -261,17 +327,21 @@ apply_target_actions() {
   local source_file=
   local destination_file=
   local destination_mode=
+  local allowed_root=
+  local relative_suffix=
   local extra=
 
   tab=$(printf '\t')
-  while IFS="$tab" read -r action_type action_label source_file destination_file destination_mode extra; do
+  while IFS="$tab" read -r action_type action_label source_file destination_file destination_mode \
+    allowed_root relative_suffix extra; do
     [ -z "$extra" ] || die "invalid target action" 65
     case "$action_type" in
       replace)
-        apply_replace "$action_label" "$source_file" "$destination_file" "$destination_mode"
+        apply_replace "$action_label" "$source_file" "$allowed_root" \
+          "$relative_suffix" "$destination_file" "$destination_mode"
         ;;
       remove)
-        apply_remove "$destination_file"
+        apply_remove "$allowed_root" "$relative_suffix" "$destination_file"
         ;;
       *) die "invalid target action type: $action_type" 65 ;;
     esac
@@ -478,7 +548,8 @@ operation_install() {
   prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
     "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
 
-  apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
+  apply_scoped_replace policy "$OAW_OPERATION_TEMP/policy" \
+    "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
   apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
   apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
 }
@@ -535,7 +606,8 @@ operation_update() {
   prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
     "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
 
-  apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
+  apply_scoped_replace policy "$OAW_OPERATION_TEMP/policy" \
+    "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
   apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
   apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
 }
@@ -617,11 +689,12 @@ operation_uninstall() {
 
   apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
   if [ -s "$OAW_OPERATION_TEMP/remaining-records" ]; then
-    apply_replace state "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+    apply_scoped_replace state "$OAW_OPERATION_TEMP/state" \
+      "$OAW_XDG_STATE_HOME" "$OAW_STATE_FILE" 600
   else
     if [ "$retain_policy" -eq 0 ]; then
-      apply_remove "$OAW_POLICY_DESTINATION"
+      apply_scoped_remove "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION"
     fi
-    apply_remove "$OAW_STATE_FILE"
+    apply_scoped_remove "$OAW_XDG_STATE_HOME" "$OAW_STATE_FILE"
   fi
 }

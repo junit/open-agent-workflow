@@ -557,3 +557,243 @@ assert_artifact_snapshot "$OAW_LATE_STATE" "$OAW_LATE_STATE_BEFORE" \
   "multi-candidate uninstall"
 
 pass "retention preflight validates every matching candidate before mutation"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_PROJECT="$OAW_SANDBOX/project with symlink"
+OAW_OUTSIDE=$OAW_SANDBOX/outside
+mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE/rules"
+printf 'outside sentinel\n' >"$OAW_OUTSIDE/sentinel"
+OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
+ln -s "$OAW_OUTSIDE" "$OAW_PROJECT/.cursor"
+OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/rules/open-agent-workflow.mdc
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+
+run_oaw install --project "$OAW_PROJECT" --target cursor
+[ "$OAW_STATUS" -ne 0 ] || fail "symlinked project component allowed an outside write"
+assert_contains "$OAW_PROJECT_PHYSICAL/.cursor" \
+  "symlinked project component diagnostic identifies the unsafe component"
+[ ! -e "$OAW_OUTSIDE_TARGET" ] || fail "symlinked project component created an outside adapter"
+assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
+  "symlinked project component install"
+[ ! -e "$OAW_POLICY" ] || fail "symlinked project component install created policy before preflight"
+[ ! -e "$OAW_PROJECT_STATE" ] ||
+  fail "symlinked project component install created state before preflight"
+
+pass "project intermediate symlinks cannot redirect adapter writes"
+
+assert_project_final_symlink_rejected() {
+  local target_id=$1
+  local relative_target=$2
+  local link_scope=$3
+  local project_physical=
+  local project_id=
+  local project_target=
+  local link_destination=
+  local sentinel_before=
+  local project_state=
+  local policy_path=
+
+  cleanup_sandbox
+  setup_sandbox
+  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_PROJECT="$OAW_SANDBOX/project with final symlink"
+  mkdir -p "$OAW_PROJECT/$(dirname -- "$relative_target")" "$OAW_SANDBOX/outside"
+  project_physical=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+  project_target=$project_physical/$relative_target
+  case "$link_scope" in
+    inside) link_destination=$project_physical/link-sentinel ;;
+    outside) link_destination=$OAW_SANDBOX/outside/link-sentinel ;;
+    *) fail "unknown final symlink scope: $link_scope" ;;
+  esac
+  printf 'final symlink sentinel\n' >"$link_destination"
+  sentinel_before=$(artifact_snapshot "$link_destination")
+  ln -s "$link_destination" "$project_target"
+  project_id=$(printf '%s' "$project_physical" | cksum | awk '{ print $1 "-" $2 }')
+  project_state=$OAW_STATE/open-agent-workflow/installations/projects/$project_id.state
+  policy_path=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+
+  run_oaw install --project "$OAW_PROJECT" --target "$target_id"
+  [ "$OAW_STATUS" -ne 0 ] || fail "$target_id accepted a final $link_scope symlink"
+  assert_contains "$project_target" "$target_id final symlink diagnostic identifies the target"
+  [ -L "$project_target" ] || fail "$target_id final symlink was replaced"
+  assert_artifact_snapshot "$link_destination" "$sentinel_before" \
+    "$target_id final symlink install"
+  [ ! -e "$policy_path" ] || fail "$target_id final symlink install created policy"
+  [ ! -e "$project_state" ] || fail "$target_id final symlink install created state"
+}
+
+assert_project_final_symlink_rejected cursor .cursor/rules/open-agent-workflow.mdc outside
+assert_project_final_symlink_rejected codex AGENTS.md outside
+assert_project_final_symlink_rejected cursor .cursor/rules/open-agent-workflow.mdc inside
+
+pass "project final symlinks are rejected inside and outside scope"
+
+run_oaw_with_roots() {
+  local custom_home=$1
+  local custom_config=$2
+  local custom_state=$3
+  shift 3
+
+  OAW_OUTPUT_FILE=$OAW_SANDBOX/output
+  set +e
+  (
+    cd "$OAW_SANDBOX"
+    HOME="$custom_home" \
+      XDG_CONFIG_HOME="$custom_config" \
+      XDG_STATE_HOME="$custom_state" \
+      PATH="$OAW_PATH" \
+      bash "$OAW_INSTALLER" "$@"
+  ) >"$OAW_OUTPUT_FILE" 2>&1
+  OAW_STATUS=$?
+  set -e
+  OAW_OUTPUT=$(cat "$OAW_OUTPUT_FILE")
+}
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_CONTROL_HOME=$(printf '%s\nbad' "$OAW_HOME")
+run_oaw_with_roots "$OAW_CONTROL_HOME" "$OAW_CONFIG" "$OAW_STATE" \
+  install --target codex
+[ "$OAW_STATUS" -ne 0 ] || fail "control-character HOME was accepted"
+assert_contains "control characters" "control-character HOME diagnostic is explicit"
+assert_empty_dir "$OAW_CONFIG" "control-character HOME must not create policy"
+assert_empty_dir "$OAW_STATE" "control-character HOME must not create state"
+[ ! -e "$OAW_CONTROL_HOME/.codex/AGENTS.md" ] ||
+  fail "control-character HOME created a Codex target"
+
+pass "control characters in consumed roots fail before mutation"
+
+for OAW_ROOT_CASE in relative-home relative-config relative-state control-config control-state; do
+  cleanup_sandbox
+  setup_sandbox
+  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_CUSTOM_HOME=$OAW_HOME
+  OAW_CUSTOM_CONFIG=$OAW_CONFIG
+  OAW_CUSTOM_STATE=$OAW_STATE
+  OAW_ROOT_ERROR='root must be an absolute path'
+  case "$OAW_ROOT_CASE" in
+    relative-home) OAW_CUSTOM_HOME=relative-home ;;
+    relative-config) OAW_CUSTOM_CONFIG=relative-config ;;
+    relative-state) OAW_CUSTOM_STATE=relative-state ;;
+    control-config)
+      OAW_CUSTOM_CONFIG=$(printf '%s\tbad' "$OAW_CONFIG")
+      OAW_ROOT_ERROR='XDG_CONFIG_HOME contains control characters'
+      ;;
+    control-state)
+      OAW_CUSTOM_STATE=$(printf '%s\rbad' "$OAW_STATE")
+      OAW_ROOT_ERROR='XDG_STATE_HOME contains control characters'
+      ;;
+    *) fail "unknown hostile root fixture: $OAW_ROOT_CASE" ;;
+  esac
+
+  run_oaw_with_roots "$OAW_CUSTOM_HOME" "$OAW_CUSTOM_CONFIG" "$OAW_CUSTOM_STATE" \
+    install --target codex
+  [ "$OAW_STATUS" -ne 0 ] || fail "$OAW_ROOT_CASE was accepted"
+  assert_contains "$OAW_ROOT_ERROR" "$OAW_ROOT_CASE diagnostic"
+  assert_empty_dir "$OAW_CONFIG" "$OAW_ROOT_CASE must not change the normal config root"
+  assert_empty_dir "$OAW_STATE" "$OAW_ROOT_CASE must not change the normal state root"
+  [ ! -e "$OAW_HOME/.codex/AGENTS.md" ] || fail "$OAW_ROOT_CASE created a Codex target"
+  [ ! -e "$OAW_SANDBOX/relative-home" ] || fail "$OAW_ROOT_CASE created a relative HOME"
+  [ ! -e "$OAW_SANDBOX/relative-config" ] || fail "$OAW_ROOT_CASE created a relative config root"
+  [ ! -e "$OAW_SANDBOX/relative-state" ] || fail "$OAW_ROOT_CASE created a relative state root"
+done
+
+pass "relative and control-character HOME/XDG roots fail before mutation"
+
+run_oaw_with_codex_home() {
+  local codex_home=$1
+  shift
+
+  OAW_OUTPUT_FILE=$OAW_SANDBOX/output
+  set +e
+  HOME="$OAW_HOME" \
+    XDG_CONFIG_HOME="$OAW_CONFIG" \
+    XDG_STATE_HOME="$OAW_STATE" \
+    CODEX_HOME="$codex_home" \
+    PATH="$OAW_PATH" \
+    bash "$OAW_INSTALLER" "$@" >"$OAW_OUTPUT_FILE" 2>&1
+  OAW_STATUS=$?
+  set -e
+  OAW_OUTPUT=$(cat "$OAW_OUTPUT_FILE")
+}
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_IGNORED_CODEX_HOME=$OAW_SANDBOX/outside-codex-home
+mkdir -p "$OAW_IGNORED_CODEX_HOME"
+printf 'CODEX_HOME sentinel\n' >"$OAW_IGNORED_CODEX_HOME/sentinel"
+OAW_CODEX_HOME_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_IGNORED_CODEX_HOME/sentinel")
+run_oaw_with_codex_home "$OAW_IGNORED_CODEX_HOME" install --target codex
+assert_status 0 "user Codex install ignores CODEX_HOME"
+[ -f "$OAW_HOME/.codex/AGENTS.md" ] || fail "Codex user target did not use HOME"
+assert_artifact_snapshot "$OAW_IGNORED_CODEX_HOME/sentinel" \
+  "$OAW_CODEX_HOME_SENTINEL_BEFORE" "user Codex install"
+[ ! -e "$OAW_IGNORED_CODEX_HOME/AGENTS.md" ] || fail "user install wrote through CODEX_HOME"
+
+OAW_PROJECT="$OAW_SANDBOX/project through parent/segment/../real project"
+mkdir -p "$OAW_SANDBOX/project through parent/segment" \
+  "$OAW_SANDBOX/project through parent/real project"
+run_oaw_with_codex_home "$OAW_IGNORED_CODEX_HOME" install --project "$OAW_PROJECT" --target codex
+assert_status 0 "project path through parent traversal resolves physically"
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+[ -f "$OAW_PROJECT_PHYSICAL/AGENTS.md" ] || fail "project Codex target missed the physical root"
+assert_artifact_snapshot "$OAW_IGNORED_CODEX_HOME/sentinel" \
+  "$OAW_CODEX_HOME_SENTINEL_BEFORE" "project Codex install"
+[ ! -e "$OAW_IGNORED_CODEX_HOME/AGENTS.md" ] || fail "project install wrote through CODEX_HOME"
+
+pass "CODEX_HOME is ignored and parent traversal resolves to the physical project root"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_OUTSIDE=$OAW_SANDBOX/outside-user-target
+mkdir -p "$OAW_OUTSIDE"
+printf 'outside user sentinel\n' >"$OAW_OUTSIDE/sentinel"
+OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
+ln -s "$OAW_OUTSIDE" "$OAW_HOME/.codex"
+OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/AGENTS.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+
+run_oaw install --target codex
+[ "$OAW_STATUS" -ne 0 ] || fail "symlinked HOME target component allowed an outside write"
+assert_contains "$OAW_HOME/.codex" \
+  "symlinked HOME target diagnostic identifies the unsafe component"
+[ ! -e "$OAW_OUTSIDE_TARGET" ] || fail "symlinked HOME target created an outside adapter"
+assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
+  "symlinked HOME target install"
+[ ! -e "$OAW_POLICY" ] || fail "symlinked HOME target install created policy"
+[ ! -e "$OAW_USER_STATE" ] || fail "symlinked HOME target install created state"
+
+pass "user target components cannot redirect writes through symlinks"
+
+cleanup_sandbox
+setup_sandbox
+OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_OUTSIDE=$OAW_SANDBOX/outside-policy
+mkdir -p "$OAW_OUTSIDE"
+printf 'outside policy sentinel\n' >"$OAW_OUTSIDE/sentinel"
+OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
+ln -s "$OAW_OUTSIDE" "$OAW_CONFIG/open-agent-workflow"
+OAW_OUTSIDE_POLICY=$OAW_OUTSIDE/ENGINEERING.md
+OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
+OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+
+run_oaw install --target codex
+[ "$OAW_STATUS" -ne 0 ] || fail "symlinked policy directory allowed an outside write"
+assert_contains "$OAW_CONFIG/open-agent-workflow" \
+  "symlinked policy diagnostic identifies the unsafe component"
+[ ! -e "$OAW_OUTSIDE_POLICY" ] || fail "symlinked policy directory created an outside policy"
+assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
+  "symlinked policy install"
+[ ! -e "$OAW_USER_TARGET" ] || fail "symlinked policy install created a user target"
+[ ! -e "$OAW_USER_STATE" ] || fail "symlinked policy install created state"
+
+pass "XDG policy components cannot redirect writes through symlinks"
