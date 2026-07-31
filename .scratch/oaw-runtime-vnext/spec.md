@@ -29,6 +29,9 @@ black-box parity command by command.
 - Separate Request Mode, Workflow Complexity, and Risk Class.
 - Treat Superpowers, Matt, and ECC as built-in Providers in an extensible
   Capability registry, not as a closed enumeration.
+- Preserve complete single-Provider lifecycles for Superpowers, Matt, and ECC
+  while allowing any of them to supply bounded specialist Capabilities in a
+  different Recipe.
 - Let users register inert third-party Provider Descriptors and create custom
   Capability-backed Profiles.
 - Discover built-in Provider installations dynamically and deterministically.
@@ -175,6 +178,12 @@ oaw/ecc
 These are built-in integration records, not bundled Provider content. Third
 parties use qualified IDs such as `acme/engineering-suite`.
 
+A Provider may expose both lifecycle Capabilities and specialist Capabilities.
+Its role is determined by the selected Recipe: the same Provider Instance can
+own a complete lifecycle in one Profile and act as a Bounded Add-on or typed
+Incident Handler in another. OAW never reduces a Provider to its strongest
+specialty or assumes completeness from its brand.
+
 A Provider Descriptor declares identity, schema and descriptor versions,
 declarative discovery probes, Capability declarations, maximum effects, and
 Host Bindings. It cannot contain commands, scripts, executable templates,
@@ -234,6 +243,12 @@ checks incident and loop closure, and emits a deterministic canonical Execution
 Graph digest. The graph may contain remediation and recovery cycles; it is not
 required to be a DAG.
 
+A full-family Recipe is valid when one Provider Instance supplies verified
+Capabilities for every responsibility required by that Recipe. This rule applies
+equally to built-in and user-registered Providers. Capability verification, not
+OAW preference or comparative strength, determines whether a full-family Recipe
+is eligible.
+
 The Lifecycle Bundle pins user selection, exact Recipe version and digest,
 Provider Instances, Profile Bindings, add-ons, Configuration Snapshot, and
 Execution Graph digest. It is immutable. Stable switching creates a new Bundle
@@ -241,19 +256,27 @@ generation and revokes outstanding Grants from the prior generation.
 
 ### 9.1 Built-in Recipes
 
-- `oaw/delivery`: Superpowers-backed standard feature and delivery lifecycle.
+- `oaw/delivery`: Superpowers-backed complete delivery lifecycle, available only
+  when its full required Capability set is verified.
 - `oaw/domain-engineering`: Matt-backed complete domain engineering lifecycle,
   available only when a full Matt Capability set is verified.
+- `oaw/ecc-engineering`: ECC-backed complete engineering lifecycle covering
+  discovery, specification and planning, implementation, testing, debugging and
+  build repair, review, delegation, verification, and completion. It is
+  available only when the complete required ECC Capability set is verified.
 - `oaw/reliable-feature`: Matt owns requirements, domain, specification,
   ticketing, TDD, and functional debugging; Superpowers owns executable plans,
   workspace, implementation, review, remediation, verification, and completion;
   ECC build/type repair is an optional typed Incident Handler.
 - `oaw/hardening`: a composed hardening lifecycle using specification,
   orchestration, ECC specialist handlers/checkpoints, remediation, review, and
-  verification. It is not an ECC-only full lifecycle.
+  verification. It remains distinct from the ECC-owned full-family Recipe.
 
-Compatibility aliases map `SP-FULL`, `MATT-FULL`, and `MATT-SP-HYBRID` to the
-first three Recipes. `ECC-FULL` is deprecated without a silent alias.
+Compatibility aliases map `SP-FULL` to `oaw/delivery`, `MATT-FULL` to
+`oaw/domain-engineering`, `ECC-FULL` to `oaw/ecc-engineering`, and
+`MATT-SP-HYBRID` to `oaw/reliable-feature`. These aliases are explicit catalog
+records and remain selectable; availability still requires the mapped Recipe's
+Capabilities to verify.
 `CUSTOM-LOCKED` becomes a UI action for selecting a user-defined Profile, not a
 Profile itself.
 
@@ -481,11 +504,10 @@ Existing TSV Install State remains separate from Runtime State. Existing
 Policy-only tasks are not imported. Canonical policy paths remain stable during
 migration, and existing profile choices are never silently rewritten.
 
-An active Policy-only `ECC-FULL` lock may finish under the legacy policy or
-switch explicitly at a Stable Boundary. Its tracker remains legacy provenance
-and is never compiled into Runtime State. New Runtime selection of `ECC-FULL`
-returns `LEGACY_PROFILE_UNSUPPORTED` and presents `oaw/hardening` plus eligible
-user-defined Profiles; no alias or automatic conversion is applied.
+An active Policy-only `ECC-FULL` lock remains a valid complete-lifecycle choice.
+Like every existing Policy-only task, it is not silently imported into Runtime
+State; it may finish under the Policy Plane or explicitly adopt
+`oaw/ecc-engineering` at a Stable Boundary after Capability verification.
 
 ## 18. Verification Strategy
 
@@ -514,6 +536,10 @@ cross-platform release builds, and a WSL smoke test.
 - Only Workflow Mode blocks for Profile Selection.
 - Built-in and user Providers use the same Descriptor, Instance, Capability,
   and Binding model.
+- `SP-FULL`, `MATT-FULL`, and `ECC-FULL` remain explicit complete-lifecycle
+  choices, subject to verification of their mapped Recipe's Capability set.
+- A Provider's lifecycle or specialist role is derived from the selected Recipe,
+  not from a hardcoded Provider category.
 - Project configuration cannot grant trust or widen authority.
 - Profile Recipes compile deterministically and reject missing, duplicate, or
   ambiguous ownership.

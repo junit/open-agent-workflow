@@ -83,7 +83,10 @@ _Avoid_: Provider, lifecycle owner
 
 **Provider**:
 An independently installed collection of engineering skills, agents, or tools.
-Being a Provider does not imply owning a complete engineering lifecycle.
+Being a Provider does not by itself imply or exclude complete lifecycle
+ownership. The selected Profile Recipe and verified Capability coverage
+determine whether one Provider Instance is a Lifecycle Owner, Stage Owner, or
+Bounded Add-on for a Deliverable.
 _Avoid_: Workflow family
 
 **Provider Descriptor**:
@@ -126,7 +129,9 @@ _Avoid_: Provider catalog
 **Workflow Family**:
 A coherent, versioned engineering methodology that covers every applicable
 canonical lifecycle responsibility. A Provider qualifies only when such a
-complete recipe is explicitly defined and verified.
+complete recipe is explicitly defined and its required Capabilities are
+verified. The same Provider may still expose specialist Capabilities for use by
+other Recipes.
 _Avoid_: Provider
 
 **Bounded Add-on**:

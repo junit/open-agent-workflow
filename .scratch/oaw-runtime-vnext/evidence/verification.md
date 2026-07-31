@@ -12,8 +12,8 @@
 | `rtk bash tests/run.sh` | Exit 0: every existing installer test script passed; terminal output was `PASS: all implemented installer cases passed` |
 | Standard unfinished-work marker scan across the design artifacts | No matches (`rg` exit 1 with empty output, as expected) |
 | Superseded-contract wording scan across the design artifacts | No matches (`rg` exit 1 with empty output, as expected) |
-| Required-contract scan | Found `executor_topology`, `CAPABILITY_SELECTION_REQUIRED`, `DISPATCH_PREPARED`, `DISPATCH_AUTHORIZED`, `LEGACY_PROFILE_UNSUPPORTED`, and non-authoritative shadow migration wording |
-| File-size check | Largest design artifact is `spec.md` at 532 lines; every file remains below the 800-line repository limit |
+| Required-contract scan | Found `executor_topology`, `CAPABILITY_SELECTION_REQUIRED`, `DISPATCH_PREPARED`, `DISPATCH_AUTHORIZED`, explicit `ECC-FULL` to `oaw/ecc-engineering` mapping, and non-authoritative shadow migration wording |
+| File-size check | Largest design artifact is `spec.md` at 558 lines; every file remains below the 800-line repository limit |
 | `rtk git diff --check` | Exit 0 with no whitespace errors |
 
 The full Bash suite exercised CLI parsing, Provider detection, user and project

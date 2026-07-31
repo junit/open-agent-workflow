@@ -51,6 +51,11 @@ completion_owner: superpowers
   Capability-backed recipes.
 - Ship built-in Provider Descriptors for Superpowers, Matt, and ECC without
   treating those Providers as a closed registry.
+- Preserve `ECC-FULL` as a complete ECC-owned lifecycle mapped to the built-in
+  `oaw/ecc-engineering` Recipe. ECC may instead act as a bounded specialist when
+  a different selected Recipe assigns it only that role.
+- Determine full-family eligibility from verified lifecycle Capability coverage,
+  using the same rule for built-in and user-registered Providers.
 - Use dual-track Provider registration: built-in dynamic discovery and
   user-trusted third-party descriptors.
 - Merge built-in, user, and trusted-project configuration without allowing the
