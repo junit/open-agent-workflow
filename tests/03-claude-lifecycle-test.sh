@@ -153,15 +153,14 @@ assert_status 0 "install before shared policy reference test"
 OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
 OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
-OAW_OTHER_STATE=$OAW_STATE/open-agent-workflow/installations/other.state
-OAW_OTHER_CLAUDE=$OAW_HOME/.claude-other/CLAUDE.md
-mkdir -p "$(dirname -- "$OAW_OTHER_CLAUDE")"
-cp "$OAW_CLAUDE" "$OAW_OTHER_CLAUDE"
-awk -v other_target="$OAW_OTHER_CLAUDE" '
-  BEGIN { FS = OFS = "\t" }
-  $1 == "target" { $3 = other_target }
-  { print }
-' "$OAW_INSTALL_STATE" >"$OAW_OTHER_STATE"
+OAW_OTHER_PROJECT="$OAW_SANDBOX/other project"
+mkdir -p "$OAW_OTHER_PROJECT"
+run_oaw install --project "$OAW_OTHER_PROJECT" --target claude
+assert_status 0 "install canonical project policy reference"
+OAW_OTHER_PROJECT=$(CDPATH='' cd -P -- "$OAW_OTHER_PROJECT" && pwd -P)
+OAW_OTHER_PROJECT_ID=$(printf '%s' "$OAW_OTHER_PROJECT" | cksum | awk '{ print $1 "-" $2 }')
+OAW_OTHER_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_OTHER_PROJECT_ID.state
+OAW_OTHER_CLAUDE=$OAW_OTHER_PROJECT/.claude/CLAUDE.md
 
 run_oaw uninstall --target claude
 assert_status 0 "uninstall with another policy reference"

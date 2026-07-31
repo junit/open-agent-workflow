@@ -138,6 +138,7 @@ prepare_policy_state_actions() {
     load_state_file "$candidate_state" "$candidate_records"
     [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || continue
     verify_policy_state_binding "$candidate_state" "$candidate_records"
+    verify_state_target_records "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
     [ -n "$installed_policy_checksum" ] &&
       [ "$STATE_POLICY_CHECKSUM" = "$installed_policy_checksum" ] ||
       die "managed policy has drifted" 65
@@ -147,6 +148,32 @@ prepare_policy_state_actions() {
     add_target_action "$actions_file" replace "state-reference-$candidate_index" \
       "$candidate_output" "$candidate_state" 600
   done
+}
+
+other_live_state_references_policy() {
+  local installations_dir=$1
+  local excluded_state=$2
+  local policy_path=$3
+  local candidate_state=
+  local candidate_records=
+  local candidate_index=0
+  local found_reference=0
+
+  for candidate_state in \
+    "$installations_dir"/*.state \
+    "$installations_dir"/projects/*.state; do
+    [ -e "$candidate_state" ] || continue
+    [ "$candidate_state" = "$excluded_state" ] && continue
+    candidate_index=$((candidate_index + 1))
+    candidate_records="$OAW_OPERATION_TEMP/retention-records-$candidate_index"
+    load_state_file "$candidate_state" "$candidate_records"
+    [ "$STATE_POLICY_PATH" = "$policy_path" ] || continue
+    verify_policy_state_binding "$candidate_state" "$candidate_records"
+    verify_state_target_records "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
+    found_reference=1
+  done
+
+  [ "$found_reference" -eq 1 ]
 }
 
 write_selected_target_ids() {
@@ -168,6 +195,23 @@ write_selected_target_ids() {
     esac
     printf '%s\n' "$selected_target" >>"$output_file"
   done
+}
+
+verify_untracked_selected_markers() {
+  local selected_ids=$1
+  local selected_target=
+  local target_mode=
+  local target_path=
+  local target_status=
+
+  while IFS= read -r selected_target; do
+    target_mode=$(target_ownership "$selected_target")
+    [ "$target_mode" = managed-block ] || continue
+    target_path=$(target_destination "$selected_target")
+    target_status=$(managed_block_status "$target_path")
+    [ "$target_status" = absent ] ||
+      die "untracked OAW markers already exist: $selected_target at $target_path" 65
+  done <"$selected_ids"
 }
 
 add_target_action() {
@@ -255,40 +299,51 @@ verify_installed_policy_state() {
     die "managed policy has drifted" 65
 }
 
-verify_installed_target_record() {
-  local target_id=$1
-  local target_path=$2
-  local target_mode=$3
-  local target_checksum=$4
+verify_state_target_record() {
+  local record_scope=$1
+  local record_project_root=$2
+  local target_id=$3
+  local target_path=$4
+  local target_mode=$5
+  local target_checksum=$6
   local expected_target_path=
   local actual_target_checksum=
   local target_status=
 
-  expected_target_path=$(target_destination "$target_id")
-  [ "$target_path" = "$expected_target_path" ] || die "installed target path does not match" 65
+  expected_target_path=$(
+    OAW_SCOPE=$record_scope
+    OAW_PROJECT_ROOT=$record_project_root
+    target_destination "$target_id"
+  )
+  [ "$target_path" = "$expected_target_path" ] ||
+    die "installed target path does not match: $target_id at $target_path" 65
   [ "$target_mode" = "$(target_ownership "$target_id")" ] ||
-    die "installed target ownership does not match" 65
+    die "installed target ownership does not match: $target_id at $target_path" 65
   case "$target_mode" in
     managed-block)
       target_status=$(managed_block_status "$target_path")
-      [ "$target_status" = present ] || die "managed target block has drifted" 65
+      [ "$target_status" = present ] ||
+        die "managed target block has drifted: $target_id at $target_path" 65
       extract_managed_block "$target_path" "$OAW_OPERATION_TEMP/current-block-$target_id"
       actual_target_checksum=$(checksum_file "$OAW_OPERATION_TEMP/current-block-$target_id")
       [ "$actual_target_checksum" = "$target_checksum" ] ||
-        die "managed target block has drifted" 65
+        die "managed target block has drifted: $target_id at $target_path" 65
       ;;
     owned-file)
-      [ -f "$target_path" ] || die "owned target file has drifted" 65
+      [ -f "$target_path" ] ||
+        die "owned target file has drifted: $target_id at $target_path" 65
       actual_target_checksum=$(checksum_file "$target_path")
       [ "$actual_target_checksum" = "$target_checksum" ] ||
-        die "owned target file has drifted" 65
+        die "owned target file has drifted: $target_id at $target_path" 65
       ;;
     *) die "unknown target ownership mode: $target_mode" 65 ;;
   esac
 }
 
-verify_installed_target_records() {
+verify_state_target_records() {
   local target_records=$1
+  local record_scope=$2
+  local record_project_root=$3
   local tab=
   local target_id=
   local target_path=
@@ -299,8 +354,15 @@ verify_installed_target_records() {
 
   tab=$(printf '\t')
   while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
-    verify_installed_target_record "$target_id" "$target_path" "$target_mode" "$target_checksum"
+    verify_state_target_record "$record_scope" "$record_project_root" \
+      "$target_id" "$target_path" "$target_mode" "$target_checksum"
   done <"$target_records"
+}
+
+verify_installed_target_records() {
+  local target_records=$1
+
+  verify_state_target_records "$target_records" "$OAW_SCOPE" "$OAW_PROJECT_ROOT"
 }
 
 operation_install() {
@@ -444,8 +506,11 @@ operation_update() {
   : >"$OAW_OPERATION_TEMP/target-actions"
   write_selected_target_ids "$OAW_OPERATION_TEMP/selected-ids"
 
-  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records" ||
+  if [ ! -f "$OAW_STATE_FILE" ]; then
+    verify_untracked_selected_markers "$OAW_OPERATION_TEMP/selected-ids"
     die "no installation state; run install first" 66
+  fi
+  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
   verify_installed_policy_state
   verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
   select_target_records "$OAW_OPERATION_TEMP/existing-records" \
@@ -482,7 +547,6 @@ operation_uninstall() {
   local target_path=
   local target_mode=
   local target_checksum=
-  local target_status=
   local target_origin=
   local extra=
   local reference_status=0
@@ -494,12 +558,7 @@ operation_uninstall() {
   write_selected_target_ids "$OAW_OPERATION_TEMP/selected-ids"
 
   if [ ! -f "$OAW_STATE_FILE" ]; then
-    while IFS= read -r selected_target; do
-      target_path=$(target_destination "$selected_target")
-      target_status=$(managed_block_status "$target_path")
-      [ "$target_status" = absent ] ||
-        die "untracked OAW markers already exist: $target_path" 65
-    done <"$OAW_OPERATION_TEMP/selected-ids"
+    verify_untracked_selected_markers "$OAW_OPERATION_TEMP/selected-ids"
     while IFS= read -r selected_target; do
       note "unchanged: $selected_target"
     done <"$OAW_OPERATION_TEMP/selected-ids"
@@ -547,7 +606,7 @@ operation_uninstall() {
       "$OAW_PROJECT_ROOT" "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" \
       "$OAW_OPERATION_TEMP/remaining-records"
   else
-    if other_state_references_policy "$OAW_INSTALLATIONS_DIR" "$OAW_STATE_FILE" \
+    if other_live_state_references_policy "$OAW_INSTALLATIONS_DIR" "$OAW_STATE_FILE" \
       "$OAW_POLICY_DESTINATION"; then
       retain_policy=1
     else
