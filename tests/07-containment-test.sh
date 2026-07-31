@@ -199,6 +199,7 @@ OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/rules/open-agent-workflow.mdc
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
 
 run_oaw_with_mkdir_race
 [ "$OAW_STATUS" -ne 0 ] ||
@@ -209,6 +210,7 @@ assert_contains "$OAW_PROJECT_PHYSICAL/.cursor" \
 [ ! -e "$OAW_OUTSIDE/rules" ] || fail "apply-time parent swap created an outside directory"
 assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
   "apply-time parent swap"
+[ ! -e "$OAW_POLICY" ] || fail "apply-time parent swap created canonical policy"
 [ ! -e "$OAW_PROJECT_STATE" ] || fail "apply-time parent swap created installation state"
 
 pass "apply revalidation blocks a parent symlink introduced after preparation"

@@ -397,10 +397,10 @@ apply_operation() {
 
   case "$operation_name" in
     install|update)
-      apply_scoped_replace policy "$policy_source" \
-        "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
       apply_target_actions "$target_actions"
       apply_directory_removals "$directory_actions" "$target_actions"
+      apply_scoped_replace policy "$policy_source" \
+        "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
       apply_target_actions "$state_actions"
       if [ "$OAW_DRY_RUN" -eq 0 ]; then
         verify_created_owned_directories "$planned_directories" "$created_directories"
