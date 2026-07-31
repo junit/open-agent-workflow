@@ -6,6 +6,11 @@
 
 **Architecture:** A prepare phase validates roots, state, markers, checksums, ownership, containment, and every destination before an apply phase can run. Prepared actions are inert tab-delimited data in a private temporary directory; forced operations back up every affected existing artifact before the first mutation.
 
+**Security ownership:** Task 3 is the canonical implementation of the hostile
+symlink and TOCTOU containment deferred from Ticket 04. Do not duplicate a
+temporary containment layer in the earlier ticket; release remains blocked
+until this task and its adversarial tests pass.
+
 **Tech Stack:** Bash 3.2, POSIX path checks, `cksum`, `mktemp`, atomic renames, black-box adversarial tests.
 
 **Canonical sources:** `.scratch/open-agent-workflow/spec.md`, `.scratch/open-agent-workflow/issues/05-drift-backups-and-hardening.md`, ADR 0002.

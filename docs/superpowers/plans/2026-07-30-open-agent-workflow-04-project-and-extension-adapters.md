@@ -10,7 +10,11 @@ scope and state-root inputs instead of assuming user scope. The canonical
 policy remains in OAW's XDG config namespace, while each project's installation
 state is isolated by a deterministic project identity and validates the stored
 physical root before use. Codex and OpenCode share one project `AGENTS.md`
-bootstrap; extension targets use whole-file ownership.
+bootstrap; extension targets use whole-file ownership. Because every scope
+references one stable canonical policy path, an operation that changes that
+policy prepares metadata replacements for every valid referencing state while
+leaving other scopes' adapter files untouched. Hostile symlink and TOCTOU
+containment remains the release-blocking responsibility of Ticket 05 Task 3.
 
 **Tech Stack:** Bash 3.2, Markdown/MDC target formats, `cksum` project identity, existing lifecycle engine and black-box harness.
 
@@ -242,4 +246,162 @@ Expected: all Ticket 01-04 tests pass; user and project repeated installs are by
 ```bash
 git add lib/operations.sh lib/commands/check.sh tests/05-project-adapters-test.sh
 git commit -m "feat: manage project workflow adapters"
+```
+
+### Task 5: Coordinate the shared canonical policy across scopes
+
+**Files:**
+- Modify: `lib/state.sh`
+- Modify: `lib/operations.sh`
+- Create: `tests/05-policy-coordination-test.sh`
+- Modify: `tests/run.sh`
+
+- [ ] **Step 1: Write the failing cross-scope policy tests**
+
+Use a new test file because `tests/05-project-adapters-test.sh` is already 794
+lines. Source `tests/test-helper.sh`, use `setup_sandbox`/`run_oaw`, and register
+the new script immediately after the project-adapter suite in `tests/run.sh`.
+Install one user target and one project target from the original checkout, copy
+`install.sh`, `lib/`, `policy/`, and `VERSION` into a sandbox update checkout,
+then change both copied `VERSION` and copied `policy/ENGINEERING.md`. Cover these
+tracer bullets:
+
+```text
+project update -> user state receives the new version/checksum -> both checks clean
+user update -> project state receives the new version/checksum -> both checks clean
+new-scope install from a changed checkout -> older scope state is synchronized
+dry run -> policy, every state, and every adapter fingerprint remain unchanged
+updated scope final uninstall -> policy survives for the other clean scope
+final remaining-scope uninstall -> policy and final state are removed
+```
+
+For every coordinated operation, snapshot the non-selected adapter's path,
+checksum, inode, mtime, and size and require an identical fingerprint afterward.
+Require every referencing state to contain the source checkout's literal version
+and the exact checksum of the installed canonical policy.
+
+- [ ] **Step 2: Verify RED**
+
+Run: `bash tests/05-policy-coordination-test.sh`
+
+Expected: FAIL after the first changed-checkout update because the other scope
+reports `drift`; uninstalling the updated scope may also remove the still-needed
+canonical policy.
+
+- [ ] **Step 3: Prepare replacement metadata for every valid policy reference**
+
+Keep the stable policy path from ADR 0002. In `lib/state.sh`, make policy
+reference discovery path-based after full state parsing:
+
+```bash
+state_file_references_policy() (
+  local input_file=$1
+  local policy_path=$2
+  local target_records=
+
+  target_records=$(mktemp "${TMPDIR:-/tmp}/oaw-state-records.XXXXXX") ||
+    die "cannot create state validation workspace" 73
+  trap 'rm -f -- "$target_records"' EXIT HUP INT TERM
+  load_state_file "$input_file" "$target_records"
+  [ "$STATE_POLICY_PATH" = "$policy_path" ]
+)
+```
+
+Change `other_state_references_policy` and its uninstall caller to use the
+validated path reference without requiring the old checksum. This prevents an
+installed scope from losing the policy merely because another state records an
+older checksum.
+
+In `lib/operations.sh`, add this Bash 3.2-compatible preparation helper:
+
+```bash
+prepare_policy_state_actions() {
+  local source_version=$1
+  local new_policy_checksum=$2
+  local excluded_state=$3
+  local actions_file=$4
+  local installed_policy_checksum=
+  local candidate_state=
+  local candidate_records=
+  local candidate_output=
+  local candidate_index=0
+
+  if [ -f "$OAW_POLICY_DESTINATION" ]; then
+    installed_policy_checksum=$(checksum_file "$OAW_POLICY_DESTINATION")
+  fi
+
+  for candidate_state in \
+    "$OAW_INSTALLATIONS_DIR"/*.state \
+    "$OAW_INSTALLATIONS_DIR"/projects/*.state; do
+    [ -e "$candidate_state" ] || continue
+    [ "$candidate_state" = "$excluded_state" ] && continue
+    candidate_index=$((candidate_index + 1))
+    candidate_records="$OAW_OPERATION_TEMP/policy-records-$candidate_index"
+    candidate_output="$OAW_OPERATION_TEMP/policy-state-$candidate_index"
+    load_state_file "$candidate_state" "$candidate_records"
+    [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || continue
+    [ -n "$installed_policy_checksum" ] &&
+      [ "$STATE_POLICY_CHECKSUM" = "$installed_policy_checksum" ] ||
+      die "managed policy has drifted" 65
+    write_state_file "$candidate_output" "$source_version" "$STATE_SCOPE" \
+      "$STATE_PROJECT_ROOT" "$STATE_POLICY_PATH" "$new_policy_checksum" \
+      "$candidate_records"
+    add_target_action "$actions_file" replace "state-reference-$candidate_index" \
+      "$candidate_output" "$candidate_state" 600
+  done
+}
+```
+
+The helper enumerates `installations/*.state` and
+`installations/projects/*.state`, fully parses every candidate, skips the
+current scope state and states for another policy path, and requires each
+referencing state's recorded checksum to match the currently installed policy
+before preparing any mutation. For each clean reference it writes a new state
+file in `OAW_OPERATION_TEMP` with the new version/checksum and its original
+scope, project root, and target records, then adds a mode-600 replace action.
+Any invalid or stale referencing state aborts before policy, target, or state
+writes.
+
+After rendering the current scope state, install and update use this exact
+prepare/apply order:
+
+```bash
+: >"$OAW_OPERATION_TEMP/state-actions"
+write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
+new_policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
+add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
+  "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
+prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
+  "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
+
+apply_replace policy "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" 600
+apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
+apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
+```
+
+Declare `new_policy_checksum` locally in both operations. Remove their old
+direct `apply_replace state ...` calls. Dry run traverses the same action
+manifests but writes nothing. Other scopes' target action manifests remain
+empty.
+
+- [ ] **Step 4: Verify coordinated lifecycle behavior**
+
+Run: `bash tests/05-policy-coordination-test.sh`
+
+Expected: all user-to-project, project-to-user, new-scope install, dry-run,
+clean-check, fingerprint-preservation, and reference-aware uninstall cases pass.
+
+- [ ] **Step 5: Run Ticket 04 verification**
+
+Run: `bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh && bash tests/run.sh`
+
+Expected: all Ticket 01-04 cases pass, both scope checks remain clean after a
+policy change, non-selected adapter fingerprints are unchanged, and the policy
+survives until the final validated path reference is removed.
+
+- [ ] **Step 6: Commit policy-state coordination**
+
+```bash
+git add lib/state.sh lib/operations.sh tests/05-policy-coordination-test.sh tests/run.sh
+git commit -m "fix: synchronize canonical policy state"
 ```

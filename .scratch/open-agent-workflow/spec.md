@@ -165,6 +165,11 @@ operational troubleshooting in English and Chinese.
 - State records the source version, policy checksum, selected scope, targets,
   destinations, managed checksums, and backup references without evaluating
   state content as shell code.
+- The canonical policy has one stable OAW-owned XDG path. When an install or
+  update changes its version or checksum, every valid installation state that
+  references that path is updated in the same prepared operation; one scope
+  must not leave another scope falsely drifted. Uninstall retains the policy
+  until no valid installation state references its path.
 - A repeated install or update with identical inputs performs no content
   writes and reports an unchanged result.
 - Update reads artifacts only from the current checkout. Network fetching and
@@ -226,4 +231,3 @@ operational troubleshooting in English and Chinese.
 - Codex has a global instruction size limit. Thin entrypoints keep the
   canonical policy out of duplicated target files while still directing the
   agent to read it before workflow selection.
-

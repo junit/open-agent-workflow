@@ -9,6 +9,11 @@ adapters; 04 - Project-scope core and extension adapters.
 
 **Status:** ready-for-agent
 
+**Security ownership:** This ticket is the canonical owner of hostile symlink
+and TOCTOU containment deferred from Ticket 04. The branch is not release-ready
+until Task 3 rejects symlinked components and revalidates destinations at the
+mutation boundary.
+
 - [ ] Install state records version, policy checksum, scope, targets,
       destinations, managed checksums, ownership, and backup references in a
       data format that is parsed without shell evaluation.
@@ -30,4 +35,3 @@ adapters; 04 - Project-scope core and extension adapters.
 - [ ] Black-box security tests cover drift, forced backup and recovery data,
       marker corruption, containment, symlinks, hostile paths, partial-write
       prevention, and exact uninstall.
-
