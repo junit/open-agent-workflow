@@ -23,7 +23,7 @@
 - Create: `CODE_OF_CONDUCT.md`
 - Create: `CHANGELOG.md`
 - Create: `scripts/check-docs.sh`
-- Create: `tests/07-docs-test.sh`
+- Create: `tests/10-docs-test.sh`
 - Modify: `tests/run.sh`
 
 - [ ] **Step 1: Write failing required-document tests**
@@ -32,7 +32,7 @@ Assert Apache License 2.0 identifies year `2026` and copyright holder `Open Agen
 
 - [ ] **Step 2: Verify RED**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: FAIL listing the missing governance files.
 
@@ -46,14 +46,14 @@ Use the unmodified Apache-2.0 license body. Contribution documents must require 
 
 - [ ] **Step 5: Verify governance contracts**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: governance assertions pass; README and detailed-doc assertions remain RED.
 
 - [ ] **Step 6: Commit licensing and governance**
 
 ```bash
-git add LICENSE CONTRIBUTING.md CONTRIBUTING-zh.md SECURITY.md SECURITY-zh.md CODE_OF_CONDUCT.md CHANGELOG.md scripts/check-docs.sh tests/07-docs-test.sh tests/run.sh
+git add LICENSE CONTRIBUTING.md CONTRIBUTING-zh.md SECURITY.md SECURITY-zh.md CODE_OF_CONDUCT.md CHANGELOG.md scripts/check-docs.sh tests/10-docs-test.sh tests/run.sh
 git commit -m "docs: add open source project governance"
 ```
 
@@ -62,7 +62,7 @@ git commit -m "docs: add open source project governance"
 **Files:**
 - Create: `README.md`
 - Create: `README-zh.md`
-- Modify: `tests/07-docs-test.sh`
+- Modify: `tests/10-docs-test.sh`
 
 - [ ] **Step 1: Add failing README structure assertions**
 
@@ -70,7 +70,7 @@ Require both READMEs to contain language navigation and sections for background,
 
 - [ ] **Step 2: Verify RED**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: FAIL because root READMEs are absent.
 
@@ -94,14 +94,14 @@ Use `Open Agent Workflow（OAW）` as the product signal. Preserve command and p
 
 - [ ] **Step 5: Verify README parity**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: both entrypoint structures, CLI examples, caveats, and cross-language links pass.
 
 - [ ] **Step 6: Commit bilingual entrypoints**
 
 ```bash
-git add README.md README-zh.md tests/07-docs-test.sh
+git add README.md README-zh.md tests/10-docs-test.sh
 git commit -m "docs: explain Open Agent Workflow in two languages"
 ```
 
@@ -114,7 +114,7 @@ git commit -m "docs: explain Open Agent Workflow in two languages"
 - Create: `docs/zh/comparison.md`
 - Create: `docs/en/lifecycle.md`
 - Create: `docs/zh/lifecycle.md`
-- Modify: `tests/07-docs-test.sh`
+- Modify: `tests/10-docs-test.sh`
 
 - [ ] **Step 1: Add failing semantic coverage assertions**
 
@@ -122,7 +122,7 @@ Require the background pair to cover overlapping automatic triggers, cross-clien
 
 - [ ] **Step 2: Verify RED**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: FAIL listing absent detailed documents.
 
@@ -136,14 +136,14 @@ Mirror the canonical policy in explanatory prose without creating a second norma
 
 - [ ] **Step 5: Verify semantic coverage**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: all background, score, correction, and lifecycle assertions pass.
 
 - [ ] **Step 6: Commit workflow rationale**
 
 ```bash
-git add docs/en/background.md docs/zh/background.md docs/en/comparison.md docs/zh/comparison.md docs/en/lifecycle.md docs/zh/lifecycle.md tests/07-docs-test.sh
+git add docs/en/background.md docs/zh/background.md docs/en/comparison.md docs/zh/comparison.md docs/en/lifecycle.md docs/zh/lifecycle.md tests/10-docs-test.sh
 git commit -m "docs: document workflow arbitration model"
 ```
 
@@ -156,7 +156,7 @@ git commit -m "docs: document workflow arbitration model"
 - Create: `docs/zh/installer.md`
 - Create: `docs/en/adapters.md`
 - Create: `docs/zh/adapters.md`
-- Modify: `tests/07-docs-test.sh`
+- Modify: `tests/10-docs-test.sh`
 
 - [ ] **Step 1: Add failing implementation-parity checks**
 
@@ -164,7 +164,7 @@ Assert architecture docs name canonical config/state paths, pure renderers, prep
 
 - [ ] **Step 2: Verify RED**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: FAIL because architecture, installer, and adapter pairs are absent.
 
@@ -178,14 +178,14 @@ For Claude, Codex, Gemini, OpenCode, Cursor, Windsurf/Devin, Cline, Roo Code, an
 
 - [ ] **Step 5: Verify implementation/documentation parity**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: all paths, commands, support labels, URLs, dates, and caveats pass.
 
 - [ ] **Step 6: Commit operating documentation**
 
 ```bash
-git add docs/en/architecture.md docs/zh/architecture.md docs/en/installer.md docs/zh/installer.md docs/en/adapters.md docs/zh/adapters.md tests/07-docs-test.sh
+git add docs/en/architecture.md docs/zh/architecture.md docs/en/installer.md docs/zh/installer.md docs/en/adapters.md docs/zh/adapters.md tests/10-docs-test.sh
 git commit -m "docs: describe installer and adapter architecture"
 ```
 
@@ -198,7 +198,7 @@ git commit -m "docs: describe installer and adapter architecture"
 - Create: `docs/zh/security.md`
 - Create: `docs/en/troubleshooting.md`
 - Create: `docs/zh/troubleshooting.md`
-- Modify: `tests/07-docs-test.sh`
+- Modify: `tests/10-docs-test.sh`
 
 - [ ] **Step 1: Add failing extension and recovery checks**
 
@@ -206,7 +206,7 @@ Require extension docs to define metadata, target IDs, scopes, path ownership, r
 
 - [ ] **Step 2: Verify RED**
 
-Run: `bash tests/07-docs-test.sh`
+Run: `bash tests/10-docs-test.sh`
 
 Expected: FAIL listing the six absent guides.
 
@@ -220,13 +220,13 @@ Provide exact diagnostic sequences beginning with `./install.sh check`, then `up
 
 - [ ] **Step 5: Run Ticket 06 verification**
 
-Run: `bash scripts/check-docs.sh && bash tests/07-docs-test.sh && bash tests/run.sh`
+Run: `bash scripts/check-docs.sh && bash tests/10-docs-test.sh && bash tests/run.sh`
 
 Expected: all required bilingual pairs and local links pass; the full installer suite remains green; no documentation checker accesses the network.
 
 - [ ] **Step 6: Commit extension and operations guides**
 
 ```bash
-git add docs/en/extending-adapters.md docs/zh/extending-adapters.md docs/en/security.md docs/zh/security.md docs/en/troubleshooting.md docs/zh/troubleshooting.md tests/07-docs-test.sh
+git add docs/en/extending-adapters.md docs/zh/extending-adapters.md docs/en/security.md docs/zh/security.md docs/en/troubleshooting.md docs/zh/troubleshooting.md tests/10-docs-test.sh
 git commit -m "docs: publish adapter and recovery guides"
 ```
