@@ -33,7 +33,10 @@ prepare_installation_health() {
   trap cleanup_check_temp EXIT HUP INT TERM
 
   if (
-    load_state_file "$OAW_STATE_FILE" "$OAW_CHECK_TEMP/target-records" || exit $?
+    load_state_file "$OAW_STATE_FILE" "$OAW_CHECK_TEMP/target-records" \
+      "$OAW_CHECK_TEMP/directory-records" || exit $?
+    verify_owned_directory_records "$OAW_CHECK_TEMP/directory-records" \
+      "$OAW_CHECK_TEMP/target-records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
     printf '%s\t%s\t%s\n' \
       "$STATE_SCOPE" "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" \
       >"$OAW_CHECK_TEMP/metadata"

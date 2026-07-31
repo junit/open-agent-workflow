@@ -13,7 +13,8 @@ for test_script in \
   05-policy-coordination-test.sh \
   06-security-test.sh \
   07-containment-test.sh \
-  08-backup-test.sh; do
+  08-backup-test.sh \
+  09-transaction-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 

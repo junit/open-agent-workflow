@@ -32,6 +32,7 @@ usage() {
 . "$OAW_SOURCE_DIR/lib/managed.sh"
 . "$OAW_SOURCE_DIR/lib/state.sh"
 . "$OAW_SOURCE_DIR/lib/filesystem.sh"
+. "$OAW_SOURCE_DIR/lib/transaction.sh"
 . "$OAW_SOURCE_DIR/lib/backup.sh"
 . "$OAW_SOURCE_DIR/lib/operations.sh"
 . "$OAW_SOURCE_DIR/lib/force.sh"

@@ -8,6 +8,7 @@ STATE_PROJECT_ROOT=
 STATE_POLICY_PATH=
 STATE_POLICY_CHECKSUM=
 STATE_BACKUP_PATH=
+STATE_DIRECTORY_COUNT=0
 STATE_TARGET_ID=
 STATE_TARGET_PATH=
 STATE_TARGET_MODE=
@@ -37,6 +38,26 @@ state_checksum_is_valid() {
     *:*:*) return 1 ;;
     *) return 0 ;;
   esac
+}
+
+validate_directory_records() {
+  local records_file=$1
+  local directory_path=
+  local directory_count=0
+
+  [ -f "$records_file" ] || die "directory records are missing" 65
+  while IFS= read -r directory_path; do
+    state_field_is_safe "$directory_path" && [ -n "$directory_path" ] ||
+      die "directory record cannot be serialized" 65
+    case "$directory_path" in
+      /*) ;;
+      *) die "invalid owned directory" 65 ;;
+    esac
+    directory_count=$((directory_count + 1))
+  done <"$records_file"
+  [ "$(LC_ALL=C sort "$records_file" | uniq -d | wc -l | tr -d ' ')" -eq 0 ] ||
+    die "duplicate owned directory" 65
+  STATE_DIRECTORY_COUNT=$directory_count
 }
 
 validate_target_records() {
@@ -123,7 +144,9 @@ write_state_file() {
   local policy_checksum=$6
   local target_records=$7
   local backup_path=${8:-}
+  local directory_records=${9:-}
   local tab=
+  local directory_path=
   local target_id=
   local target_path=
   local target_mode=
@@ -161,6 +184,9 @@ write_state_file() {
     esac
   fi
   validate_target_records "$target_records" "$scope"
+  if [ -n "$directory_records" ]; then
+    validate_directory_records "$directory_records"
+  fi
   tab=$(printf '\t')
 
   {
@@ -174,6 +200,11 @@ write_state_file() {
     if [ -n "$backup_path" ]; then
       printf 'backup\t%s\n' "$backup_path"
     fi
+    if [ -n "$directory_records" ]; then
+      while IFS= read -r directory_path; do
+        printf 'directory\t%s\n' "$directory_path"
+      done <"$directory_records"
+    fi
     while IFS="$tab" read -r target_id target_path target_mode target_checksum target_origin extra; do
       printf 'target\t%s\t%s\t%s\t%s\t%s\n' \
         "$target_id" "$target_path" "$target_mode" "$target_checksum" "$target_origin"
@@ -184,6 +215,7 @@ write_state_file() {
 load_state_file() {
   local input_file=$1
   local normalized_targets=$2
+  local normalized_directories=${3:-$normalized_targets.directories}
   local tab=
   local kind=
   local first=
@@ -198,6 +230,7 @@ load_state_file() {
   local project_count=0
   local policy_count=0
   local backup_count=0
+  local directory_count=0
   local target_count=0
 
   tab=$(printf '\t')
@@ -207,6 +240,7 @@ load_state_file() {
   STATE_POLICY_PATH=
   STATE_POLICY_CHECKSUM=
   STATE_BACKUP_PATH=
+  STATE_DIRECTORY_COUNT=0
   STATE_TARGET_ID=
   STATE_TARGET_PATH=
   STATE_TARGET_MODE=
@@ -216,6 +250,7 @@ load_state_file() {
 
   [ -f "$input_file" ] || return 1
   : >"$normalized_targets"
+  : >"$normalized_directories"
   while IFS="$tab" read -r kind first second third fourth fifth extra; do
     [ -z "$extra" ] || die "invalid state record: too many fields" 65
     case "$kind" in
@@ -254,6 +289,12 @@ load_state_file() {
           die "invalid backup state" 65
         STATE_BACKUP_PATH=$first
         backup_count=$((backup_count + 1))
+        ;;
+      directory)
+        [ -n "$first" ] && [ -z "$second$third$fourth$fifth" ] ||
+          die "invalid directory state" 65
+        printf '%s\n' "$first" >>"$normalized_directories"
+        directory_count=$((directory_count + 1))
         ;;
       target)
         [ -n "$first" ] && [ -n "$second" ] && [ -n "$third" ] &&
@@ -296,6 +337,9 @@ load_state_file() {
       *) die "invalid backup state" 65 ;;
     esac
   fi
+  validate_directory_records "$normalized_directories"
+  [ "$STATE_DIRECTORY_COUNT" -eq "$directory_count" ] ||
+    die "invalid directory state" 65
   validate_target_records "$normalized_targets" "$STATE_SCOPE"
   STATE_TARGET_COUNT=$target_count
 

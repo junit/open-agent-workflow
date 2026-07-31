@@ -34,18 +34,93 @@ enter_destination_component() {
   local consumed_suffix=$2
   local path_component=$3
   local component_path=$allowed_root/$consumed_suffix
+  local planned_directories=${OAW_PLANNED_OWNED_DIRECTORIES:-}
+  local created_directories=${OAW_CREATED_OWNED_DIRECTORIES:-}
+  local is_planned=0
+
+  if [ -n "$planned_directories" ] &&
+    owned_directory_is_listed "$planned_directories" "$component_path"; then
+    is_planned=1
+  fi
 
   [ ! -L "./$path_component" ] ||
     die "destination path contains a symlink: $component_path" 65
   if [ -e "./$path_component" ]; then
+    if [ "$is_planned" -eq 1 ] &&
+      ! owned_directory_is_listed "$created_directories" "$component_path"; then
+      die "owned directory appeared before creation: $component_path" 65
+    fi
     [ -d "./$path_component" ] ||
       die "destination path component is not a directory: $component_path" 65
   else
-    mkdir "./$path_component"
+    if [ "$is_planned" -eq 1 ]; then
+      mkdir "./$path_component" ||
+        die "owned directory appeared before creation: $component_path" 65
+      add_owned_directory "$created_directories" "$component_path"
+    else
+      mkdir "./$path_component"
+    fi
   fi
   CDPATH='' cd -P -- "./$path_component" ||
     die "cannot enter destination directory: $path_component" 65
   verify_current_directory_coordinate "$allowed_root" "$consumed_suffix"
+}
+
+enter_existing_destination_component() {
+  local allowed_root=$1
+  local consumed_suffix=$2
+  local path_component=$3
+  local component_path=$allowed_root/$consumed_suffix
+
+  [ ! -L "./$path_component" ] ||
+    die "destination path contains a symlink: $component_path" 65
+  [ -d "./$path_component" ] ||
+    die "destination path component is not a directory: $component_path" 65
+  CDPATH='' cd -P -- "./$path_component" ||
+    die "cannot enter destination directory: $component_path" 65
+  verify_current_directory_coordinate "$allowed_root" "$consumed_suffix"
+}
+
+remove_empty_destination_directory() {
+  local allowed_root=$1
+  local relative_suffix=$2
+  local expected_directory=$3
+  local remaining_suffix=$relative_suffix
+  local path_component=
+  local consumed_suffix=
+  local directory_name=${relative_suffix##*/}
+  local parent_suffix=${relative_suffix%/*}
+
+  [ "$parent_suffix" != "$relative_suffix" ] || parent_suffix=
+  revalidated_destination_path "$allowed_root" "$relative_suffix" \
+    "$expected_directory" >/dev/null || return $?
+  (
+    CDPATH='' cd -P -- "$allowed_root" ||
+      die "cannot enter allowed root: $allowed_root" 65
+    remaining_suffix=$parent_suffix
+    while [ -n "$remaining_suffix" ]; do
+      case "$remaining_suffix" in
+        */*)
+          path_component=${remaining_suffix%%/*}
+          remaining_suffix=${remaining_suffix#*/}
+          ;;
+        *) path_component=$remaining_suffix; remaining_suffix= ;;
+      esac
+      if [ -z "$consumed_suffix" ]; then
+        consumed_suffix=$path_component
+      else
+        consumed_suffix=$consumed_suffix/$path_component
+      fi
+      enter_existing_destination_component "$allowed_root" \
+        "$consumed_suffix" "$path_component" || exit $?
+    done
+    [ ! -L "./$directory_name" ] ||
+      die "destination path contains a symlink: $expected_directory" 65
+    [ -d "./$directory_name" ] ||
+      die "owned directory changed before removal: $expected_directory" 65
+    [ -z "$(find "./$directory_name" -mindepth 1 -print -quit)" ] || exit 3
+    rmdir -- "./$directory_name"
+  )
 }
 
 ensure_destination_directory() {

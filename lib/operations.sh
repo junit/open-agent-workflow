@@ -68,13 +68,14 @@ render_target_artifacts() {
 write_operation_state() {
   local source_version=$1
   local target_records=$2
+  local directory_records=$3
   local policy_checksum=
   local backup_path=${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}
 
   policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
   write_state_file "$OAW_OPERATION_TEMP/state" "$source_version" "$OAW_SCOPE" \
     "$OAW_PROJECT_ROOT" "$OAW_POLICY_DESTINATION" "$policy_checksum" \
-    "$target_records" "$backup_path"
+    "$target_records" "$backup_path" "$directory_records"
 }
 
 verify_policy_state_binding() {
@@ -143,10 +144,13 @@ prepare_policy_state_actions() {
     candidate_index=$((candidate_index + 1))
     candidate_records="$OAW_OPERATION_TEMP/policy-records-$candidate_index"
     candidate_output="$OAW_OPERATION_TEMP/policy-state-$candidate_index"
-    load_state_file "$candidate_state" "$candidate_records"
+    load_state_file "$candidate_state" "$candidate_records" \
+      "$candidate_records.directories"
     [ "$STATE_POLICY_PATH" = "$OAW_POLICY_DESTINATION" ] || continue
     verify_policy_state_binding "$candidate_state" "$candidate_records"
     verify_state_target_records "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
+    verify_owned_directory_records "$candidate_records.directories" \
+      "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
     if [ -n "$OAW_FORCE_POLICY_BASELINE" ]; then
       installed_policy_checksum=$OAW_FORCE_POLICY_BASELINE
     fi
@@ -155,7 +159,8 @@ prepare_policy_state_actions() {
       die "managed policy has drifted" 65
     write_state_file "$candidate_output" "$source_version" "$STATE_SCOPE" \
       "$STATE_PROJECT_ROOT" "$STATE_POLICY_PATH" "$new_policy_checksum" \
-      "$candidate_records" "${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}"
+      "$candidate_records" "${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}" \
+      "$candidate_records.directories"
     add_target_action "$actions_file" replace "state-reference-$candidate_index" \
       "$candidate_output" "$candidate_state" 600
   done
@@ -177,10 +182,13 @@ other_live_state_references_policy() {
     [ "$candidate_state" = "$excluded_state" ] && continue
     candidate_index=$((candidate_index + 1))
     candidate_records="$OAW_OPERATION_TEMP/retention-records-$candidate_index"
-    load_state_file "$candidate_state" "$candidate_records"
+    load_state_file "$candidate_state" "$candidate_records" \
+      "$candidate_records.directories"
     [ "$STATE_POLICY_PATH" = "$policy_path" ] || continue
     verify_policy_state_binding "$candidate_state" "$candidate_records"
     verify_state_target_records "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
+    verify_owned_directory_records "$candidate_records.directories" \
+      "$candidate_records" "$STATE_SCOPE" "$STATE_PROJECT_ROOT"
     found_reference=1
   done
 
@@ -468,11 +476,16 @@ operation_install() {
   : >"$OAW_OPERATION_TEMP/selected-records"
   : >"$OAW_OPERATION_TEMP/state-actions"
   : >"$OAW_OPERATION_TEMP/target-actions"
+  : >"$OAW_OPERATION_TEMP/directory-actions"
+  : >"$OAW_OPERATION_TEMP/existing-directories"
 
   if [ -f "$OAW_STATE_FILE" ]; then
-    load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
+    load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records" \
+      "$OAW_OPERATION_TEMP/existing-directories"
     verify_installed_policy_state
     verify_installed_target_records "$OAW_OPERATION_TEMP/existing-records"
+    verify_owned_directory_records "$OAW_OPERATION_TEMP/existing-directories" \
+      "$OAW_OPERATION_TEMP/existing-records" "$OAW_SCOPE" "$OAW_PROJECT_ROOT"
     if ! files_equal "$OAW_OPERATION_TEMP/policy" "$OAW_POLICY_DESTINATION" ||
       [ "$(checksum_file "$OAW_OPERATION_TEMP/policy")" != "$STATE_POLICY_CHECKSUM" ] ||
       [ "$source_version" != "$STATE_VERSION" ]; then
@@ -550,17 +563,26 @@ operation_install() {
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records" "$OAW_SCOPE"
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
-  write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
+  prepare_owned_directories "$OAW_OPERATION_TEMP/existing-directories" \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/final-records" \
+    "$OAW_OPERATION_TEMP/final-directories" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
+  write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records" \
+    "$OAW_OPERATION_TEMP/final-directories"
   new_policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
   add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
     "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
   prepare_policy_state_actions "$source_version" "$new_policy_checksum" \
     "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/state-actions"
 
-  apply_scoped_replace policy "$OAW_OPERATION_TEMP/policy" \
-    "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
-  apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
-  apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
+  verify_prepared_operation replace "$OAW_OPERATION_TEMP/policy" \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions" \
+    "$OAW_OPERATION_TEMP/directory-actions" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
+  apply_operation install replace "$OAW_OPERATION_TEMP/policy" \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions" \
+    "$OAW_OPERATION_TEMP/directory-actions" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
 }
 
 operation_update() {
@@ -584,16 +606,21 @@ operation_update() {
   : >"$OAW_OPERATION_TEMP/selected-records"
   : >"$OAW_OPERATION_TEMP/state-actions"
   : >"$OAW_OPERATION_TEMP/target-actions"
+  : >"$OAW_OPERATION_TEMP/directory-actions"
+  : >"$OAW_OPERATION_TEMP/existing-directories"
   write_selected_target_ids "$OAW_OPERATION_TEMP/selected-ids"
 
   if [ ! -f "$OAW_STATE_FILE" ]; then
     verify_untracked_selected_markers "$OAW_OPERATION_TEMP/selected-ids"
     die "no installation state; run install first" 66
   fi
-  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
+  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records" \
+    "$OAW_OPERATION_TEMP/existing-directories"
   verify_mutation_policy_state
   verify_mutation_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids"
+  verify_owned_directory_records "$OAW_OPERATION_TEMP/existing-directories" \
+    "$OAW_OPERATION_TEMP/existing-records" "$OAW_SCOPE" "$OAW_PROJECT_ROOT"
   select_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/selected-installed-records" \
     "$OAW_SCOPE"
@@ -609,10 +636,15 @@ operation_update() {
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/merged-records" "$OAW_SCOPE"
   normalize_destination_checksums "$OAW_OPERATION_TEMP/merged-records" \
     "$OAW_OPERATION_TEMP/selected-records" "$OAW_OPERATION_TEMP/final-records" "$OAW_SCOPE"
+  prepare_owned_directories "$OAW_OPERATION_TEMP/existing-directories" \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/final-records" \
+    "$OAW_OPERATION_TEMP/final-directories" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
   if [ "$OAW_FORCE_BACKUP_REQUIRED" -eq 1 ]; then
     reserve_operation_backup_path
   fi
-  write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records"
+  write_operation_state "$source_version" "$OAW_OPERATION_TEMP/final-records" \
+    "$OAW_OPERATION_TEMP/final-directories"
   new_policy_checksum=$(checksum_file "$OAW_OPERATION_TEMP/policy")
   add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
     "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
@@ -623,10 +655,14 @@ operation_update() {
       "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions"
   fi
 
-  apply_scoped_replace policy "$OAW_OPERATION_TEMP/policy" \
-    "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION" 600
-  apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
-  apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
+  verify_prepared_operation replace "$OAW_OPERATION_TEMP/policy" \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions" \
+    "$OAW_OPERATION_TEMP/directory-actions" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
+  apply_operation update replace "$OAW_OPERATION_TEMP/policy" \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions" \
+    "$OAW_OPERATION_TEMP/directory-actions" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
 }
 
 operation_uninstall() {
@@ -640,11 +676,15 @@ operation_uninstall() {
   local extra=
   local reference_status=0
   local retain_policy=0
+  local policy_action=retain
 
   init_oaw_paths
   prepare_operation_temp
   : >"$OAW_OPERATION_TEMP/target-actions"
   : >"$OAW_OPERATION_TEMP/state-actions"
+  : >"$OAW_OPERATION_TEMP/directory-actions"
+  : >"$OAW_OPERATION_TEMP/existing-directories"
+  : >"$OAW_OPERATION_TEMP/planned-owned-directories"
   write_selected_target_ids "$OAW_OPERATION_TEMP/selected-ids"
 
   if [ ! -f "$OAW_STATE_FILE" ]; then
@@ -655,13 +695,21 @@ operation_uninstall() {
     return 0
   fi
 
-  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records"
+  load_state_file "$OAW_STATE_FILE" "$OAW_OPERATION_TEMP/existing-records" \
+    "$OAW_OPERATION_TEMP/existing-directories"
   verify_mutation_policy_state
   verify_mutation_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids"
+  verify_owned_directory_records "$OAW_OPERATION_TEMP/existing-directories" \
+    "$OAW_OPERATION_TEMP/existing-records" "$OAW_SCOPE" "$OAW_PROJECT_ROOT"
   filter_target_records "$OAW_OPERATION_TEMP/existing-records" \
     "$OAW_OPERATION_TEMP/selected-ids" "$OAW_OPERATION_TEMP/remaining-records" \
     "$OAW_OPERATION_TEMP/removed-records" "$OAW_SCOPE"
+  partition_owned_directories "$OAW_OPERATION_TEMP/existing-directories" \
+    "$OAW_OPERATION_TEMP/remaining-records" "$OAW_OPERATION_TEMP/remaining-directories" \
+    "$OAW_OPERATION_TEMP/removed-directories"
+  prepare_directory_removals "$OAW_OPERATION_TEMP/removed-directories" \
+    "$OAW_OPERATION_TEMP/existing-records" "$OAW_OPERATION_TEMP/directory-actions"
 
   while IFS= read -r selected_target; do
     if ! target_record_exists "$OAW_OPERATION_TEMP/existing-records" "$selected_target"; then
@@ -705,7 +753,8 @@ operation_uninstall() {
     write_state_file "$OAW_OPERATION_TEMP/state" "$STATE_VERSION" "$OAW_SCOPE" \
       "$OAW_PROJECT_ROOT" "$STATE_POLICY_PATH" "$STATE_POLICY_CHECKSUM" \
       "$OAW_OPERATION_TEMP/remaining-records" \
-      "${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}"
+      "${OAW_OPERATION_BACKUP_PATH:-$STATE_BACKUP_PATH}" \
+      "$OAW_OPERATION_TEMP/remaining-directories"
     add_target_action "$OAW_OPERATION_TEMP/state-actions" replace state \
       "$OAW_OPERATION_TEMP/state" "$OAW_STATE_FILE" 600
   else
@@ -733,13 +782,15 @@ operation_uninstall() {
     fi
   fi
 
-  apply_target_actions "$OAW_OPERATION_TEMP/target-actions"
-  if [ -s "$OAW_OPERATION_TEMP/remaining-records" ]; then
-    apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
-  else
-    if [ "$retain_policy" -eq 0 ]; then
-      apply_scoped_remove "$OAW_XDG_CONFIG_HOME" "$OAW_POLICY_DESTINATION"
-    fi
-    apply_target_actions "$OAW_OPERATION_TEMP/state-actions"
+  if [ ! -s "$OAW_OPERATION_TEMP/remaining-records" ] && [ "$retain_policy" -eq 0 ]; then
+    policy_action=remove
   fi
+  verify_prepared_operation "$policy_action" - \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions" \
+    "$OAW_OPERATION_TEMP/directory-actions" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
+  apply_operation uninstall "$policy_action" - \
+    "$OAW_OPERATION_TEMP/target-actions" "$OAW_OPERATION_TEMP/state-actions" \
+    "$OAW_OPERATION_TEMP/directory-actions" \
+    "$OAW_OPERATION_TEMP/planned-owned-directories"
 }
