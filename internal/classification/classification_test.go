@@ -206,6 +206,207 @@ func TestClassifyMissingOrUncertainCriticalTraitsFailsUpward(t *testing.T) {
 	}
 }
 
+func TestClassifyMalformedProposalFallsBackConservatively(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*classification.ClassificationProposal)
+		reason string
+	}{
+		{"unsupported schema", func(value *classification.ClassificationProposal) {
+			value.SchemaVersion = "oaw.classification-proposal/v2"
+		}, "UNSUPPORTED_CLASSIFICATION_SCHEMA"},
+		{"unknown trait", func(value *classification.ClassificationProposal) {
+			value.Traits[0].Trait = "future-trait"
+		}, "CLASSIFICATION_TRAIT_UNKNOWN"},
+		{"duplicate trait", func(value *classification.ClassificationProposal) {
+			value.Traits[1] = value.Traits[0]
+		}, "CLASSIFICATION_DUPLICATE_TRAIT"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			proposal := clearDirectProposal()
+			tt.mutate(&proposal)
+			decision, err := classification.Classify(&proposal, classification.ClassificationRules{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.RequestMode != classification.RequestModeWorkflow || decision.RiskClass != classification.RiskCritical || !hasReason(decision, tt.reason) {
+				t.Fatalf("fallback decision = %#v", decision)
+			}
+		})
+	}
+}
+
+func TestClassifyResourceSafetyFloors(t *testing.T) {
+	cases := []struct {
+		resource classification.Resource
+		reason   string
+		risk     classification.RiskClass
+	}{
+		{classification.ResourcePublicAPI, "WORKFLOW_REQUIRED_PUBLIC_CONTRACT", classification.RiskElevated},
+		{classification.ResourceSchema, "WORKFLOW_REQUIRED_SCHEMA", classification.RiskElevated},
+		{classification.ResourceDependency, "WORKFLOW_REQUIRED_DEPENDENCY", classification.RiskElevated},
+		{classification.ResourceSecurity, "WORKFLOW_REQUIRED_SECURITY", classification.RiskElevated},
+		{classification.ResourceCredentials, "WORKFLOW_REQUIRED_SECURITY", classification.RiskCritical},
+		{classification.ResourceData, "WORKFLOW_REQUIRED_DATA", classification.RiskElevated},
+		{classification.ResourceDeployment, "WORKFLOW_REQUIRED_DEPLOYMENT", classification.RiskElevated},
+		{classification.ResourceDestructive, "WORKFLOW_REQUIRED_DESTRUCTIVE", classification.RiskCritical},
+	}
+	for _, tt := range cases {
+		t.Run(string(tt.resource), func(t *testing.T) {
+			proposal := clearDirectProposal()
+			proposal.Resources = append(proposal.Resources, tt.resource)
+			decision, err := classification.Classify(&proposal, classification.ClassificationRules{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.RequestMode != classification.RequestModeWorkflow || decision.RiskClass != tt.risk || !hasReason(decision, tt.reason) {
+				t.Fatalf("resource decision = %#v", decision)
+			}
+		})
+	}
+}
+
+func TestUserAndProjectRulesOnlyRaiseModeRiskAndEvidence(t *testing.T) {
+	proposal := clearDirectProposal()
+	rules := classification.ClassificationRules{
+		User: classification.PolicyLayer{
+			MinimumMode:      classification.RequestModeBounded,
+			MinimumRisk:      classification.RiskElevated,
+			RequiredEvidence: []classification.EvidenceKind{classification.EvidenceNegativeTest, classification.EvidenceArchitecture},
+		},
+		Project: classification.PolicyLayer{
+			MinimumMode:      classification.RequestModeWorkflow,
+			MinimumRisk:      classification.RiskNormal,
+			RequiredEvidence: []classification.EvidenceKind{classification.EvidenceArchitecture, classification.EvidenceNegativeTest},
+		},
+	}
+	decision, err := classification.Classify(&proposal, rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.RequestMode != classification.RequestModeWorkflow || decision.WorkflowComplexity == nil || *decision.WorkflowComplexity != classification.ComplexityComplex {
+		t.Fatalf("decision = %#v", decision)
+	}
+	if decision.RiskClass != classification.RiskElevated || decision.CapabilitySelector != nil {
+		t.Fatalf("policy result = %#v", decision)
+	}
+	assertEvidenceKinds(t, decision, []classification.EvidenceKind{
+		classification.EvidenceArchitecture,
+		classification.EvidenceChangePoint,
+		classification.EvidenceNegativeTest,
+		classification.EvidenceScope,
+		classification.EvidenceVerification,
+	})
+
+	critical := clearDirectProposal()
+	setTrait(&critical, classification.TraitCriticalRelease, classification.TraitTrue)
+	lowered, err := classification.Classify(&critical, classification.ClassificationRules{
+		User:    classification.PolicyLayer{MinimumMode: classification.RequestModeDirect, MinimumRisk: classification.RiskNormal},
+		Project: classification.PolicyLayer{MinimumMode: classification.RequestModeBounded, MinimumRisk: classification.RiskElevated},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lowered.RequestMode != classification.RequestModeWorkflow || lowered.RiskClass != classification.RiskCritical {
+		t.Fatalf("lowering rules changed built-in floor: %#v", lowered)
+	}
+}
+
+func TestProtectedResourcesRaiseWorkflowWithoutSelectingProvider(t *testing.T) {
+	proposal := clearDirectProposal()
+	proposal.Resources = append(proposal.Resources, classification.ResourceNetwork)
+	decision, err := classification.Classify(&proposal, classification.ClassificationRules{
+		Project: classification.PolicyLayer{ProtectedResources: []classification.Resource{classification.ResourceNetwork}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.RequestMode != classification.RequestModeWorkflow || decision.CapabilitySelector != nil || !hasReason(decision, "POLICY_PROTECTED_RESOURCE") {
+		t.Fatalf("protected resource decision = %#v", decision)
+	}
+}
+
+func TestPolicyRulesAreOrderIndependentAndDigestStable(t *testing.T) {
+	proposal := clearDirectProposal()
+	proposal.Resources = append(proposal.Resources, classification.ResourceNetwork)
+	proposal.Evidence = append(proposal.Evidence, classification.ProposalEvidence{
+		Kind: classification.EvidenceAuthorization, Reference: "test:authorization", Digest: strings.Repeat("d", 64),
+	})
+	minimum := classification.PolicyLayer{
+		MinimumMode:      classification.RequestModeWorkflow,
+		RequiredEvidence: []classification.EvidenceKind{classification.EvidenceNegativeTest, classification.EvidenceAuthorization},
+	}
+	protected := classification.PolicyLayer{
+		ProtectedResources: []classification.Resource{classification.ResourceNetwork},
+		RequiredEvidence:   []classification.EvidenceKind{classification.EvidenceAuthorization, classification.EvidenceNegativeTest},
+	}
+	first, err := classification.Classify(&proposal, classification.ClassificationRules{User: minimum, Project: protected})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := classification.Classify(&proposal, classification.ClassificationRules{User: protected, Project: minimum})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Digest() != second.Digest() || !decisionsEqual(first, second) {
+		t.Fatalf("policy order changed decision:\nfirst:  %#v\nsecond: %#v", first, second)
+	}
+}
+
+func TestPolicyValidationRejectsOpenOrDuplicateValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		layer classification.PolicyLayer
+		code  string
+	}{
+		{"mode", classification.PolicyLayer{MinimumMode: "AUTO"}, "CLASSIFICATION_POLICY_MODE_INVALID"},
+		{"risk", classification.PolicyLayer{MinimumRisk: "severe"}, "CLASSIFICATION_POLICY_RISK_INVALID"},
+		{"resource", classification.PolicyLayer{ProtectedResources: []classification.Resource{"filesystem"}}, "CLASSIFICATION_POLICY_RESOURCE_INVALID"},
+		{"duplicate resource", classification.PolicyLayer{ProtectedResources: []classification.Resource{classification.ResourceData, classification.ResourceData}}, "CLASSIFICATION_POLICY_RESOURCE_DUPLICATE"},
+		{"evidence", classification.PolicyLayer{RequiredEvidence: []classification.EvidenceKind{"approval"}}, "CLASSIFICATION_POLICY_EVIDENCE_INVALID"},
+		{"duplicate evidence", classification.PolicyLayer{RequiredEvidence: []classification.EvidenceKind{classification.EvidenceScope, classification.EvidenceScope}}, "CLASSIFICATION_POLICY_EVIDENCE_DUPLICATE"},
+	}
+	proposal := clearDirectProposal()
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := classification.Classify(&proposal, classification.ClassificationRules{User: tt.layer})
+			if err == nil || !strings.Contains(err.Error(), tt.code) {
+				t.Fatalf("Classify() error = %v, want %s", err, tt.code)
+			}
+		})
+	}
+}
+
+func TestPolicyModeProjectionPreservesModeSpecificFields(t *testing.T) {
+	direct := clearDirectProposal()
+	bounded, err := classification.Classify(&direct, classification.ClassificationRules{
+		Project: classification.PolicyLayer{MinimumMode: classification.RequestModeBounded},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bounded.RequestMode != classification.RequestModeBounded || bounded.WorkflowComplexity != nil || bounded.CapabilitySelector != nil ||
+		!hasReason(bounded, "CAPABILITY_SELECTION_REQUIRED") || !hasEvidence(bounded, classification.EvidenceCapabilitySelector) {
+		t.Fatalf("bounded policy projection = %#v", bounded)
+	}
+
+	proposal := clearDirectProposal()
+	setTrait(&proposal, classification.TraitBoundedCapabilityRequest, classification.TraitTrue)
+	proposal.CapabilitySelector = &classification.CapabilitySelector{
+		ProviderID: "acme/suite", CapabilityID: "review", Source: classification.SelectorUserIntent,
+	}
+	workflow, err := classification.Classify(&proposal, classification.ClassificationRules{
+		Project: classification.PolicyLayer{MinimumMode: classification.RequestModeWorkflow},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if workflow.RequestMode != classification.RequestModeWorkflow || workflow.WorkflowComplexity == nil || workflow.CapabilitySelector != nil {
+		t.Fatalf("workflow policy projection = %#v", workflow)
+	}
+}
+
 func setTrait(proposal *classification.ClassificationProposal, wanted classification.Trait, value classification.TraitValue) {
 	for i := range proposal.Traits {
 		if proposal.Traits[i].Trait == wanted {
@@ -232,6 +433,33 @@ func hasEvidence(decision classification.ClassificationDecision, wanted classifi
 		}
 	}
 	return false
+}
+
+func assertEvidenceKinds(t *testing.T, decision classification.ClassificationDecision, want []classification.EvidenceKind) {
+	t.Helper()
+	if len(decision.EvidenceRequirements) != len(want) {
+		t.Fatalf("evidence requirements = %#v, want %#v", decision.EvidenceRequirements, want)
+	}
+	for i, requirement := range decision.EvidenceRequirements {
+		if requirement.Kind != want[i] {
+			t.Fatalf("evidence requirements = %#v, want %#v", decision.EvidenceRequirements, want)
+		}
+	}
+}
+
+func decisionsEqual(left, right classification.ClassificationDecision) bool {
+	leftJSON, leftErr := json.Marshal(left)
+	rightJSON, rightErr := json.Marshal(right)
+	return leftErr == nil && rightErr == nil && bytes.Equal(leftJSON, rightJSON)
+}
+
+func clearDirectProposal() classification.ClassificationProposal {
+	proposal := completeProposal()
+	setTrait(&proposal, classification.TraitScopeClear, classification.TraitTrue)
+	setTrait(&proposal, classification.TraitChangePointKnown, classification.TraitTrue)
+	setTrait(&proposal, classification.TraitRecoverable, classification.TraitTrue)
+	setTrait(&proposal, classification.TraitFocusedVerificationKnown, classification.TraitTrue)
+	return proposal
 }
 
 func completeProposal() classification.ClassificationProposal {

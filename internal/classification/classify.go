@@ -109,46 +109,78 @@ func Classify(proposal *ClassificationProposal, rules ClassificationRules) (Clas
 }
 
 func applyRules(decision ClassificationDecision, proposal ClassificationProposal, rules ClassificationRules) (ClassificationDecision, error) {
-	layers := []PolicyLayer{rules.User, rules.Project}
-	for _, layer := range layers {
-		for _, resource := range layer.ProtectedResources {
-			if containsResource(proposal.Resources, resource) {
-				if decision.RequestMode != RequestModeWorkflow {
-					decision.RequestMode = RequestModeWorkflow
-					complexity := ComplexityComplex
-					decision.WorkflowComplexity = &complexity
-					decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_PROTECTED_RESOURCE")
-				}
-				decision.RiskClass = maxRisk(decision.RiskClass, RiskElevated)
-			}
-		}
-		if modeRank(layer.MinimumMode) > modeRank(decision.RequestMode) {
-			decision.RequestMode = layer.MinimumMode
-			complexity := ComplexityComplex
-			decision.WorkflowComplexity = &complexity
-			decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_MINIMUM_MODE")
-		}
-		if riskRank(layer.MinimumRisk) > riskRank(decision.RiskClass) {
-			decision.RiskClass = layer.MinimumRisk
-			decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_MINIMUM_RISK")
-		}
-		for _, kind := range layer.RequiredEvidence {
-			decision.EvidenceRequirements = appendRequirement(decision.EvidenceRequirements, EvidenceRequirement{Kind: kind, Reason: "policy-required evidence"})
-			if !hasEvidenceKind(proposal.Evidence, kind) && decision.RequestMode != RequestModeWorkflow {
-				decision.RequestMode = RequestModeWorkflow
-				complexity := ComplexityComplex
-				decision.WorkflowComplexity = &complexity
-				decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_EVIDENCE_REQUIRED")
-			}
-		}
+	policy := composeRules(rules)
+	baseMode, baseRisk := decision.RequestMode, decision.RiskClass
+	protected := containsAnyResource(proposal.Resources, policy.protectedResources)
+	if protected && modeRank(RequestModeWorkflow) > modeRank(baseMode) {
+		decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_PROTECTED_RESOURCE")
 	}
-	if decision.RequestMode == RequestModeWorkflow && decision.WorkflowComplexity == nil {
+	if modeRank(policy.minimumMode) > modeRank(baseMode) {
+		decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_MINIMUM_MODE")
+	}
+	if riskRank(policy.minimumRisk) > riskRank(baseRisk) {
+		decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_MINIMUM_RISK")
+	}
+	decision.RequestMode = maxMode(decision.RequestMode, policy.minimumMode)
+	decision.RiskClass = maxRisk(decision.RiskClass, policy.minimumRisk)
+	if protected {
+		decision.RequestMode = RequestModeWorkflow
+		decision.RiskClass = maxRisk(decision.RiskClass, RiskElevated)
+	}
+	missingPolicyEvidence := false
+	for _, kind := range policy.requiredEvidence {
+		decision.EvidenceRequirements = appendRequirement(decision.EvidenceRequirements, EvidenceRequirement{Kind: kind, Reason: "policy-required evidence"})
+		missingPolicyEvidence = missingPolicyEvidence || !hasEvidenceKind(proposal.Evidence, kind)
+	}
+	if missingPolicyEvidence && modeRank(RequestModeWorkflow) > modeRank(baseMode) {
+		decision.RequestMode = RequestModeWorkflow
+		decision.EscalationReasons = append(decision.EscalationReasons, "POLICY_EVIDENCE_REQUIRED")
+	}
+	if decision.RequestMode == RequestModeWorkflow {
 		complexity := ComplexityComplex
 		decision.WorkflowComplexity = &complexity
+	} else {
+		decision.WorkflowComplexity = nil
+	}
+	if decision.RequestMode != RequestModeBounded {
+		decision.CapabilitySelector = nil
+	} else if decision.CapabilitySelector == nil {
+		decision.EscalationReasons = append(decision.EscalationReasons, "CAPABILITY_SELECTION_REQUIRED")
+		decision.EvidenceRequirements = appendRequirement(decision.EvidenceRequirements, EvidenceRequirement{
+			Kind: EvidenceCapabilitySelector, Reason: "bounded capability selection",
+		})
 	}
 	decision.EvidenceRequirements = sortRequirements(decision.EvidenceRequirements)
 	decision.EscalationReasons = uniqueSortedStrings(decision.EscalationReasons)
 	return withDecisionDigest(decision)
+}
+
+type effectivePolicy struct {
+	minimumMode        RequestMode
+	minimumRisk        RiskClass
+	protectedResources []Resource
+	requiredEvidence   []EvidenceKind
+}
+
+func composeRules(rules ClassificationRules) effectivePolicy {
+	policy := effectivePolicy{minimumMode: RequestModeDirect, minimumRisk: RiskNormal}
+	for _, layer := range []PolicyLayer{rules.User, rules.Project} {
+		policy.minimumMode = maxMode(policy.minimumMode, layer.MinimumMode)
+		policy.minimumRisk = maxRisk(policy.minimumRisk, layer.MinimumRisk)
+		for _, resource := range layer.ProtectedResources {
+			if !containsResource(policy.protectedResources, resource) {
+				policy.protectedResources = append(policy.protectedResources, resource)
+			}
+		}
+		for _, kind := range layer.RequiredEvidence {
+			if !containsEvidenceKind(policy.requiredEvidence, kind) {
+				policy.requiredEvidence = append(policy.requiredEvidence, kind)
+			}
+		}
+	}
+	sort.Slice(policy.protectedResources, func(i, j int) bool { return policy.protectedResources[i] < policy.protectedResources[j] })
+	sort.Slice(policy.requiredEvidence, func(i, j int) bool { return policy.requiredEvidence[i] < policy.requiredEvidence[j] })
+	return policy
 }
 
 func fallbackDecision(reasons []string) (ClassificationDecision, error) {
@@ -378,6 +410,24 @@ func containsResource(values []Resource, wanted Resource) bool {
 	return false
 }
 
+func containsAnyResource(values, wanted []Resource) bool {
+	for _, resource := range wanted {
+		if containsResource(values, resource) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsEvidenceKind(values []EvidenceKind, wanted EvidenceKind) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
+}
+
 func modeRank(value RequestMode) int {
 	switch value {
 	case RequestModeDirect:
@@ -389,6 +439,13 @@ func modeRank(value RequestMode) int {
 	default:
 		return 0
 	}
+}
+
+func maxMode(left, right RequestMode) RequestMode {
+	if modeRank(right) > modeRank(left) {
+		return right
+	}
+	return left
 }
 
 func riskRank(value RiskClass) int {
