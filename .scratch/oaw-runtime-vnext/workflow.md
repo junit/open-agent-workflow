@@ -13,7 +13,7 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: implementation-planning
+current_stage: implementation
 active_ticket: 01-contracts-and-builtin-catalog
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
@@ -81,8 +81,9 @@ completion_owner: superpowers
 The canonical written specification was approved by the user on 2026-08-01.
 Independent written-spec findings were remediated, and fresh documentation plus
 full Bash regression verification passed. Matt ticket decomposition was approved
-by the user on 2026-08-01. The lifecycle is now in Superpowers-owned
-implementation planning for Ticket 01. No implementation has started.
+by the user on 2026-08-01. The user selected Subagent-Driven execution on
+2026-08-01. The lifecycle is now in Superpowers-owned implementation for
+Ticket 01 inside an isolated worktree.
 
 Every published ticket carries Matt's `ready-for-agent` triage status,
 which means the ticket is specified for agent execution. Scheduling still
