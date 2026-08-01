@@ -14,7 +14,7 @@ bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
 current_stage: implementation-planning
-active_ticket: 02-configuration-trust-and-provider-discovery
+active_ticket: 03-deterministic-request-classifier
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -23,6 +23,7 @@ architecture_decisions:
 implementation_plans:
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-01-contracts-and-builtin-catalog.md
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-02-configuration-trust-and-provider-discovery.md
+  - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-03-deterministic-request-classifier.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
