@@ -201,21 +201,21 @@ journal, conflict, corruption, and idempotency codes remain stable.
 
 ### Task 1: Add user-trusted Bounded defaults and pure admission
 
-- [ ] Add a failing config test for one normalized named default, duplicate IDs,
+- [x] Add a failing config test for one normalized named default, duplicate IDs,
   invalid Provider/Capability IDs, project-layer rejection, defensive copies,
   and configuration digest changes.
-- [ ] Run the focused config tests and confirm RED.
-- [ ] Extend the user schema, records, decoding normalization, snapshot digest,
+- [x] Run the focused config tests and confirm RED.
+- [x] Extend the user schema, records, decoding normalization, snapshot digest,
   and accessor. Keep project configuration unable to grant a default.
-- [ ] Add failing admission tests for verified exact resolution, unavailable
+- [x] Add failing admission tests for verified exact resolution, unavailable
   Capability, Bounded mode mismatch, unknown effects/resources, authority
   excess, Main Agent topology denial, and unregistered Executor.
-- [ ] Implement immutable admission records, deterministic identities, sorted
+- [x] Implement immutable admission records, deterministic identities, sorted
   set intersection, Catalog/Registry digest checks, and exact Binding pinning.
-- [ ] Add child-Grant tests proving Capability allow-list and strict
+- [x] Add child-Grant tests proving Capability allow-list and strict
   effects/resources/delegation narrowing.
-- [ ] Run focused race, vet, and >=90% admission coverage checks.
-- [ ] Commit as `feat: add bounded capability admission`.
+- [x] Run focused race, vet, and >=90% admission coverage checks.
+- [x] Commit as `feat: add bounded capability admission`.
 
 ### Task 2: Persist Bounded classification and selector resolution
 

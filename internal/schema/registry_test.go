@@ -62,7 +62,7 @@ func TestRegistryValidatesNormalizedConfigurationSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	user := []byte(`{"schema_version":"oaw.user-config/v1","denied_providers":[],"provider_descriptors":[],"profile_recipes":[],"provider_pins":[],"binding_preferences":[],"project_trust":[]}`)
+	user := []byte(`{"schema_version":"oaw.user-config/v1","denied_providers":[],"provider_descriptors":[],"profile_recipes":[],"provider_pins":[],"binding_preferences":[],"bounded_capability_defaults":[],"project_trust":[]}`)
 	project := []byte(`{"schema_version":"oaw.project-config/v1","required_providers":[],"recommended_providers":[],"provider_descriptors":[],"profile_recipes":[],"capability_limits":[]}`)
 	if err := registry.Validate(UserConfigV1, user); err != nil {
 		t.Fatalf("Validate(user) error = %v", err)

@@ -161,6 +161,25 @@ func normalizeUser(record *UserConfigRecord) error {
 	if err := uniqueBy(len(record.BindingPreferences), func(i int) string { return bindingPreferenceKey(record.BindingPreferences[i]) }, "DUPLICATE_BINDING_PREFERENCE"); err != nil {
 		return err
 	}
+	for _, boundedDefault := range record.BoundedCapabilityDefaults {
+		if _, err := catalog.ParseLocalID(boundedDefault.ID); err != nil {
+			return fmt.Errorf("INVALID_BOUNDED_CAPABILITY_DEFAULT: %w", err)
+		}
+		if _, err := catalog.ParseQualifiedID(boundedDefault.ProviderID); err != nil {
+			return fmt.Errorf("INVALID_BOUNDED_CAPABILITY_DEFAULT: %w", err)
+		}
+		if _, err := catalog.ParseLocalID(boundedDefault.CapabilityID); err != nil {
+			return fmt.Errorf("INVALID_BOUNDED_CAPABILITY_DEFAULT: %w", err)
+		}
+	}
+	sort.Slice(record.BoundedCapabilityDefaults, func(i, j int) bool {
+		return record.BoundedCapabilityDefaults[i].ID < record.BoundedCapabilityDefaults[j].ID
+	})
+	if err := uniqueBy(len(record.BoundedCapabilityDefaults), func(i int) string {
+		return record.BoundedCapabilityDefaults[i].ID
+	}, "DUPLICATE_BOUNDED_CAPABILITY_DEFAULT"); err != nil {
+		return err
+	}
 	for i := range record.ProjectTrust {
 		normalizeStringSlice(&record.ProjectTrust[i].DescriptorDigests)
 		normalizeStringSlice(&record.ProjectTrust[i].RecipeDigests)
@@ -295,6 +314,9 @@ func normalizeUserCollections(record *UserConfigRecord) {
 	}
 	if record.BindingPreferences == nil {
 		record.BindingPreferences = []BindingPreference{}
+	}
+	if record.BoundedCapabilityDefaults == nil {
+		record.BoundedCapabilityDefaults = []BoundedCapabilityDefault{}
 	}
 	if record.ProjectTrust == nil {
 		record.ProjectTrust = []ProjectTrust{}

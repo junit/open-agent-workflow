@@ -25,6 +25,12 @@ type BindingPreference struct {
 	Reference    string `json:"reference" toml:"reference"`
 }
 
+type BoundedCapabilityDefault struct {
+	ID           string `json:"id" toml:"id"`
+	ProviderID   string `json:"provider_id" toml:"provider_id"`
+	CapabilityID string `json:"capability_id" toml:"capability_id"`
+}
+
 type ProjectTrust struct {
 	Root              string   `json:"root" toml:"root"`
 	ConfigDigest      string   `json:"config_digest" toml:"config_digest"`
@@ -33,13 +39,14 @@ type ProjectTrust struct {
 }
 
 type UserConfigRecord struct {
-	SchemaVersion       string              `json:"schema_version" toml:"schema_version"`
-	DeniedProviders     []string            `json:"denied_providers" toml:"denied_providers"`
-	ProviderDescriptors []ContentReference  `json:"provider_descriptors" toml:"provider_descriptors"`
-	ProfileRecipes      []ContentReference  `json:"profile_recipes" toml:"profile_recipes"`
-	ProviderPins        []ProviderPin       `json:"provider_pins" toml:"provider_pins"`
-	BindingPreferences  []BindingPreference `json:"binding_preferences" toml:"binding_preferences"`
-	ProjectTrust        []ProjectTrust      `json:"project_trust" toml:"project_trust"`
+	SchemaVersion             string                     `json:"schema_version" toml:"schema_version"`
+	DeniedProviders           []string                   `json:"denied_providers" toml:"denied_providers"`
+	ProviderDescriptors       []ContentReference         `json:"provider_descriptors" toml:"provider_descriptors"`
+	ProfileRecipes            []ContentReference         `json:"profile_recipes" toml:"profile_recipes"`
+	ProviderPins              []ProviderPin              `json:"provider_pins" toml:"provider_pins"`
+	BindingPreferences        []BindingPreference        `json:"binding_preferences" toml:"binding_preferences"`
+	BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults" toml:"bounded_capability_defaults"`
+	ProjectTrust              []ProjectTrust             `json:"project_trust" toml:"project_trust"`
 }
 
 type CapabilityLimit struct {

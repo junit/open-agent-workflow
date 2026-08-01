@@ -3,7 +3,7 @@
   "$id": "https://open-agent-workflow.dev/schemas/v1/user-config.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "denied_providers", "provider_descriptors", "profile_recipes", "provider_pins", "binding_preferences", "project_trust"],
+  "required": ["schema_version", "denied_providers", "provider_descriptors", "profile_recipes", "provider_pins", "binding_preferences", "bounded_capability_defaults", "project_trust"],
   "properties": {
     "schema_version": {"const": "oaw.user-config/v1"},
     "denied_providers": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/qualified_id"}},
@@ -11,6 +11,7 @@
     "profile_recipes": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/content_reference"}},
     "provider_pins": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/provider_pin"}},
     "binding_preferences": {"type": "array", "maxItems": 4096, "items": {"$ref": "#/$defs/binding_preference"}},
+    "bounded_capability_defaults": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/bounded_capability_default"}},
     "project_trust": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/project_trust"}}
   },
   "$defs": {
@@ -32,6 +33,11 @@
       "type": "object", "additionalProperties": false,
       "required": ["provider_id", "capability_id", "host", "kind", "reference"],
       "properties": {"provider_id": {"$ref": "#/$defs/qualified_id"}, "capability_id": {"$ref": "#/$defs/local_id"}, "host": {"type": "string", "minLength": 1}, "kind": {"enum": ["skill", "agent", "tool"]}, "reference": {"type": "string", "minLength": 1}}
+    },
+    "bounded_capability_default": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "provider_id", "capability_id"],
+      "properties": {"id": {"$ref": "#/$defs/local_id"}, "provider_id": {"$ref": "#/$defs/qualified_id"}, "capability_id": {"$ref": "#/$defs/local_id"}}
     },
     "project_trust": {
       "type": "object", "additionalProperties": false,
