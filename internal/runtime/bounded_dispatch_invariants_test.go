@@ -4,6 +4,9 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 )
 
 func TestBoundedHandshakeRevisionValidationCoversTerminalStates(t *testing.T) {
@@ -80,6 +83,88 @@ func TestBoundedHandshakeRevisionValidationRejectsObservationAndReplyTampering(t
 			assertInternalErrorCode(t, validateRevision(candidate, candidate.RunID, candidate.Revision), "RUN_STATE_REVISION_INVALID")
 		})
 	}
+}
+
+func TestBoundedGrantAndHistoryRemainImmutableAcrossRevisions(t *testing.T) {
+	previous := internalBoundedGrantRevision(t)
+	valid := boundedTransitionRevision(t, previous, RunInFlight, "BOUNDED_DISPATCH_AUTHORIZED", ReplyDispatchAuthorized, "", nil, nil)
+	if err := validateRevision(valid, valid.RunID, valid.Revision); err != nil {
+		t.Fatalf("valid current revision rejected: %v", err)
+	}
+	if err := validateRevisionTransition(previous, valid); err != nil {
+		t.Fatalf("valid transition rejected: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*revisionRecord)
+	}{
+		{"Grant issue revision", func(value *revisionRecord) {
+			value.Snapshot.Grants[0].IssuedRevision = 1
+			resignCapabilityGrant(t, &value.Snapshot.Grants[0])
+		}},
+		{"Bounded termination", func(value *revisionRecord) {
+			value.Snapshot.Bounded.Input.TerminationCondition = "changed report"
+			value.Snapshot.Grants[0].TerminationCondition = "changed report"
+			resignCapabilityGrant(t, &value.Snapshot.Grants[0])
+		}},
+		{"processed history", func(value *revisionRecord) {
+			for index := range value.Snapshot.ProcessedMessages {
+				if value.Snapshot.ProcessedMessages[index].Revision == 1 {
+					value.Snapshot.ProcessedMessages[index].ContentDigest = strings.Repeat("0", 64)
+				}
+			}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := valid
+			candidate.Snapshot = cloneSnapshot(valid.Snapshot)
+			candidate.Reply = cloneReply(valid.Reply)
+			test.mutate(&candidate)
+			resignStateRevision(t, &candidate)
+			if err := validateRevision(candidate, candidate.RunID, candidate.Revision); err != nil {
+				t.Fatalf("candidate did not isolate transition validation: %v", err)
+			}
+			assertInternalErrorCode(t, validateRevisionTransition(previous, candidate), "RUN_STATE_REVISION_INVALID")
+		})
+	}
+}
+
+func TestRevisionTransitionValidationRejectsIllegalBoundedEdges(t *testing.T) {
+	previous := internalBoundedGrantRevision(t)
+	current := boundedTransitionRevision(t, previous, RunInFlight, "BOUNDED_DISPATCH_AUTHORIZED", ReplyDispatchAuthorized, "", nil, nil)
+	for _, test := range []struct {
+		name   string
+		mutate func(*revisionRecord, *revisionRecord)
+	}{
+		{"Run identity", func(_ *revisionRecord, value *revisionRecord) { value.Snapshot.RequestID = "changed-request" }},
+		{"missing Bounded state", func(_ *revisionRecord, value *revisionRecord) { value.Snapshot.Bounded = nil }},
+		{"Ready skips Grant", func(left *revisionRecord, _ *revisionRecord) { left.Snapshot.Status = RunReady }},
+		{"Granted skips authorization", func(_ *revisionRecord, value *revisionRecord) { value.Snapshot.Status = RunFinished }},
+		{"InFlight regresses", func(left *revisionRecord, value *revisionRecord) {
+			left.Snapshot.Status = RunInFlight
+			value.Snapshot.Status = RunReady
+		}},
+		{"terminal continues", func(left *revisionRecord, _ *revisionRecord) { left.Snapshot.Status = RunFinished }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidatePrevious := previous
+			candidatePrevious.Snapshot = cloneSnapshot(previous.Snapshot)
+			candidateCurrent := current
+			candidateCurrent.Snapshot = cloneSnapshot(current.Snapshot)
+			test.mutate(&candidatePrevious, &candidateCurrent)
+			assertInternalErrorCode(t, validateRevisionTransition(candidatePrevious, candidateCurrent), "RUN_STATE_REVISION_INVALID")
+		})
+	}
+}
+
+func resignCapabilityGrant(t *testing.T, grant *admission.CapabilityGrant) {
+	t.Helper()
+	grant.Digest = ""
+	digest, _, err := canonicaljson.Digest(*grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant.Digest = digest
 }
 
 func boundedTransitionRevision(t *testing.T, base revisionRecord, status RunStatus, event string, replyKind ReplyKind, reason string, recovery []string, observation *CapabilityObservation) revisionRecord {

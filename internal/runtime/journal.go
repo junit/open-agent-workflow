@@ -132,6 +132,11 @@ func (value *journal) loadCommitted(runID string) (revisionRecord, error) {
 		if loaded.PredecessorDigest != predecessorDigest {
 			return revisionRecord{}, runtimeError("RUN_STATE_REVISION_INVALID", "invalid predecessor chain", nil)
 		}
+		if revision > 1 {
+			if transitionErr := validateRevisionTransition(current, loaded); transitionErr != nil {
+				return revisionRecord{}, transitionErr
+			}
+		}
 		predecessorDigest = loaded.Digest
 		current = loaded
 	}
