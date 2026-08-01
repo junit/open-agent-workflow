@@ -28,84 +28,112 @@ func Classify(proposal *ClassificationProposal, rules ClassificationRules) (Clas
 	if uncertain {
 		return fallbackDecision([]string{"CLASSIFICATION_TRAIT_UNCERTAIN"})
 	}
+	return classifyNormalized(value, traits, rules)
+}
 
-	reasons := []string{}
-	requirements := []EvidenceRequirement{}
-	mode := RequestModeDirect
-	risk := RiskNormal
-	workflow := false
+type baseAssessment struct {
+	reasons      []string
+	requirements []EvidenceRequirement
+	risk         RiskClass
+	workflow     bool
+}
+
+func assessBase(traits map[Trait]TraitValue, resources []Resource) baseAssessment {
+	result := baseAssessment{reasons: []string{}, requirements: []EvidenceRequirement{}, risk: RiskNormal}
 	for _, trait := range allCriticalTraits() {
 		if traits[trait] != TraitTrue {
 			continue
 		}
 		if reason := workflowReasonForTrait(trait); reason != "" {
-			workflow = true
-			reasons = append(reasons, reason)
+			result.workflow = true
+			result.reasons = append(result.reasons, reason)
 		}
-		if riskRank(traitRisk(trait)) > riskRank(risk) {
-			risk = traitRisk(trait)
-		}
+		result.risk = maxRisk(result.risk, traitRisk(trait))
 		if kind, reason := evidenceForTrait(trait); kind != "" {
-			requirements = appendRequirement(requirements, EvidenceRequirement{Kind: kind, Reason: reason})
+			result.requirements = appendRequirement(result.requirements, EvidenceRequirement{Kind: kind, Reason: reason})
 		}
 	}
-	for _, resource := range value.Resources {
+	for _, resource := range resources {
 		if reason := workflowReasonForResource(resource); reason != "" {
-			workflow = true
-			reasons = append(reasons, reason)
+			result.workflow = true
+			result.reasons = append(result.reasons, reason)
 		}
 		if resource == ResourceDestructive || resource == ResourceCredentials {
-			risk = maxRisk(risk, RiskCritical)
+			result.risk = maxRisk(result.risk, RiskCritical)
 		} else if resource != ResourceProject && resource != ResourceWorktree && resource != ResourceGitRepository {
-			risk = maxRisk(risk, RiskElevated)
+			result.risk = maxRisk(result.risk, RiskElevated)
 		}
 	}
+	return result
+}
 
+func (value *baseAssessment) requireDirectTraits(traits map[Trait]TraitValue) {
+	if traits[TraitScopeClear] != TraitTrue || traits[TraitChangePointKnown] != TraitTrue || traits[TraitRecoverable] != TraitTrue {
+		value.workflow = true
+		value.reasons = append(value.reasons, "DIRECT_SCOPE_UNCLEAR")
+	}
+	if traits[TraitFocusedVerificationKnown] != TraitTrue {
+		value.workflow = true
+		value.reasons = append(value.reasons, "DIRECT_VERIFICATION_REQUIRED")
+	}
+}
+
+func (value *baseAssessment) requireBaseEvidence(evidence []ProposalEvidence) {
+	baseRequirements := []EvidenceRequirement{}
+	addBaseEvidenceRequirements(&baseRequirements)
+	for _, requirement := range baseRequirements {
+		value.requirements = appendRequirement(value.requirements, requirement)
+	}
+	if missingEvidence(evidence, baseRequirements) {
+		value.workflow = true
+		value.reasons = append(value.reasons, "DIRECT_VERIFICATION_REQUIRED")
+	}
+}
+
+func classifyNormalized(value ClassificationProposal, traits map[Trait]TraitValue, rules ClassificationRules) (ClassificationDecision, error) {
+	assessment := assessBase(traits, value.Resources)
 	bounded := traits[TraitBoundedCapabilityRequest] == TraitTrue
 	if !bounded {
-		if traits[TraitScopeClear] != TraitTrue || traits[TraitChangePointKnown] != TraitTrue || traits[TraitRecoverable] != TraitTrue {
-			workflow = true
-			reasons = append(reasons, "DIRECT_SCOPE_UNCLEAR")
-		}
-		if traits[TraitFocusedVerificationKnown] != TraitTrue {
-			workflow = true
-			reasons = append(reasons, "DIRECT_VERIFICATION_REQUIRED")
-		}
+		assessment.requireDirectTraits(traits)
 	}
+	mode := RequestModeDirect
 	if bounded {
 		mode = RequestModeBounded
-		if value.CapabilitySelector == nil {
-			reasons = append(reasons, "CAPABILITY_SELECTION_REQUIRED")
-			requirements = appendRequirement(requirements, EvidenceRequirement{Kind: EvidenceCapabilitySelector, Reason: "bounded capability selection"})
-		}
-	} else if !workflow {
-		mode = RequestModeDirect
 	}
-	if workflow {
+	if assessment.workflow {
 		mode = RequestModeWorkflow
-	}
-	if mode != RequestModeWorkflow {
-		baseRequirements := []EvidenceRequirement{}
-		addBaseEvidenceRequirements(&baseRequirements)
-		for _, requirement := range baseRequirements {
-			requirements = appendRequirement(requirements, requirement)
-		}
-		if missingEvidence(value.Evidence, baseRequirements) {
-			workflow = true
+	} else {
+		assessment.requireBaseEvidence(value.Evidence)
+		if assessment.workflow {
 			mode = RequestModeWorkflow
-			reasons = append(reasons, "DIRECT_VERIFICATION_REQUIRED")
 		}
 	}
-	if mode == RequestModeWorkflow {
-		complexity := ComplexityComplex
-		return applyRules(ClassificationDecision{RequestMode: mode, WorkflowComplexity: &complexity, RiskClass: risk, EvidenceRequirements: requirements, EscalationReasons: reasons}, value, rules)
-	}
-	decision := ClassificationDecision{RequestMode: mode, RiskClass: risk, EvidenceRequirements: requirements, EscalationReasons: reasons}
-	if bounded && value.CapabilitySelector != nil {
-		selector := *value.CapabilitySelector
-		decision.CapabilitySelector = &selector
+	decision := assessment.decision(mode)
+	if mode == RequestModeBounded {
+		setBoundedSelector(&decision, value.CapabilitySelector)
 	}
 	return applyRules(decision, value, rules)
+}
+
+func (value baseAssessment) decision(mode RequestMode) ClassificationDecision {
+	decision := ClassificationDecision{RequestMode: mode, RiskClass: value.risk, EvidenceRequirements: value.requirements, EscalationReasons: value.reasons}
+	if mode == RequestModeWorkflow {
+		complexity := ComplexityComplex
+		decision.WorkflowComplexity = &complexity
+	}
+	return decision
+}
+
+func setBoundedSelector(decision *ClassificationDecision, value *CapabilitySelector) {
+	if value == nil {
+		decision.EscalationReasons = append(decision.EscalationReasons, "CAPABILITY_SELECTION_REQUIRED")
+		decision.EvidenceRequirements = appendRequirement(decision.EvidenceRequirements, EvidenceRequirement{
+			Kind: EvidenceCapabilitySelector, Reason: "bounded capability selection",
+		})
+	} else {
+		selector := *value
+		decision.CapabilitySelector = &selector
+	}
 }
 
 func applyRules(decision ClassificationDecision, proposal ClassificationProposal, rules ClassificationRules) (ClassificationDecision, error) {
@@ -145,10 +173,7 @@ func applyRules(decision ClassificationDecision, proposal ClassificationProposal
 	if decision.RequestMode != RequestModeBounded {
 		decision.CapabilitySelector = nil
 	} else if decision.CapabilitySelector == nil {
-		decision.EscalationReasons = append(decision.EscalationReasons, "CAPABILITY_SELECTION_REQUIRED")
-		decision.EvidenceRequirements = appendRequirement(decision.EvidenceRequirements, EvidenceRequirement{
-			Kind: EvidenceCapabilitySelector, Reason: "bounded capability selection",
-		})
+		setBoundedSelector(&decision, nil)
 	}
 	decision.EvidenceRequirements = sortRequirements(decision.EvidenceRequirements)
 	decision.EscalationReasons = uniqueSortedStrings(decision.EscalationReasons)

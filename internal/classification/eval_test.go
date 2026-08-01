@@ -1,6 +1,8 @@
 package classification_test
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
@@ -42,5 +44,119 @@ func TestCriticalReleaseEvaluationCorpusRequiresWorkflow(t *testing.T) {
 				t.Fatalf("critical corpus decision = %#v", decision)
 			}
 		})
+	}
+}
+
+func TestClassificationPolicyMonotonicityInvariant(t *testing.T) {
+	proposals := map[string]classification.ClassificationProposal{
+		"direct":   clearDirectProposal(),
+		"bounded":  boundedEvalProposal(),
+		"workflow": workflowEvalProposal(),
+	}
+	modes := []classification.RequestMode{classification.RequestModeDirect, classification.RequestModeBounded, classification.RequestModeWorkflow}
+	risks := []classification.RiskClass{classification.RiskNormal, classification.RiskElevated, classification.RiskCritical}
+	for name, proposal := range proposals {
+		base, err := classification.Classify(&proposal, classification.ClassificationRules{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, mode := range modes {
+			for _, risk := range risks {
+				layer := classification.PolicyLayer{MinimumMode: mode, MinimumRisk: risk}
+				userFirst, err := classification.Classify(&proposal, classification.ClassificationRules{User: layer})
+				if err != nil {
+					t.Fatal(err)
+				}
+				projectFirst, err := classification.Classify(&proposal, classification.ClassificationRules{Project: layer})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if requestModeRank(userFirst.RequestMode) < requestModeRank(base.RequestMode) || riskClassRank(userFirst.RiskClass) < riskClassRank(base.RiskClass) {
+					t.Fatalf("%s policy lowered base %#v to %#v", name, base, userFirst)
+				}
+				if userFirst.Digest() != projectFirst.Digest() {
+					t.Fatalf("%s equivalent layer placement changed digest: %s != %s", name, userFirst.Digest(), projectFirst.Digest())
+				}
+			}
+		}
+	}
+}
+
+func FuzzDecodeProposalFailsClosed(f *testing.F) {
+	valid, err := json.Marshal(clearDirectProposal())
+	if err != nil {
+		f.Fatal(err)
+	}
+	f.Add(valid)
+	f.Add([]byte(`{}`))
+	f.Add([]byte("{\"schema_version\":\"\xff\"}"))
+	f.Fuzz(func(t *testing.T, raw []byte) {
+		proposal, err := classification.DecodeProposal(raw)
+		if err != nil {
+			return
+		}
+		before, err := json.Marshal(proposal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		first, err := classification.Classify(&proposal, classification.ClassificationRules{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := classification.Classify(&proposal, classification.ClassificationRules{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := json.Marshal(proposal)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.Digest() == "" || first.Digest() != second.Digest() || string(before) != string(after) {
+			t.Fatalf("classification is not deterministic or mutated input: %s / %s", first.Digest(), second.Digest())
+		}
+	})
+}
+
+func boundedEvalProposal() classification.ClassificationProposal {
+	proposal := clearDirectProposal()
+	setTrait(&proposal, classification.TraitBoundedCapabilityRequest, classification.TraitTrue)
+	proposal.CapabilitySelector = &classification.CapabilitySelector{
+		ProviderID: "acme/suite", CapabilityID: "review", Source: classification.SelectorUserIntent,
+	}
+	proposal.Evidence = append(proposal.Evidence, classification.ProposalEvidence{
+		Kind: classification.EvidenceCapabilitySelector, Reference: "eval:selector", Digest: strings.Repeat("d", 64),
+	})
+	return proposal
+}
+
+func workflowEvalProposal() classification.ClassificationProposal {
+	proposal := clearDirectProposal()
+	setTrait(&proposal, classification.TraitCriticalRelease, classification.TraitTrue)
+	return proposal
+}
+
+func requestModeRank(value classification.RequestMode) int {
+	switch value {
+	case classification.RequestModeDirect:
+		return 1
+	case classification.RequestModeBounded:
+		return 2
+	case classification.RequestModeWorkflow:
+		return 3
+	default:
+		return 0
+	}
+}
+
+func riskClassRank(value classification.RiskClass) int {
+	switch value {
+	case classification.RiskNormal:
+		return 1
+	case classification.RiskElevated:
+		return 2
+	case classification.RiskCritical:
+		return 3
+	default:
+		return 0
 	}
 }

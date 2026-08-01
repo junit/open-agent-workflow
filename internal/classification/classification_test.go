@@ -85,6 +85,52 @@ func TestDecodeProposalRejectsDuplicateTraitsInvalidDigestsAndBadSelectors(t *te
 	}
 }
 
+func TestDecodeProposalRejectsInvalidUTF8AndOversizedInput(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  []byte
+		code string
+	}{
+		{"invalid UTF-8", []byte("{\"schema_version\":\"\xff\"}"), "CLASSIFICATION_JSON_INVALID"},
+		{"oversized input", make([]byte, (1<<20)+1), "CLASSIFICATION_TOO_LARGE"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := classification.DecodeProposal(tt.raw); err == nil || !strings.Contains(err.Error(), tt.code) {
+				t.Fatalf("DecodeProposal() error = %v, want %s", err, tt.code)
+			}
+		})
+	}
+}
+
+func TestTypedProposalLimitsFailUpward(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func(*classification.ClassificationProposal)
+		reason string
+	}{
+		{"too many evidence records", func(value *classification.ClassificationProposal) {
+			value.Evidence = make([]classification.ProposalEvidence, 129)
+		}, "CLASSIFICATION_EVIDENCE_LIMIT_EXCEEDED"},
+		{"evidence reference too long", func(value *classification.ClassificationProposal) {
+			value.Evidence[0].Reference = strings.Repeat("x", 513)
+		}, "CLASSIFICATION_EVIDENCE_INVALID"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			proposal := clearDirectProposal()
+			tt.mutate(&proposal)
+			decision, err := classification.Classify(&proposal, classification.ClassificationRules{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if decision.RequestMode != classification.RequestModeWorkflow || !hasReason(decision, tt.reason) {
+				t.Fatalf("typed proposal fallback = %#v", decision)
+			}
+		})
+	}
+}
+
 func TestProposalNormalizationIsDeterministicAndDefensive(t *testing.T) {
 	first, err := classification.DecodeProposal(mustJSON(t, completeProposal()))
 	if err != nil {

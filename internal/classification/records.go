@@ -10,9 +10,6 @@ const (
 	RequestModeDirect   RequestMode = "DIRECT"
 	RequestModeBounded  RequestMode = "BOUNDED"
 	RequestModeWorkflow RequestMode = "WORKFLOW"
-	Direct                          = RequestModeDirect
-	Bounded                         = RequestModeBounded
-	Workflow                        = RequestModeWorkflow
 )
 
 type WorkflowComplexity string
