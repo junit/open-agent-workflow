@@ -68,12 +68,20 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 	if err != nil {
 		return RunReply{}, runtimeError(admission.ErrorCode(err), "Workflow Stage Grant admission failed", err)
 	}
+	lease, err := engine.journal.acquireWorkflowResourceLease(current, grant)
+	if err != nil {
+		return RunReply{}, err
+	}
 	next := cloneSnapshot(snapshot)
 	next.Revision = nextRevision
 	next.Status = RunGranted
 	next.Grants = append(next.Grants, admission.CloneGrant(grant))
 	next.GrantIDs = append(next.GrantIDs, grant.ID)
 	next.Workflow.ActiveGrantID = grant.ID
+	if lease.ID != "" {
+		next.Workflow.ResourceLeases = append(next.Workflow.ResourceLeases, lease)
+		next.ResourceLeaseIDs = append(next.ResourceLeaseIDs, lease.ID)
+	}
 	next.ProcessedMessages = append(next.ProcessedMessages, ProcessedMessage{
 		IdempotencyKey: frame.IdempotencyKey, ContentDigest: messageDigest, Revision: nextRevision,
 	})

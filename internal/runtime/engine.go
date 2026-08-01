@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"unicode"
@@ -334,7 +333,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		return RunReply{}, err
 	}
 	var reply RunReply
-	err = engine.journal.withRunLock(frame.RunID, func() error {
+	runAction := func() error {
 		current, loadErr := engine.journal.loadCommitted(frame.RunID)
 		if loadErr != nil {
 			return loadErr
@@ -504,7 +503,14 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		}
 		reply = cloneReply(committed.Reply)
 		return nil
-	})
+	}
+	if normalizedContinue.Signal == SignalRequestStageGrant && workflowStageNeedsResourceLease(normalizedContinue.StageGrant) {
+		err = engine.journal.withResourceLeaseLock(func() error {
+			return engine.journal.withRunLock(frame.RunID, runAction)
+		})
+	} else {
+		err = engine.journal.withRunLock(frame.RunID, runAction)
+	}
 	if err != nil {
 		return RunReply{}, err
 	}
@@ -573,14 +579,9 @@ func normalizeProject(value ProjectIdentity) (ProjectIdentity, error) {
 	if value.Root == "" || !filepath.IsAbs(value.Root) || filepath.Clean(value.Root) != value.Root || !validDigest(value.ConfigurationDigest) {
 		return ProjectIdentity{}, runtimeError("PROJECT_IDENTITY_INVALID", "project root or configuration digest is invalid", nil)
 	}
-	physical, err := filepath.EvalSymlinks(value.Root)
+	physical, err := canonicalPhysicalRoot(value.Root)
 	if err != nil {
 		return ProjectIdentity{}, runtimeError("PROJECT_IDENTITY_INVALID", "resolve physical project root", err)
-	}
-	physical = filepath.Clean(physical)
-	info, err := os.Stat(physical)
-	if err != nil || !info.IsDir() {
-		return ProjectIdentity{}, runtimeError("PROJECT_IDENTITY_INVALID", "project root is not an existing directory", err)
 	}
 	return ProjectIdentity{Root: physical, ConfigurationDigest: value.ConfigurationDigest}, nil
 }

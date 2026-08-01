@@ -64,6 +64,10 @@ func newJournal(stateRoot string) (*journal, error) {
 	if err := ensurePrivateDir(runsRoot); err != nil {
 		return nil, runtimeError("RUN_STATE_WRITE_FAILED", "create runs root", err)
 	}
+	resourceLeasesRoot := filepath.Join(stateRoot, "resource-leases")
+	if err := ensurePrivateDir(resourceLeasesRoot); err != nil {
+		return nil, runtimeError("RUN_STATE_WRITE_FAILED", "create Resource Lease root", err)
+	}
 	return &journal{stateRoot: stateRoot}, nil
 }
 
@@ -90,6 +94,36 @@ func (value *journal) withRunLock(runID string, action func() error) error {
 	guard := flock.New(lockPath)
 	if err := guard.Lock(); err != nil {
 		return runtimeError("RUN_STATE_WRITE_FAILED", "lock run", err)
+	}
+	defer func() {
+		_ = guard.Unlock()
+		_ = guard.Close()
+	}()
+	return action()
+}
+
+// withResourceLeaseLock is the outer lock for Workflow mutations that may own
+// a physical Worktree. Callers must acquire this lock before the per-Run lock.
+func (value *journal) withResourceLeaseLock(action func() error) error {
+	resourceRoot := filepath.Join(value.stateRoot, "resource-leases")
+	if err := ensurePrivateDir(resourceRoot); err != nil {
+		return runtimeError("RUN_STATE_WRITE_FAILED", "create Resource Lease root", err)
+	}
+	lockPath := filepath.Join(resourceRoot, "LOCK")
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		return runtimeError("RUN_STATE_WRITE_FAILED", "create Resource Lease lock", err)
+	}
+	if err := lockFile.Chmod(0o600); err != nil {
+		_ = lockFile.Close()
+		return runtimeError("RUN_STATE_WRITE_FAILED", "protect Resource Lease lock", err)
+	}
+	if err := lockFile.Close(); err != nil {
+		return runtimeError("RUN_STATE_WRITE_FAILED", "close Resource Lease lock", err)
+	}
+	guard := flock.New(lockPath)
+	if err := guard.Lock(); err != nil {
+		return runtimeError("RUN_STATE_WRITE_FAILED", "lock Resource Leases", err)
 	}
 	defer func() {
 		_ = guard.Unlock()

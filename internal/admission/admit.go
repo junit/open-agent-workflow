@@ -307,7 +307,7 @@ func validateWorkflowEffects(request GrantRequest, capability catalog.Capability
 		if !contains(request.Authority.Effects, effect) {
 			return admissionError("CAPABILITY_AUTHORITY_EXCEEDED", effect, nil)
 		}
-		if effect == "write-project" && !request.Authority.ResourceLeases {
+		if (effect == "write-project" || effect == "git-local") && !request.Authority.ResourceLeases {
 			return admissionError("RESOURCE_LEASE_REQUIRED", effect, nil)
 		}
 	}

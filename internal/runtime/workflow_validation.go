@@ -23,8 +23,11 @@ func validateWorkflowState(record revisionRecord) error {
 	if snapshot.ConfigurationDigest != workflow.ConfigurationDigest || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow trusted inputs", nil)
 	}
-	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.Observations != nil || snapshot.GrantIDs == nil || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 || workflow.RevokedGrantIDs == nil || workflow.ResourceLeases == nil || workflow.ProjectionLag == nil {
+	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.Observations != nil || snapshot.GrantIDs == nil || snapshot.ResourceLeaseIDs == nil || workflow.RevokedGrantIDs == nil || workflow.ResourceLeases == nil || workflow.ProjectionLag == nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Workflow authority collections", nil)
+	}
+	if err := validateWorkflowResourceLeases(record); err != nil {
+		return err
 	}
 	if snapshot.Classification.WorkflowComplexity == nil || snapshot.Classification.CapabilitySelector != nil || snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Workflow classification details", nil)
@@ -81,7 +84,9 @@ func validateWorkflowRevisionTransition(previous, current RunSnapshot) error {
 		previousState := cloneWorkflowState(*previous.Workflow)
 		currentState := cloneWorkflowState(*current.Workflow)
 		previousState.ActiveGrantID, currentState.ActiveGrantID = "", ""
-		if !reflect.DeepEqual(previousState, currentState) || !reflect.DeepEqual(previous.LifecycleBundles, current.LifecycleBundles) || len(previous.Grants) != 0 || len(current.Grants) != 1 || len(previous.GrantIDs) != 0 || len(current.GrantIDs) != 1 {
+		previousLeases, currentLeases := previousState.ResourceLeases, currentState.ResourceLeases
+		previousState.ResourceLeases, currentState.ResourceLeases = nil, nil
+		if !reflect.DeepEqual(previousState, currentState) || !workflowStageLeaseAppend(previous, current, previousLeases, currentLeases) || !reflect.DeepEqual(previous.LifecycleBundles, current.LifecycleBundles) || len(previous.Grants) != 0 || len(current.Grants) != 1 || len(previous.GrantIDs) != 0 || len(current.GrantIDs) != 1 {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Workflow Stage Grant transition", nil)
 		}
 		return nil
@@ -98,4 +103,20 @@ func validateWorkflowRevisionTransition(previous, current RunSnapshot) error {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow selection changed immutable request state", nil)
 	}
 	return nil
+}
+
+func workflowStageLeaseAppend(previous, current RunSnapshot, previousLeases, currentLeases []ResourceLease) bool {
+	if len(previous.ResourceLeaseIDs) != 0 {
+		return false
+	}
+	if len(current.ResourceLeaseIDs) == 0 {
+		return reflect.DeepEqual(previousLeases, currentLeases)
+	}
+	if len(current.ResourceLeaseIDs) != 1 || len(currentLeases) != len(previousLeases)+1 || len(current.Grants) != 1 {
+		return false
+	}
+	if !reflect.DeepEqual(previousLeases, currentLeases[:len(previousLeases)]) {
+		return false
+	}
+	return currentLeases[len(currentLeases)-1].ID == current.ResourceLeaseIDs[0] && currentLeases[len(currentLeases)-1].GrantID == current.Grants[0].ID
 }
