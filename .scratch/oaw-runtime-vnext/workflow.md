@@ -25,6 +25,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-02-configuration-trust-and-provider-discovery.md
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-03-deterministic-request-classifier.md
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-04-profile-recipe-compiler.md
+  - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-05-direct-runtime-vertical-slice.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
