@@ -283,15 +283,15 @@ journal, conflict, corruption, and idempotency codes remain stable.
 
 ### Task 6: Review, verify, and merge Ticket 06
 
-- [ ] Review `main...HEAD` for selector provenance forgery, unverified Provider
+- [x] Review `main...HEAD` for selector provenance forgery, unverified Provider
   admission, mutable Grants, authority widening, Main Agent topology bypass,
   reply-before-commit windows, Host invocation, blind retry, Workflow leakage,
   and Direct regression.
-- [ ] Record findings/remediation in the existing review evidence.
-- [ ] Run fresh `go vet`, repository race tests, repository/admission/runtime
+- [x] Record findings/remediation in the existing review evidence.
+- [x] Run fresh `go vet`, repository race tests, repository/admission/runtime
   coverage, Bash syntax, ShellCheck, full Bash tests, classifier fuzz,
   `govulncheck`, and Linux/Windows builds.
-- [ ] Mark Ticket 06 complete and move the tracker to Ticket 07 only after every
+- [x] Mark Ticket 06 complete and move the tracker to Ticket 07 only after every
   acceptance criterion has matching evidence.
 - [ ] Commit verification evidence, run a final clean `go test ./...`, merge the
   named branch into `main`, re-run merged tests, remove only the Ticket 06
