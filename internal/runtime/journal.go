@@ -216,7 +216,11 @@ func (value *journal) commit(record revisionRecord) (revisionRecord, error) {
 	if err := atomicWriteFile(filepath.Join(value.runRoot(record.RunID), "HEAD"), rawHead, 0o600); err != nil {
 		return revisionRecord{}, runtimeError("RUN_STATE_WRITE_FAILED", "replace HEAD", err)
 	}
-	return record, nil
+	committed, err := value.loadRevision(record.RunID, record.Revision)
+	if err != nil {
+		return revisionRecord{}, err
+	}
+	return committed, nil
 }
 
 func (value *journal) writeImmutableRevision(runID string, revision uint64, raw []byte) error {
