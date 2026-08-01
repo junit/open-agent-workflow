@@ -353,6 +353,64 @@ func TestExchangeRejectsInvalidFrameShapesWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestStartIdempotencyReturnsStoredReplyAndRejectsChangedContent(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	projectRoot := t.TempDir()
+	engine, err := runtime.NewEngine(runtime.Options{StateRoot: stateRoot})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	frame := startFrame(projectRoot, "start-original", "idempotent-start")
+	first, err := engine.Exchange(frame)
+	if err != nil {
+		t.Fatalf("first START error = %v", err)
+	}
+
+	replay := frame
+	replay.MessageID = "start-replay"
+	second, err := engine.Exchange(replay)
+	if err != nil {
+		t.Fatalf("replayed START error = %v", err)
+	}
+	if !reflect.DeepEqual(second, first) {
+		t.Fatalf("replayed START differs from stored reply\n got: %#v\nwant: %#v", second, first)
+	}
+	assertRevisionCount(t, stateRoot, first.RunID, 1)
+
+	changed := startFrame(projectRoot, "start-changed", "idempotent-start")
+	changed.Start.Proposal.Evidence[0].Reference = "test:changed-scope"
+	_, err = engine.Exchange(changed)
+	assertErrorCode(t, err, "IDEMPOTENCY_KEY_REUSED")
+	assertRevisionCount(t, stateRoot, first.RunID, 1)
+}
+
+func TestContinueIdempotencyPrecedesRevisionConflict(t *testing.T) {
+	stateRoot, engine, started := startDirectRun(t)
+	frame := continueFrame(started.RunID, 1, "continue-original", "idempotent-continue")
+	first, err := engine.Exchange(frame)
+	if err != nil {
+		t.Fatalf("first CONTINUE error = %v", err)
+	}
+
+	replay := frame
+	replay.MessageID = "continue-replay"
+	second, err := engine.Exchange(replay)
+	if err != nil {
+		t.Fatalf("replayed CONTINUE error = %v", err)
+	}
+	if !reflect.DeepEqual(second, first) {
+		t.Fatalf("replayed CONTINUE differs from stored reply\n got: %#v\nwant: %#v", second, first)
+	}
+	assertRevisionCount(t, stateRoot, started.RunID, 2)
+
+	changed := frame
+	changed.MessageID = "continue-changed"
+	changed.ExpectedRevision = 2
+	_, err = engine.Exchange(changed)
+	assertErrorCode(t, err, "IDEMPOTENCY_KEY_REUSED")
+	assertRevisionCount(t, stateRoot, started.RunID, 2)
+}
+
 func directProposal() *classification.ClassificationProposal {
 	trueTraits := map[classification.Trait]bool{
 		classification.TraitScopeClear:               true,
@@ -491,5 +549,16 @@ func assertRunsRootEmpty(t *testing.T, stateRoot string) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("invalid frame created Run State: %#v", entries)
+	}
+}
+
+func assertRevisionCount(t *testing.T, stateRoot, runID string, expected int) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(stateRoot, "runs", runID, "revisions"))
+	if err != nil {
+		t.Fatalf("ReadDir(revisions) error = %v", err)
+	}
+	if len(entries) != expected {
+		t.Fatalf("revision count = %d, want %d", len(entries), expected)
 	}
 }

@@ -71,10 +71,6 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	if decision.RequestMode != classification.RequestModeDirect {
 		return RunReply{}, runtimeError("REQUEST_MODE_NOT_IMPLEMENTED", fmt.Sprintf("request mode %s is not implemented", decision.RequestMode), nil)
 	}
-	proposalDigest, _, err := canonicaljson.Digest(proposal)
-	if err != nil {
-		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "digest classification proposal", err)
-	}
 	normalizedStart := StartInput{RequestID: frame.Start.RequestID, Project: project, Proposal: cloneProposal(proposal)}
 	messageDigest, err := frameContentDigest(RunFrame{
 		SchemaVersion: RuntimeSchemaV1,
@@ -122,9 +118,6 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 			LifecycleBundles: []string{},
 			GrantIDs:         []string{},
 			ResourceLeaseIDs: []string{},
-		}
-		if snapshot.ClassificationDigest == "" {
-			snapshot.ClassificationDigest = proposalDigest
 		}
 		candidateReply := directReleaseReply(snapshot)
 		committed, commitErr := engine.journal.commit(revisionRecord{
