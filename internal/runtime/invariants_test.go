@@ -42,7 +42,7 @@ func TestRevisionValidationFailsClosedForEveryPinnedIdentity(t *testing.T) {
 		{"reply revision digest", func(value *revisionRecord) { value.Reply.RevisionDigest = strings.Repeat("0", 64) }, "RUN_STATE_REVISION_INVALID"},
 		{"reply state", func(value *revisionRecord) { value.Reply.Snapshot.Status = "TAMPERED" }, "RUN_STATE_DIGEST_MISMATCH"},
 		{"revision digest shape", func(value *revisionRecord) { value.Digest = "bad"; value.Reply.RevisionDigest = "bad" }, "RUN_STATE_REVISION_INVALID"},
-		{"revision digest content", func(value *revisionRecord) { value.Event = "TAMPERED" }, "RUN_STATE_DIGEST_MISMATCH"},
+		{"revision digest content", func(value *revisionRecord) { value.Reply.Diagnostics[0].Message = "tampered" }, "RUN_STATE_DIGEST_MISMATCH"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -169,7 +169,7 @@ func TestEngineAndJournalRejectInvalidBoundaries(t *testing.T) {
 	}
 	frame := internalStartFrame(t.TempDir(), "blocked-run-root")
 	_, err = engine.Exchange(frame)
-	assertInternalErrorCode(t, err, "RUN_STATE_WRITE_FAILED")
+	assertInternalErrorCode(t, err, "RUN_STATE_HEAD_INVALID")
 }
 
 func TestStartRejectsInvalidInputsAndUnimplementedModesWithoutState(t *testing.T) {
@@ -285,7 +285,153 @@ func TestMutationsPropagateCorruptionAndWriteFailures(t *testing.T) {
 	})
 }
 
+func TestSignedSemanticStateTamperingFailsClosedOnLoad(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*revisionRecord)
+	}{
+		{"status", func(value *revisionRecord) { value.Snapshot.Status = "TAMPERED" }},
+		{"request mode", func(value *revisionRecord) { value.Snapshot.RequestMode = classification.RequestModeWorkflow }},
+		{"classification mode", func(value *revisionRecord) {
+			value.Snapshot.Classification.RequestMode = classification.RequestModeWorkflow
+		}},
+		{"authority", func(value *revisionRecord) { value.Snapshot.GrantIDs = []string{"grant"} }},
+		{"processed message", func(value *revisionRecord) {
+			value.Snapshot.ProcessedMessages[0].ContentDigest = strings.Repeat("0", 64)
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			engine, stateRoot, started, committed := internalCommittedRevision(t)
+			test.mutate(&committed)
+			committed.Reply.Snapshot = cloneSnapshot(committed.Snapshot)
+			stateDigest, _, err := canonicaljson.Digest(committed.Snapshot)
+			if err != nil {
+				t.Fatal(err)
+			}
+			committed.StateDigest = stateDigest
+			resignRevision(t, &committed)
+			writeInternalCanonical(t, filepath.Join(stateRoot, "runs", started.RunID, "revisions", revisionFileName(1)), committed)
+			writeInternalCanonical(t, filepath.Join(stateRoot, "runs", started.RunID, "HEAD"), headRecord{
+				SchemaVersion: headSchemaV1, RunID: started.RunID, Revision: 1, RevisionDigest: committed.Digest,
+			})
+			_, err = engine.journal.loadCommitted(started.RunID)
+			assertInternalErrorCode(t, err, "RUN_STATE_REVISION_INVALID")
+		})
+	}
+}
+
+func TestDirectStateSemanticValidationRejectsMalformedCollectionsAndReplies(t *testing.T) {
+	_, _, _, revisionOne := internalCommittedRevision(t)
+	engine, _, started, _ := internalCommittedRevision(t)
+	if _, err := engine.Exchange(RunFrame{
+		SchemaVersion: RuntimeSchemaV1, Kind: FrameContinue, MessageID: "continue", IdempotencyKey: "continue",
+		RunID: started.RunID, ExpectedRevision: 1, Continue: &ContinueInput{Signal: SignalScopeExpanded},
+	}); err != nil {
+		t.Fatalf("CONTINUE error = %v", err)
+	}
+	revisionTwo, err := engine.journal.loadCommitted(started.RunID)
+	if err != nil {
+		t.Fatalf("load revision 2 error = %v", err)
+	}
+
+	complexity := classification.ComplexityComplex
+	selector := &classification.CapabilitySelector{ProviderID: "oaw.test/provider", CapabilityID: "test", Source: classification.SelectorUserIntent}
+	tests := []struct {
+		name   string
+		base   revisionRecord
+		mutate func(*revisionRecord)
+	}{
+		{"request ID", revisionOne, func(value *revisionRecord) { value.Snapshot.RequestID = "bad\nrequest" }},
+		{"project root", revisionOne, func(value *revisionRecord) { value.Snapshot.Project.Root = "relative" }},
+		{"configuration digest", revisionOne, func(value *revisionRecord) { value.Snapshot.ConfigurationDigest = "bad" }},
+		{"nil messages", revisionOne, func(value *revisionRecord) { value.Snapshot.ProcessedMessages = nil }},
+		{"message count", revisionOne, func(value *revisionRecord) {
+			value.Snapshot.ProcessedMessages = append(value.Snapshot.ProcessedMessages, ProcessedMessage{})
+		}},
+		{"nil evidence requirements", revisionOne, func(value *revisionRecord) { value.Snapshot.Classification.EvidenceRequirements = nil }},
+		{"nil escalation reasons", revisionOne, func(value *revisionRecord) { value.Snapshot.Classification.EscalationReasons = nil }},
+		{"workflow complexity", revisionOne, func(value *revisionRecord) { value.Snapshot.Classification.WorkflowComplexity = &complexity }},
+		{"capability selector", revisionOne, func(value *revisionRecord) { value.Snapshot.Classification.CapabilitySelector = selector }},
+		{"message key", revisionOne, func(value *revisionRecord) { value.Snapshot.ProcessedMessages[0].IdempotencyKey = "bad\nkey" }},
+		{"message digest", revisionOne, func(value *revisionRecord) { value.Snapshot.ProcessedMessages[0].ContentDigest = "bad" }},
+		{"message revision zero", revisionOne, func(value *revisionRecord) { value.Snapshot.ProcessedMessages[0].Revision = 0 }},
+		{"message revision high", revisionOne, func(value *revisionRecord) { value.Snapshot.ProcessedMessages[0].Revision = 2 }},
+		{"messages not sorted", revisionTwo, func(value *revisionRecord) {
+			value.Snapshot.ProcessedMessages[1].IdempotencyKey = value.Snapshot.ProcessedMessages[0].IdempotencyKey
+		}},
+		{"current message missing", revisionOne, func(value *revisionRecord) { value.IdempotencyKey = "different" }},
+		{"nil diagnostics", revisionOne, func(value *revisionRecord) { value.Reply.Diagnostics = nil }},
+		{"nil recovery", revisionOne, func(value *revisionRecord) { value.Reply.RecoveryActions = nil }},
+		{"release reply", revisionOne, func(value *revisionRecord) { value.Reply.Kind = ReplyPaused }},
+		{"escalation reply", revisionTwo, func(value *revisionRecord) { value.Reply.Reason = "wrong" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := test.base
+			candidate.Snapshot = cloneSnapshot(test.base.Snapshot)
+			candidate.Reply = cloneReply(test.base.Reply)
+			test.mutate(&candidate)
+			assertInternalErrorCode(t, validateDirectState(candidate), "RUN_STATE_REVISION_INVALID")
+		})
+	}
+}
+
+func TestJournalRejectsOversizedStateAndConflictingValidOrphan(t *testing.T) {
+	t.Run("oversized HEAD", func(t *testing.T) {
+		engine, stateRoot, started, _ := internalCommittedRevision(t)
+		headPath := filepath.Join(stateRoot, "runs", started.RunID, "HEAD")
+		if err := os.WriteFile(headPath, []byte(strings.Repeat("x", maximumHeadBytes+1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := engine.journal.loadCommitted(started.RunID)
+		assertInternalErrorCode(t, err, "RUN_STATE_HEAD_INVALID")
+	})
+
+	t.Run("oversized revision", func(t *testing.T) {
+		engine, stateRoot, started, _ := internalCommittedRevision(t)
+		revisionPath := filepath.Join(stateRoot, "runs", started.RunID, "revisions", revisionFileName(1))
+		if err := os.WriteFile(revisionPath, []byte(strings.Repeat("x", maximumRevisionBytes+1)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		_, err := engine.journal.loadCommitted(started.RunID)
+		assertInternalErrorCode(t, err, "RUN_STATE_REVISION_INVALID")
+	})
+
+	t.Run("revision limit", func(t *testing.T) {
+		engine, stateRoot, started, _ := internalCommittedRevision(t)
+		writeInternalCanonical(t, filepath.Join(stateRoot, "runs", started.RunID, "HEAD"), headRecord{
+			SchemaVersion: headSchemaV1, RunID: started.RunID, Revision: maximumRunRevisions + 1, RevisionDigest: started.RevisionDigest,
+		})
+		_, err := engine.journal.loadCommitted(started.RunID)
+		assertInternalErrorCode(t, err, "RUN_STATE_HEAD_INVALID")
+	})
+
+	t.Run("valid conflicting orphan", func(t *testing.T) {
+		engine, stateRoot, started, _ := internalCommittedRevision(t)
+		headPath := filepath.Join(stateRoot, "runs", started.RunID, "HEAD")
+		if err := os.Remove(headPath); err != nil {
+			t.Fatal(err)
+		}
+		frame := internalStartFrame(started.Snapshot.Project.Root, "internal-start")
+		frame.MessageID = "changed-message"
+		frame.Start.Proposal.Evidence[0].Reference = "internal:changed-scope"
+		_, err := engine.Exchange(frame)
+		assertInternalErrorCode(t, err, "RUN_STATE_WRITE_FAILED")
+	})
+}
+
 func TestJournalHelpersFailClosedOnInvalidFilesystemTargets(t *testing.T) {
+	blockedStateRoot := filepath.Join(t.TempDir(), "blocked-state")
+	if err := os.MkdirAll(blockedStateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blockedStateRoot, "runs"), []byte("blocked"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newJournal(blockedStateRoot); ErrorCode(err) != "RUN_STATE_WRITE_FAILED" {
+		t.Fatalf("blocked runs root error = %v", err)
+	}
+
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	journal, err := newJournal(stateRoot)
 	if err != nil {
@@ -310,6 +456,18 @@ func TestJournalHelpersFailClosedOnInvalidFilesystemTargets(t *testing.T) {
 		t.Fatalf("directory lock error = %v", err)
 	}
 
+	blockedRunID := "run-fedcba9876543210fedcba9876543210"
+	blockedRunRoot := journal.runRoot(blockedRunID)
+	if err := os.MkdirAll(blockedRunRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(blockedRunRoot, "revisions"), []byte("blocked"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := journal.writeImmutableRevision(blockedRunID, 1, []byte("revision")); ErrorCode(err) != "RUN_STATE_WRITE_FAILED" {
+		t.Fatalf("blocked revisions root error = %v", err)
+	}
+
 	if err := atomicWriteFile(filepath.Join(t.TempDir(), "missing", "HEAD"), []byte("head"), 0o600); err == nil {
 		t.Fatal("atomicWriteFile missing directory error = nil")
 	}
@@ -322,6 +480,18 @@ func TestJournalHelpersFailClosedOnInvalidFilesystemTargets(t *testing.T) {
 	}
 	if err := syncDirectory(filepath.Join(t.TempDir(), "missing")); err == nil {
 		t.Fatal("syncDirectory missing path error = nil")
+	}
+	if _, err := readLimitedFile(t.TempDir(), maximumHeadBytes); err == nil {
+		t.Fatal("readLimitedFile accepted a directory")
+	}
+	orphanDirectory := t.TempDir()
+	if _, err := reuseMatchingOrphan(filepath.Join(orphanDirectory, "missing.json"), []byte("candidate"), orphanDirectory); ErrorCode(err) != "RUN_STATE_WRITE_FAILED" {
+		t.Fatalf("missing orphan error = %v", err)
+	}
+	_, committedStateRoot, committedReply, _ := internalCommittedRevision(t)
+	committedRevisionPath := filepath.Join(committedStateRoot, "runs", committedReply.RunID, "revisions", revisionFileName(1))
+	if _, err := reuseMatchingOrphan(committedRevisionPath, []byte("invalid candidate"), filepath.Dir(committedRevisionPath)); ErrorCode(err) != "RUN_STATE_WRITE_FAILED" {
+		t.Fatalf("invalid orphan candidate error = %v", err)
 	}
 	var decoded headRecord
 	if err := decodeStrict([]byte(`{} trailing`), &decoded); err == nil {

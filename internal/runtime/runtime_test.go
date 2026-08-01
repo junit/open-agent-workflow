@@ -206,7 +206,7 @@ func TestInspectFailsClosedForMissingAndCorruptState(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ReadFile(revision) error = %v", err)
 				}
-				writeTestFile(t, path, bytes.Replace(raw, []byte("DIRECT_RELEASED"), []byte("DIRECT_TAMPERED"), 1))
+				writeTestFile(t, path, bytes.Replace(raw, []byte("Direct execution is outside Capability admission."), []byte("Tampered diagnostic message."), 1))
 			},
 			code: "RUN_STATE_DIGEST_MISMATCH",
 		},
@@ -219,7 +219,7 @@ func TestInspectFailsClosedForMissingAndCorruptState(t *testing.T) {
 				if err != nil {
 					t.Fatalf("ReadFile(revision) error = %v", err)
 				}
-				writeTestFile(t, path, bytes.Replace(raw, []byte(`"status":"RELEASED"`), []byte(`"status":"TAMPERED"`), 1))
+				writeTestFile(t, path, bytes.Replace(raw, []byte(`"escalation_reasons":[]`), []byte(`"escalation_reasons":["tampered"]`), 1))
 			},
 			code: "RUN_STATE_DIGEST_MISMATCH",
 		},
@@ -409,6 +409,68 @@ func TestContinueIdempotencyPrecedesRevisionConflict(t *testing.T) {
 	_, err = engine.Exchange(changed)
 	assertErrorCode(t, err, "IDEMPOTENCY_KEY_REUSED")
 	assertRevisionCount(t, stateRoot, started.RunID, 2)
+}
+
+func TestStartReplayUsesCommittedDecisionBeforeCurrentRules(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	frame := startFrame(t.TempDir(), "start-original-rules", "replay-across-rules")
+	directEngine, err := runtime.NewEngine(runtime.Options{StateRoot: stateRoot})
+	if err != nil {
+		t.Fatalf("NewEngine(direct) error = %v", err)
+	}
+	started, err := directEngine.Exchange(frame)
+	if err != nil {
+		t.Fatalf("Direct START error = %v", err)
+	}
+
+	raisedEngine, err := runtime.NewEngine(runtime.Options{
+		StateRoot: stateRoot,
+		Rules: classification.ClassificationRules{
+			User: classification.PolicyLayer{MinimumMode: classification.RequestModeWorkflow},
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewEngine(raised rules) error = %v", err)
+	}
+	replayed, err := raisedEngine.Exchange(frame)
+	if err != nil {
+		t.Fatalf("replay under raised rules error = %v", err)
+	}
+	if !reflect.DeepEqual(replayed, started) {
+		t.Fatalf("replay under raised rules differs\n got: %#v\nwant: %#v", replayed, started)
+	}
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
+}
+
+func TestStartRetryPromotesMatchingOrphanRevision(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	frame := startFrame(t.TempDir(), "orphan-retry-message", "orphan-retry-key")
+	engine, err := runtime.NewEngine(runtime.Options{StateRoot: stateRoot})
+	if err != nil {
+		t.Fatalf("NewEngine() error = %v", err)
+	}
+	started, err := engine.Exchange(frame)
+	if err != nil {
+		t.Fatalf("START error = %v", err)
+	}
+	headPath := filepath.Join(stateRoot, "runs", started.RunID, "HEAD")
+	if err := os.Remove(headPath); err != nil {
+		t.Fatalf("Remove(HEAD) error = %v", err)
+	}
+
+	retryFrame := frame
+	retryFrame.MessageID = "orphan-retry-new-message"
+	retried, err := engine.Exchange(retryFrame)
+	if err != nil {
+		t.Fatalf("retry matching orphan error = %v", err)
+	}
+	if !reflect.DeepEqual(retried, started) {
+		t.Fatalf("orphan retry reply differs\n got: %#v\nwant: %#v", retried, started)
+	}
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
+	if _, err := os.Stat(headPath); err != nil {
+		t.Fatalf("orphan retry did not restore HEAD: %v", err)
+	}
 }
 
 func directProposal() *classification.ClassificationProposal {

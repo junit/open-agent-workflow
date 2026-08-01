@@ -64,13 +64,6 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	if err != nil {
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "invalid classification proposal", err)
 	}
-	decision, err := classification.Classify(proposal, engine.rules)
-	if err != nil {
-		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "invalid classification rules", err)
-	}
-	if decision.RequestMode != classification.RequestModeDirect {
-		return RunReply{}, runtimeError("REQUEST_MODE_NOT_IMPLEMENTED", fmt.Sprintf("request mode %s is not implemented", decision.RequestMode), nil)
-	}
 	normalizedStart := StartInput{RequestID: frame.Start.RequestID, Project: project, Proposal: cloneProposal(proposal)}
 	messageDigest, err := frameContentDigest(RunFrame{
 		SchemaVersion: RuntimeSchemaV1,
@@ -81,6 +74,25 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		return RunReply{}, err
 	}
 	runID := deriveRunID(frame.IdempotencyKey)
+	if current, loadErr := engine.journal.loadCommitted(runID); loadErr == nil {
+		replayed, found, replayErr := engine.replay(current.Snapshot, frame.IdempotencyKey, messageDigest)
+		if replayErr != nil {
+			return RunReply{}, replayErr
+		}
+		if found {
+			return cloneReply(replayed), nil
+		}
+		return RunReply{}, runtimeError("IDEMPOTENCY_KEY_REUSED", "derived Run already exists for another message", nil)
+	} else if ErrorCode(loadErr) != "RUN_NOT_FOUND" {
+		return RunReply{}, loadErr
+	}
+	decision, err := classification.Classify(proposal, engine.rules)
+	if err != nil {
+		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "invalid classification rules", err)
+	}
+	if decision.RequestMode != classification.RequestModeDirect {
+		return RunReply{}, runtimeError("REQUEST_MODE_NOT_IMPLEMENTED", fmt.Sprintf("request mode %s is not implemented", decision.RequestMode), nil)
+	}
 	var reply RunReply
 	err = engine.journal.withRunLock(runID, func() error {
 		current, loadErr := engine.journal.loadCommitted(runID)

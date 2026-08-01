@@ -9,12 +9,20 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	goruntime "runtime"
 
 	"github.com/gofrs/flock"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 )
 
 var runIDPattern = regexp.MustCompile(`^run-[0-9a-f]{32}$`)
+
+const (
+	maximumHeadBytes     = 4 << 10
+	maximumRevisionBytes = 4 << 20
+	maximumRunRevisions  = 1 << 20
+)
 
 type headRecord struct {
 	SchemaVersion  string `json:"schema_version"`
@@ -97,7 +105,7 @@ func (value *journal) inspect(runID string) (revisionRecord, error) {
 
 func (value *journal) loadCommitted(runID string) (revisionRecord, error) {
 	headPath := filepath.Join(value.runRoot(runID), "HEAD")
-	rawHead, err := os.ReadFile(headPath)
+	rawHead, err := readLimitedFile(headPath, maximumHeadBytes)
 	if errors.Is(err, os.ErrNotExist) {
 		return revisionRecord{}, runtimeError("RUN_NOT_FOUND", runID, err)
 	}
@@ -108,7 +116,7 @@ func (value *journal) loadCommitted(runID string) (revisionRecord, error) {
 	if err := decodeStrict(rawHead, &head); err != nil {
 		return revisionRecord{}, runtimeError("RUN_STATE_HEAD_INVALID", "decode HEAD", err)
 	}
-	if head.SchemaVersion != headSchemaV1 || head.RunID != runID || head.Revision == 0 || !validDigest(head.RevisionDigest) {
+	if head.SchemaVersion != headSchemaV1 || head.RunID != runID || head.Revision == 0 || head.Revision > maximumRunRevisions || !validDigest(head.RevisionDigest) {
 		return revisionRecord{}, runtimeError("RUN_STATE_HEAD_INVALID", "invalid HEAD identity", nil)
 	}
 
@@ -133,7 +141,7 @@ func (value *journal) loadCommitted(runID string) (revisionRecord, error) {
 
 func (value *journal) loadRevision(runID string, revision uint64) (revisionRecord, error) {
 	path := filepath.Join(value.revisionsRoot(runID), revisionFileName(revision))
-	raw, err := os.ReadFile(path)
+	raw, err := readLimitedFile(path, maximumRevisionBytes)
 	if err != nil {
 		return revisionRecord{}, runtimeError("RUN_STATE_REVISION_INVALID", "read immutable revision", err)
 	}
@@ -148,7 +156,7 @@ func (value *journal) loadRevision(runID string, revision uint64) (revisionRecor
 }
 
 func validateRevision(record revisionRecord, runID string, revision uint64) error {
-	if record.SchemaVersion != revisionSchemaV1 || record.RunID != runID || record.Revision != revision || record.MessageID == "" || record.IdempotencyKey == "" || !validDigest(record.MessageDigest) || record.Event == "" {
+	if record.SchemaVersion != revisionSchemaV1 || record.RunID != runID || record.Revision != revision || validateIdentifier(record.MessageID) != nil || validateIdentifier(record.IdempotencyKey) != nil || !validDigest(record.MessageDigest) || record.Event == "" {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid revision identity", nil)
 	}
 	if revision == 1 {
@@ -160,6 +168,9 @@ func validateRevision(record revisionRecord, runID string, revision uint64) erro
 	}
 	if record.Snapshot.SchemaVersion != snapshotSchemaV1 || record.Snapshot.RunID != runID || record.Snapshot.Revision != revision || record.ConfigurationDigest != record.Snapshot.ConfigurationDigest || record.Snapshot.Project.ConfigurationDigest != record.ConfigurationDigest {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "snapshot identity mismatch", nil)
+	}
+	if err := validateDirectState(record); err != nil {
+		return err
 	}
 	stateDigest, _, err := canonicaljson.Digest(record.Snapshot)
 	if err != nil || stateDigest != record.StateDigest {
@@ -205,10 +216,15 @@ func (value *journal) commit(record revisionRecord) (revisionRecord, error) {
 	if err != nil {
 		return revisionRecord{}, runtimeError("RUN_STATE_WRITE_FAILED", "encode revision", err)
 	}
-	if err := value.writeImmutableRevision(record.RunID, record.Revision, rawRevision); err != nil {
+	reusedDigest, err := value.writeImmutableRevision(record.RunID, record.Revision, rawRevision)
+	if err != nil {
 		return revisionRecord{}, err
 	}
-	head := headRecord{SchemaVersion: headSchemaV1, RunID: record.RunID, Revision: record.Revision, RevisionDigest: digest}
+	committedDigest := digest
+	if reusedDigest != "" {
+		committedDigest = reusedDigest
+	}
+	head := headRecord{SchemaVersion: headSchemaV1, RunID: record.RunID, Revision: record.Revision, RevisionDigest: committedDigest}
 	rawHead, err := canonicaljson.Marshal(head)
 	if err != nil {
 		return revisionRecord{}, runtimeError("RUN_STATE_WRITE_FAILED", "encode HEAD", err)
@@ -223,15 +239,18 @@ func (value *journal) commit(record revisionRecord) (revisionRecord, error) {
 	return committed, nil
 }
 
-func (value *journal) writeImmutableRevision(runID string, revision uint64, raw []byte) error {
+func (value *journal) writeImmutableRevision(runID string, revision uint64, raw []byte) (string, error) {
 	revisionsRoot := value.revisionsRoot(runID)
 	if err := ensurePrivateDir(revisionsRoot); err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "create revisions directory", err)
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "create revisions directory", err)
 	}
 	path := filepath.Join(revisionsRoot, revisionFileName(revision))
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "create immutable revision", err)
+		if errors.Is(err, os.ErrExist) {
+			return reuseMatchingOrphan(path, raw, revisionsRoot)
+		}
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "create immutable revision", err)
 	}
 	remove := true
 	defer func() {
@@ -241,22 +260,22 @@ func (value *journal) writeImmutableRevision(runID string, revision uint64, raw 
 		}
 	}()
 	if err := file.Chmod(0o600); err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "protect immutable revision", err)
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "protect immutable revision", err)
 	}
 	if _, err := file.Write(raw); err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "write immutable revision", err)
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "write immutable revision", err)
 	}
 	if err := file.Sync(); err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "sync immutable revision", err)
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "sync immutable revision", err)
 	}
 	if err := file.Close(); err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "close immutable revision", err)
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "close immutable revision", err)
 	}
 	if err := syncDirectory(revisionsRoot); err != nil {
-		return runtimeError("RUN_STATE_WRITE_FAILED", "sync revisions directory", err)
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "sync revisions directory", err)
 	}
 	remove = false
-	return nil
+	return "", nil
 }
 
 func (value *journal) runRoot(runID string) string {
@@ -304,7 +323,7 @@ func atomicWriteFile(path string, content []byte, mode os.FileMode) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
+	if err := replaceFile(temporaryPath, path); err != nil {
 		return err
 	}
 	remove = false
@@ -312,12 +331,145 @@ func atomicWriteFile(path string, content []byte, mode os.FileMode) error {
 }
 
 func syncDirectory(path string) error {
+	if goruntime.GOOS == "windows" {
+		return nil
+	}
 	directory, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer directory.Close()
 	return directory.Sync()
+}
+
+func validateDirectState(record revisionRecord) error {
+	snapshot := record.Snapshot
+	if snapshot.RequestMode != classification.RequestModeDirect || snapshot.Status != RunReleased || snapshot.Classification.RequestMode != classification.RequestModeDirect || snapshot.ClassificationDigest == "" || !validDigest(snapshot.ClassificationDigest) {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct classification state", nil)
+	}
+	if err := validateIdentifier(snapshot.RequestID); err != nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted request ID", err)
+	}
+	if snapshot.Project.Root == "" || !filepath.IsAbs(snapshot.Project.Root) || filepath.Clean(snapshot.Project.Root) != snapshot.Project.Root || !validDigest(snapshot.ConfigurationDigest) {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted project identity", nil)
+	}
+	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct authority or message collections", nil)
+	}
+	if snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil || snapshot.Classification.WorkflowComplexity != nil || snapshot.Classification.CapabilitySelector != nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct classification details", nil)
+	}
+	for index, message := range snapshot.ProcessedMessages {
+		if err := validateIdentifier(message.IdempotencyKey); err != nil || !validDigest(message.ContentDigest) || message.Revision == 0 || message.Revision > record.Revision {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid processed message", err)
+		}
+		if index > 0 && snapshot.ProcessedMessages[index-1].IdempotencyKey >= message.IdempotencyKey {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "processed messages are not uniquely sorted", nil)
+		}
+	}
+	currentMessage := snapshot.ProcessedMessages[len(snapshot.ProcessedMessages)-1]
+	for _, message := range snapshot.ProcessedMessages {
+		if message.Revision == record.Revision {
+			currentMessage = message
+			break
+		}
+	}
+	if currentMessage.Revision != record.Revision || currentMessage.IdempotencyKey != record.IdempotencyKey || currentMessage.ContentDigest != record.MessageDigest {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "current processed message does not match revision", nil)
+	}
+	if err := validateDirectReply(record); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateDirectReply(record revisionRecord) error {
+	reply := record.Reply
+	if reply.Diagnostics == nil || reply.RecoveryActions == nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "nil Direct reply collections", nil)
+	}
+	if record.Revision == 1 {
+		if record.Event != "DIRECT_RELEASED" || reply.Kind != ReplyModeDecided || reply.Reason != "" || len(reply.RecoveryActions) != 0 || len(reply.Diagnostics) != 3 || reply.Diagnostics[0].Code != DiagnosticDirectOutsideCapabilityAdmission || reply.Diagnostics[1].Code != DiagnosticHostToolCallsUncontrolled || reply.Diagnostics[2].Code != DiagnosticResourceLeaseNotApplicable {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct release reply", nil)
+		}
+		return nil
+	}
+	if record.Event != "DIRECT_SCOPE_EXPANDED" || reply.Kind != ReplyPaused || reply.Reason != ReasonModeEscalationRequired || len(reply.RecoveryActions) != 1 || reply.RecoveryActions[0] != RecoveryStartSuccessorRun || len(reply.Diagnostics) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct escalation reply", nil)
+	}
+	return nil
+}
+
+func reuseMatchingOrphan(path string, expected []byte, directory string) (string, error) {
+	existing, err := readLimitedFile(path, maximumRevisionBytes)
+	if err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "read orphan revision", err)
+	}
+	var existingRecord revisionRecord
+	var expectedRecord revisionRecord
+	if err := decodeStrict(existing, &existingRecord); err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "decode orphan revision", err)
+	}
+	if err := decodeStrict(expected, &expectedRecord); err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "decode candidate revision", err)
+	}
+	if err := validateRevision(existingRecord, expectedRecord.RunID, expectedRecord.Revision); err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "validate orphan revision", err)
+	}
+	if !sameLogicalRevision(existingRecord, expectedRecord) {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "conflicting orphan revision", nil)
+	}
+	file, err := os.OpenFile(path, os.O_RDWR, 0o600)
+	if err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "open matching orphan revision", err)
+	}
+	defer file.Close()
+	if err := file.Chmod(0o600); err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "protect matching orphan revision", err)
+	}
+	if err := file.Sync(); err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "sync matching orphan revision", err)
+	}
+	if err := syncDirectory(directory); err != nil {
+		return "", runtimeError("RUN_STATE_WRITE_FAILED", "sync matching orphan directory", err)
+	}
+	return existingRecord.Digest, nil
+}
+
+func sameLogicalRevision(left, right revisionRecord) bool {
+	if left.RunID != right.RunID || left.Revision != right.Revision || left.PredecessorDigest != right.PredecessorDigest || left.IdempotencyKey != right.IdempotencyKey || left.MessageDigest != right.MessageDigest || left.Event != right.Event || left.StateDigest != right.StateDigest || left.ConfigurationDigest != right.ConfigurationDigest {
+		return false
+	}
+	leftReply := cloneReply(left.Reply)
+	rightReply := cloneReply(right.Reply)
+	leftReply.RevisionDigest = ""
+	rightReply.RevisionDigest = ""
+	leftDigest, _, leftErr := canonicaljson.Digest(leftReply)
+	rightDigest, _, rightErr := canonicaljson.Digest(rightReply)
+	return leftErr == nil && rightErr == nil && leftDigest == rightDigest
+}
+
+func readLimitedFile(path string, maximum int64) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() > maximum {
+		return nil, fmt.Errorf("state file is not regular or exceeds %d bytes", maximum)
+	}
+	raw, err := io.ReadAll(io.LimitReader(file, maximum+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(raw)) > maximum {
+		return nil, fmt.Errorf("state file exceeds %d bytes", maximum)
+	}
+	return raw, nil
 }
 
 func decodeStrict(raw []byte, target any) error {

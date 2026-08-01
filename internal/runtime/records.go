@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
@@ -137,7 +138,8 @@ func (value *Error) Error() string {
 func (value *Error) Unwrap() error { return value.Cause }
 
 func ErrorCode(err error) string {
-	if runtimeErr, ok := err.(*Error); ok {
+	var runtimeErr *Error
+	if errors.As(err, &runtimeErr) {
 		return runtimeErr.Code
 	}
 	return ""
