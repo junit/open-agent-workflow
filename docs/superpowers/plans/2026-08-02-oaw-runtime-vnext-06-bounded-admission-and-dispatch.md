@@ -251,20 +251,20 @@ journal, conflict, corruption, and idempotency codes remain stable.
 
 ### Task 4: Persist dispatch authorization, observations, and uncertainty
 
-- [ ] Add a failing `DISPATCH_PREPARED` test that names the exact committed Grant,
+- [x] Add a failing `DISPATCH_PREPARED` test that names the exact committed Grant,
   invocation, and Executor and returns `DISPATCH_AUTHORIZED` only after the
   `IN_FLIGHT` revision commits.
-- [ ] Reject wrong or stale preparation, observation before authorization,
+- [x] Reject wrong or stale preparation, observation before authorization,
   duplicate distinct invocation attempts, and raw/unknown outcomes.
-- [ ] Add successful normalized observation tests ending `FINISHED` with
+- [x] Add successful normalized observation tests ending `FINISHED` with
   digest-pinned Evidence References and no further Grant.
-- [ ] Add failed observation and explicit scope/additional/remediation/
+- [x] Add failed observation and explicit scope/additional/remediation/
   architecture signals that pause with `MODE_ESCALATION_REQUIRED` and only
   `START_SUCCESSOR_RUN`.
-- [ ] Add post-authorization uncertainty that pauses with
+- [x] Add post-authorization uncertainty that pauses with
   `EXECUTION_UNCERTAIN`; never mint or authorize a retry invocation.
-- [ ] Prove replay before revision checks across every handshake frame.
-- [ ] Commit as `feat: persist bounded dispatch handshake`.
+- [x] Prove replay before revision checks across every handshake frame.
+- [x] Commit as `feat: persist bounded dispatch handshake`.
 
 ### Task 5: Harden Bounded recovery and concurrency
 

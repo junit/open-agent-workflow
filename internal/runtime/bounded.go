@@ -172,6 +172,74 @@ func normalizeCapabilitySelection(value ContinueInput) (ContinueInput, error) {
 	return ContinueInput{Signal: SignalCapabilitySelected, CapabilitySelector: selector, TrustedRuleID: trustedRuleID}, nil
 }
 
+func normalizeDispatchPreparation(value *DispatchPreparation) (*DispatchPreparation, error) {
+	if value == nil || validateIdentifier(value.GrantID) != nil || validateIdentifier(value.InvocationID) != nil || validateIdentifier(value.ExecutorID) != nil {
+		return nil, runtimeError("DISPATCH_PREPARATION_INVALID", "dispatch preparation identities are invalid", nil)
+	}
+	return &DispatchPreparation{GrantID: value.GrantID, InvocationID: value.InvocationID, ExecutorID: value.ExecutorID}, nil
+}
+
+func normalizeCapabilityObservation(value *CapabilityObservation) (*CapabilityObservation, error) {
+	if value == nil || validateIdentifier(value.GrantID) != nil || validateIdentifier(value.InvocationID) != nil || validateIdentifier(value.ExecutorID) != nil {
+		return nil, runtimeError("OBSERVATION_INVALID", "observation identities are invalid", nil)
+	}
+	if value.Outcome != ObservationSucceeded && value.Outcome != ObservationFailed {
+		return nil, runtimeError("OBSERVATION_INVALID", "observation outcome is not normalized", nil)
+	}
+	if value.RawOutput != "" || len(value.EvidenceReferences) == 0 {
+		return nil, runtimeError("OBSERVATION_INVALID", "observation must contain no raw output and pinned evidence", nil)
+	}
+	evidence := append([]EvidenceReference{}, value.EvidenceReferences...)
+	for index := range evidence {
+		evidence[index].Reference = strings.TrimSpace(evidence[index].Reference)
+		if validateIdentifier(evidence[index].Reference) != nil || !validDigest(evidence[index].Digest) {
+			return nil, runtimeError("OBSERVATION_INVALID", "observation evidence is not digest-pinned", nil)
+		}
+	}
+	sort.Slice(evidence, func(i, j int) bool {
+		if evidence[i].Reference == evidence[j].Reference {
+			return evidence[i].Digest < evidence[j].Digest
+		}
+		return evidence[i].Reference < evidence[j].Reference
+	})
+	for index := 1; index < len(evidence); index++ {
+		if evidence[index-1] == evidence[index] {
+			return nil, runtimeError("OBSERVATION_INVALID", "observation evidence is duplicated", nil)
+		}
+	}
+	return &CapabilityObservation{
+		GrantID:            value.GrantID,
+		InvocationID:       value.InvocationID,
+		ExecutorID:         value.ExecutorID,
+		Outcome:            value.Outcome,
+		EvidenceReferences: evidence,
+	}, nil
+}
+
+func isBoundedEscalationSignal(signal ContinueSignal) bool {
+	switch signal {
+	case SignalScopeExpanded, SignalAdditionalCapabilityRequired, SignalRemediationRequired, SignalArchitectureRequired:
+		return true
+	default:
+		return false
+	}
+}
+
+func boundedEscalationEvent(signal ContinueSignal) string {
+	switch signal {
+	case SignalScopeExpanded:
+		return "BOUNDED_SCOPE_EXPANDED"
+	case SignalAdditionalCapabilityRequired:
+		return "BOUNDED_ADDITIONAL_CAPABILITY_REQUIRED"
+	case SignalRemediationRequired:
+		return "BOUNDED_REMEDIATION_REQUIRED"
+	case SignalArchitectureRequired:
+		return "BOUNDED_ARCHITECTURE_REQUIRED"
+	default:
+		return ""
+	}
+}
+
 func issueBoundedGrant(snapshot RunSnapshot, options BoundedOptions, issuedRevision uint64) (admission.CapabilityGrant, error) {
 	if snapshot.Bounded == nil || snapshot.Bounded.Selector == nil {
 		return admission.CapabilityGrant{}, runtimeError("RUN_TRANSITION_INVALID", "Bounded Grant requires an admitted selector", nil)
@@ -259,6 +327,111 @@ func boundedGrantReply(snapshot RunSnapshot) RunReply {
 		Diagnostics:     []Diagnostic{},
 		RecoveryActions: []string{},
 	}
+}
+
+func boundedTransitionReply(snapshot RunSnapshot, kind ReplyKind, reason string, recoveryActions []string) RunReply {
+	return RunReply{
+		SchemaVersion:   RuntimeSchemaV1,
+		Kind:            kind,
+		RunID:           snapshot.RunID,
+		Revision:        snapshot.Revision,
+		Snapshot:        cloneSnapshot(snapshot),
+		Diagnostics:     []Diagnostic{},
+		Reason:          reason,
+		RecoveryActions: append([]string{}, recoveryActions...),
+	}
+}
+
+func boundedTransitionSnapshot(current RunSnapshot, frame RunFrame, messageDigest string, nextRevision uint64) RunSnapshot {
+	snapshot := cloneSnapshot(current)
+	snapshot.Revision = nextRevision
+	snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{
+		IdempotencyKey: frame.IdempotencyKey,
+		ContentDigest:  messageDigest,
+		Revision:       nextRevision,
+	})
+	sort.Slice(snapshot.ProcessedMessages, func(i, j int) bool {
+		return snapshot.ProcessedMessages[i].IdempotencyKey < snapshot.ProcessedMessages[j].IdempotencyKey
+	})
+	return snapshot
+}
+
+func (engine *Engine) continueBoundedHandshake(current revisionRecord, frame RunFrame, normalized ContinueInput, messageDigest string) (RunReply, error) {
+	if normalized.Signal == SignalDispatchPrepared {
+		if current.Snapshot.Status != RunGranted || len(current.Snapshot.Grants) != 1 || normalized.DispatchPreparation == nil {
+			return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "DISPATCH_PREPARED requires a granted Bounded run", nil)
+		}
+		grant := current.Snapshot.Grants[0]
+		preparation := normalized.DispatchPreparation
+		if preparation.GrantID != grant.ID || preparation.InvocationID != grant.InvocationID || preparation.ExecutorID != grant.Executor.ID {
+			return RunReply{}, runtimeError("DISPATCH_PREPARATION_INVALID", "preparation does not identify the committed Grant", nil)
+		}
+		nextRevision := current.Revision + 1
+		snapshot := boundedTransitionSnapshot(current.Snapshot, frame, messageDigest, nextRevision)
+		snapshot.Status = RunInFlight
+		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, "BOUNDED_DISPATCH_AUTHORIZED", boundedTransitionReply(snapshot, ReplyDispatchAuthorized, "", nil))
+	}
+
+	if normalized.Signal == SignalCapabilityObserved {
+		if current.Snapshot.Status != RunInFlight || len(current.Snapshot.Grants) != 1 || normalized.Observation == nil {
+			return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "CAPABILITY_OBSERVED requires an authorized Bounded invocation", nil)
+		}
+		grant := current.Snapshot.Grants[0]
+		observation := normalized.Observation
+		if observation.GrantID != grant.ID || observation.InvocationID != grant.InvocationID || observation.ExecutorID != grant.Executor.ID {
+			return RunReply{}, runtimeError("OBSERVATION_INVALID", "observation does not identify the authorized invocation", nil)
+		}
+		nextRevision := current.Revision + 1
+		snapshot := boundedTransitionSnapshot(current.Snapshot, frame, messageDigest, nextRevision)
+		snapshot.Observations = append(snapshot.Observations, *observation)
+		if observation.Outcome == ObservationSucceeded {
+			snapshot.Status = RunFinished
+			return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, "BOUNDED_CAPABILITY_FINISHED", boundedTransitionReply(snapshot, ReplyFinished, "", nil))
+		}
+		snapshot.Status = RunPaused
+		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, "BOUNDED_CAPABILITY_FAILED", boundedTransitionReply(snapshot, ReplyPaused, ReasonModeEscalationRequired, []string{RecoveryStartSuccessorRun}))
+	}
+
+	if normalized.Signal == SignalExecutionUncertain {
+		if current.Snapshot.Status != RunInFlight || len(current.Snapshot.Grants) != 1 {
+			return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "EXECUTION_UNCERTAIN requires an authorized Bounded invocation", nil)
+		}
+		nextRevision := current.Revision + 1
+		snapshot := boundedTransitionSnapshot(current.Snapshot, frame, messageDigest, nextRevision)
+		snapshot.Status = RunPaused
+		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, "BOUNDED_EXECUTION_UNCERTAIN", boundedTransitionReply(snapshot, ReplyPaused, ReasonExecutionUncertain, []string{RecoveryReconcileInvocation}))
+	}
+
+	if isBoundedEscalationSignal(normalized.Signal) {
+		if current.Snapshot.Status != RunInFlight || len(current.Snapshot.Grants) != 1 {
+			return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "Bounded escalation requires an authorized invocation", nil)
+		}
+		nextRevision := current.Revision + 1
+		snapshot := boundedTransitionSnapshot(current.Snapshot, frame, messageDigest, nextRevision)
+		snapshot.Status = RunPaused
+		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, boundedEscalationEvent(normalized.Signal), boundedTransitionReply(snapshot, ReplyPaused, ReasonModeEscalationRequired, []string{RecoveryStartSuccessorRun}))
+	}
+
+	return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "unsupported Bounded transition", nil)
+}
+
+func (engine *Engine) commitBoundedHandshake(current revisionRecord, frame RunFrame, messageDigest string, snapshot RunSnapshot, event string, candidateReply RunReply) (RunReply, error) {
+	committed, err := engine.journal.commit(revisionRecord{
+		SchemaVersion:     revisionSchemaV1,
+		RunID:             frame.RunID,
+		Revision:          snapshot.Revision,
+		PredecessorDigest: current.Digest,
+		MessageID:         frame.MessageID,
+		IdempotencyKey:    frame.IdempotencyKey,
+		MessageDigest:     messageDigest,
+		Event:             event,
+		Snapshot:          snapshot,
+		Reply:             candidateReply,
+	})
+	if err != nil {
+		return RunReply{}, err
+	}
+	return cloneReply(committed.Reply), nil
 }
 
 func normalizeBoundedSet(values []string) ([]string, error) {

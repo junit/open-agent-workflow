@@ -364,7 +364,7 @@ func validateDirectState(record revisionRecord) error {
 	if snapshot.Project.Root == "" || !filepath.IsAbs(snapshot.Project.Root) || filepath.Clean(snapshot.Project.Root) != snapshot.Project.Root || !validDigest(snapshot.ConfigurationDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted project identity", nil)
 	}
-	if snapshot.Bounded != nil || snapshot.Grants != nil || snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
+	if snapshot.Bounded != nil || snapshot.Grants != nil || snapshot.Observations != nil || snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct authority or message collections", nil)
 	}
 	if snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil || snapshot.Classification.WorkflowComplexity != nil || snapshot.Classification.CapabilitySelector != nil {
@@ -399,7 +399,7 @@ func validateBoundedState(record revisionRecord) error {
 	if snapshot.RequestMode != classification.RequestModeBounded || snapshot.Classification.RequestMode != classification.RequestModeBounded || snapshot.ClassificationDigest == "" || !validDigest(snapshot.ClassificationDigest) || snapshot.Bounded == nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded classification state", nil)
 	}
-	if snapshot.Status != RunAwaitingCapability && snapshot.Status != RunReady && snapshot.Status != RunGranted {
+	if snapshot.Status != RunAwaitingCapability && snapshot.Status != RunReady && snapshot.Status != RunGranted && snapshot.Status != RunInFlight && snapshot.Status != RunFinished && snapshot.Status != RunPaused {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded status", nil)
 	}
 	if err := validateIdentifier(snapshot.RequestID); err != nil {
@@ -414,7 +414,7 @@ func validateBoundedState(record revisionRecord) error {
 	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded authority or message collections", nil)
 	}
-	if snapshot.Status == RunGranted {
+	if snapshot.Status == RunGranted || snapshot.Status == RunInFlight || snapshot.Status == RunFinished || snapshot.Status == RunPaused {
 		if len(snapshot.Grants) != 1 || len(snapshot.GrantIDs) != 1 || snapshot.GrantIDs[0] != snapshot.Grants[0].ID {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Bounded Grant collection", nil)
 		}
@@ -423,6 +423,26 @@ func validateBoundedState(record revisionRecord) error {
 		}
 	} else if len(snapshot.Grants) != 0 || len(snapshot.GrantIDs) != 0 {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "unexpected Bounded Grant before issuance", nil)
+	}
+	if snapshot.Status == RunAwaitingCapability || snapshot.Status == RunReady || snapshot.Status == RunGranted || snapshot.Status == RunInFlight || snapshot.Status == RunPaused && len(snapshot.Observations) == 0 {
+		if snapshot.Observations != nil && len(snapshot.Observations) != 0 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "unexpected persisted Bounded observation", nil)
+		}
+	}
+	if snapshot.Status == RunFinished || snapshot.Status == RunPaused && len(snapshot.Observations) == 1 {
+		if len(snapshot.Observations) != 1 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Bounded observation collection", nil)
+		}
+		if err := validatePersistedObservation(record, snapshot.Observations[0]); err != nil {
+			return err
+		}
+		if snapshot.Status == RunFinished && snapshot.Observations[0].Outcome != ObservationSucceeded || snapshot.Status == RunPaused && snapshot.Observations[0].Outcome != ObservationFailed {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "Bounded status and observation outcome disagree", nil)
+		}
+	} else if snapshot.Status != RunPaused && len(snapshot.Observations) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "unexpected persisted Bounded observations", nil)
+	} else if snapshot.Status == RunPaused && len(snapshot.Observations) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid paused Bounded observations", nil)
 	}
 	if snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil || snapshot.Classification.WorkflowComplexity != nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded classification details", nil)
@@ -435,7 +455,7 @@ func validateBoundedState(record revisionRecord) error {
 	if err := validatePersistedBoundedInput(snapshot.Bounded.Input); err != nil {
 		return err
 	}
-	if snapshot.Status == RunAwaitingCapability && snapshot.Bounded.Selector != nil || snapshot.Status == RunReady && snapshot.Bounded.Selector == nil {
+	if snapshot.Status == RunAwaitingCapability && snapshot.Bounded.Selector != nil || snapshot.Status != RunAwaitingCapability && snapshot.Bounded.Selector == nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Bounded status and selector disagree", nil)
 	}
 	if snapshot.Bounded.Selector != nil {
@@ -493,36 +513,112 @@ func validatePersistedGrant(record revisionRecord, grant admission.CapabilityGra
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Capability Grant", err)
 	}
 	snapshot := record.Snapshot
-	if snapshot.Bounded == nil || snapshot.Bounded.Selector == nil || grant.RunID != snapshot.RunID || grant.RequestID != snapshot.RequestID || grant.IssuedRevision != record.Revision || grant.DeliverableID != snapshot.Bounded.Input.DeliverableID || grant.InputDigest != snapshot.Bounded.Input.InputDigest || grant.ProviderID != snapshot.Bounded.Selector.ProviderID || grant.CapabilityID != snapshot.Bounded.Selector.CapabilityID || grant.Executor.ID != snapshot.Bounded.Input.ExecutorID || grant.RegistryDigest != snapshot.Bounded.RegistryDigest || grant.CatalogDigest != snapshot.Bounded.CatalogDigest || grant.ParentGrantID != "" || !equalStrings(grant.Effects, snapshot.Bounded.Input.RequestedEffects) || !equalStrings(grant.Resources, snapshot.Bounded.Input.RequestedResources) || grant.TerminationCondition != snapshot.Bounded.Input.TerminationCondition {
+	if snapshot.Bounded == nil || snapshot.Bounded.Selector == nil || grant.RunID != snapshot.RunID || grant.RequestID != snapshot.RequestID || grant.IssuedRevision > record.Revision || snapshot.Status == RunGranted && grant.IssuedRevision != record.Revision || grant.DeliverableID != snapshot.Bounded.Input.DeliverableID || grant.InputDigest != snapshot.Bounded.Input.InputDigest || grant.ProviderID != snapshot.Bounded.Selector.ProviderID || grant.CapabilityID != snapshot.Bounded.Selector.CapabilityID || grant.Executor.ID != snapshot.Bounded.Input.ExecutorID || grant.RegistryDigest != snapshot.Bounded.RegistryDigest || grant.CatalogDigest != snapshot.Bounded.CatalogDigest || grant.ParentGrantID != "" || !equalStrings(grant.Effects, snapshot.Bounded.Input.RequestedEffects) || !equalStrings(grant.Resources, snapshot.Bounded.Input.RequestedResources) || grant.TerminationCondition != snapshot.Bounded.Input.TerminationCondition {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "persisted Grant exceeds Bounded request", nil)
 	}
 	return nil
 }
 
+func validatePersistedObservation(record revisionRecord, observation CapabilityObservation) error {
+	normalized, err := normalizeCapabilityObservation(&observation)
+	if err != nil || normalized.RawOutput != "" || normalized.GrantID != observation.GrantID || normalized.InvocationID != observation.InvocationID || normalized.ExecutorID != observation.ExecutorID || normalized.Outcome != observation.Outcome || !equalEvidenceReferences(normalized.EvidenceReferences, observation.EvidenceReferences) {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Capability observation", err)
+	}
+	if len(record.Snapshot.Grants) != 1 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "persisted observation has no Grant", nil)
+	}
+	grant := record.Snapshot.Grants[0]
+	if observation.GrantID != grant.ID || observation.InvocationID != grant.InvocationID || observation.ExecutorID != grant.Executor.ID {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "persisted observation exceeds authorized invocation", nil)
+	}
+	return nil
+}
+
+func equalEvidenceReferences(left, right []EvidenceReference) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}
+
 func validateBoundedReply(record revisionRecord) error {
 	reply := record.Reply
-	if reply.Diagnostics == nil || reply.RecoveryActions == nil || reply.Reason != "" || len(reply.RecoveryActions) != 0 {
+	if reply.Diagnostics == nil || reply.RecoveryActions == nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded reply collections", nil)
 	}
-	if record.Snapshot.Status == RunAwaitingCapability {
+	snapshot := record.Snapshot
+	switch snapshot.Status {
+	case RunAwaitingCapability:
+		if reply.Reason != "" || len(reply.RecoveryActions) != 0 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded selection reply recovery", nil)
+		}
 		if record.Event != "BOUNDED_AWAITING_CAPABILITY" || reply.Kind != ReplyCapabilitySelectionRequired || len(reply.Diagnostics) != 1 || !validSelectionDiagnostic(reply.Diagnostics[0].Code) {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded selection reply", nil)
 		}
 		return nil
-	}
-	if record.Snapshot.Status == RunGranted {
+	case RunGranted:
+		if reply.Reason != "" || len(reply.RecoveryActions) != 0 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded Grant reply recovery", nil)
+		}
 		if record.Event != "BOUNDED_GRANT_ISSUED" || reply.Kind != ReplyGrantIssued || len(reply.Diagnostics) != 0 {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded Grant reply", nil)
 		}
 		return nil
+	case RunReady:
+		if reply.Reason != "" || len(reply.RecoveryActions) != 0 || reply.Kind != ReplyModeDecided || len(reply.Diagnostics) != 0 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded ready reply", nil)
+		}
+		if record.Revision == 1 && record.Event != "BOUNDED_READY" || record.Revision > 1 && record.Event != "BOUNDED_CAPABILITY_SELECTED" {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded ready event", nil)
+		}
+		return nil
+	case RunInFlight:
+		if reply.Reason != "" || len(reply.RecoveryActions) != 0 || record.Event != "BOUNDED_DISPATCH_AUTHORIZED" || reply.Kind != ReplyDispatchAuthorized || len(reply.Diagnostics) != 0 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded dispatch authorization reply", nil)
+		}
+		return nil
+	case RunFinished:
+		if reply.Reason != "" || len(reply.RecoveryActions) != 0 || record.Event != "BOUNDED_CAPABILITY_FINISHED" || reply.Kind != ReplyFinished || len(reply.Diagnostics) != 0 || len(snapshot.Observations) != 1 || snapshot.Observations[0].Outcome != ObservationSucceeded {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded finished reply", nil)
+		}
+		return nil
+	case RunPaused:
+		if reply.Kind != ReplyPaused || len(reply.Diagnostics) != 0 {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded pause reply", nil)
+		}
+		if len(snapshot.Observations) == 1 {
+			if record.Event != "BOUNDED_CAPABILITY_FAILED" || reply.Reason != ReasonModeEscalationRequired || len(reply.RecoveryActions) != 1 || reply.RecoveryActions[0] != RecoveryStartSuccessorRun || snapshot.Observations[0].Outcome != ObservationFailed {
+				return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded failed observation pause", nil)
+			}
+			return nil
+		}
+		if reply.Reason == ReasonExecutionUncertain {
+			if record.Event != "BOUNDED_EXECUTION_UNCERTAIN" || len(reply.RecoveryActions) != 1 || reply.RecoveryActions[0] != RecoveryReconcileInvocation {
+				return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded uncertainty pause", nil)
+			}
+			return nil
+		}
+		if reply.Reason == ReasonModeEscalationRequired && len(reply.RecoveryActions) == 1 && reply.RecoveryActions[0] == RecoveryStartSuccessorRun && validBoundedEscalationEvent(record.Event) {
+			return nil
+		}
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded escalation pause", nil)
+	default:
+		return runtimeError("RUN_STATE_REVISION_INVALID", "unsupported Bounded reply status", nil)
 	}
-	if reply.Kind != ReplyModeDecided || len(reply.Diagnostics) != 0 {
-		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded ready reply", nil)
+}
+
+func validBoundedEscalationEvent(value string) bool {
+	switch value {
+	case "BOUNDED_SCOPE_EXPANDED", "BOUNDED_ADDITIONAL_CAPABILITY_REQUIRED", "BOUNDED_REMEDIATION_REQUIRED", "BOUNDED_ARCHITECTURE_REQUIRED":
+		return true
+	default:
+		return false
 	}
-	if record.Revision == 1 && record.Event != "BOUNDED_READY" || record.Revision > 1 && record.Event != "BOUNDED_CAPABILITY_SELECTED" {
-		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded ready event", nil)
-	}
-	return nil
 }
 
 func validSelectionDiagnostic(value string) bool {
