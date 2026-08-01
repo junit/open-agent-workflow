@@ -15,7 +15,7 @@ type Catalog struct {
 }
 
 func cloneProviderList(values []ProviderDescriptorRecord) []ProviderDescriptorRecord {
-	result := make([]ProviderDescriptorRecord, len(values))
+	result := cloneSlice(values)
 	for i, value := range values {
 		result[i] = cloneProvider(value)
 	}
@@ -23,7 +23,7 @@ func cloneProviderList(values []ProviderDescriptorRecord) []ProviderDescriptorRe
 }
 
 func cloneRecipeList(values []ProfileRecipeRecord) []ProfileRecipeRecord {
-	result := make([]ProfileRecipeRecord, len(values))
+	result := cloneSlice(values)
 	for i, value := range values {
 		result[i] = cloneRecipe(value)
 	}
@@ -34,7 +34,7 @@ func New(providers []ProviderDescriptorRecord, recipes []ProfileRecipeRecord, al
 	snapshot := Catalog{
 		providers: cloneProviderList(providers),
 		recipes:   cloneRecipeList(recipes),
-		aliases:   append([]ProfileAliasRecord(nil), aliases...),
+		aliases:   cloneSlice(aliases),
 	}
 	if err := validateCatalog(&snapshot); err != nil {
 		return Catalog{}, err
@@ -65,9 +65,16 @@ func (catalog Catalog) Recipes() []ProfileRecipeRecord {
 }
 
 func (catalog Catalog) Aliases() []ProfileAliasRecord {
-	result := make([]ProfileAliasRecord, len(catalog.aliases))
-	copy(result, catalog.aliases)
-	return result
+	return cloneSlice(catalog.aliases)
 }
 
 func (catalog Catalog) Digest() string { return catalog.digest }
+
+func cloneSlice[T any](values []T) []T {
+	if values == nil {
+		return nil
+	}
+	result := make([]T, len(values))
+	copy(result, values)
+	return result
+}

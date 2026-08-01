@@ -30,6 +30,22 @@ func TestNewCatalogOrdersAndCopiesRecords(t *testing.T) {
 	}
 }
 
+func TestNewCatalogPreservesEmptyCollectionsWhenCopying(t *testing.T) {
+	provider := testProvider("oaw/provider", "implementation", "implementation")
+	provider.Capabilities[0].DelegationAllowList = []string{}
+	recipe := testRecipe("oaw/recipe", "oaw/provider", "implementation")
+	catalog, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, []ProfileAliasRecord{})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if got := catalog.Providers()[0].Capabilities[0].DelegationAllowList; got == nil || len(got) != 0 {
+		t.Fatalf("DelegationAllowList = %#v, want non-nil empty slice", got)
+	}
+	if got := catalog.Aliases(); got == nil || len(got) != 0 {
+		t.Fatalf("Aliases = %#v, want non-nil empty slice", got)
+	}
+}
+
 func TestNewCatalogRejectsCrossRecordInvariants(t *testing.T) {
 	baseProvider := testProvider("oaw/provider", "implementation", "implementation")
 	baseRecipe := testRecipe("oaw/recipe", "oaw/provider", "implementation")

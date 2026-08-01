@@ -305,35 +305,35 @@ func uniqueStrings(values []string, code string) error {
 }
 
 func cloneProvider(record ProviderDescriptorRecord) ProviderDescriptorRecord {
-	record.Discovery = append([]DiscoveryProbe(nil), record.Discovery...)
+	record.Discovery = cloneSlice(record.Discovery)
 	for i := range record.Discovery {
-		record.Discovery[i].Paths = append([]string(nil), record.Discovery[i].Paths...)
+		record.Discovery[i].Paths = cloneSlice(record.Discovery[i].Paths)
 	}
-	record.Capabilities = append([]CapabilityRecord(nil), record.Capabilities...)
+	record.Capabilities = cloneSlice(record.Capabilities)
 	for i := range record.Capabilities {
-		record.Capabilities[i].MaximumEffects = append([]string(nil), record.Capabilities[i].MaximumEffects...)
-		record.Capabilities[i].Resources = append([]string(nil), record.Capabilities[i].Resources...)
-		record.Capabilities[i].RequestModes = append([]RequestMode(nil), record.Capabilities[i].RequestModes...)
-		record.Capabilities[i].Responsibilities = append([]string(nil), record.Capabilities[i].Responsibilities...)
-		record.Capabilities[i].DelegationAllowList = append([]string(nil), record.Capabilities[i].DelegationAllowList...)
-		record.Capabilities[i].HostBindings = append([]HostBinding(nil), record.Capabilities[i].HostBindings...)
+		record.Capabilities[i].MaximumEffects = cloneSlice(record.Capabilities[i].MaximumEffects)
+		record.Capabilities[i].Resources = cloneSlice(record.Capabilities[i].Resources)
+		record.Capabilities[i].RequestModes = cloneSlice(record.Capabilities[i].RequestModes)
+		record.Capabilities[i].Responsibilities = cloneSlice(record.Capabilities[i].Responsibilities)
+		record.Capabilities[i].DelegationAllowList = cloneSlice(record.Capabilities[i].DelegationAllowList)
+		record.Capabilities[i].HostBindings = cloneSlice(record.Capabilities[i].HostBindings)
 	}
 	return record
 }
 
 func cloneRecipe(record ProfileRecipeRecord) ProfileRecipeRecord {
-	record.RequiredResponsibilities = append([]string(nil), record.RequiredResponsibilities...)
-	record.Nodes = append([]RecipeNode(nil), record.Nodes...)
-	record.IncidentRoutes = append([]IncidentRoute(nil), record.IncidentRoutes...)
-	record.TerminalGates = append([]string(nil), record.TerminalGates...)
-	record.StableBoundaries = append([]string(nil), record.StableBoundaries...)
+	record.RequiredResponsibilities = cloneSlice(record.RequiredResponsibilities)
+	record.Nodes = cloneSlice(record.Nodes)
+	record.IncidentRoutes = cloneSlice(record.IncidentRoutes)
+	record.TerminalGates = cloneSlice(record.TerminalGates)
+	record.StableBoundaries = cloneSlice(record.StableBoundaries)
 	for i := range record.Nodes {
-		record.Nodes[i].Transitions = append([]RecipeTransition(nil), record.Nodes[i].Transitions...)
+		record.Nodes[i].Transitions = cloneSlice(record.Nodes[i].Transitions)
 	}
 	return record
 }
 
 func cloneAliases(record ProfileAliasSetRecord) ProfileAliasSetRecord {
-	record.Aliases = append([]ProfileAliasRecord(nil), record.Aliases...)
+	record.Aliases = cloneSlice(record.Aliases)
 	return record
 }
