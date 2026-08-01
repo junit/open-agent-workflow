@@ -99,7 +99,7 @@ func Load(options LoadOptions) (Snapshot, error) {
 				requiredProviders = append([]string{}, projectConfig.RequiredProviders...)
 				recommendedProviders = append([]string{}, projectConfig.RecommendedProviders...)
 			} else {
-				untrustedProviderIDs = append([]string{}, inspection.fingerprint.ProviderIDs...)
+				untrustedProviderIDs = projectOnlyProviderIDs(providers, inspection.fingerprint.ProviderIDs)
 			}
 		} else if !errors.Is(statErr, os.ErrNotExist) {
 			return Snapshot{}, fmt.Errorf("CONFIG_FILE_READ_FAILED: .oaw/config.toml: %w", statErr)
@@ -129,6 +129,20 @@ func Load(options LoadOptions) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	return snapshot, nil
+}
+
+func projectOnlyProviderIDs(trusted []catalog.ProviderDescriptorRecord, projectIDs []string) []string {
+	known := make(map[string]struct{}, len(trusted))
+	for _, provider := range trusted {
+		known[provider.ID] = struct{}{}
+	}
+	result := make([]string, 0, len(projectIDs))
+	for _, id := range projectIDs {
+		if _, found := known[id]; !found {
+			result = append(result, id)
+		}
+	}
+	return result
 }
 
 type userInspection struct {

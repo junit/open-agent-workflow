@@ -528,6 +528,33 @@ func TestLoadExcludesUntrustedProjectRecords(t *testing.T) {
 	}
 }
 
+func TestLoadDoesNotShadowTrustedProviderWithUntrustedReplacement(t *testing.T) {
+	userRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(userRoot, "providers"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userRoot, "providers", "acme.toml"), []byte(testProviderTOML), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	writeUserConfig(t, userRoot, `
+schema_version = "oaw.user-config/v1"
+[[provider_descriptors]]
+id = "acme/suite"
+path = "providers/acme.toml"
+`)
+	projectRoot := projectWithProvider(t, false)
+	snapshot, err := Load(LoadOptions{UserConfigRoot: userRoot, ProjectRoot: projectRoot})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := snapshot.UntrustedProviderIDs(); len(got) != 0 {
+		t.Fatalf("UntrustedProviderIDs() = %#v", got)
+	}
+	if got := len(snapshot.Catalog().Providers()); got != 4 {
+		t.Fatalf("provider count = %d, want 4", got)
+	}
+}
+
 func TestLoadMergesExactlyTrustedProjectAndUserDenyWins(t *testing.T) {
 	projectRoot := projectWithProvider(t, true)
 	registry := testRegistry(t)
