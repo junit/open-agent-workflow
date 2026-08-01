@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v1/provider-descriptor.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "descriptor_version", "id", "display_name", "discovery", "capabilities"],
+  "properties": {
+    "schema_version": {"const": "oaw.provider-descriptor/v1"},
+    "descriptor_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._-]*$"},
+    "display_name": {"type": "string", "minLength": 1},
+    "discovery": {"type": "array", "uniqueItems": true, "items": {"oneOf": [
+      {"type":"object","additionalProperties":false,"required":["id","kind","root","path"],"properties":{"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9.-]*$"},"kind":{"const":"path-exists"},"root":{"enum":["user-home","xdg-config-home","project-root"]},"path":{"$ref":"#/$defs/path"}}},
+      {"type":"object","additionalProperties":false,"required":["id","kind","root","paths"],"properties":{"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9.-]*$"},"kind":{"const":"all-paths-exist"},"root":{"enum":["user-home","xdg-config-home","project-root"]},"paths":{"type":"array","minItems":1,"uniqueItems":true,"items":{"$ref":"#/$defs/path"}}}},
+      {"type":"object","additionalProperties":false,"required":["id","kind","root","prefix","suffix"],"properties":{"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9.-]*$"},"kind":{"const":"one-level-version-path-exists"},"root":{"enum":["user-home","xdg-config-home","project-root"]},"prefix":{"$ref":"#/$defs/path"},"suffix":{"$ref":"#/$defs/path"}}}
+    ]}},
+    "capabilities": {"type":"array","uniqueItems":true,"items":{"$ref":"#/$defs/capability"}}
+  },
+  "$defs": {
+    "path": {"type":"string","allOf":[{"pattern":"^[^/\\\\\\x00-\\x1f\\x7f]+(?:/[^/\\\\\\x00-\\x1f\\x7f]+)*$"},{"not":{"anyOf":[{"pattern":"(^|/)\\.(/|$)"},{"pattern":"(^|/)\\.\\.(/|$)"},{"pattern":"[*?\\[\\]{}()]"}]}}]},
+    "capability": {"type":"object","additionalProperties":false,"required":["id","input_schema","outcome_schema","maximum_effects","resources","request_modes","responsibilities","executor_topology","delegation_allow_list","host_bindings"],"properties":{"id":{"type":"string","pattern":"^[a-z0-9][a-z0-9.-]*$"},"input_schema":{"type":"string","minLength":1},"outcome_schema":{"type":"string","minLength":1},"maximum_effects":{"type":"array","uniqueItems":true,"items":{"enum":["read-project","write-project","run-process","git-local","network-read"]}},"resources":{"type":"array","uniqueItems":true,"items":{"enum":["project","project-worktree","git-repository"]}},"request_modes":{"type":"array","minItems":1,"uniqueItems":true,"items":{"enum":["BOUNDED","WORKFLOW"]}},"responsibilities":{"type":"array","uniqueItems":true,"items":{"type":"string","minLength":1}},"executor_topology":{"enum":["main-agent-allowed","isolated-required"]},"delegation_allow_list":{"type":"array","uniqueItems":true,"items":{"type":"string","minLength":1}},"host_bindings":{"type":"array","minItems":1,"uniqueItems":true,"items":{"$ref":"#/$defs/binding"}}}},
+    "binding":{"type":"object","additionalProperties":false,"required":["host","kind","reference"],"properties":{"host":{"type":"string","minLength":1},"kind":{"enum":["skill","agent","tool"]},"reference":{"type":"string","minLength":1}}}
+  }
+}
