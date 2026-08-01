@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"unicode"
 	"unicode/utf8"
 
@@ -88,12 +89,15 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	err = engine.journal.withRunLock(runID, func() error {
 		current, loadErr := engine.journal.loadCommitted(runID)
 		if loadErr == nil {
-			replayed, replayErr := engine.replay(current.Snapshot, frame.IdempotencyKey, messageDigest)
+			replayed, found, replayErr := engine.replay(current.Snapshot, frame.IdempotencyKey, messageDigest)
 			if replayErr != nil {
 				return replayErr
 			}
-			reply = replayed
-			return nil
+			if found {
+				reply = replayed
+				return nil
+			}
+			return runtimeError("IDEMPOTENCY_KEY_REUSED", "derived Run already exists for another message", nil)
 		}
 		if ErrorCode(loadErr) != "RUN_NOT_FOUND" {
 			return loadErr
@@ -168,24 +172,99 @@ func (engine *Engine) inspect(frame RunFrame) (RunReply, error) {
 }
 
 func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
-	return RunReply{}, runtimeError("REQUEST_MODE_NOT_IMPLEMENTED", "CONTINUE is not implemented", nil)
+	if frame.Start != nil || frame.Continue == nil || !runIDPattern.MatchString(frame.RunID) || frame.ExpectedRevision == 0 || frame.Continue.Signal != SignalScopeExpanded {
+		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "CONTINUE payload shape is invalid", nil)
+	}
+	messageDigest, err := frameContentDigest(RunFrame{
+		SchemaVersion:    RuntimeSchemaV1,
+		Kind:             FrameContinue,
+		RunID:            frame.RunID,
+		ExpectedRevision: frame.ExpectedRevision,
+		Continue:         &ContinueInput{Signal: frame.Continue.Signal},
+	})
+	if err != nil {
+		return RunReply{}, err
+	}
+	var reply RunReply
+	err = engine.journal.withRunLock(frame.RunID, func() error {
+		current, loadErr := engine.journal.loadCommitted(frame.RunID)
+		if loadErr != nil {
+			return loadErr
+		}
+		replayed, found, replayErr := engine.replay(current.Snapshot, frame.IdempotencyKey, messageDigest)
+		if replayErr != nil {
+			return replayErr
+		}
+		if found {
+			reply = replayed
+			return nil
+		}
+		if frame.ExpectedRevision != current.Revision {
+			return runtimeError("RUN_REVISION_CONFLICT", fmt.Sprintf("expected revision %d, current revision %d", frame.ExpectedRevision, current.Revision), nil)
+		}
+		if current.Snapshot.RequestMode != classification.RequestModeDirect || current.Snapshot.Status != RunReleased {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "scope expansion requires a released Direct run", nil)
+		}
+		nextRevision := current.Revision + 1
+		snapshot := cloneSnapshot(current.Snapshot)
+		snapshot.Revision = nextRevision
+		snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{
+			IdempotencyKey: frame.IdempotencyKey,
+			ContentDigest:  messageDigest,
+			Revision:       nextRevision,
+		})
+		sort.Slice(snapshot.ProcessedMessages, func(i, j int) bool {
+			return snapshot.ProcessedMessages[i].IdempotencyKey < snapshot.ProcessedMessages[j].IdempotencyKey
+		})
+		candidateReply := RunReply{
+			SchemaVersion:   RuntimeSchemaV1,
+			Kind:            ReplyPaused,
+			RunID:           frame.RunID,
+			Revision:        nextRevision,
+			Snapshot:        cloneSnapshot(snapshot),
+			Diagnostics:     []Diagnostic{},
+			Reason:          ReasonModeEscalationRequired,
+			RecoveryActions: []string{RecoveryStartSuccessorRun},
+		}
+		committed, commitErr := engine.journal.commit(revisionRecord{
+			SchemaVersion:     revisionSchemaV1,
+			RunID:             frame.RunID,
+			Revision:          nextRevision,
+			PredecessorDigest: current.Digest,
+			MessageID:         frame.MessageID,
+			IdempotencyKey:    frame.IdempotencyKey,
+			MessageDigest:     messageDigest,
+			Event:             "DIRECT_SCOPE_EXPANDED",
+			Snapshot:          snapshot,
+			Reply:             candidateReply,
+		})
+		if commitErr != nil {
+			return commitErr
+		}
+		reply = cloneReply(committed.Reply)
+		return nil
+	})
+	if err != nil {
+		return RunReply{}, err
+	}
+	return cloneReply(reply), nil
 }
 
-func (engine *Engine) replay(snapshot RunSnapshot, key, digest string) (RunReply, error) {
+func (engine *Engine) replay(snapshot RunSnapshot, key, digest string) (RunReply, bool, error) {
 	for _, message := range snapshot.ProcessedMessages {
 		if message.IdempotencyKey != key {
 			continue
 		}
 		if message.ContentDigest != digest {
-			return RunReply{}, runtimeError("IDEMPOTENCY_KEY_REUSED", "idempotency key content changed", nil)
+			return RunReply{}, false, runtimeError("IDEMPOTENCY_KEY_REUSED", "idempotency key content changed", nil)
 		}
 		revision, err := engine.journal.loadRevision(snapshot.RunID, message.Revision)
 		if err != nil {
-			return RunReply{}, err
+			return RunReply{}, false, err
 		}
-		return cloneReply(revision.Reply), nil
+		return cloneReply(revision.Reply), true, nil
 	}
-	return RunReply{}, runtimeError("IDEMPOTENCY_KEY_REUSED", "derived Run already exists for another message", nil)
+	return RunReply{}, false, nil
 }
 
 func directReleaseReply(snapshot RunSnapshot) RunReply {

@@ -233,6 +233,126 @@ func TestInspectFailsClosedForMissingAndCorruptState(t *testing.T) {
 	}
 }
 
+func TestDirectScopeExpansionRequiresSuccessorRun(t *testing.T) {
+	stateRoot, engine, started := startDirectRun(t)
+	reply, err := engine.Exchange(continueFrame(started.RunID, started.Revision, "continue-scope", "scope-expanded"))
+	if err != nil {
+		t.Fatalf("Exchange(CONTINUE scope expansion) error = %v", err)
+	}
+	if reply.Kind != runtime.ReplyPaused || reply.Reason != runtime.ReasonModeEscalationRequired {
+		t.Fatalf("scope expansion reply kind/reason = %q/%q", reply.Kind, reply.Reason)
+	}
+	if !reflect.DeepEqual(reply.RecoveryActions, []string{runtime.RecoveryStartSuccessorRun}) {
+		t.Fatalf("recovery actions = %#v", reply.RecoveryActions)
+	}
+	if reply.Revision != 2 || reply.RevisionDigest == "" || reply.Snapshot.Revision != 2 {
+		t.Fatalf("scope expansion revision = %#v", reply)
+	}
+	if reply.Snapshot.RequestMode != classification.RequestModeDirect || reply.Snapshot.Status != runtime.RunReleased {
+		t.Fatalf("scope expansion changed mode/status = %q/%q", reply.Snapshot.RequestMode, reply.Snapshot.Status)
+	}
+	if len(reply.Snapshot.LifecycleBundles) != 0 || len(reply.Snapshot.GrantIDs) != 0 || len(reply.Snapshot.ResourceLeaseIDs) != 0 {
+		t.Fatalf("scope expansion created authority: %#v", reply.Snapshot)
+	}
+	if len(reply.Diagnostics) != 0 {
+		t.Fatalf("scope expansion diagnostics = %#v, want empty", reply.Diagnostics)
+	}
+	if len(reply.Snapshot.ProcessedMessages) != 2 {
+		t.Fatalf("processed messages = %#v", reply.Snapshot.ProcessedMessages)
+	}
+	if _, err := os.Stat(filepath.Join(stateRoot, "runs", started.RunID, "revisions", "00000000000000000002.json")); err != nil {
+		t.Fatalf("revision 2 unavailable after reply: %v", err)
+	}
+
+	inspected, err := engine.Exchange(inspectFrame(started.RunID, "inspect-expanded"))
+	if err != nil {
+		t.Fatalf("INSPECT expanded run error = %v", err)
+	}
+	if !reflect.DeepEqual(inspected.Snapshot, reply.Snapshot) || inspected.RevisionDigest != reply.RevisionDigest {
+		t.Fatalf("committed expansion differs from reply\n got: %#v\nwant: %#v", inspected, reply)
+	}
+}
+
+func TestContinueRejectsRevisionConflictWithoutWriting(t *testing.T) {
+	stateRoot, engine, started := startDirectRun(t)
+	runRoot := filepath.Join(stateRoot, "runs", started.RunID)
+	headBefore, err := os.ReadFile(filepath.Join(runRoot, "HEAD"))
+	if err != nil {
+		t.Fatalf("ReadFile(HEAD) error = %v", err)
+	}
+
+	_, err = engine.Exchange(continueFrame(started.RunID, started.Revision+1, "continue-conflict", "scope-conflict"))
+	assertErrorCode(t, err, "RUN_REVISION_CONFLICT")
+	headAfter, err := os.ReadFile(filepath.Join(runRoot, "HEAD"))
+	if err != nil {
+		t.Fatalf("ReadFile(HEAD after conflict) error = %v", err)
+	}
+	if !bytes.Equal(headBefore, headAfter) {
+		t.Fatal("revision conflict changed HEAD")
+	}
+	if _, err := os.Stat(filepath.Join(runRoot, "revisions", "00000000000000000002.json")); !os.IsNotExist(err) {
+		t.Fatalf("revision conflict created revision 2: %v", err)
+	}
+}
+
+func TestExchangeRejectsInvalidFrameShapesWithoutMutation(t *testing.T) {
+	t.Run("missing classification", func(t *testing.T) {
+		stateRoot := filepath.Join(t.TempDir(), "state")
+		engine, err := runtime.NewEngine(runtime.Options{StateRoot: stateRoot})
+		if err != nil {
+			t.Fatalf("NewEngine() error = %v", err)
+		}
+		frame := startFrame(t.TempDir(), "start-missing-proposal", "missing-proposal")
+		frame.Start.Proposal = nil
+		_, err = engine.Exchange(frame)
+		assertErrorCode(t, err, "CLASSIFICATION_REQUIRED")
+		assertRunsRootEmpty(t, stateRoot)
+	})
+
+	t.Run("mixed START payload", func(t *testing.T) {
+		stateRoot := filepath.Join(t.TempDir(), "state")
+		engine, err := runtime.NewEngine(runtime.Options{StateRoot: stateRoot})
+		if err != nil {
+			t.Fatalf("NewEngine() error = %v", err)
+		}
+		frame := startFrame(t.TempDir(), "start-mixed", "start-mixed")
+		frame.Continue = &runtime.ContinueInput{Signal: runtime.SignalScopeExpanded}
+		_, err = engine.Exchange(frame)
+		assertErrorCode(t, err, "RUNTIME_FRAME_INVALID")
+		assertRunsRootEmpty(t, stateRoot)
+	})
+
+	for _, test := range []struct {
+		name   string
+		mutate func(*runtime.RunFrame)
+	}{
+		{"unknown CONTINUE signal", func(frame *runtime.RunFrame) { frame.Continue.Signal = "UNKNOWN" }},
+		{"CONTINUE carrying START", func(frame *runtime.RunFrame) { frame.Start = &runtime.StartInput{} }},
+		{"CONTINUE without expected revision", func(frame *runtime.RunFrame) { frame.ExpectedRevision = 0 }},
+		{"INSPECT carrying CONTINUE", func(frame *runtime.RunFrame) { frame.Kind = runtime.FrameInspect }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			stateRoot, engine, started := startDirectRun(t)
+			runRoot := filepath.Join(stateRoot, "runs", started.RunID)
+			headBefore, err := os.ReadFile(filepath.Join(runRoot, "HEAD"))
+			if err != nil {
+				t.Fatalf("ReadFile(HEAD) error = %v", err)
+			}
+			frame := continueFrame(started.RunID, started.Revision, "continue-invalid", "continue-invalid")
+			test.mutate(&frame)
+			_, err = engine.Exchange(frame)
+			assertErrorCode(t, err, "RUNTIME_FRAME_INVALID")
+			headAfter, readErr := os.ReadFile(filepath.Join(runRoot, "HEAD"))
+			if readErr != nil {
+				t.Fatalf("ReadFile(HEAD after invalid frame) error = %v", readErr)
+			}
+			if !bytes.Equal(headBefore, headAfter) {
+				t.Fatal("invalid frame changed HEAD")
+			}
+		})
+	}
+}
+
 func directProposal() *classification.ClassificationProposal {
 	trueTraits := map[classification.Trait]bool{
 		classification.TraitScopeClear:               true,
@@ -334,6 +454,18 @@ func inspectFrame(runID, messageID string) runtime.RunFrame {
 	}
 }
 
+func continueFrame(runID string, expectedRevision uint64, messageID, idempotencyKey string) runtime.RunFrame {
+	return runtime.RunFrame{
+		SchemaVersion:    runtime.RuntimeSchemaV1,
+		Kind:             runtime.FrameContinue,
+		MessageID:        messageID,
+		IdempotencyKey:   idempotencyKey,
+		RunID:            runID,
+		ExpectedRevision: expectedRevision,
+		Continue:         &runtime.ContinueInput{Signal: runtime.SignalScopeExpanded},
+	}
+}
+
 func assertErrorCode(t *testing.T, err error, expected string) {
 	t.Helper()
 	if err == nil {
@@ -348,5 +480,16 @@ func writeTestFile(t *testing.T, path string, content []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, content, 0o600); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func assertRunsRootEmpty(t *testing.T, stateRoot string) {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(stateRoot, "runs"))
+	if err != nil {
+		t.Fatalf("ReadDir(runs) error = %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("invalid frame created Run State: %#v", entries)
 	}
 }
