@@ -82,3 +82,18 @@ func TestProjectConfigSchemaRejectsAuthorityFields(t *testing.T) {
 		t.Fatalf("Validate(project authority) error = %v", err)
 	}
 }
+
+func TestRegistryValidatesClassificationProposalSchema(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := []byte(`{"schema_version":"oaw.classification-proposal/v1","traits":[],"resources":[],"evidence":[]}`)
+	if err := registry.Validate(ClassificationProposalV1, valid); err != nil {
+		t.Fatalf("Validate(classification) error = %v", err)
+	}
+	invalid := []byte(`{"schema_version":"oaw.classification-proposal/v1","traits":[],"resources":[],"evidence":[],"extra":true}`)
+	if err := registry.Validate(ClassificationProposalV1, invalid); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(classification extra) error = %v", err)
+	}
+}
