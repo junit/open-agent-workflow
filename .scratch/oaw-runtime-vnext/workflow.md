@@ -14,7 +14,7 @@ bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
 current_stage: implementation-planning
-active_ticket: 03-deterministic-request-classifier
+active_ticket: 04-profile-recipe-compiler
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -24,6 +24,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-01-contracts-and-builtin-catalog.md
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-02-configuration-trust-and-provider-discovery.md
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-03-deterministic-request-classifier.md
+  - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-04-profile-recipe-compiler.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
@@ -86,10 +87,11 @@ full Bash regression verification passed. Matt ticket decomposition was approved
 by the user on 2026-08-01. Ticket 01 completed in the isolated worktree with
 fresh Go race, coverage, documentation, and full Bash verification. After
 reviewing delegated Task 1 execution, the user directed subsequent work to
-continue inline without additional subagents. The lifecycle is now in
-Superpowers-owned implementation planning for Ticket 02.
+continue inline without additional subagents. Tickets 01 through 03 are merged
+to `main`; the lifecycle is now in Superpowers-owned implementation planning
+for Ticket 04 in its isolated worktree.
 
 Every published ticket carries Matt's `ready-for-agent` triage status,
 which means the ticket is specified for agent execution. Scheduling still
-honors `Blocked by` edges; completion of Ticket 01 makes Ticket 02 the current
-frontier item.
+honors `Blocked by` edges; completion of Tickets 01 through 03 makes Ticket 04
+the current frontier item.
