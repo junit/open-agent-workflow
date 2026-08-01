@@ -112,3 +112,40 @@ with their routes; required nodes are never silently omitted.
 No Critical or Important findings remain. The only intentional non-blocking
 verification limitation is that `govulncheck` is not installed in the current
 environment.
+
+## Ticket 05 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `7a7d10b`
+
+**Scope:** Direct Runtime protocol, durable Run journal, and Direct escalation
+
+**Review owner:** Superpowers (inline main-agent review; no subagents)
+
+**Result:** Passed after scoped corrections
+
+The complete diff was checked against Ticket 05, specification sections 5,
+10-12, 14-15, and 18, and the executable implementation plan. No unresolved
+Critical or Important issues remain.
+
+Corrections made during review:
+
+- START replay now consults committed state before applying current
+  classification rules, so a rule change cannot replace an idempotently stored
+  reply.
+- Matching orphan revisions can be promoted after a crash before `HEAD`, while
+  valid but logically conflicting or malformed orphans fail closed.
+- Loaded Direct state now validates classification, project identity,
+  processed-message ordering and revision ownership, empty authority
+  collections, event/reply shape, size limits, and every pinned digest.
+- Windows `HEAD` replacement uses `MoveFileEx` with replace and write-through
+  flags; Unix uses atomic rename and directory sync.
+- The commit path strictly reloads the immutable revision after advancing
+  `HEAD`, making persisted bytes the only reply source.
+
+The implementation creates no Lifecycle Bundle, Capability Grant, Stage Grant,
+Resource Lease, Provider invocation, Profile selection, Host dispatch, or CLI
+transport. Scope expansion preserves `DIRECT`/`RELEASED` and returns only the
+successor-Run recovery action. Direct release diagnostics explicitly disclaim
+Capability admission, Host tool-call control, and Resource Lease guarantees.

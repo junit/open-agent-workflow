@@ -14,7 +14,7 @@ bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
 current_stage: implementation-planning
-active_ticket: 05-direct-runtime-vertical-slice
+active_ticket: 06-bounded-admission-and-dispatch
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -88,12 +88,12 @@ full Bash regression verification passed. Matt ticket decomposition was approved
 by the user on 2026-08-01. Ticket 01 completed in the isolated worktree with
 fresh Go race, coverage, documentation, and full Bash verification. After
 reviewing delegated Task 1 execution, the user directed subsequent work to
-continue inline without additional subagents. Tickets 01 through 04 are
-complete on the implementation branches; Ticket 05 is now the next unblocked
+continue inline without additional subagents. Tickets 01 through 05 are
+complete on the implementation branches; Ticket 06 is now the next unblocked
 frontier and the lifecycle remains in Superpowers-owned implementation
 planning.
 
 Every published ticket carries Matt's `ready-for-agent` triage status,
 which means the ticket is specified for agent execution. Scheduling still
-honors `Blocked by` edges; completion of Tickets 01 through 04 makes Ticket 05
+honors `Blocked by` edges; completion of Tickets 01 through 05 makes Ticket 06
 the current frontier item.

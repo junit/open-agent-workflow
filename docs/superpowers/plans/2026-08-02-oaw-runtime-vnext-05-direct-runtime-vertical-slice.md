@@ -1,6 +1,6 @@
 # OAW Runtime vNext Ticket 05 Direct Runtime Vertical Slice Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Persist one Direct Engineering Run through the Runtime `START`, `CONTINUE`, and `INSPECT` protocol seams without creating Capability admission, lifecycle, or lease authority.
 
@@ -140,7 +140,7 @@ Stable Ticket 05 failures include `RUNTIME_FRAME_INVALID`,
 - Modify: `go.mod`
 - Modify: `go.sum`
 
-- [ ] **Step 1: Write the failing Direct START tracer test**
+- [x] **Step 1: Write the failing Direct START tracer test**
 
 Add `TestStartDirectRunCommitsReleasedSnapshotBeforeReply`. Construct a complete
 clear Direct proposal, an existing temporary project root, and a lowercase
@@ -160,7 +160,7 @@ Also assert both required Direct diagnostics, non-empty Run/decision/revision
 digests, physical Project identity, and that `HEAD` plus revision 1 exist before
 `Exchange` returns.
 
-- [ ] **Step 2: Run the tracer to verify RED**
+- [x] **Step 2: Run the tracer to verify RED**
 
 ```bash
 rtk go test ./internal/runtime -run TestStartDirectRunCommitsReleasedSnapshotBeforeReply
@@ -168,7 +168,7 @@ rtk go test ./internal/runtime -run TestStartDirectRunCommitsReleasedSnapshotBef
 
 Expected: FAIL because `internal/runtime` does not exist.
 
-- [ ] **Step 3: Add the closed records and minimum engine**
+- [x] **Step 3: Add the closed records and minimum engine**
 
 Implement the locked records and `NewEngine`. Validate frame shape, IDs, an
 absolute State Root, an existing physical project directory, and a lowercase
@@ -177,7 +177,7 @@ absolute State Root, an existing physical project directory, and a lowercase
 normalization/limits as JSON input, classify it, and admit only `DIRECT` in this
 ticket.
 
-- [ ] **Step 4: Add owner-only revision 1 persistence**
+- [x] **Step 4: Add owner-only revision 1 persistence**
 
 Pin `github.com/gofrs/flock@v0.13.0`. Under the per-Run lock, create revision 1
 as compact Canonical JSON, sync it, atomically replace/sync HEAD, then return the
@@ -185,7 +185,7 @@ reply stored in that committed revision. The Run ID is `run-` plus 32 lowercase
 SHA-256 hex characters derived from the idempotency key; validate it before it
 is used as a path component.
 
-- [ ] **Step 5: Run GREEN, race, and vet checks**
+- [x] **Step 5: Run GREEN, race, and vet checks**
 
 ```bash
 rtk gofmt -w internal/runtime
@@ -196,7 +196,7 @@ rtk go vet ./internal/runtime
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit the vertical tracer**
+- [x] **Step 6: Commit the vertical tracer**
 
 ```bash
 rtk git add go.mod go.sum internal/runtime
@@ -211,7 +211,7 @@ rtk git commit -m "feat: persist direct runtime start"
 - Extend: `internal/runtime/journal.go`
 - Extend: `internal/runtime/runtime_test.go`
 
-- [ ] **Step 1: Write failing INSPECT and restart tests**
+- [x] **Step 1: Write failing INSPECT and restart tests**
 
 Add `TestInspectReturnsCommittedSnapshotWithoutRevision` and
 `TestNewEngineReadsCommittedDirectRunAfterRestart`. START a Run, count revision
@@ -219,27 +219,27 @@ files, create a fresh Engine over the same State Root, then INSPECT. Assert the
 snapshot/reply equals committed revision 1 and the revision-file count and HEAD
 bytes remain unchanged.
 
-- [ ] **Step 2: Run the tests to verify RED**
+- [x] **Step 2: Run the tests to verify RED**
 
 ```bash
 rtk go test ./internal/runtime -run 'Inspect|Restart'
 ```
 
-- [ ] **Step 3: Implement strict committed-state loading**
+- [x] **Step 3: Implement strict committed-state loading**
 
 Read and strictly decode HEAD, validate its schema/Run ID/revision/digest, read
 the exact immutable revision, recompute its Canonical JSON digest, then validate
 revision identity, number, state digest, configuration digest, and predecessor
 shape. INSPECT returns `STATE_SNAPSHOT` and never takes a write path.
 
-- [ ] **Step 4: Prove defensive reply copies and stable missing/corrupt errors**
+- [x] **Step 4: Prove defensive reply copies and stable missing/corrupt errors**
 
 Mutate every returned collection and nested classification selector, INSPECT
 again, and assert committed state did not change. Add table cases for missing
 Run, malformed HEAD, missing revision, digest mismatch, and state mismatch with
 their stable codes.
 
-- [ ] **Step 5: Run focused GREEN and commit**
+- [x] **Step 5: Run focused GREEN and commit**
 
 ```bash
 rtk gofmt -w internal/runtime
@@ -255,7 +255,7 @@ rtk git commit -m "feat: inspect committed runtime state"
 - Extend: `internal/runtime/journal.go`
 - Extend: `internal/runtime/runtime_test.go`
 
-- [ ] **Step 1: Write the failing scope-expansion test**
+- [x] **Step 1: Write the failing scope-expansion test**
 
 Add `TestDirectScopeExpansionRequiresSuccessorRun`. Continue a Direct Run with
 the exact current revision and `SCOPE_EXPANDED`; assert revision 2 commits, reply
@@ -263,26 +263,26 @@ kind is `PAUSED`, reason is `MODE_ESCALATION_REQUIRED`, recovery contains only
 `START_SUCCESSOR_RUN`, and state remains `DIRECT`/`RELEASED` with no Bundle,
 Grant, or Lease.
 
-- [ ] **Step 2: Run the test to verify RED**
+- [x] **Step 2: Run the test to verify RED**
 
 ```bash
 rtk go test ./internal/runtime -run TestDirectScopeExpansionRequiresSuccessorRun
 ```
 
-- [ ] **Step 3: Implement the immutable Continue transition**
+- [x] **Step 3: Implement the immutable Continue transition**
 
 Under the Run lock, load/validate current HEAD, require the exact expected
 revision, clone the snapshot, append one processed-message reference, set the
 new revision number, build the PAUSED reply, and atomically commit revision 2.
 Do not re-run classification or mutate Request Mode.
 
-- [ ] **Step 4: Add revision-conflict and signal validation tests**
+- [x] **Step 4: Add revision-conflict and signal validation tests**
 
 Wrong expected revisions return `RUN_REVISION_CONFLICT` without writing.
 Unknown Continue signals and invalid START/CONTINUE/INSPECT payload shapes
 return `RUNTIME_FRAME_INVALID` without creating or changing Run State.
 
-- [ ] **Step 5: Run focused GREEN and commit**
+- [x] **Step 5: Run focused GREEN and commit**
 
 ```bash
 rtk gofmt -w internal/runtime
@@ -297,21 +297,21 @@ rtk git commit -m "feat: record direct mode escalation"
 - Extend: `internal/runtime/runtime_test.go`
 - Create: `internal/integration/direct_runtime_test.go`
 
-- [ ] **Step 1: Write failing idempotency tests**
+- [x] **Step 1: Write failing idempotency tests**
 
 Replay START and CONTINUE with the same key/content and assert the stored reply
 is returned byte-equivalently without a new revision. Reuse either key with a
 different normalized proposal or signal and assert `IDEMPOTENCY_KEY_REUSED`
 without mutation.
 
-- [ ] **Step 2: Implement processed-message replay**
+- [x] **Step 2: Implement processed-message replay**
 
 Store sorted `ProcessedMessage` references containing key, normalized content
 digest, and revision number. Check replay before expected-revision validation;
 load the referenced immutable revision and return its stored reply. Never store
 maps or recursive reply copies in Runtime State.
 
-- [ ] **Step 3: Add concurrency and crash fixtures**
+- [x] **Step 3: Add concurrency and crash fixtures**
 
 Start the same idempotent Run concurrently from multiple Engine instances and
 assert one revision and identical replies. Continue concurrently with distinct
@@ -319,7 +319,7 @@ keys at one expected revision and assert exactly one revision 2 commit while the
 others receive revision conflicts. Write a valid orphan revision file without
 updating HEAD and prove INSPECT still returns revision 1.
 
-- [ ] **Step 4: Add permission and no-authority integration assertions**
+- [x] **Step 4: Add permission and no-authority integration assertions**
 
 On systems exposing Unix mode bits, assert Runtime directories are `0700` and
 files are `0600`. Across START, replay, expansion, restart, and INSPECT assert
@@ -327,7 +327,7 @@ all lifecycle bundle, Grant, and Resource Lease collections stay empty and the
 required Host-control disclaimer remains present only in the Direct release
 reply.
 
-- [ ] **Step 5: Run focused race/coverage and commit**
+- [x] **Step 5: Run focused race/coverage and commit**
 
 ```bash
 rtk gofmt -w internal/runtime internal/integration
@@ -348,7 +348,7 @@ Require at least 90% `internal/runtime` statement coverage.
 - Modify: `.scratch/oaw-runtime-vnext/evidence/review.md`
 - Modify: `.scratch/oaw-runtime-vnext/evidence/verification.md`
 
-- [ ] **Step 1: Review the complete diff**
+- [x] **Step 1: Review the complete diff**
 
 Inspect `git diff main...HEAD` for reply-before-commit windows, mutable snapshots,
 path traversal, unsafe modes, missing sync/rename steps, non-Direct authority,
@@ -356,7 +356,7 @@ silent mode changes, replay ambiguity, race windows, raw environment reads,
 Provider execution, or Ticket 06/07 scope expansion. Record findings and
 remediation in the existing review evidence file.
 
-- [ ] **Step 2: Run fresh Go quality gates**
+- [x] **Step 2: Run fresh Go quality gates**
 
 ```bash
 rtk go vet ./...
@@ -369,7 +369,7 @@ rtk go tool cover -func=/tmp/oaw-ticket-05-runtime.out
 
 Require repository coverage at least 80% and `internal/runtime` at least 90%.
 
-- [ ] **Step 3: Run compatibility, fuzz, vulnerability, and build gates**
+- [x] **Step 3: Run compatibility, fuzz, vulnerability, and build gates**
 
 ```bash
 rtk bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
@@ -383,13 +383,13 @@ rtk env GOOS=windows GOARCH=amd64 go build ./cmd/oaw
 
 Record unavailable optional tools or platform limitations explicitly.
 
-- [ ] **Step 4: Record evidence and complete the ticket**
+- [x] **Step 4: Record evidence and complete the ticket**
 
 Check each acceptance criterion only after matching implementation/test evidence
 exists. Set Ticket 05 complete and move the tracker to the next unblocked Ticket
 06. Preserve all `.serena/` directories and keep them out of commits.
 
-- [ ] **Step 5: Commit evidence and merge automatically**
+- [x] **Step 5: Commit evidence and merge automatically**
 
 ```bash
 rtk git add .scratch/oaw-runtime-vnext docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-05-direct-runtime-vertical-slice.md

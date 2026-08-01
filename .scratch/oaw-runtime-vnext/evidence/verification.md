@@ -89,3 +89,43 @@ stable failure codes, closed loops, and equivalent-input digest equality.
 The Ticket 04 implementation is committed at `ebc04a8`; the executable plan
 and contract correction are committed at `88ca4e6` and `dd4c50d`. Untracked
 `.serena/` state was preserved and not staged.
+
+## Ticket 05 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Scope:** Direct Runtime vertical slice, durable journal recovery, repository
+compatibility, and cross-platform compilation
+
+| Check | Result |
+| --- | --- |
+| `rtk go vet ./...` | Exit 0 |
+| `rtk go test -race ./...` | Exit 0: 390 tests in 14 packages |
+| Repository Go statement coverage | `86.1%`, required minimum `80%` |
+| `internal/runtime` statement coverage | `90.3%`, target minimum `90%` |
+| Focused runtime/integration race tests | Exit 0: 127 tests in 2 packages |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer cases passed |
+| Classification proposal fuzz seam | Exit 0 after a fresh 2-second run |
+| Linux and Windows `cmd/oaw` builds | Exit 0 with outputs directed to `/tmp` |
+| Linux and Windows runtime test cross-compilation | Exit 0 |
+| Secret-pattern scan on Ticket 05 code and dependency files | No matches |
+| `rtk go run golang.org/x/vuln/cmd/govulncheck@latest ./...` | Exit 0: 0 reachable vulnerabilities |
+| `rtk git diff --check` | Exit 0 |
+
+The Runtime corpus covers durable reply-before-return ordering, restart and
+read-only inspection, defensive copies, idempotent START/CONTINUE replay,
+revision conflicts, cross-Engine lock contention, matching and conflicting
+orphan recovery, corrupt and oversized state, strict predecessor chains,
+owner-only permissions, semantic state tampering, Direct authority emptiness,
+scope escalation, and Linux/Windows replacement compilation.
+
+The global `govulncheck` command was initially unavailable. The official tool
+was therefore run through a temporary versioned `go run`; it reported no called
+symbol or imported-package vulnerabilities. It noted two vulnerabilities in
+required modules whose affected code is not called. No repository dependency
+was changed solely for the scanner.
+
+All `.serena/` directories remain preserved and excluded from commits.
