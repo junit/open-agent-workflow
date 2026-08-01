@@ -216,15 +216,6 @@ func normalizeCapabilityObservation(value *CapabilityObservation) (*CapabilityOb
 	}, nil
 }
 
-func isBoundedEscalationSignal(signal ContinueSignal) bool {
-	switch signal {
-	case SignalScopeExpanded, SignalAdditionalCapabilityRequired, SignalRemediationRequired, SignalArchitectureRequired:
-		return true
-	default:
-		return false
-	}
-}
-
 func boundedEscalationEvent(signal ContinueSignal) string {
 	switch signal {
 	case SignalScopeExpanded:
@@ -402,14 +393,14 @@ func (engine *Engine) continueBoundedHandshake(current revisionRecord, frame Run
 		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, "BOUNDED_EXECUTION_UNCERTAIN", boundedTransitionReply(snapshot, ReplyPaused, ReasonExecutionUncertain, []string{RecoveryReconcileInvocation}))
 	}
 
-	if isBoundedEscalationSignal(normalized.Signal) {
+	if event := boundedEscalationEvent(normalized.Signal); event != "" {
 		if current.Snapshot.Status != RunInFlight || len(current.Snapshot.Grants) != 1 {
 			return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "Bounded escalation requires an authorized invocation", nil)
 		}
 		nextRevision := current.Revision + 1
 		snapshot := boundedTransitionSnapshot(current.Snapshot, frame, messageDigest, nextRevision)
 		snapshot.Status = RunPaused
-		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, boundedEscalationEvent(normalized.Signal), boundedTransitionReply(snapshot, ReplyPaused, ReasonModeEscalationRequired, []string{RecoveryStartSuccessorRun}))
+		return engine.commitBoundedHandshake(current, frame, messageDigest, snapshot, event, boundedTransitionReply(snapshot, ReplyPaused, ReasonModeEscalationRequired, []string{RecoveryStartSuccessorRun}))
 	}
 
 	return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "unsupported Bounded transition", nil)

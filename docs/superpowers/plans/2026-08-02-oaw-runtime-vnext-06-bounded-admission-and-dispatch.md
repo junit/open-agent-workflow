@@ -268,16 +268,16 @@ journal, conflict, corruption, and idempotency codes remain stable.
 
 ### Task 5: Harden Bounded recovery and concurrency
 
-- [ ] Add restart/INSPECT tests at AWAITING_CAPABILITY, READY, GRANTED,
+- [x] Add restart/INSPECT tests at AWAITING_CAPABILITY, READY, GRANTED,
   IN_FLIGHT, FINISHED, and both PAUSED reasons.
-- [ ] Add concurrent dispatch requests proving one Grant/invocation wins and
+- [x] Add concurrent dispatch requests proving one Grant/invocation wins and
   all other distinct messages receive revision conflicts.
-- [ ] Add matching/conflicting orphan tests at Grant issuance and dispatch
+- [x] Add matching/conflicting orphan tests at Grant issuance and dispatch
   authorization, semantic-tamper fixtures for Grants/observations/status, and
   permission assertions.
-- [ ] Assert Runtime never invokes a Binding and all Ticket 07/08/09 authority
+- [x] Assert Runtime never invokes a Binding and all Ticket 07/08/09 authority
   fields remain absent.
-- [ ] Run `go test -race ./internal/admission ./internal/runtime ./internal/integration`,
+- [x] Run `go test -race ./internal/admission ./internal/runtime ./internal/integration`,
   enforce >=90% admission/runtime coverage, and commit as
   `test: harden bounded runtime dispatch`.
 

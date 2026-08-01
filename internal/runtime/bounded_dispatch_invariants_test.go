@@ -46,11 +46,25 @@ func TestBoundedHandshakeRevisionValidationRejectsObservationAndReplyTampering(t
 		{"raw observation", func(value *revisionRecord) { value.Snapshot.Observations[0].RawOutput = "raw" }},
 		{"observation Grant", func(value *revisionRecord) { value.Snapshot.Observations[0].GrantID = "grant-other" }},
 		{"observation evidence", func(value *revisionRecord) { value.Snapshot.Observations[0].EvidenceReferences[0].Digest = "bad" }},
+		{"observation evidence order", func(value *revisionRecord) {
+			value.Snapshot.Observations[0].EvidenceReferences = []EvidenceReference{
+				{Reference: "evidence://z", Digest: strings.Repeat("2", 64)},
+				{Reference: "evidence://a", Digest: strings.Repeat("1", 64)},
+			}
+		}},
 		{"finished outcome", func(value *revisionRecord) { value.Snapshot.Observations[0].Outcome = ObservationFailed }},
 		{"finished event", func(value *revisionRecord) { value.Event = "BOUNDED_SCOPE_EXPANDED" }},
 		{"finished reply", func(value *revisionRecord) { value.Reply.Kind = ReplyPaused }},
 		{"paused event", func(value *revisionRecord) {
 			value.Snapshot.Status = RunPaused
+			value.Event = "BOUNDED_UNKNOWN"
+			value.Reply.Kind = ReplyPaused
+			value.Reply.Reason = ReasonModeEscalationRequired
+			value.Reply.RecoveryActions = []string{RecoveryStartSuccessorRun}
+		}},
+		{"paused control event", func(value *revisionRecord) {
+			value.Snapshot.Status = RunPaused
+			value.Snapshot.Observations = nil
 			value.Event = "BOUNDED_UNKNOWN"
 			value.Reply.Kind = ReplyPaused
 			value.Reply.Reason = ReasonModeEscalationRequired
