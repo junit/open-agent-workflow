@@ -30,6 +30,12 @@ type EffectiveRegistry interface {
     Capability(providerID, capabilityID string) (registry.VerifiedCapability, bool)
 }
 
+type CatalogSource interface {
+    Providers() []catalog.ProviderDescriptorRecord
+    Recipes() []catalog.ProfileRecipeRecord
+    Aliases() []catalog.ProfileAliasRecord
+}
+
 type CompileRequest struct {
     Profile  string
     Bindings []ProfileBinding
@@ -41,13 +47,13 @@ type ProfileBinding struct {
 }
 
 func CompileProfile(
-    available catalog.Catalog,
+    available CatalogSource,
     verified EffectiveRegistry,
     request CompileRequest,
 ) (ExecutionGraph, error)
 
 func CompileRecipe(
-    available catalog.Catalog,
+    available CatalogSource,
     verified EffectiveRegistry,
     recipe catalog.ProfileRecipeRecord,
     bindings []ProfileBinding,
@@ -74,6 +80,7 @@ Stable compiler codes are `PROFILE_NOT_FOUND`, `PROFILE_CAPABILITY_MISSING`,
 `PROFILE_SELECTOR_AMBIGUOUS`, `PROFILE_OWNER_MISSING`,
 `PROFILE_OWNER_DUPLICATE`, `PROFILE_EFFECT_UNSUPPORTED`,
 `PROFILE_REQUEST_MODE_UNSUPPORTED`, `PROFILE_NODE_MISSING`,
+`PROFILE_SELECTOR_NOT_FOUND`,
 `PROFILE_GRAPH_UNREACHABLE`, `PROFILE_LOOP_NOT_CLOSED`, and
 `PROFILE_TERMINAL_INVALID`.
 
