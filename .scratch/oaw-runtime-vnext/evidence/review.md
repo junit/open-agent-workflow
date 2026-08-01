@@ -149,3 +149,34 @@ Resource Lease, Provider invocation, Profile selection, Host dispatch, or CLI
 transport. Scope expansion preserves `DIRECT`/`RELEASED` and returns only the
 successor-Run recovery action. Direct release diagnostics explicitly disclaim
 Capability admission, Host tool-call control, and Resource Lease guarantees.
+
+## Ticket 06 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `9ecdac8`
+
+**Scope:** Bounded admission, immutable Grant issuance, dispatch handshake,
+observations, recovery, and journal hardening
+
+**Review owner:** Superpowers (inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+The review checked selector provenance, verified Provider and Binding
+resolution, authority/effect/resource narrowing, Main Agent topology, Resource
+Lease deferral, immutable Grant identities, reply-before-return ordering,
+replay and restart behavior, Host invocation boundaries, observation
+normalization, blind retry prevention, future authority-field leakage, and
+Direct compatibility.
+
+One Important finding was corrected before completion: single-revision
+semantic validation allowed a later re-signed revision to rewrite an earlier
+Grant or processed-message history. `validateRevisionTransition` now enforces
+immutable Run identity, append-only message history, legal Bounded state edges,
+and immutable Grants/observations while loading the committed chain.
+
+No unresolved Critical or Important findings remain. Runtime never invokes a
+Host Binding; it persists `DISPATCH_AUTHORIZED` before any external Host may
+act. Ticket 07 Resource Leases and Ticket 08 Host Manifest/Adapter fields remain
+outside the Runtime state surface.

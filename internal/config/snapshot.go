@@ -37,6 +37,7 @@ type Snapshot struct {
 	projectStatus        ProjectTrustStatus
 	projectReason        string
 	settings             []ProviderSettings
+	boundedDefaults      []BoundedCapabilityDefault
 	requiredProviders    []string
 	recommendedProviders []string
 	untrustedProviderIDs []string
@@ -118,6 +119,7 @@ func Load(options LoadOptions) (Snapshot, error) {
 		projectStatus:        projectStatus,
 		projectReason:        projectReason,
 		settings:             settings,
+		boundedDefaults:      append([]BoundedCapabilityDefault{}, user.config.Record.BoundedCapabilityDefaults...),
 		requiredProviders:    requiredProviders,
 		recommendedProviders: recommendedProviders,
 		untrustedProviderIDs: untrustedProviderIDs,
@@ -383,19 +385,24 @@ func (snapshot Snapshot) UntrustedProviderIDs() []string {
 	return append([]string{}, snapshot.untrustedProviderIDs...)
 }
 
+func (snapshot Snapshot) BoundedCapabilityDefaults() []BoundedCapabilityDefault {
+	return append([]BoundedCapabilityDefault{}, snapshot.boundedDefaults...)
+}
+
 func (snapshot *Snapshot) setDigest() error {
 	record := struct {
-		SchemaVersion        string             `json:"schema_version"`
-		CatalogDigest        string             `json:"catalog_digest"`
-		UserConfigDigest     string             `json:"user_config_digest"`
-		ProjectRoot          string             `json:"project_root"`
-		ProjectConfigDigest  string             `json:"project_config_digest"`
-		ProjectStatus        ProjectTrustStatus `json:"project_status"`
-		ProjectReason        string             `json:"project_reason"`
-		Settings             []ProviderSettings `json:"settings"`
-		RequiredProviders    []string           `json:"required_providers"`
-		RecommendedProviders []string           `json:"recommended_providers"`
-		UntrustedProviderIDs []string           `json:"untrusted_provider_ids"`
+		SchemaVersion        string                     `json:"schema_version"`
+		CatalogDigest        string                     `json:"catalog_digest"`
+		UserConfigDigest     string                     `json:"user_config_digest"`
+		ProjectRoot          string                     `json:"project_root"`
+		ProjectConfigDigest  string                     `json:"project_config_digest"`
+		ProjectStatus        ProjectTrustStatus         `json:"project_status"`
+		ProjectReason        string                     `json:"project_reason"`
+		Settings             []ProviderSettings         `json:"settings"`
+		BoundedDefaults      []BoundedCapabilityDefault `json:"bounded_capability_defaults"`
+		RequiredProviders    []string                   `json:"required_providers"`
+		RecommendedProviders []string                   `json:"recommended_providers"`
+		UntrustedProviderIDs []string                   `json:"untrusted_provider_ids"`
 	}{
 		configurationSnapshotSchemaV1,
 		snapshot.catalog.Digest(),
@@ -405,6 +412,7 @@ func (snapshot *Snapshot) setDigest() error {
 		snapshot.projectStatus,
 		snapshot.projectReason,
 		snapshot.settings,
+		snapshot.boundedDefaults,
 		snapshot.requiredProviders,
 		snapshot.recommendedProviders,
 		snapshot.untrustedProviderIDs,
@@ -445,13 +453,14 @@ func cloneProviderSettings(value ProviderSettings) ProviderSettings {
 
 func emptyUserConfig() UserConfigRecord {
 	return UserConfigRecord{
-		SchemaVersion:       UserConfigSchemaV1,
-		DeniedProviders:     []string{},
-		ProviderDescriptors: []ContentReference{},
-		ProfileRecipes:      []ContentReference{},
-		ProviderPins:        []ProviderPin{},
-		BindingPreferences:  []BindingPreference{},
-		ProjectTrust:        []ProjectTrust{},
+		SchemaVersion:             UserConfigSchemaV1,
+		DeniedProviders:           []string{},
+		ProviderDescriptors:       []ContentReference{},
+		ProfileRecipes:            []ContentReference{},
+		ProviderPins:              []ProviderPin{},
+		BindingPreferences:        []BindingPreference{},
+		BoundedCapabilityDefaults: []BoundedCapabilityDefault{},
+		ProjectTrust:              []ProjectTrust{},
 	}
 }
 

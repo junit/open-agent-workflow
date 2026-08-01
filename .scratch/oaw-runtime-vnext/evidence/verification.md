@@ -129,3 +129,34 @@ required modules whose affected code is not called. No repository dependency
 was changed solely for the scanner.
 
 All `.serena/` directories remain preserved and excluded from commits.
+
+## Ticket 06 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Scope:** Bounded admission, Grant issuance, dispatch authorization,
+normalized observations, escalation/uncertainty, recovery, and journal chain
+hardening
+
+| Check | Result |
+| --- | --- |
+| `rtk go test ./... -count=1` | Exit 0: 611 tests passed in 15 packages |
+| `rtk go test -race ./...` | Exit 0: 611 tests passed in 15 packages |
+| `rtk go vet ./...` | Exit 0 |
+| `internal/runtime` statement coverage | `90.2%` |
+| `internal/admission` statement coverage | `98.3%` |
+| Focused admission/runtime/integration race tests | Exit 0: 329 tests passed |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer cases passed |
+| Classification proposal fuzz seam | Exit 0 after a fresh 2-second run |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable module findings |
+| `rtk git diff --check main...HEAD` | Exit 0 |
+
+The Runtime corpus covers all Bounded handshake states, replay-before-revision
+checks, restart inspection, concurrent single-Grant admission, matching and
+conflicting orphan revisions, immutable Grant/observation state, permission
+modes, Resource Lease deferral, and the absence of future Stage/Host authority
+fields. Direct Runtime tests remain passing.

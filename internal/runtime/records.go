@@ -4,7 +4,10 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
 const RuntimeSchemaV1 = "oaw.runtime/v1"
@@ -26,21 +29,39 @@ const (
 type ContinueSignal string
 
 const (
-	SignalScopeExpanded ContinueSignal = "SCOPE_EXPANDED"
+	SignalScopeExpanded                ContinueSignal = "SCOPE_EXPANDED"
+	SignalCapabilitySelected           ContinueSignal = "CAPABILITY_SELECTED"
+	SignalRequestDispatch              ContinueSignal = "REQUEST_DISPATCH"
+	SignalDispatchPrepared             ContinueSignal = "DISPATCH_PREPARED"
+	SignalCapabilityObserved           ContinueSignal = "CAPABILITY_OBSERVED"
+	SignalExecutionUncertain           ContinueSignal = "EXECUTION_UNCERTAIN"
+	SignalAdditionalCapabilityRequired ContinueSignal = "ADDITIONAL_CAPABILITY_REQUIRED"
+	SignalRemediationRequired          ContinueSignal = "REMEDIATION_REQUIRED"
+	SignalArchitectureRequired         ContinueSignal = "ARCHITECTURE_REQUIRED"
 )
 
 type ReplyKind string
 
 const (
-	ReplyModeDecided   ReplyKind = "MODE_DECIDED"
-	ReplyPaused        ReplyKind = "PAUSED"
-	ReplyStateSnapshot ReplyKind = "STATE_SNAPSHOT"
+	ReplyModeDecided                 ReplyKind = "MODE_DECIDED"
+	ReplyCapabilitySelectionRequired ReplyKind = "CAPABILITY_SELECTION_REQUIRED"
+	ReplyGrantIssued                 ReplyKind = "GRANT_ISSUED"
+	ReplyDispatchAuthorized          ReplyKind = "DISPATCH_AUTHORIZED"
+	ReplyFinished                    ReplyKind = "FINISHED"
+	ReplyPaused                      ReplyKind = "PAUSED"
+	ReplyStateSnapshot               ReplyKind = "STATE_SNAPSHOT"
 )
 
 type RunStatus string
 
 const (
-	RunReleased RunStatus = "RELEASED"
+	RunReleased           RunStatus = "RELEASED"
+	RunAwaitingCapability RunStatus = "AWAITING_CAPABILITY"
+	RunReady              RunStatus = "READY"
+	RunGranted            RunStatus = "GRANTED"
+	RunInFlight           RunStatus = "IN_FLIGHT"
+	RunFinished           RunStatus = "FINISHED"
+	RunPaused             RunStatus = "PAUSED"
 )
 
 const (
@@ -48,12 +69,22 @@ const (
 	DiagnosticHostToolCallsUncontrolled        = "HOST_TOOL_CALLS_UNCONTROLLED"
 	DiagnosticResourceLeaseNotApplicable       = "RESOURCE_LEASE_NOT_APPLICABLE"
 	ReasonModeEscalationRequired               = "MODE_ESCALATION_REQUIRED"
+	ReasonExecutionUncertain                   = "EXECUTION_UNCERTAIN"
 	RecoveryStartSuccessorRun                  = "START_SUCCESSOR_RUN"
+	RecoveryReconcileInvocation                = "RECONCILE_INVOCATION"
 )
 
 type Options struct {
 	StateRoot string
 	Rules     classification.ClassificationRules
+	Bounded   BoundedOptions
+}
+
+type BoundedOptions struct {
+	Configuration config.Snapshot
+	Registry      registry.Registry
+	Authority     admission.AuthorityCeiling
+	Executors     []admission.ExecutorRegistration
 }
 
 type RunFrame struct {
@@ -71,10 +102,60 @@ type StartInput struct {
 	RequestID string                                 `json:"request_id"`
 	Project   ProjectIdentity                        `json:"project"`
 	Proposal  *classification.ClassificationProposal `json:"proposal,omitempty"`
+	Bounded   *BoundedInput                          `json:"bounded,omitempty"`
 }
 
 type ContinueInput struct {
-	Signal ContinueSignal `json:"signal"`
+	Signal              ContinueSignal                     `json:"signal"`
+	CapabilitySelector  *classification.CapabilitySelector `json:"capability_selector,omitempty"`
+	TrustedRuleID       string                             `json:"trusted_rule_id,omitempty"`
+	DispatchPreparation *DispatchPreparation               `json:"dispatch_preparation,omitempty"`
+	Observation         *CapabilityObservation             `json:"observation,omitempty"`
+}
+
+type DispatchPreparation struct {
+	GrantID      string `json:"grant_id"`
+	InvocationID string `json:"invocation_id"`
+	ExecutorID   string `json:"executor_id"`
+}
+
+type ObservationOutcome string
+
+const (
+	ObservationSucceeded ObservationOutcome = "SUCCEEDED"
+	ObservationFailed    ObservationOutcome = "FAILED"
+)
+
+type EvidenceReference struct {
+	Reference string `json:"reference"`
+	Digest    string `json:"digest"`
+}
+
+type CapabilityObservation struct {
+	GrantID            string              `json:"grant_id"`
+	InvocationID       string              `json:"invocation_id"`
+	ExecutorID         string              `json:"executor_id"`
+	Outcome            ObservationOutcome  `json:"outcome"`
+	EvidenceReferences []EvidenceReference `json:"evidence_references"`
+	RawOutput          string              `json:"raw_output,omitempty"`
+}
+
+type BoundedInput struct {
+	DeliverableID        string   `json:"deliverable_id"`
+	InputDigest          string   `json:"input_digest"`
+	RequestedEffects     []string `json:"requested_effects"`
+	RequestedResources   []string `json:"requested_resources"`
+	TerminationCondition string   `json:"termination_condition"`
+	ExecutorID           string   `json:"executor_id"`
+	TrustedRuleID        string   `json:"trusted_rule_id,omitempty"`
+}
+
+type BoundedState struct {
+	Input               BoundedInput                       `json:"input"`
+	Selector            *classification.CapabilitySelector `json:"selector,omitempty"`
+	ConfigurationDigest string                             `json:"configuration_digest"`
+	CatalogDigest       string                             `json:"catalog_digest"`
+	RegistryDigest      string                             `json:"registry_digest"`
 }
 
 type ProjectIdentity struct {
@@ -104,6 +185,9 @@ type RunSnapshot struct {
 	Classification       classification.ClassificationDecision `json:"classification"`
 	ClassificationDigest string                                `json:"classification_digest"`
 	ConfigurationDigest  string                                `json:"configuration_digest"`
+	Bounded              *BoundedState                         `json:"bounded,omitempty"`
+	Grants               []admission.CapabilityGrant           `json:"grants,omitempty"`
+	Observations         []CapabilityObservation               `json:"observations,omitempty"`
 	ProcessedMessages    []ProcessedMessage                    `json:"processed_messages"`
 	LifecycleBundles     []string                              `json:"lifecycle_bundles"`
 	GrantIDs             []string                              `json:"grant_ids"`
@@ -180,6 +264,31 @@ func cloneDecision(value classification.ClassificationDecision) classification.C
 
 func cloneSnapshot(value RunSnapshot) RunSnapshot {
 	value.Classification = cloneDecision(value.Classification)
+	if value.Bounded != nil {
+		bounded := *value.Bounded
+		bounded.Input.RequestedEffects = append([]string{}, value.Bounded.Input.RequestedEffects...)
+		bounded.Input.RequestedResources = append([]string{}, value.Bounded.Input.RequestedResources...)
+		if value.Bounded.Selector != nil {
+			selector := *value.Bounded.Selector
+			bounded.Selector = &selector
+		}
+		value.Bounded = &bounded
+	}
+	if value.Grants != nil {
+		grants := make([]admission.CapabilityGrant, len(value.Grants))
+		for index, grant := range value.Grants {
+			grants[index] = admission.CloneGrant(grant)
+		}
+		value.Grants = grants
+	}
+	if value.Observations != nil {
+		observations := make([]CapabilityObservation, len(value.Observations))
+		for index, observation := range value.Observations {
+			observations[index] = observation
+			observations[index].EvidenceReferences = append([]EvidenceReference{}, observation.EvidenceReferences...)
+		}
+		value.Observations = observations
+	}
 	value.ProcessedMessages = append([]ProcessedMessage{}, value.ProcessedMessages...)
 	value.LifecycleBundles = append([]string{}, value.LifecycleBundles...)
 	value.GrantIDs = append([]string{}, value.GrantIDs...)

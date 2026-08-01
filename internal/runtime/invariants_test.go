@@ -4,11 +4,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
 func TestRevisionValidationFailsClosedForEveryPinnedIdentity(t *testing.T) {
@@ -376,6 +380,93 @@ func TestDirectStateSemanticValidationRejectsMalformedCollectionsAndReplies(t *t
 	}
 }
 
+func TestBoundedStateSemanticValidationRejectsSignedTampering(t *testing.T) {
+	ready := internalBoundedRevision(t, RunReady)
+	awaiting := internalBoundedRevision(t, RunAwaitingCapability)
+	if err := validateRevision(ready, ready.RunID, ready.Revision); err != nil {
+		t.Fatalf("valid READY Bounded revision rejected: %v", err)
+	}
+	if err := validateRevision(awaiting, awaiting.RunID, awaiting.Revision); err != nil {
+		t.Fatalf("valid AWAITING_CAPABILITY revision rejected: %v", err)
+	}
+
+	complexity := classification.ComplexityComplex
+	for _, test := range []struct {
+		name   string
+		base   revisionRecord
+		mutate func(*revisionRecord)
+	}{
+		{"status", ready, func(value *revisionRecord) { value.Snapshot.Status = "TAMPERED" }},
+		{"missing Bounded state", ready, func(value *revisionRecord) { value.Snapshot.Bounded = nil }},
+		{"configuration digest", ready, func(value *revisionRecord) { value.Snapshot.Bounded.ConfigurationDigest = strings.Repeat("0", 64) }},
+		{"catalog digest", ready, func(value *revisionRecord) { value.Snapshot.Bounded.CatalogDigest = "bad" }},
+		{"registry digest", ready, func(value *revisionRecord) { value.Snapshot.Bounded.RegistryDigest = "bad" }},
+		{"workflow complexity", ready, func(value *revisionRecord) { value.Snapshot.Classification.WorkflowComplexity = &complexity }},
+		{"classification selector provenance", ready, func(value *revisionRecord) {
+			value.Snapshot.Classification.CapabilitySelector.Source = classification.SelectorTrustedRule
+		}},
+		{"status selector mismatch", ready, func(value *revisionRecord) { value.Snapshot.Bounded.Selector = nil }},
+		{"selector provider", ready, func(value *revisionRecord) { value.Snapshot.Bounded.Selector.ProviderID = "bad" }},
+		{"selector provenance", ready, func(value *revisionRecord) {
+			value.Snapshot.Bounded.Selector.Source = classification.SelectorTrustedRule
+		}},
+		{"unsorted effects", ready, func(value *revisionRecord) {
+			value.Snapshot.Bounded.Input.RequestedEffects = []string{"run-process", "read-project"}
+		}},
+		{"duplicate resources", ready, func(value *revisionRecord) {
+			value.Snapshot.Bounded.Input.RequestedResources = []string{"project", "project"}
+		}},
+		{"authority leaked", ready, func(value *revisionRecord) { value.Snapshot.GrantIDs = []string{"grant"} }},
+		{"ready reply kind", ready, func(value *revisionRecord) { value.Reply.Kind = ReplyCapabilitySelectionRequired }},
+		{"ready event", ready, func(value *revisionRecord) { value.Event = "BOUNDED_AWAITING_CAPABILITY" }},
+		{"awaiting selector", awaiting, func(value *revisionRecord) {
+			value.Snapshot.Bounded.Selector = &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}
+		}},
+		{"awaiting diagnostic", awaiting, func(value *revisionRecord) { value.Reply.Diagnostics[0].Code = "UNTRUSTED" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := test.base
+			candidate.Snapshot = cloneSnapshot(test.base.Snapshot)
+			candidate.Reply = cloneReply(test.base.Reply)
+			test.mutate(&candidate)
+			resignStateRevision(t, &candidate)
+			assertInternalErrorCode(t, validateRevision(candidate, candidate.RunID, candidate.Revision), "RUN_STATE_REVISION_INVALID")
+		})
+	}
+}
+
+func TestBoundedGrantSemanticValidationRejectsSignedTampering(t *testing.T) {
+	valid := internalBoundedGrantRevision(t)
+	if err := validateRevision(valid, valid.RunID, valid.Revision); err != nil {
+		t.Fatalf("valid Grant revision rejected: %v", err)
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*revisionRecord)
+	}{
+		{"Grant effects", func(value *revisionRecord) { value.Snapshot.Grants[0].Effects = []string{"run-process"} }},
+		{"Grant digest", func(value *revisionRecord) { value.Snapshot.Grants[0].Digest = strings.Repeat("0", 64) }},
+		{"Grant revision", func(value *revisionRecord) { value.Snapshot.Grants[0].IssuedRevision = 1 }},
+		{"Grant Provider", func(value *revisionRecord) { value.Snapshot.Grants[0].ProviderID = "other/provider" }},
+		{"Grant index", func(value *revisionRecord) { value.Snapshot.GrantIDs[0] = "grant-other" }},
+		{"duplicate Grant", func(value *revisionRecord) {
+			value.Snapshot.Grants = append(value.Snapshot.Grants, value.Snapshot.Grants[0])
+		}},
+		{"reply kind", func(value *revisionRecord) { value.Reply.Kind = ReplyModeDecided }},
+		{"event", func(value *revisionRecord) { value.Event = "BOUNDED_READY" }},
+		{"status", func(value *revisionRecord) { value.Snapshot.Status = RunReady }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := valid
+			candidate.Snapshot = cloneSnapshot(valid.Snapshot)
+			candidate.Reply = cloneReply(valid.Reply)
+			test.mutate(&candidate)
+			resignStateRevision(t, &candidate)
+			assertInternalErrorCode(t, validateRevision(candidate, candidate.RunID, candidate.Revision), "RUN_STATE_REVISION_INVALID")
+		})
+	}
+}
+
 func TestJournalRejectsOversizedStateAndConflictingValidOrphan(t *testing.T) {
 	t.Run("oversized HEAD", func(t *testing.T) {
 		engine, stateRoot, started, _ := internalCommittedRevision(t)
@@ -560,6 +651,121 @@ func internalCommittedRevision(t *testing.T) (*Engine, string, RunReply, revisio
 		t.Fatalf("loadCommitted() error = %v", err)
 	}
 	return engine, stateRoot, reply, committed
+}
+
+func internalBoundedRevision(t *testing.T, status RunStatus) revisionRecord {
+	t.Helper()
+	_, _, _, record := internalCommittedRevision(t)
+	selector := &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	record.Snapshot.RequestMode = classification.RequestModeBounded
+	record.Snapshot.Status = status
+	record.Snapshot.Classification.RequestMode = classification.RequestModeBounded
+	record.Snapshot.Classification.CapabilitySelector = selector
+	record.Snapshot.Bounded = &BoundedState{
+		Input: BoundedInput{
+			DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), RequestedEffects: []string{"read-project"},
+			RequestedResources: []string{"project"}, TerminationCondition: "one report", ExecutorID: "executor",
+		},
+		Selector: selector, ConfigurationDigest: record.Snapshot.ConfigurationDigest,
+		CatalogDigest: strings.Repeat("b", 64), RegistryDigest: strings.Repeat("c", 64),
+	}
+	record.Event = "BOUNDED_READY"
+	record.Reply.Kind = ReplyModeDecided
+	record.Reply.Diagnostics = []Diagnostic{}
+	record.Reply.Reason = ""
+	record.Reply.RecoveryActions = []string{}
+	if status == RunAwaitingCapability {
+		record.Snapshot.Bounded.Selector = nil
+		record.Snapshot.Classification.CapabilitySelector = nil
+		record.Event = "BOUNDED_AWAITING_CAPABILITY"
+		record.Reply.Kind = ReplyCapabilitySelectionRequired
+		record.Reply.Diagnostics = []Diagnostic{{Code: "CAPABILITY_SELECTION_REQUIRED", Message: "selection required"}}
+	}
+	resignStateRevision(t, &record)
+	return record
+}
+
+type grantTestCatalog struct {
+	provider catalog.ProviderDescriptorRecord
+}
+
+func (value grantTestCatalog) Providers() []catalog.ProviderDescriptorRecord {
+	return []catalog.ProviderDescriptorRecord{value.provider}
+}
+
+func (value grantTestCatalog) Digest() string { return strings.Repeat("b", 64) }
+
+type grantTestRegistry struct {
+	provider   registry.ProviderInstance
+	capability registry.VerifiedCapability
+}
+
+func (value grantTestRegistry) Provider(id string) (registry.ProviderInstance, bool) {
+	return value.provider, id == value.provider.ProviderID
+}
+
+func (value grantTestRegistry) Capability(providerID, capabilityID string) (registry.VerifiedCapability, bool) {
+	return value.capability, providerID == value.provider.ProviderID && capabilityID == value.capability.ID
+}
+
+func (value grantTestRegistry) Digest() string { return strings.Repeat("c", 64) }
+
+func internalBoundedGrantRevision(t *testing.T) revisionRecord {
+	t.Helper()
+	record := internalBoundedRevision(t, RunReady)
+	binding := catalog.HostBinding{Host: "codex", Kind: "agent", Reference: "acme:review"}
+	provider := catalog.ProviderDescriptorRecord{
+		SchemaVersion: catalog.ProviderDescriptorSchemaV1, DescriptorVersion: "1.0.0", ID: "acme/suite", Discovery: []catalog.DiscoveryProbe{},
+		Capabilities: []catalog.CapabilityRecord{{ID: "review", InputSchema: "input/v1", OutcomeSchema: "outcome/v1", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, RequestModes: []catalog.RequestMode{catalog.RequestModeBounded}, Responsibilities: []string{}, ExecutorTopology: catalog.IsolatedRequired, DelegationAllowList: []string{}, HostBindings: []catalog.HostBinding{binding}}},
+	}
+	descriptorDigest, _, err := canonicaljson.Digest(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified := registry.ProviderInstance{ProviderID: "acme/suite", DescriptorDigest: descriptorDigest, Location: "/verified/acme", Version: "1.0.0", ConfigurationDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64), EvidenceDigest: strings.Repeat("c", 64), Capabilities: []registry.VerifiedCapability{{ID: "review", Binding: binding}}, Digest: strings.Repeat("d", 64)}
+	catalogSource := grantTestCatalog{provider: provider}
+	registrySource := grantTestRegistry{provider: verified, capability: verified.Capabilities[0]}
+	executor := admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}
+	record.Snapshot.Bounded.Selector = &classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	record.Snapshot.Bounded.CatalogDigest = catalogSource.Digest()
+	record.Snapshot.Bounded.RegistryDigest = registrySource.Digest()
+	record.Snapshot.Bounded.Input = BoundedInput{DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"}, TerminationCondition: "one report", ExecutorID: executor.ID}
+	grant, err := admission.IssueBoundedGrant(admission.GrantRequest{RunID: record.RunID, RequestID: record.Snapshot.RequestID, DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), IssuedRevision: 2, Selector: *record.Snapshot.Bounded.Selector, Effects: []string{"read-project"}, Resources: []string{"project"}, TerminationCondition: "one report", Executor: executor, Catalog: catalogSource, Registry: registrySource, Authority: admission.AuthorityCeiling{Effects: []string{"read-project"}, Resources: []string{"project"}}, Executors: []admission.ExecutorRegistration{executor}})
+	if err != nil {
+		t.Fatalf("IssueBoundedGrant() error = %v", err)
+	}
+	record.Revision = 2
+	record.Snapshot.Revision = 2
+	record.Reply.Revision = 2
+	record.PredecessorDigest = strings.Repeat("e", 64)
+	record.MessageID = "dispatch-message"
+	record.IdempotencyKey = "dispatch-key"
+	record.MessageDigest = strings.Repeat("f", 64)
+	record.Event = "BOUNDED_GRANT_ISSUED"
+	record.Snapshot.Status = RunGranted
+	record.Snapshot.Grants = []admission.CapabilityGrant{grant}
+	record.Snapshot.GrantIDs = []string{grant.ID}
+	record.Snapshot.ProcessedMessages = append(record.Snapshot.ProcessedMessages, ProcessedMessage{IdempotencyKey: record.IdempotencyKey, ContentDigest: record.MessageDigest, Revision: record.Revision})
+	sort.Slice(record.Snapshot.ProcessedMessages, func(i, j int) bool {
+		return record.Snapshot.ProcessedMessages[i].IdempotencyKey < record.Snapshot.ProcessedMessages[j].IdempotencyKey
+	})
+	record.Reply.Kind = ReplyGrantIssued
+	record.Reply.Diagnostics = []Diagnostic{}
+	record.Reply.Reason = ""
+	record.Reply.RecoveryActions = []string{}
+	resignStateRevision(t, &record)
+	return record
+}
+
+func resignStateRevision(t *testing.T, record *revisionRecord) {
+	t.Helper()
+	record.Reply.Snapshot = cloneSnapshot(record.Snapshot)
+	stateDigest, _, err := canonicaljson.Digest(record.Snapshot)
+	if err != nil {
+		t.Fatalf("Digest(snapshot) error = %v", err)
+	}
+	record.StateDigest = stateDigest
+	resignRevision(t, record)
 }
 
 func internalStartFrame(projectRoot, key string) RunFrame {
