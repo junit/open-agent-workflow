@@ -47,3 +47,35 @@ inferred from its comparative strengths.
 
 The design is ready for user review. It is not yet an executable implementation
 plan and authorizes no Go or Policy vNext implementation work.
+
+## Ticket 03 Implementation Review
+
+**Date:** 2026-08-01
+
+**Fixed point:** `5104a01`
+
+**Scope:** Deterministic Request Classifier
+
+**Result:** Passed after scoped corrections
+
+The implementation diff was reviewed separately against repository standards
+and Ticket 03's issue, Runtime specification, and executable plan. The review
+found no unresolved Critical or Important issues.
+
+Corrections made before the final result:
+
+- Bounded selector evidence no longer raises an otherwise valid Bounded request
+  to Workflow; it remains an admission requirement.
+- User and project policy layers are composed before application, making mode,
+  risk, evidence, reasons, and decision digests order independent and monotonic.
+- Typed proposals now enforce the same collection and reference limits as the
+  JSON Schema, and raw proposal bytes must be valid UTF-8.
+- Classification and validation were split into focused functions; unused
+  Request Mode aliases and duplicated selector handling were removed.
+- Exhaustive policy invariants and a fails-closed fuzz seam were added alongside
+  the critical-release corpus.
+
+The final diff does not parse request prose, call a model or network API, select
+a Provider or Capability, issue authority, mutate Runtime State, or add a CLI
+surface. The only selector retained in a decision is explicit Bounded intent;
+Workflow decisions carry no Capability selector.

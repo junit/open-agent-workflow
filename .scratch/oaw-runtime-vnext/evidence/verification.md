@@ -26,3 +26,34 @@ documentation-only and were included in the local-link scan.
 The verified design changes are limited to `CONTEXT.md`, the Runtime vNext
 tracker/spec/evidence directory, and ADRs 0003 and 0004. The untracked
 `.serena/` directory is unrelated user state and was not read, changed, or added.
+
+## Ticket 03 Fresh Verification
+
+**Date:** 2026-08-01
+
+**Result:** Passed
+
+**Scope:** Deterministic Request Classifier
+
+| Check | Result |
+| --- | --- |
+| Go formatting and `git diff --check` | Exit 0 |
+| `GOCACHE=/tmp/oaw-build-ticket03 rtk go vet ./...` | Exit 0 |
+| `GOCACHE=/tmp/oaw-build-ticket03 rtk go test -race ./...` | Exit 0: 253 tests in 12 packages |
+| Repository Go statement coverage | `84.2%`, required minimum `80%` |
+| `internal/classification` statement coverage | `92.8%`, target minimum `90%` |
+| Classifier fuzz seam | Exit 0 after a fresh 2-second run |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0 |
+| Ticket 03 forbidden-surface and secret scans | Exit 0; no matches |
+| `govulncheck -show verbose ./...` | Exit 0: 0 reachable symbol or package vulnerabilities |
+
+`govulncheck` reports `GO-2026-5970` in required module
+`golang.org/x/text@v0.14.0`, fixed in `v0.39.0`, but confirms that no package or
+symbol from the vulnerable path is imported or reachable. Dependency upgrade is
+outside Ticket 03 and remains a repository-level follow-up risk.
+
+The verified Ticket 03 paths are limited to the lifecycle tracker and plan, the
+classification proposal schema and registry entry, `internal/classification`,
+and one classification integration test. The untracked `.serena/` directory
+remains excluded.
