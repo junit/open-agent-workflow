@@ -275,7 +275,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 			return RunReply{}, err
 		}
 	case SignalProfileSelected:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection == nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.StageGrant != nil || frame.Continue.ProfileSelection == nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "PROFILE_SELECTED carries an invalid payload", nil)
 		}
 		selection, normalizeErr := normalizeProfileSelection(*frame.Continue.ProfileSelection)
@@ -283,6 +283,15 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 			return RunReply{}, normalizeErr
 		}
 		normalizedContinue = ContinueInput{Signal: SignalProfileSelected, ProfileSelection: &selection}
+	case SignalRequestStageGrant:
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil {
+			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "REQUEST_STAGE_GRANT carries an invalid payload", nil)
+		}
+		stage, normalizeErr := normalizeStageGrantRequest(frame.Continue.StageGrant)
+		if normalizeErr != nil {
+			return RunReply{}, normalizeErr
+		}
+		normalizedContinue = ContinueInput{Signal: SignalRequestStageGrant, StageGrant: stage}
 	case SignalRequestDispatch:
 		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "REQUEST_DISPATCH carries an unexpected payload", nil)
@@ -347,6 +356,14 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 				return selectErr
 			}
 			reply = selected
+			return nil
+		}
+		if normalizedContinue.Signal == SignalRequestStageGrant {
+			granted, grantErr := engine.issueWorkflowStage(current, frame, normalizedContinue.StageGrant, messageDigest)
+			if grantErr != nil {
+				return grantErr
+			}
+			reply = granted
 			return nil
 		}
 		if normalizedContinue.Signal == SignalCapabilitySelected {

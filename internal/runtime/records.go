@@ -39,6 +39,7 @@ const (
 	SignalRemediationRequired          ContinueSignal = "REMEDIATION_REQUIRED"
 	SignalArchitectureRequired         ContinueSignal = "ARCHITECTURE_REQUIRED"
 	SignalProfileSelected              ContinueSignal = "PROFILE_SELECTED"
+	SignalRequestStageGrant            ContinueSignal = "REQUEST_STAGE_GRANT"
 )
 
 type ReplyKind string
@@ -117,6 +118,7 @@ type ContinueInput struct {
 	DispatchPreparation *DispatchPreparation               `json:"dispatch_preparation,omitempty"`
 	Observation         *CapabilityObservation             `json:"observation,omitempty"`
 	ProfileSelection    *ProfileSelection                  `json:"profile_selection,omitempty"`
+	StageGrant          *StageGrantRequest                 `json:"stage_grant,omitempty"`
 }
 
 type DispatchPreparation struct {

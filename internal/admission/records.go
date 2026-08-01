@@ -6,6 +6,7 @@ import (
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -74,6 +75,9 @@ type CapabilityGrant struct {
 	InputDigest            string               `json:"input_digest"`
 	IssuedRevision         uint64               `json:"issued_revision"`
 	Generation             uint64               `json:"generation"`
+	BundleID               string               `json:"bundle_id,omitempty"`
+	NodeID                 string               `json:"node_id,omitempty"`
+	GraphDigest            string               `json:"graph_digest,omitempty"`
 	ProviderID             string               `json:"provider_id"`
 	ProviderInstanceDigest string               `json:"provider_instance_digest"`
 	DescriptorDigest       string               `json:"descriptor_digest"`
@@ -88,6 +92,15 @@ type CapabilityGrant struct {
 	DelegationAllowList    []string             `json:"delegation_allow_list"`
 	ParentGrantID          string               `json:"parent_grant_id,omitempty"`
 	Digest                 string               `json:"digest"`
+}
+
+type WorkflowStageGrantRequest struct {
+	Grant       GrantRequest
+	BundleID    string
+	NodeID      string
+	GraphDigest string
+	Generation  uint64
+	Node        profile.GraphNode
 }
 
 type Error struct {

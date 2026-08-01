@@ -20,6 +20,7 @@ var (
 	runIDPattern        = regexp.MustCompile(`^run-[0-9a-f]{32}$`)
 	grantIDPattern      = regexp.MustCompile(`^grant-[0-9a-f]{32}$`)
 	invocationIDPattern = regexp.MustCompile(`^invocation-[0-9a-f]{32}$`)
+	bundleIDPattern     = regexp.MustCompile(`^bundle-[0-9a-f]{32}$`)
 )
 
 // VerifyBoundedCapability checks that one selector resolves to one exact,
@@ -85,6 +86,57 @@ func IssueBoundedGrant(request GrantRequest) (CapabilityGrant, error) {
 	return finalizeGrant(grant)
 }
 
+func IssueWorkflowStageGrant(request WorkflowStageGrantRequest) (CapabilityGrant, error) {
+	normalized, err := normalizeGrantRequest(request.Grant)
+	if err != nil {
+		return CapabilityGrant{}, err
+	}
+	if request.Generation == 0 || !bundleIDPattern.MatchString(request.BundleID) || !validDigest(request.GraphDigest) || request.NodeID != request.Node.ID || !validLocalID(request.NodeID) {
+		return CapabilityGrant{}, admissionError("WORKFLOW_GRANT_INVALID", "invalid Stage Grant identity", nil)
+	}
+	providerRecord, capabilityRecord, providerInstance, verifiedCapability, err := resolveCapability(normalized)
+	if err != nil {
+		return CapabilityGrant{}, err
+	}
+	if !containsMode(capabilityRecord.RequestModes, catalog.RequestModeWorkflow) || !containsMode(request.Node.RequestModes, catalog.RequestModeWorkflow) {
+		return CapabilityGrant{}, admissionError("CAPABILITY_MODE_NOT_ALLOWED", normalized.Selector.CapabilityID, nil)
+	}
+	if request.Node.ProviderID != normalized.Selector.ProviderID || request.Node.CapabilityID != normalized.Selector.CapabilityID || request.Node.ProviderInstanceDigest != providerInstance.Digest || request.Node.Binding != verifiedCapability.Binding || request.Node.ExecutorTopology != capabilityRecord.ExecutorTopology {
+		return CapabilityGrant{}, admissionError("CAPABILITY_NOT_VERIFIED", "compiled graph node does not match verified Capability", nil)
+	}
+	if err := validateWorkflowEffects(normalized, capabilityRecord, request.Node.MaximumEffects); err != nil {
+		return CapabilityGrant{}, err
+	}
+	if err := validateWorkflowResources(normalized, capabilityRecord, request.Node.Resources); err != nil {
+		return CapabilityGrant{}, err
+	}
+	executor, err := resolveExecutor(normalized.Executor, normalized.Executors, request.Node.ExecutorTopology)
+	if err != nil {
+		return CapabilityGrant{}, err
+	}
+	if executor.Kind != ExecutorIsolated {
+		return CapabilityGrant{}, admissionError("EXECUTOR_TOPOLOGY_DENIED", executor.ID, nil)
+	}
+	if !subset(normalized.DelegationAllowList, request.Node.DelegationAllowList) || !subset(normalized.DelegationAllowList, capabilityRecord.DelegationAllowList) || len(normalized.DelegationAllowList) > 0 && !normalized.Authority.AllowDelegation {
+		return CapabilityGrant{}, admissionError("CAPABILITY_AUTHORITY_EXCEEDED", "delegation exceeds Stage authority", nil)
+	}
+	descriptorDigest, _, err := canonicaljson.Digest(providerRecord)
+	if err != nil {
+		return CapabilityGrant{}, admissionError("CAPABILITY_NOT_VERIFIED", "digest Provider Descriptor", err)
+	}
+	grant := CapabilityGrant{
+		SchemaVersion: CapabilityGrantSchemaV1, RunID: normalized.RunID, RequestID: normalized.RequestID,
+		DeliverableID: normalized.DeliverableID, InputDigest: normalized.InputDigest, IssuedRevision: normalized.IssuedRevision,
+		Generation: request.Generation, BundleID: request.BundleID, NodeID: request.NodeID, GraphDigest: request.GraphDigest,
+		ProviderID: normalized.Selector.ProviderID, ProviderInstanceDigest: providerInstance.Digest,
+		DescriptorDigest: descriptorDigest, RegistryDigest: normalized.Registry.Digest(), CatalogDigest: normalized.Catalog.Digest(),
+		CapabilityID: normalized.Selector.CapabilityID, Binding: verifiedCapability.Binding, Executor: executor,
+		Effects: normalized.Effects, Resources: normalized.Resources, TerminationCondition: normalized.TerminationCondition,
+		DelegationAllowList: normalized.DelegationAllowList,
+	}
+	return finalizeGrant(grant)
+}
+
 func DeriveChildGrant(request ChildGrantRequest) (CapabilityGrant, error) {
 	parent := CloneGrant(request.Parent)
 	if err := ValidateGrant(parent); err != nil {
@@ -110,8 +162,11 @@ func DeriveChildGrant(request ChildGrantRequest) (CapabilityGrant, error) {
 }
 
 func ValidateGrant(value CapabilityGrant) error {
-	if value.SchemaVersion != CapabilityGrantSchemaV1 || !grantIDPattern.MatchString(value.ID) || !invocationIDPattern.MatchString(value.InvocationID) || !runIDPattern.MatchString(value.RunID) || !validIdentifier(value.RequestID) || !validIdentifier(value.DeliverableID) || !validDigest(value.InputDigest) || value.IssuedRevision == 0 || value.Generation != 0 {
+	if value.SchemaVersion != CapabilityGrantSchemaV1 || !grantIDPattern.MatchString(value.ID) || !invocationIDPattern.MatchString(value.InvocationID) || !runIDPattern.MatchString(value.RunID) || !validIdentifier(value.RequestID) || !validIdentifier(value.DeliverableID) || !validDigest(value.InputDigest) || value.IssuedRevision == 0 {
 		return admissionError("PARENT_GRANT_INVALID", "invalid Grant identity", nil)
+	}
+	if value.Generation == 0 && (value.BundleID != "" || value.NodeID != "" || value.GraphDigest != "") || value.Generation > 0 && (!bundleIDPattern.MatchString(value.BundleID) || !validLocalID(value.NodeID) || !validDigest(value.GraphDigest)) {
+		return admissionError("PARENT_GRANT_INVALID", "invalid Grant generation identity", nil)
 	}
 	if _, err := catalog.ParseQualifiedID(value.ProviderID); err != nil || !validDigest(value.ProviderInstanceDigest) || !validDigest(value.DescriptorDigest) || !validDigest(value.RegistryDigest) || !validDigest(value.CatalogDigest) {
 		return admissionError("PARENT_GRANT_INVALID", "invalid Provider identity", err)
@@ -244,6 +299,33 @@ func validateResources(request GrantRequest, capability catalog.CapabilityRecord
 	return nil
 }
 
+func validateWorkflowEffects(request GrantRequest, capability catalog.CapabilityRecord, nodeMaximum []string) error {
+	for _, effect := range request.Effects {
+		if !knownEffect(effect) || !contains(capability.MaximumEffects, effect) || !contains(nodeMaximum, effect) {
+			return admissionError("CAPABILITY_EFFECT_NOT_ALLOWED", effect, nil)
+		}
+		if !contains(request.Authority.Effects, effect) {
+			return admissionError("CAPABILITY_AUTHORITY_EXCEEDED", effect, nil)
+		}
+		if effect == "write-project" && !request.Authority.ResourceLeases {
+			return admissionError("RESOURCE_LEASE_REQUIRED", effect, nil)
+		}
+	}
+	return nil
+}
+
+func validateWorkflowResources(request GrantRequest, capability catalog.CapabilityRecord, nodeMaximum []string) error {
+	for _, resource := range request.Resources {
+		if !knownResource(resource) || !contains(capability.Resources, resource) || !contains(nodeMaximum, resource) {
+			return admissionError("CAPABILITY_RESOURCE_NOT_ALLOWED", resource, nil)
+		}
+		if !contains(request.Authority.Resources, resource) {
+			return admissionError("CAPABILITY_AUTHORITY_EXCEEDED", resource, nil)
+		}
+	}
+	return nil
+}
+
 func resolveExecutor(requested ExecutorRegistration, registered []ExecutorRegistration, topology catalog.ExecutorTopology) (ExecutorRegistration, error) {
 	for _, executor := range registered {
 		if executor.ID != requested.ID {
@@ -322,6 +404,11 @@ func containsMode(values []catalog.RequestMode, wanted catalog.RequestMode) bool
 		}
 	}
 	return false
+}
+
+func validLocalID(value string) bool {
+	_, err := catalog.ParseLocalID(value)
+	return err == nil
 }
 
 func containsBinding(values []catalog.HostBinding, wanted catalog.HostBinding) bool {

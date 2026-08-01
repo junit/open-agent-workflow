@@ -219,7 +219,7 @@ func TestTicket05RuntimeHonorsClassificationRulesAndConfigurationDigest(t *testi
 		t.Fatalf("NewEngine(workflow rule) error = %v", err)
 	}
 	_, err = workflowEngine.Exchange(integrationStartFrame(projectRoot, "classification-raised"))
-	if oawruntime.ErrorCode(err) != "REQUEST_MODE_NOT_IMPLEMENTED" {
+	if oawruntime.ErrorCode(err) != "WORKFLOW_REQUEST_INVALID" {
 		t.Fatalf("raised classification error = %v", err)
 	}
 	entries, err := os.ReadDir(filepath.Join(stateRoot, "runs"))

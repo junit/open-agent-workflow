@@ -8,6 +8,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -46,6 +47,37 @@ func TestIssueBoundedGrantPinsVerifiedNarrowedAuthority(t *testing.T) {
 	fresh, err := IssueBoundedGrant(fixture.request("review"))
 	if err != nil || fresh.Effects[0] == "changed" || fresh.Resources[0] == "changed" {
 		t.Fatalf("grant or request aliases mutable state: %#v, %v", fresh, err)
+	}
+}
+
+func TestIssueWorkflowStageGrantPinsBundleGenerationAndGraphNode(t *testing.T) {
+	fixture := admissionFixture(t)
+	fixture.catalog.provider.Capabilities[0].RequestModes = []catalog.RequestMode{catalog.RequestModeWorkflow}
+	fixture.pinDescriptor(t)
+	request := fixture.request("review")
+	request.Authority.ResourceLeases = true
+	request.Resources = []string{"project"}
+	grant, err := IssueWorkflowStageGrant(WorkflowStageGrantRequest{
+		Grant: request, BundleID: "bundle-0123456789abcdef0123456789abcdef", NodeID: "review",
+		GraphDigest: strings.Repeat("d", 64), Generation: 1,
+		Node: profile.GraphNode{
+			ID: "review", ProviderID: "acme/suite", ProviderInstanceDigest: strings.Repeat("e", 64), CapabilityID: "review",
+			Binding: fixture.catalog.provider.Capabilities[0].HostBindings[0], MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
+			RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, ExecutorTopology: catalog.IsolatedRequired,
+		},
+	})
+	if err != nil {
+		t.Fatalf("IssueWorkflowStageGrant() error = %v", err)
+	}
+	if grant.Generation != 1 || grant.BundleID != "bundle-0123456789abcdef0123456789abcdef" || grant.NodeID != "review" || grant.GraphDigest != strings.Repeat("d", 64) || grant.ProviderID != "acme/suite" || grant.CapabilityID != "review" || grant.Executor.Kind != ExecutorIsolated {
+		t.Fatalf("workflow Grant = %#v", grant)
+	}
+	if err := ValidateGrant(grant); err != nil {
+		t.Fatalf("ValidateGrant(workflow) error = %v", err)
+	}
+	grant.NodeID = "changed"
+	if err := ValidateGrant(grant); err == nil {
+		t.Fatal("ValidateGrant() accepted tampered workflow Node identity")
 	}
 }
 
