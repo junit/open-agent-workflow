@@ -219,18 +219,18 @@ journal, conflict, corruption, and idempotency codes remain stable.
 
 ### Task 2: Persist Bounded classification and selector resolution
 
-- [ ] Add a failing `START` test with a complete Bounded proposal, declared
+- [x] Add a failing `START` test with a complete Bounded proposal, declared
   deliverable, and explicit user-intent selector; require revision 1 `READY`
   and `MODE_DECIDED` with no Grant yet.
-- [ ] Add failing missing/unverified/ambiguous selector tests; require committed
+- [x] Add failing missing/unverified/ambiguous selector tests; require committed
   `AWAITING_CAPABILITY` and `CAPABILITY_SELECTION_REQUIRED`, not Workflow Gate.
-- [ ] Add trusted-rule tests proving exact rule ID/selector matching and rejection
+- [x] Add trusted-rule tests proving exact rule ID/selector matching and rejection
   of Host-claimed rules absent from the pinned user configuration.
-- [ ] Extend frames/snapshots, clone methods, content digests, START routing, and
+- [x] Extend frames/snapshots, clone methods, content digests, START routing, and
   strict Bounded state validation. Preserve the Direct byte/state contract.
-- [ ] Add `CAPABILITY_SELECTED` to move an awaiting Run to READY without
+- [x] Add `CAPABILITY_SELECTED` to move an awaiting Run to READY without
   reclassifying or changing Request Mode.
-- [ ] Run focused race/restart/replay tests and commit as
+- [x] Run focused race/restart/replay tests and commit as
   `feat: persist bounded runtime admission`.
 
 ### Task 3: Issue one immutable Bounded Grant

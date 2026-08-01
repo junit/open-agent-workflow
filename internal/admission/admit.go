@@ -22,6 +22,25 @@ var (
 	invocationIDPattern = regexp.MustCompile(`^invocation-[0-9a-f]{32}$`)
 )
 
+// VerifyBoundedCapability checks that one selector resolves to one exact,
+// verified Capability that explicitly supports Bounded mode. It does not
+// authorize effects, resources, or an Executor; Grant issuance owns those
+// narrower authority checks.
+func VerifyBoundedCapability(selector classification.CapabilitySelector, catalogSource CatalogSource, registrySource VerifiedRegistry) error {
+	if catalogSource == nil || registrySource == nil || !validDigest(catalogSource.Digest()) || !validDigest(registrySource.Digest()) {
+		return admissionError("CAPABILITY_NOT_VERIFIED", "trusted Catalog or Registry is unavailable", nil)
+	}
+	request := GrantRequest{Selector: selector, Catalog: catalogSource, Registry: registrySource}
+	_, capability, _, _, err := resolveCapability(request)
+	if err != nil {
+		return err
+	}
+	if !containsMode(capability.RequestModes, catalog.RequestModeBounded) {
+		return admissionError("CAPABILITY_MODE_NOT_ALLOWED", selector.CapabilityID, nil)
+	}
+	return nil
+}
+
 func IssueBoundedGrant(request GrantRequest) (CapabilityGrant, error) {
 	normalized, err := normalizeGrantRequest(request)
 	if err != nil {

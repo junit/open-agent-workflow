@@ -19,6 +19,7 @@ const maximumIdentifierLength = 256
 
 type Engine struct {
 	rules   classification.ClassificationRules
+	bounded BoundedOptions
 	journal *journal
 }
 
@@ -27,7 +28,7 @@ func NewEngine(options Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{rules: cloneRules(options.Rules), journal: journal}, nil
+	return &Engine{rules: cloneRules(options.Rules), bounded: cloneBoundedOptions(options.Bounded), journal: journal}, nil
 }
 
 func (engine *Engine) Exchange(frame RunFrame) (RunReply, error) {
@@ -64,7 +65,17 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	if err != nil {
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "invalid classification proposal", err)
 	}
-	normalizedStart := StartInput{RequestID: frame.Start.RequestID, Project: project, Proposal: cloneProposal(proposal)}
+	var boundedInput *BoundedInput
+	if proposalRequestsBounded(*proposal) {
+		normalized, normalizeErr := normalizeBoundedInput(frame.Start.Bounded)
+		if normalizeErr != nil {
+			return RunReply{}, normalizeErr
+		}
+		boundedInput = &normalized
+	} else if frame.Start.Bounded != nil {
+		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "non-Bounded START carries Bounded input", nil)
+	}
+	normalizedStart := StartInput{RequestID: frame.Start.RequestID, Project: project, Proposal: cloneProposal(proposal), Bounded: cloneBoundedInput(boundedInput)}
 	messageDigest, err := frameContentDigest(RunFrame{
 		SchemaVersion: RuntimeSchemaV1,
 		Kind:          FrameStart,
@@ -86,11 +97,47 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	} else if ErrorCode(loadErr) != "RUN_NOT_FOUND" {
 		return RunReply{}, loadErr
 	}
-	decision, err := classification.Classify(proposal, engine.rules)
+	classificationProposal := cloneProposal(proposal)
+	if boundedInput != nil && classificationProposal.CapabilitySelector == nil && boundedInput.TrustedRuleID != "" && boundedConfigurationReady(project, engine.bounded) {
+		resolved, _, resolveErr := resolveBoundedSelector(nil, boundedInput.TrustedRuleID, engine.bounded)
+		if resolveErr != nil {
+			return RunReply{}, resolveErr
+		}
+		classificationProposal.CapabilitySelector = resolved
+	}
+	decision, err := classification.Classify(classificationProposal, engine.rules)
 	if err != nil {
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "invalid classification rules", err)
 	}
-	if decision.RequestMode != classification.RequestModeDirect {
+	status := RunReleased
+	event := "DIRECT_RELEASED"
+	var bounded *BoundedState
+	selectionDiagnostic := ""
+	switch decision.RequestMode {
+	case classification.RequestModeDirect:
+		if boundedInput != nil {
+			return RunReply{}, runtimeError("BOUNDED_REQUEST_INVALID", "Bounded request was not classified as BOUNDED", nil)
+		}
+	case classification.RequestModeBounded:
+		if boundedInput == nil {
+			return RunReply{}, runtimeError("BOUNDED_REQUEST_INVALID", "Bounded input is required", nil)
+		}
+		if !boundedConfigurationReady(project, engine.bounded) {
+			return RunReply{}, runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+		}
+		selector, diagnostic, resolveErr := resolveBoundedSelector(classificationProposal.CapabilitySelector, boundedInput.TrustedRuleID, engine.bounded)
+		if resolveErr != nil {
+			return RunReply{}, resolveErr
+		}
+		status = RunReady
+		event = "BOUNDED_READY"
+		if selector == nil {
+			status = RunAwaitingCapability
+			event = "BOUNDED_AWAITING_CAPABILITY"
+			selectionDiagnostic = diagnostic
+		}
+		bounded = boundedState(*boundedInput, selector, engine.bounded)
+	default:
 		return RunReply{}, runtimeError("REQUEST_MODE_NOT_IMPLEMENTED", fmt.Sprintf("request mode %s is not implemented", decision.RequestMode), nil)
 	}
 	var reply RunReply
@@ -117,11 +164,12 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 			RequestID:            frame.Start.RequestID,
 			Project:              project,
 			Revision:             1,
-			RequestMode:          classification.RequestModeDirect,
-			Status:               RunReleased,
+			RequestMode:          decision.RequestMode,
+			Status:               status,
 			Classification:       cloneDecision(decision),
 			ClassificationDigest: decision.Digest(),
 			ConfigurationDigest:  project.ConfigurationDigest,
+			Bounded:              bounded,
 			ProcessedMessages: []ProcessedMessage{{
 				IdempotencyKey: frame.IdempotencyKey,
 				ContentDigest:  messageDigest,
@@ -132,6 +180,9 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 			ResourceLeaseIDs: []string{},
 		}
 		candidateReply := directReleaseReply(snapshot)
+		if snapshot.RequestMode == classification.RequestModeBounded {
+			candidateReply = boundedReply(snapshot, selectionDiagnostic)
+		}
 		committed, commitErr := engine.journal.commit(revisionRecord{
 			SchemaVersion:  revisionSchemaV1,
 			RunID:          runID,
@@ -139,7 +190,7 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 			MessageID:      frame.MessageID,
 			IdempotencyKey: frame.IdempotencyKey,
 			MessageDigest:  messageDigest,
-			Event:          "DIRECT_RELEASED",
+			Event:          event,
 			Snapshot:       snapshot,
 			Reply:          candidateReply,
 		})
@@ -177,15 +228,31 @@ func (engine *Engine) inspect(frame RunFrame) (RunReply, error) {
 }
 
 func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
-	if frame.Start != nil || frame.Continue == nil || !runIDPattern.MatchString(frame.RunID) || frame.ExpectedRevision == 0 || frame.Continue.Signal != SignalScopeExpanded {
+	if frame.Start != nil || frame.Continue == nil || !runIDPattern.MatchString(frame.RunID) || frame.ExpectedRevision == 0 {
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "CONTINUE payload shape is invalid", nil)
+	}
+	var normalizedContinue ContinueInput
+	switch frame.Continue.Signal {
+	case SignalScopeExpanded:
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" {
+			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "SCOPE_EXPANDED carries Capability selection", nil)
+		}
+		normalizedContinue = ContinueInput{Signal: SignalScopeExpanded}
+	case SignalCapabilitySelected:
+		var err error
+		normalizedContinue, err = normalizeCapabilitySelection(*frame.Continue)
+		if err != nil {
+			return RunReply{}, err
+		}
+	default:
+		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "unknown CONTINUE signal", nil)
 	}
 	messageDigest, err := frameContentDigest(RunFrame{
 		SchemaVersion:    RuntimeSchemaV1,
 		Kind:             FrameContinue,
 		RunID:            frame.RunID,
 		ExpectedRevision: frame.ExpectedRevision,
-		Continue:         &ContinueInput{Signal: frame.Continue.Signal},
+		Continue:         &normalizedContinue,
 	})
 	if err != nil {
 		return RunReply{}, err
@@ -206,6 +273,52 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		}
 		if frame.ExpectedRevision != current.Revision {
 			return runtimeError("RUN_REVISION_CONFLICT", fmt.Sprintf("expected revision %d, current revision %d", frame.ExpectedRevision, current.Revision), nil)
+		}
+		if normalizedContinue.Signal == SignalCapabilitySelected {
+			if current.Snapshot.RequestMode != classification.RequestModeBounded || current.Snapshot.Status != RunAwaitingCapability || current.Snapshot.Bounded == nil || current.Snapshot.Bounded.Selector != nil {
+				return runtimeError("RUN_TRANSITION_INVALID", "Capability selection requires an awaiting Bounded run", nil)
+			}
+			if !boundedConfigurationMatches(current.Snapshot.Bounded, engine.bounded) {
+				return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
+			}
+			selector, diagnostic, resolveErr := resolveBoundedSelector(normalizedContinue.CapabilitySelector, normalizedContinue.TrustedRuleID, engine.bounded)
+			if resolveErr != nil {
+				return resolveErr
+			}
+			if selector == nil {
+				return runtimeError(diagnostic, "Capability selection is not admissible", nil)
+			}
+			nextRevision := current.Revision + 1
+			snapshot := cloneSnapshot(current.Snapshot)
+			snapshot.Revision = nextRevision
+			snapshot.Status = RunReady
+			snapshot.Bounded.Selector = selector
+			snapshot.Bounded.Input.TrustedRuleID = normalizedContinue.TrustedRuleID
+			snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{
+				IdempotencyKey: frame.IdempotencyKey,
+				ContentDigest:  messageDigest,
+				Revision:       nextRevision,
+			})
+			sort.Slice(snapshot.ProcessedMessages, func(i, j int) bool {
+				return snapshot.ProcessedMessages[i].IdempotencyKey < snapshot.ProcessedMessages[j].IdempotencyKey
+			})
+			committed, commitErr := engine.journal.commit(revisionRecord{
+				SchemaVersion:     revisionSchemaV1,
+				RunID:             frame.RunID,
+				Revision:          nextRevision,
+				PredecessorDigest: current.Digest,
+				MessageID:         frame.MessageID,
+				IdempotencyKey:    frame.IdempotencyKey,
+				MessageDigest:     messageDigest,
+				Event:             "BOUNDED_CAPABILITY_SELECTED",
+				Snapshot:          snapshot,
+				Reply:             boundedReply(snapshot, ""),
+			})
+			if commitErr != nil {
+				return commitErr
+			}
+			reply = cloneReply(committed.Reply)
+			return nil
 		}
 		if current.Snapshot.RequestMode != classification.RequestModeDirect || current.Snapshot.Status != RunReleased {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "scope expansion requires a released Direct run", nil)

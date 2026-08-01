@@ -49,6 +49,23 @@ func TestIssueBoundedGrantPinsVerifiedNarrowedAuthority(t *testing.T) {
 	}
 }
 
+func TestVerifyBoundedCapabilityRequiresExactVerifiedBoundedContract(t *testing.T) {
+	fixture := admissionFixture(t)
+	selector := classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	if err := VerifyBoundedCapability(selector, fixture.catalog, fixture.registry); err != nil {
+		t.Fatalf("VerifyBoundedCapability() error = %v", err)
+	}
+	assertAdmissionCode(t, VerifyBoundedCapability(selector, nil, nil), "CAPABILITY_NOT_VERIFIED")
+
+	unverified := selector
+	unverified.CapabilityID = "missing"
+	assertAdmissionCode(t, VerifyBoundedCapability(unverified, fixture.catalog, fixture.registry), "CAPABILITY_NOT_VERIFIED")
+
+	fixture.catalog.provider.Capabilities[0].RequestModes = []catalog.RequestMode{catalog.RequestModeWorkflow}
+	fixture.pinDescriptor(t)
+	assertAdmissionCode(t, VerifyBoundedCapability(selector, fixture.catalog, fixture.registry), "CAPABILITY_MODE_NOT_ALLOWED")
+}
+
 func TestIssueBoundedGrantFailsClosedAtEveryAuthorityBoundary(t *testing.T) {
 	for _, test := range []struct {
 		name   string

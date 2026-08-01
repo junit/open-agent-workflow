@@ -13,6 +13,7 @@ import (
 
 	"github.com/gofrs/flock"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 )
 
@@ -169,8 +170,17 @@ func validateRevision(record revisionRecord, runID string, revision uint64) erro
 	if record.Snapshot.SchemaVersion != snapshotSchemaV1 || record.Snapshot.RunID != runID || record.Snapshot.Revision != revision || record.ConfigurationDigest != record.Snapshot.ConfigurationDigest || record.Snapshot.Project.ConfigurationDigest != record.ConfigurationDigest {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "snapshot identity mismatch", nil)
 	}
-	if err := validateDirectState(record); err != nil {
-		return err
+	switch record.Snapshot.RequestMode {
+	case classification.RequestModeDirect:
+		if err := validateDirectState(record); err != nil {
+			return err
+		}
+	case classification.RequestModeBounded:
+		if err := validateBoundedState(record); err != nil {
+			return err
+		}
+	default:
+		return runtimeError("RUN_STATE_REVISION_INVALID", "unsupported persisted Request Mode", nil)
 	}
 	stateDigest, _, err := canonicaljson.Digest(record.Snapshot)
 	if err != nil || stateDigest != record.StateDigest {
@@ -353,7 +363,7 @@ func validateDirectState(record revisionRecord) error {
 	if snapshot.Project.Root == "" || !filepath.IsAbs(snapshot.Project.Root) || filepath.Clean(snapshot.Project.Root) != snapshot.Project.Root || !validDigest(snapshot.ConfigurationDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted project identity", nil)
 	}
-	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
+	if snapshot.Bounded != nil || snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct authority or message collections", nil)
 	}
 	if snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil || snapshot.Classification.WorkflowComplexity != nil || snapshot.Classification.CapabilitySelector != nil {
@@ -381,6 +391,126 @@ func validateDirectState(record revisionRecord) error {
 		return err
 	}
 	return nil
+}
+
+func validateBoundedState(record revisionRecord) error {
+	snapshot := record.Snapshot
+	if snapshot.RequestMode != classification.RequestModeBounded || snapshot.Classification.RequestMode != classification.RequestModeBounded || snapshot.ClassificationDigest == "" || !validDigest(snapshot.ClassificationDigest) || snapshot.Bounded == nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded classification state", nil)
+	}
+	if snapshot.Status != RunAwaitingCapability && snapshot.Status != RunReady {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded status", nil)
+	}
+	if err := validateIdentifier(snapshot.RequestID); err != nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted request ID", err)
+	}
+	if snapshot.Project.Root == "" || !filepath.IsAbs(snapshot.Project.Root) || filepath.Clean(snapshot.Project.Root) != snapshot.Project.Root || !validDigest(snapshot.ConfigurationDigest) {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted project identity", nil)
+	}
+	if snapshot.ConfigurationDigest != snapshot.Bounded.ConfigurationDigest || !validDigest(snapshot.Bounded.CatalogDigest) || !validDigest(snapshot.Bounded.RegistryDigest) {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded trusted input digests", nil)
+	}
+	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded authority or message collections", nil)
+	}
+	if snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil || snapshot.Classification.WorkflowComplexity != nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded classification details", nil)
+	}
+	if snapshot.Classification.CapabilitySelector != nil {
+		if err := validatePersistedSelector(*snapshot.Classification.CapabilitySelector, snapshot.Bounded.Input.TrustedRuleID); err != nil {
+			return err
+		}
+	}
+	if err := validatePersistedBoundedInput(snapshot.Bounded.Input); err != nil {
+		return err
+	}
+	if snapshot.Status == RunAwaitingCapability && snapshot.Bounded.Selector != nil || snapshot.Status == RunReady && snapshot.Bounded.Selector == nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "Bounded status and selector disagree", nil)
+	}
+	if snapshot.Bounded.Selector != nil {
+		if err := validatePersistedSelector(*snapshot.Bounded.Selector, snapshot.Bounded.Input.TrustedRuleID); err != nil {
+			return err
+		}
+	}
+	for index, message := range snapshot.ProcessedMessages {
+		if err := validateIdentifier(message.IdempotencyKey); err != nil || !validDigest(message.ContentDigest) || message.Revision == 0 || message.Revision > record.Revision {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid processed message", err)
+		}
+		if index > 0 && snapshot.ProcessedMessages[index-1].IdempotencyKey >= message.IdempotencyKey {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "processed messages are not uniquely sorted", nil)
+		}
+	}
+	currentMessage := snapshot.ProcessedMessages[len(snapshot.ProcessedMessages)-1]
+	for _, message := range snapshot.ProcessedMessages {
+		if message.Revision == record.Revision {
+			currentMessage = message
+			break
+		}
+	}
+	if currentMessage.Revision != record.Revision || currentMessage.IdempotencyKey != record.IdempotencyKey || currentMessage.ContentDigest != record.MessageDigest {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "current processed message does not match revision", nil)
+	}
+	return validateBoundedReply(record)
+}
+
+func validatePersistedBoundedInput(value BoundedInput) error {
+	normalized, err := normalizeBoundedInput(&value)
+	if err != nil || !equalStrings(normalized.RequestedEffects, value.RequestedEffects) || !equalStrings(normalized.RequestedResources, value.RequestedResources) || normalized.TerminationCondition != value.TerminationCondition || normalized.TrustedRuleID != value.TrustedRuleID {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Bounded input", err)
+	}
+	return nil
+}
+
+func validatePersistedSelector(value classification.CapabilitySelector, trustedRuleID string) error {
+	if _, err := catalog.ParseQualifiedID(value.ProviderID); err != nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted selector Provider", err)
+	}
+	if _, err := catalog.ParseLocalID(value.CapabilityID); err != nil {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted selector Capability", err)
+	}
+	if value.Source == classification.SelectorUserIntent && trustedRuleID != "" || value.Source == classification.SelectorTrustedRule && trustedRuleID == "" {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted selector provenance", nil)
+	}
+	if value.Source != classification.SelectorUserIntent && value.Source != classification.SelectorTrustedRule {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted selector source", nil)
+	}
+	return nil
+}
+
+func validateBoundedReply(record revisionRecord) error {
+	reply := record.Reply
+	if reply.Diagnostics == nil || reply.RecoveryActions == nil || reply.Reason != "" || len(reply.RecoveryActions) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded reply collections", nil)
+	}
+	if record.Snapshot.Status == RunAwaitingCapability {
+		if record.Event != "BOUNDED_AWAITING_CAPABILITY" || reply.Kind != ReplyCapabilitySelectionRequired || len(reply.Diagnostics) != 1 || !validSelectionDiagnostic(reply.Diagnostics[0].Code) {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded selection reply", nil)
+		}
+		return nil
+	}
+	if reply.Kind != ReplyModeDecided || len(reply.Diagnostics) != 0 {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded ready reply", nil)
+	}
+	if record.Revision == 1 && record.Event != "BOUNDED_READY" || record.Revision > 1 && record.Event != "BOUNDED_CAPABILITY_SELECTED" {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded ready event", nil)
+	}
+	return nil
+}
+
+func validSelectionDiagnostic(value string) bool {
+	return value == "CAPABILITY_SELECTION_REQUIRED" || value == "CAPABILITY_NOT_VERIFIED" || value == "CAPABILITY_MODE_NOT_ALLOWED"
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }
 
 func validateDirectReply(record revisionRecord) error {
