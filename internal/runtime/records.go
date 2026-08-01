@@ -31,6 +31,7 @@ type ContinueSignal string
 const (
 	SignalScopeExpanded      ContinueSignal = "SCOPE_EXPANDED"
 	SignalCapabilitySelected ContinueSignal = "CAPABILITY_SELECTED"
+	SignalRequestDispatch    ContinueSignal = "REQUEST_DISPATCH"
 )
 
 type ReplyKind string
@@ -38,6 +39,7 @@ type ReplyKind string
 const (
 	ReplyModeDecided                 ReplyKind = "MODE_DECIDED"
 	ReplyCapabilitySelectionRequired ReplyKind = "CAPABILITY_SELECTION_REQUIRED"
+	ReplyGrantIssued                 ReplyKind = "GRANT_ISSUED"
 	ReplyPaused                      ReplyKind = "PAUSED"
 	ReplyStateSnapshot               ReplyKind = "STATE_SNAPSHOT"
 )
@@ -48,6 +50,7 @@ const (
 	RunReleased           RunStatus = "RELEASED"
 	RunAwaitingCapability RunStatus = "AWAITING_CAPABILITY"
 	RunReady              RunStatus = "READY"
+	RunGranted            RunStatus = "GRANTED"
 )
 
 const (
@@ -141,6 +144,7 @@ type RunSnapshot struct {
 	ClassificationDigest string                                `json:"classification_digest"`
 	ConfigurationDigest  string                                `json:"configuration_digest"`
 	Bounded              *BoundedState                         `json:"bounded,omitempty"`
+	Grants               []admission.CapabilityGrant           `json:"grants,omitempty"`
 	ProcessedMessages    []ProcessedMessage                    `json:"processed_messages"`
 	LifecycleBundles     []string                              `json:"lifecycle_bundles"`
 	GrantIDs             []string                              `json:"grant_ids"`
@@ -226,6 +230,13 @@ func cloneSnapshot(value RunSnapshot) RunSnapshot {
 			bounded.Selector = &selector
 		}
 		value.Bounded = &bounded
+	}
+	if value.Grants != nil {
+		grants := make([]admission.CapabilityGrant, len(value.Grants))
+		for index, grant := range value.Grants {
+			grants[index] = admission.CloneGrant(grant)
+		}
+		value.Grants = grants
 	}
 	value.ProcessedMessages = append([]ProcessedMessage{}, value.ProcessedMessages...)
 	value.LifecycleBundles = append([]string{}, value.LifecycleBundles...)

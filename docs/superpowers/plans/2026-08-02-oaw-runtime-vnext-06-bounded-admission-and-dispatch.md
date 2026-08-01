@@ -235,18 +235,18 @@ journal, conflict, corruption, and idempotency codes remain stable.
 
 ### Task 3: Issue one immutable Bounded Grant
 
-- [ ] Add a failing `REQUEST_DISPATCH` test from READY; require revision 2,
+- [x] Add a failing `REQUEST_DISPATCH` test from READY; require revision 2,
   status `GRANTED`, reply `GRANT_ISSUED`, and one exact immutable Grant plus
   invocation ID committed before reply.
-- [ ] Prove requested effects/resources are intersections of trusted authority,
+- [x] Prove requested effects/resources are intersections of trusted authority,
   descriptor maxima, verified Capability, Request Mode, and Executor topology.
-- [ ] Prove a second Grant request, parent/child widening, lifecycle ownership,
+- [x] Prove a second Grant request, parent/child widening, lifecycle ownership,
   project write without a Resource Lease, Git completion effect, or changed
   Grant content fails without mutation or pauses for successor-Run escalation
   as applicable.
-- [ ] Implement deterministic Grant/invocation IDs and snapshot Grant copies;
+- [x] Implement deterministic Grant/invocation IDs and snapshot Grant copies;
   keep Lifecycle Bundles, Stage Grants, and Resource Leases empty in Ticket 06.
-- [ ] Run focused race/coverage tests and commit as
+- [x] Run focused race/coverage tests and commit as
   `feat: issue bounded capability grants`.
 
 ### Task 4: Persist dispatch authorization, observations, and uncertainty

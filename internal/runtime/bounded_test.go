@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
@@ -352,6 +353,200 @@ func TestBoundedRecordsAreDefensiveAndStartReplayDoesNotNeedCurrentAdmission(t *
 	}
 }
 
+func TestRequestDispatchIssuesOneImmutableBoundedGrant(t *testing.T) {
+	fixture := newBoundedRuntimeFixture(t, false)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newBoundedEngine(t, stateRoot, fixture)
+	started, err := engine.Exchange(boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "grant-start"))
+	if err != nil {
+		t.Fatalf("START error = %v", err)
+	}
+	dispatch := runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "grant-dispatch", IdempotencyKey: "grant-dispatch", RunID: started.RunID, ExpectedRevision: started.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestDispatch},
+	}
+	granted, err := engine.Exchange(dispatch)
+	if err != nil {
+		t.Fatalf("REQUEST_DISPATCH error = %v", err)
+	}
+	if granted.Kind != runtime.ReplyGrantIssued || granted.Revision != 2 || granted.Snapshot.Status != runtime.RunGranted || len(granted.Snapshot.Grants) != 1 || len(granted.Snapshot.GrantIDs) != 1 {
+		t.Fatalf("Grant reply = %#v", granted)
+	}
+	grant := granted.Snapshot.Grants[0]
+	if grant.ID != granted.Snapshot.GrantIDs[0] || grant.IssuedRevision != 2 || grant.InvocationID == "" || grant.ProviderID != "oaw/ecc" || grant.CapabilityID != "review" || grant.Executor.ID != "executor-review" || !equalStrings(grant.Effects, []string{"read-project"}) || !equalStrings(grant.Resources, []string{"project"}) {
+		t.Fatalf("Grant = %#v", grant)
+	}
+	if err := admission.ValidateGrant(grant); err != nil {
+		t.Fatalf("ValidateGrant() error = %v", err)
+	}
+	expected, err := engine.Exchange(dispatch)
+	if err != nil {
+		t.Fatalf("initial REQUEST_DISPATCH replay error = %v", err)
+	}
+	grant.Effects[0] = "mutated"
+	granted.Snapshot.Grants[0].Effects[0] = "mutated-again"
+	inspected, err := engine.Exchange(inspectFrame(started.RunID, "grant-inspect"))
+	if err != nil {
+		t.Fatalf("INSPECT error = %v", err)
+	}
+	if inspected.Snapshot.Grants[0].Effects[0] != "read-project" {
+		t.Fatal("Grant copy mutation reached committed state")
+	}
+	replay, err := engine.Exchange(dispatch)
+	if err != nil {
+		t.Fatalf("REQUEST_DISPATCH replay error = %v", err)
+	}
+	if !reflect.DeepEqual(replay, expected) {
+		t.Fatalf("Grant replay differs\n got: %#v\nwant: %#v", replay, expected)
+	}
+	assertRevisionCount(t, stateRoot, started.RunID, 2)
+
+	restarted := newBoundedEngine(t, stateRoot, fixture)
+	restartedState, err := restarted.Exchange(inspectFrame(started.RunID, "grant-inspect-restart"))
+	if err != nil {
+		t.Fatalf("INSPECT after restart error = %v", err)
+	}
+	if !reflect.DeepEqual(restartedState.Snapshot, inspected.Snapshot) {
+		t.Fatalf("Grant state after restart differs\n got: %#v\nwant: %#v", restartedState.Snapshot, inspected.Snapshot)
+	}
+}
+
+func TestRequestDispatchFailsClosedWithoutMutation(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		start      func(boundedRuntimeFixture) runtime.RunFrame
+		options    func(string, boundedRuntimeFixture) runtime.Options
+		startFirst bool
+		code       string
+	}{
+		{
+			name: "awaiting capability",
+			start: func(fixture boundedRuntimeFixture) runtime.RunFrame {
+				return boundedStartFrame(fixture, nil, "", "dispatch-awaiting")
+			},
+			options:    boundedOptions,
+			startFirst: true,
+			code:       "RUN_TRANSITION_INVALID",
+		},
+		{
+			name: "authority exceeded",
+			start: func(fixture boundedRuntimeFixture) runtime.RunFrame {
+				return boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "dispatch-authority")
+			},
+			options: func(stateRoot string, fixture boundedRuntimeFixture) runtime.Options {
+				options := boundedOptions(stateRoot, fixture)
+				options.Bounded.Authority.Effects = []string{}
+				return options
+			},
+			startFirst: true,
+			code:       "CAPABILITY_AUTHORITY_EXCEEDED",
+		},
+		{
+			name: "Executor missing",
+			start: func(fixture boundedRuntimeFixture) runtime.RunFrame {
+				return boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "dispatch-executor")
+			},
+			options: func(stateRoot string, fixture boundedRuntimeFixture) runtime.Options {
+				options := boundedOptions(stateRoot, fixture)
+				options.Bounded.Executors = nil
+				return options
+			},
+			startFirst: true,
+			code:       "EXECUTOR_NOT_REGISTERED",
+		},
+		{
+			name: "Main Agent topology",
+			start: func(fixture boundedRuntimeFixture) runtime.RunFrame {
+				frame := boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "dispatch-main")
+				frame.Start.Bounded.ExecutorID = "main-agent"
+				return frame
+			},
+			options: func(stateRoot string, fixture boundedRuntimeFixture) runtime.Options {
+				options := boundedOptions(stateRoot, fixture)
+				options.Bounded.Executors = append(options.Bounded.Executors, admission.ExecutorRegistration{ID: "main-agent", Kind: admission.ExecutorMainAgent})
+				return options
+			},
+			startFirst: true,
+			code:       "EXECUTOR_TOPOLOGY_DENIED",
+		},
+		{
+			name: "Git completion effect",
+			start: func(fixture boundedRuntimeFixture) runtime.RunFrame {
+				frame := boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "dispatch-git")
+				frame.Start.Bounded.RequestedEffects = []string{"git-local"}
+				return frame
+			},
+			options:    boundedOptions,
+			startFirst: true,
+			code:       "CAPABILITY_EFFECT_NOT_ALLOWED",
+		},
+		{
+			name: "project write requires Resource Lease",
+			start: func(fixture boundedRuntimeFixture) runtime.RunFrame {
+				frame := boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "architecture", Source: classification.SelectorUserIntent}, "", "dispatch-write")
+				frame.Start.Bounded.RequestedEffects = []string{"write-project"}
+				frame.Start.Bounded.RequestedResources = []string{"project-worktree"}
+				return frame
+			},
+			options: func(stateRoot string, fixture boundedRuntimeFixture) runtime.Options {
+				options := boundedOptions(stateRoot, fixture)
+				options.Bounded.Authority.Effects = append(options.Bounded.Authority.Effects, "write-project")
+				options.Bounded.Authority.Resources = append(options.Bounded.Authority.Resources, "project-worktree")
+				options.Bounded.Authority.ResourceLeases = true
+				return options
+			},
+			startFirst: true,
+			code:       "RESOURCE_LEASE_REQUIRED",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newBoundedRuntimeFixture(t, false)
+			stateRoot := filepath.Join(t.TempDir(), "state")
+			options := test.options(stateRoot, fixture)
+			engine, err := runtime.NewEngine(options)
+			if err != nil {
+				t.Fatalf("NewEngine() error = %v", err)
+			}
+			started, err := engine.Exchange(test.start(fixture))
+			if err != nil {
+				t.Fatalf("START error = %v", err)
+			}
+			if test.startFirst && started.Snapshot.Status == runtime.RunAwaitingCapability {
+				_, err = engine.Exchange(runtime.RunFrame{
+					SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue, MessageID: "dispatch-awaiting-request", IdempotencyKey: "dispatch-awaiting-request", RunID: started.RunID, ExpectedRevision: 1,
+					Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestDispatch},
+				})
+			} else {
+				_, err = engine.Exchange(runtime.RunFrame{
+					SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue, MessageID: "dispatch-failure", IdempotencyKey: "dispatch-failure", RunID: started.RunID, ExpectedRevision: 1,
+					Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestDispatch},
+				})
+			}
+			assertErrorCode(t, err, test.code)
+			assertRevisionCount(t, stateRoot, started.RunID, 1)
+		})
+	}
+
+	t.Run("second dispatch", func(t *testing.T) {
+		fixture := newBoundedRuntimeFixture(t, false)
+		stateRoot := filepath.Join(t.TempDir(), "state")
+		engine := newBoundedEngine(t, stateRoot, fixture)
+		started, err := engine.Exchange(boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "dispatch-second"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		frame := runtime.RunFrame{SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue, MessageID: "dispatch-once", IdempotencyKey: "dispatch-once", RunID: started.RunID, ExpectedRevision: 1, Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestDispatch}}
+		granted, err := engine.Exchange(frame)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = engine.Exchange(runtime.RunFrame{SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue, MessageID: "dispatch-twice", IdempotencyKey: "dispatch-twice", RunID: started.RunID, ExpectedRevision: granted.Revision, Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestDispatch}})
+		assertErrorCode(t, err, "RUN_TRANSITION_INVALID")
+		assertRevisionCount(t, stateRoot, started.RunID, 2)
+	})
+}
+
 type boundedRuntimeFixture struct {
 	projectRoot string
 	snapshot    config.Snapshot
@@ -388,6 +583,7 @@ capability_id = "review"
 	}
 	inventory := &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{
 		{Host: "codex", Kind: "agent", Reference: "planner"},
+		{Host: "codex", Kind: "agent", Reference: "architect"},
 		{Host: "codex", Kind: "agent", Reference: "code-reviewer"},
 		{Host: "codex", Kind: "agent", Reference: "security-reviewer"},
 	}}
@@ -413,6 +609,10 @@ func boundedOptions(stateRoot string, fixture boundedRuntimeFixture) runtime.Opt
 		Bounded: runtime.BoundedOptions{
 			Configuration: fixture.snapshot,
 			Registry:      fixture.registry,
+			Authority: admission.AuthorityCeiling{
+				Effects: []string{"read-project"}, Resources: []string{"project"},
+			},
+			Executors: []admission.ExecutorRegistration{{ID: "executor-review", Kind: admission.ExecutorIsolated}},
 		},
 	}
 }
@@ -439,4 +639,16 @@ func boundedStartFrame(fixture boundedRuntimeFixture, selector *classification.C
 			},
 		},
 	}
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
 }

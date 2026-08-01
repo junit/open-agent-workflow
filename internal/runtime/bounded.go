@@ -172,6 +172,49 @@ func normalizeCapabilitySelection(value ContinueInput) (ContinueInput, error) {
 	return ContinueInput{Signal: SignalCapabilitySelected, CapabilitySelector: selector, TrustedRuleID: trustedRuleID}, nil
 }
 
+func issueBoundedGrant(snapshot RunSnapshot, options BoundedOptions, issuedRevision uint64) (admission.CapabilityGrant, error) {
+	if snapshot.Bounded == nil || snapshot.Bounded.Selector == nil {
+		return admission.CapabilityGrant{}, runtimeError("RUN_TRANSITION_INVALID", "Bounded Grant requires an admitted selector", nil)
+	}
+	// Ticket 06 has no durable Resource Lease primitive. Keep that capability
+	// disabled at the Runtime boundary even when the trusted adapter advertises
+	// a broader future authority ceiling.
+	authority := admission.CloneAuthority(options.Authority)
+	authority.ResourceLeases = false
+	executor := admission.ExecutorRegistration{ID: snapshot.Bounded.Input.ExecutorID}
+	for _, registered := range options.Executors {
+		if registered.ID == executor.ID {
+			executor = registered
+			break
+		}
+	}
+	grant, err := admission.IssueBoundedGrant(admission.GrantRequest{
+		RunID:                snapshot.RunID,
+		RequestID:            snapshot.RequestID,
+		DeliverableID:        snapshot.Bounded.Input.DeliverableID,
+		InputDigest:          snapshot.Bounded.Input.InputDigest,
+		IssuedRevision:       issuedRevision,
+		Selector:             *snapshot.Bounded.Selector,
+		Effects:              append([]string{}, snapshot.Bounded.Input.RequestedEffects...),
+		Resources:            append([]string{}, snapshot.Bounded.Input.RequestedResources...),
+		TerminationCondition: snapshot.Bounded.Input.TerminationCondition,
+		Executor:             executor,
+		Catalog:              options.Configuration.Catalog(),
+		Registry:             options.Registry,
+		Authority:            authority,
+		Executors:            options.Executors,
+		DelegationAllowList:  []string{},
+	})
+	if err != nil {
+		code := admission.ErrorCode(err)
+		if code == "" {
+			code = "BOUNDED_REQUEST_INVALID"
+		}
+		return admission.CapabilityGrant{}, runtimeError(code, err.Error(), err)
+	}
+	return grant, nil
+}
+
 func boundedState(input BoundedInput, selector *classification.CapabilitySelector, options BoundedOptions) *BoundedState {
 	state := &BoundedState{
 		Input:               input,
@@ -202,6 +245,18 @@ func boundedReply(snapshot RunSnapshot, diagnosticCode string) RunReply {
 		Revision:        snapshot.Revision,
 		Snapshot:        cloneSnapshot(snapshot),
 		Diagnostics:     diagnostics,
+		RecoveryActions: []string{},
+	}
+}
+
+func boundedGrantReply(snapshot RunSnapshot) RunReply {
+	return RunReply{
+		SchemaVersion:   RuntimeSchemaV1,
+		Kind:            ReplyGrantIssued,
+		RunID:           snapshot.RunID,
+		Revision:        snapshot.Revision,
+		Snapshot:        cloneSnapshot(snapshot),
+		Diagnostics:     []Diagnostic{},
 		RecoveryActions: []string{},
 	}
 }

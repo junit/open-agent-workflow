@@ -11,6 +11,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 )
@@ -244,6 +245,11 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		if err != nil {
 			return RunReply{}, err
 		}
+	case SignalRequestDispatch:
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" {
+			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "REQUEST_DISPATCH carries Capability selection", nil)
+		}
+		normalizedContinue = ContinueInput{Signal: SignalRequestDispatch}
 	default:
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "unknown CONTINUE signal", nil)
 	}
@@ -313,6 +319,49 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 				Event:             "BOUNDED_CAPABILITY_SELECTED",
 				Snapshot:          snapshot,
 				Reply:             boundedReply(snapshot, ""),
+			})
+			if commitErr != nil {
+				return commitErr
+			}
+			reply = cloneReply(committed.Reply)
+			return nil
+		}
+		if normalizedContinue.Signal == SignalRequestDispatch {
+			if current.Snapshot.RequestMode != classification.RequestModeBounded || current.Snapshot.Status != RunReady || current.Snapshot.Bounded == nil || current.Snapshot.Bounded.Selector == nil || len(current.Snapshot.Grants) != 0 || len(current.Snapshot.GrantIDs) != 0 {
+				return runtimeError("RUN_TRANSITION_INVALID", "REQUEST_DISPATCH requires a ready Bounded run without a Grant", nil)
+			}
+			if !boundedConfigurationMatches(current.Snapshot.Bounded, engine.bounded) {
+				return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
+			}
+			nextRevision := current.Revision + 1
+			grant, grantErr := issueBoundedGrant(current.Snapshot, engine.bounded, nextRevision)
+			if grantErr != nil {
+				return grantErr
+			}
+			snapshot := cloneSnapshot(current.Snapshot)
+			snapshot.Revision = nextRevision
+			snapshot.Status = RunGranted
+			snapshot.Grants = []admission.CapabilityGrant{admission.CloneGrant(grant)}
+			snapshot.GrantIDs = []string{grant.ID}
+			snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{
+				IdempotencyKey: frame.IdempotencyKey,
+				ContentDigest:  messageDigest,
+				Revision:       nextRevision,
+			})
+			sort.Slice(snapshot.ProcessedMessages, func(i, j int) bool {
+				return snapshot.ProcessedMessages[i].IdempotencyKey < snapshot.ProcessedMessages[j].IdempotencyKey
+			})
+			committed, commitErr := engine.journal.commit(revisionRecord{
+				SchemaVersion:     revisionSchemaV1,
+				RunID:             frame.RunID,
+				Revision:          nextRevision,
+				PredecessorDigest: current.Digest,
+				MessageID:         frame.MessageID,
+				IdempotencyKey:    frame.IdempotencyKey,
+				MessageDigest:     messageDigest,
+				Event:             "BOUNDED_GRANT_ISSUED",
+				Snapshot:          snapshot,
+				Reply:             boundedGrantReply(snapshot),
 			})
 			if commitErr != nil {
 				return commitErr
