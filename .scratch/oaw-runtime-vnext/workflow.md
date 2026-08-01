@@ -13,8 +13,8 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: implementation
-active_ticket: 01-contracts-and-builtin-catalog
+current_stage: implementation-planning
+active_ticket: 02-configuration-trust-and-provider-discovery
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -22,6 +22,7 @@ architecture_decisions:
   - docs/adr/0004-implement-runtime-core-in-go.md
 implementation_plans:
   - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-01-contracts-and-builtin-catalog.md
+  - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-02-configuration-trust-and-provider-discovery.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
@@ -81,10 +82,13 @@ completion_owner: superpowers
 The canonical written specification was approved by the user on 2026-08-01.
 Independent written-spec findings were remediated, and fresh documentation plus
 full Bash regression verification passed. Matt ticket decomposition was approved
-by the user on 2026-08-01. The user selected Subagent-Driven execution on
-2026-08-01. The lifecycle is now in Superpowers-owned implementation for
-Ticket 01 inside an isolated worktree.
+by the user on 2026-08-01. Ticket 01 completed in the isolated worktree with
+fresh Go race, coverage, documentation, and full Bash verification. After
+reviewing delegated Task 1 execution, the user directed subsequent work to
+continue inline without additional subagents. The lifecycle is now in
+Superpowers-owned implementation planning for Ticket 02.
 
 Every published ticket carries Matt's `ready-for-agent` triage status,
 which means the ticket is specified for agent execution. Scheduling still
-honors `Blocked by` edges; Ticket 01 is the only current frontier item.
+honors `Blocked by` edges; completion of Ticket 01 makes Ticket 02 the current
+frontier item.
