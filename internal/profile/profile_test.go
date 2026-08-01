@@ -108,6 +108,49 @@ func TestCompileProfileResolvesAliasAndReportsUnknownProfile(t *testing.T) {
 	}
 }
 
+func TestExecutionGraphRecordIsDigestPinnedAndDefensive(t *testing.T) {
+	available, verified, recipe := compilerFixture(t)
+	graph, err := profile.CompileRecipe(available, verified, recipe, nil)
+	if err != nil {
+		t.Fatalf("CompileRecipe() error = %v", err)
+	}
+	record := graph.Record()
+	if record.ContentDigest() != graph.Digest() || record.RecipeDigest == "" || len(record.Nodes) == 0 {
+		t.Fatalf("graph record = %#v", record)
+	}
+	if err := profile.ValidateExecutionGraphRecord(record); err != nil {
+		t.Fatalf("ValidateExecutionGraphRecord() error = %v", err)
+	}
+	implementationIndex := -1
+	for index := range record.Nodes {
+		if record.Nodes[index].ID == "implementation" {
+			implementationIndex = index
+			break
+		}
+	}
+	if implementationIndex < 0 {
+		t.Fatal("implementation node missing from graph record")
+	}
+	record.Nodes[implementationIndex].Transitions[0].Target = "mutated"
+	record.Bindings = append(record.Bindings, profile.ProfileBinding{})
+	if err := profile.ValidateExecutionGraphRecord(record); err == nil {
+		t.Fatal("ValidateExecutionGraphRecord() accepted tampered record")
+	}
+	second := graph.Record()
+	if graphNodeFromRecord(second, "implementation").Transitions[0].Target == "mutated" || len(second.Bindings) != len(graph.Bindings()) {
+		t.Fatalf("ExecutionGraph.Record() leaked mutable state: %#v", second)
+	}
+}
+
+func graphNodeFromRecord(record profile.ExecutionGraphRecord, id string) profile.GraphNode {
+	for _, node := range record.Nodes {
+		if node.ID == id {
+			return node
+		}
+	}
+	return profile.GraphNode{}
+}
+
 func TestCompileRecipeRejectsUnsupportedEffectAtCompilerBoundary(t *testing.T) {
 	available, verified, recipe := compilerFixture(t)
 	providers := available.Providers()

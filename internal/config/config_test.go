@@ -323,6 +323,31 @@ func TestLoadBuildsBuiltInOnlySnapshotWithoutFiles(t *testing.T) {
 	}
 }
 
+func TestSnapshotRecordIsDigestPinnedAndDefensive(t *testing.T) {
+	userRoot := t.TempDir()
+	writeUserConfig(t, userRoot, `schema_version = "oaw.user-config/v1"
+
+[[bounded_capability_defaults]]
+id = "review"
+provider_id = "oaw/ecc"
+capability_id = "review"
+`)
+	snapshot, err := Load(LoadOptions{UserConfigRoot: userRoot})
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	record := snapshot.Record()
+	if record.ContentDigest() != snapshot.Digest() || record.CatalogDigest == "" || len(record.BoundedCapabilityDefaults) != 1 {
+		t.Fatalf("snapshot record = %#v", record)
+	}
+	record.BoundedCapabilityDefaults[0].ID = "mutated"
+	record.Settings[0].ProviderID = "mutated"
+	second := snapshot.Record()
+	if second.BoundedCapabilityDefaults[0].ID != "review" || second.Settings[0].ProviderID == "mutated" {
+		t.Fatalf("Snapshot.Record() leaked mutable state: %#v", second)
+	}
+}
+
 func TestLoadMergesUserRecordsAndAppliesDeny(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "providers"), 0o700); err != nil {

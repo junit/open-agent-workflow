@@ -46,6 +46,50 @@ type Snapshot struct {
 	projectConfigDigest  string
 }
 
+// SnapshotRecord is the immutable public projection of a loaded configuration.
+// Catalog content remains owned by Snapshot and is pinned here by digest.
+type SnapshotRecord struct {
+	SchemaVersion             string                     `json:"schema_version"`
+	CatalogDigest             string                     `json:"catalog_digest"`
+	UserConfigDigest          string                     `json:"user_config_digest"`
+	ProjectRoot               string                     `json:"project_root"`
+	ProjectConfigDigest       string                     `json:"project_config_digest"`
+	ProjectStatus             ProjectTrustStatus         `json:"project_status"`
+	ProjectReason             string                     `json:"project_reason"`
+	Settings                  []ProviderSettings         `json:"settings"`
+	BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults"`
+	RequiredProviders         []string                   `json:"required_providers"`
+	RecommendedProviders      []string                   `json:"recommended_providers"`
+	UntrustedProviderIDs      []string                   `json:"untrusted_provider_ids"`
+	Digest                    string                     `json:"digest"`
+}
+
+func (snapshot Snapshot) Record() SnapshotRecord {
+	return SnapshotRecord{
+		SchemaVersion:             configurationSnapshotSchemaV1,
+		CatalogDigest:             snapshot.catalog.Digest(),
+		UserConfigDigest:          snapshot.userConfigDigest,
+		ProjectRoot:               snapshot.projectRoot,
+		ProjectConfigDigest:       snapshot.projectConfigDigest,
+		ProjectStatus:             snapshot.projectStatus,
+		ProjectReason:             snapshot.projectReason,
+		Settings:                  cloneProviderSettingsList(snapshot.settings),
+		BoundedCapabilityDefaults: append([]BoundedCapabilityDefault{}, snapshot.boundedDefaults...),
+		RequiredProviders:         append([]string{}, snapshot.requiredProviders...),
+		RecommendedProviders:      append([]string{}, snapshot.recommendedProviders...),
+		UntrustedProviderIDs:      append([]string{}, snapshot.untrustedProviderIDs...),
+		Digest:                    snapshot.digest,
+	}
+}
+
+func (record SnapshotRecord) ContentDigest() string {
+	digest, _, err := canonicaljson.Digest(snapshotRecordContent(record))
+	if err != nil {
+		return ""
+	}
+	return digest
+}
+
 func Load(options LoadOptions) (Snapshot, error) {
 	builtIn, err := builtin.Load()
 	if err != nil {
@@ -390,39 +434,43 @@ func (snapshot Snapshot) BoundedCapabilityDefaults() []BoundedCapabilityDefault 
 }
 
 func (snapshot *Snapshot) setDigest() error {
-	record := struct {
-		SchemaVersion        string                     `json:"schema_version"`
-		CatalogDigest        string                     `json:"catalog_digest"`
-		UserConfigDigest     string                     `json:"user_config_digest"`
-		ProjectRoot          string                     `json:"project_root"`
-		ProjectConfigDigest  string                     `json:"project_config_digest"`
-		ProjectStatus        ProjectTrustStatus         `json:"project_status"`
-		ProjectReason        string                     `json:"project_reason"`
-		Settings             []ProviderSettings         `json:"settings"`
-		BoundedDefaults      []BoundedCapabilityDefault `json:"bounded_capability_defaults"`
-		RequiredProviders    []string                   `json:"required_providers"`
-		RecommendedProviders []string                   `json:"recommended_providers"`
-		UntrustedProviderIDs []string                   `json:"untrusted_provider_ids"`
-	}{
-		configurationSnapshotSchemaV1,
-		snapshot.catalog.Digest(),
-		snapshot.userConfigDigest,
-		snapshot.projectRoot,
-		snapshot.projectConfigDigest,
-		snapshot.projectStatus,
-		snapshot.projectReason,
-		snapshot.settings,
-		snapshot.boundedDefaults,
-		snapshot.requiredProviders,
-		snapshot.recommendedProviders,
-		snapshot.untrustedProviderIDs,
-	}
-	digest, _, err := canonicaljson.Digest(record)
+	record := snapshot.Record()
+	digest, _, err := canonicaljson.Digest(snapshotRecordContent(record))
 	if err != nil {
 		return err
 	}
 	snapshot.digest = digest
 	return nil
+}
+
+func snapshotRecordContent(record SnapshotRecord) any {
+	return struct {
+		SchemaVersion             string                     `json:"schema_version"`
+		CatalogDigest             string                     `json:"catalog_digest"`
+		UserConfigDigest          string                     `json:"user_config_digest"`
+		ProjectRoot               string                     `json:"project_root"`
+		ProjectConfigDigest       string                     `json:"project_config_digest"`
+		ProjectStatus             ProjectTrustStatus         `json:"project_status"`
+		ProjectReason             string                     `json:"project_reason"`
+		Settings                  []ProviderSettings         `json:"settings"`
+		BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults"`
+		RequiredProviders         []string                   `json:"required_providers"`
+		RecommendedProviders      []string                   `json:"recommended_providers"`
+		UntrustedProviderIDs      []string                   `json:"untrusted_provider_ids"`
+	}{
+		record.SchemaVersion, record.CatalogDigest, record.UserConfigDigest,
+		record.ProjectRoot, record.ProjectConfigDigest, record.ProjectStatus,
+		record.ProjectReason, record.Settings, record.BoundedCapabilityDefaults,
+		record.RequiredProviders, record.RecommendedProviders, record.UntrustedProviderIDs,
+	}
+}
+
+func cloneProviderSettingsList(values []ProviderSettings) []ProviderSettings {
+	result := make([]ProviderSettings, len(values))
+	for index, value := range values {
+		result[index] = cloneProviderSettings(value)
+	}
+	return result
 }
 
 func setProviderSettingsDigest(value *ProviderSettings) error {

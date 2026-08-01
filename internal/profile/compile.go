@@ -243,20 +243,5 @@ func incidentRouteKey(value GraphIncidentRoute) string {
 }
 
 func executionGraphDigestRecord(graph ExecutionGraph) any {
-	return struct {
-		SchemaVersion     string                  `json:"schema_version"`
-		RecipeID          string                  `json:"recipe_id"`
-		RecipeVersion     string                  `json:"recipe_version"`
-		RecipeDigest      string                  `json:"recipe_digest"`
-		Entry             string                  `json:"entry"`
-		Bindings          []ProfileBinding        `json:"bindings"`
-		ProviderInstances []GraphProviderInstance `json:"provider_instances"`
-		Nodes             []GraphNode             `json:"nodes"`
-		IncidentRoutes    []GraphIncidentRoute    `json:"incident_routes"`
-		TerminalGates     []string                `json:"terminal_gates"`
-		StableBoundaries  []string                `json:"stable_boundaries"`
-	}{
-		graph.schemaVersion, graph.recipeID, graph.recipeVersion, graph.recipeDigest, graph.entry,
-		graph.bindings, graph.providerInstances, graph.nodes, graph.incidentRoutes, graph.terminalGates, graph.stableBoundaries,
-	}
+	return executionGraphRecordContent(graph.Record())
 }

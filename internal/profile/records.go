@@ -3,6 +3,7 @@ package profile
 import (
 	"fmt"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
@@ -80,12 +81,58 @@ type ExecutionGraph struct {
 	digest            string
 }
 
+type ExecutionGraphRecord struct {
+	SchemaVersion     string                  `json:"schema_version"`
+	RecipeID          string                  `json:"recipe_id"`
+	RecipeVersion     string                  `json:"recipe_version"`
+	RecipeDigest      string                  `json:"recipe_digest"`
+	Entry             string                  `json:"entry"`
+	Bindings          []ProfileBinding        `json:"bindings"`
+	ProviderInstances []GraphProviderInstance `json:"provider_instances"`
+	Nodes             []GraphNode             `json:"nodes"`
+	IncidentRoutes    []GraphIncidentRoute    `json:"incident_routes"`
+	TerminalGates     []string                `json:"terminal_gates"`
+	StableBoundaries  []string                `json:"stable_boundaries"`
+	Digest            string                  `json:"digest"`
+}
+
 func (graph ExecutionGraph) SchemaVersion() string { return graph.schemaVersion }
 func (graph ExecutionGraph) RecipeID() string      { return graph.recipeID }
 func (graph ExecutionGraph) RecipeVersion() string { return graph.recipeVersion }
 func (graph ExecutionGraph) RecipeDigest() string  { return graph.recipeDigest }
 func (graph ExecutionGraph) Entry() string         { return graph.entry }
 func (graph ExecutionGraph) Digest() string        { return graph.digest }
+
+func (graph ExecutionGraph) Record() ExecutionGraphRecord {
+	return ExecutionGraphRecord{
+		SchemaVersion: graph.schemaVersion, RecipeID: graph.recipeID,
+		RecipeVersion: graph.recipeVersion, RecipeDigest: graph.recipeDigest,
+		Entry: graph.entry, Bindings: cloneBindings(graph.bindings),
+		ProviderInstances: append([]GraphProviderInstance{}, graph.providerInstances...),
+		Nodes:             cloneGraphNodes(graph.nodes),
+		IncidentRoutes:    append([]GraphIncidentRoute{}, graph.incidentRoutes...),
+		TerminalGates:     append([]string{}, graph.terminalGates...),
+		StableBoundaries:  append([]string{}, graph.stableBoundaries...),
+		Digest:            graph.digest,
+	}
+}
+
+func (record ExecutionGraphRecord) ContentDigest() string {
+	content := record
+	content.Digest = ""
+	digest, _, err := canonicaljson.Digest(executionGraphRecordContent(content))
+	if err != nil {
+		return ""
+	}
+	return digest
+}
+
+func ValidateExecutionGraphRecord(record ExecutionGraphRecord) error {
+	if record.SchemaVersion != ExecutionGraphSchemaV1 || record.RecipeID == "" || record.RecipeVersion == "" || record.RecipeDigest == "" || record.Entry == "" || record.Digest == "" || record.ContentDigest() != record.Digest {
+		return fmt.Errorf("PROFILE_GRAPH_RECORD_INVALID")
+	}
+	return nil
+}
 
 func (graph ExecutionGraph) Bindings() []ProfileBinding {
 	return cloneBindings(graph.bindings)
@@ -142,4 +189,24 @@ func cloneGraphNodes(values []GraphNode) []GraphNode {
 		result[i].Transitions = append([]GraphTransition{}, value.Transitions...)
 	}
 	return result
+}
+
+func executionGraphRecordContent(record ExecutionGraphRecord) any {
+	return struct {
+		SchemaVersion     string                  `json:"schema_version"`
+		RecipeID          string                  `json:"recipe_id"`
+		RecipeVersion     string                  `json:"recipe_version"`
+		RecipeDigest      string                  `json:"recipe_digest"`
+		Entry             string                  `json:"entry"`
+		Bindings          []ProfileBinding        `json:"bindings"`
+		ProviderInstances []GraphProviderInstance `json:"provider_instances"`
+		Nodes             []GraphNode             `json:"nodes"`
+		IncidentRoutes    []GraphIncidentRoute    `json:"incident_routes"`
+		TerminalGates     []string                `json:"terminal_gates"`
+		StableBoundaries  []string                `json:"stable_boundaries"`
+	}{
+		record.SchemaVersion, record.RecipeID, record.RecipeVersion, record.RecipeDigest,
+		record.Entry, record.Bindings, record.ProviderInstances, record.Nodes,
+		record.IncidentRoutes, record.TerminalGates, record.StableBoundaries,
+	}
 }
