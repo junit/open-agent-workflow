@@ -23,6 +23,8 @@ func validateRevisionTransition(previous, current revisionRecord) error {
 		return nil
 	case classification.RequestModeBounded:
 		return validateBoundedRevisionTransition(previousSnapshot, currentSnapshot)
+	case classification.RequestModeWorkflow:
+		return validateWorkflowRevisionTransition(previousSnapshot, currentSnapshot)
 	default:
 		return runtimeError("RUN_STATE_REVISION_INVALID", "unsupported revision transition mode", nil)
 	}

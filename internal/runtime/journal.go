@@ -185,6 +185,10 @@ func validateRevision(record revisionRecord, runID string, revision uint64) erro
 		if err := validateBoundedState(record); err != nil {
 			return err
 		}
+	case classification.RequestModeWorkflow:
+		if err := validateWorkflowState(record); err != nil {
+			return err
+		}
 	default:
 		return runtimeError("RUN_STATE_REVISION_INVALID", "unsupported persisted Request Mode", nil)
 	}
@@ -369,7 +373,7 @@ func validateDirectState(record revisionRecord) error {
 	if snapshot.Project.Root == "" || !filepath.IsAbs(snapshot.Project.Root) || filepath.Clean(snapshot.Project.Root) != snapshot.Project.Root || !validDigest(snapshot.ConfigurationDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted project identity", nil)
 	}
-	if snapshot.Bounded != nil || snapshot.Grants != nil || snapshot.Observations != nil || snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
+	if snapshot.Bounded != nil || snapshot.Workflow != nil || snapshot.Grants != nil || snapshot.Observations != nil || snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.GrantIDs == nil || len(snapshot.GrantIDs) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Direct authority or message collections", nil)
 	}
 	if snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil || snapshot.Classification.WorkflowComplexity != nil || snapshot.Classification.CapabilitySelector != nil {
@@ -401,7 +405,7 @@ func validateDirectState(record revisionRecord) error {
 
 func validateBoundedState(record revisionRecord) error {
 	snapshot := record.Snapshot
-	if snapshot.RequestMode != classification.RequestModeBounded || snapshot.Classification.RequestMode != classification.RequestModeBounded || snapshot.ClassificationDigest == "" || !validDigest(snapshot.ClassificationDigest) || snapshot.Bounded == nil {
+	if snapshot.RequestMode != classification.RequestModeBounded || snapshot.Classification.RequestMode != classification.RequestModeBounded || snapshot.ClassificationDigest == "" || !validDigest(snapshot.ClassificationDigest) || snapshot.Bounded == nil || snapshot.Workflow != nil {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded classification state", nil)
 	}
 	if snapshot.Status != RunAwaitingCapability && snapshot.Status != RunReady && snapshot.Status != RunGranted && snapshot.Status != RunInFlight && snapshot.Status != RunFinished && snapshot.Status != RunPaused {

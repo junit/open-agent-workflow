@@ -38,6 +38,7 @@ const (
 	SignalAdditionalCapabilityRequired ContinueSignal = "ADDITIONAL_CAPABILITY_REQUIRED"
 	SignalRemediationRequired          ContinueSignal = "REMEDIATION_REQUIRED"
 	SignalArchitectureRequired         ContinueSignal = "ARCHITECTURE_REQUIRED"
+	SignalProfileSelected              ContinueSignal = "PROFILE_SELECTED"
 )
 
 type ReplyKind string
@@ -50,6 +51,7 @@ const (
 	ReplyFinished                    ReplyKind = "FINISHED"
 	ReplyPaused                      ReplyKind = "PAUSED"
 	ReplyStateSnapshot               ReplyKind = "STATE_SNAPSHOT"
+	ReplySelectionRequired           ReplyKind = "SELECTION_REQUIRED"
 )
 
 type RunStatus string
@@ -62,6 +64,7 @@ const (
 	RunInFlight           RunStatus = "IN_FLIGHT"
 	RunFinished           RunStatus = "FINISHED"
 	RunPaused             RunStatus = "PAUSED"
+	RunAwaitingSelection  RunStatus = "AWAITING_SELECTION"
 )
 
 const (
@@ -78,6 +81,7 @@ type Options struct {
 	StateRoot string
 	Rules     classification.ClassificationRules
 	Bounded   BoundedOptions
+	Workflow  WorkflowOptions
 }
 
 type BoundedOptions struct {
@@ -103,6 +107,7 @@ type StartInput struct {
 	Project   ProjectIdentity                        `json:"project"`
 	Proposal  *classification.ClassificationProposal `json:"proposal,omitempty"`
 	Bounded   *BoundedInput                          `json:"bounded,omitempty"`
+	Workflow  *WorkflowInput                         `json:"workflow,omitempty"`
 }
 
 type ContinueInput struct {
@@ -111,6 +116,7 @@ type ContinueInput struct {
 	TrustedRuleID       string                             `json:"trusted_rule_id,omitempty"`
 	DispatchPreparation *DispatchPreparation               `json:"dispatch_preparation,omitempty"`
 	Observation         *CapabilityObservation             `json:"observation,omitempty"`
+	ProfileSelection    *ProfileSelection                  `json:"profile_selection,omitempty"`
 }
 
 type DispatchPreparation struct {
@@ -186,6 +192,7 @@ type RunSnapshot struct {
 	ClassificationDigest string                                `json:"classification_digest"`
 	ConfigurationDigest  string                                `json:"configuration_digest"`
 	Bounded              *BoundedState                         `json:"bounded,omitempty"`
+	Workflow             *WorkflowState                        `json:"workflow,omitempty"`
 	Grants               []admission.CapabilityGrant           `json:"grants,omitempty"`
 	Observations         []CapabilityObservation               `json:"observations,omitempty"`
 	ProcessedMessages    []ProcessedMessage                    `json:"processed_messages"`
@@ -273,6 +280,10 @@ func cloneSnapshot(value RunSnapshot) RunSnapshot {
 			bounded.Selector = &selector
 		}
 		value.Bounded = &bounded
+	}
+	if value.Workflow != nil {
+		workflow := cloneWorkflowState(*value.Workflow)
+		value.Workflow = &workflow
 	}
 	if value.Grants != nil {
 		grants := make([]admission.CapabilityGrant, len(value.Grants))

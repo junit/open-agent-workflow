@@ -19,9 +19,10 @@ import (
 const maximumIdentifierLength = 256
 
 type Engine struct {
-	rules   classification.ClassificationRules
-	bounded BoundedOptions
-	journal *journal
+	rules    classification.ClassificationRules
+	bounded  BoundedOptions
+	workflow WorkflowOptions
+	journal  *journal
 }
 
 func NewEngine(options Options) (*Engine, error) {
@@ -29,7 +30,7 @@ func NewEngine(options Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{rules: cloneRules(options.Rules), bounded: cloneBoundedOptions(options.Bounded), journal: journal}, nil
+	return &Engine{rules: cloneRules(options.Rules), bounded: cloneBoundedOptions(options.Bounded), workflow: cloneWorkflowOptions(options.Workflow), journal: journal}, nil
 }
 
 func (engine *Engine) Exchange(frame RunFrame) (RunReply, error) {
@@ -67,6 +68,7 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "invalid classification proposal", err)
 	}
 	var boundedInput *BoundedInput
+	var workflowInput *WorkflowInput
 	if proposalRequestsBounded(*proposal) {
 		normalized, normalizeErr := normalizeBoundedInput(frame.Start.Bounded)
 		if normalizeErr != nil {
@@ -76,7 +78,14 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	} else if frame.Start.Bounded != nil {
 		return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "non-Bounded START carries Bounded input", nil)
 	}
-	normalizedStart := StartInput{RequestID: frame.Start.RequestID, Project: project, Proposal: cloneProposal(proposal), Bounded: cloneBoundedInput(boundedInput)}
+	if frame.Start.Workflow != nil {
+		normalized, normalizeErr := normalizeWorkflowInput(frame.Start.Workflow)
+		if normalizeErr != nil {
+			return RunReply{}, normalizeErr
+		}
+		workflowInput = &normalized
+	}
+	normalizedStart := StartInput{RequestID: frame.Start.RequestID, Project: project, Proposal: cloneProposal(proposal), Bounded: cloneBoundedInput(boundedInput), Workflow: cloneWorkflowInput(workflowInput)}
 	messageDigest, err := frameContentDigest(RunFrame{
 		SchemaVersion: RuntimeSchemaV1,
 		Kind:          FrameStart,
@@ -113,10 +122,11 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	status := RunReleased
 	event := "DIRECT_RELEASED"
 	var bounded *BoundedState
+	var workflow *WorkflowState
 	selectionDiagnostic := ""
 	switch decision.RequestMode {
 	case classification.RequestModeDirect:
-		if boundedInput != nil {
+		if boundedInput != nil || workflowInput != nil {
 			return RunReply{}, runtimeError("BOUNDED_REQUEST_INVALID", "Bounded request was not classified as BOUNDED", nil)
 		}
 	case classification.RequestModeBounded:
@@ -138,6 +148,19 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 			selectionDiagnostic = diagnostic
 		}
 		bounded = boundedState(*boundedInput, selector, engine.bounded)
+		if workflowInput != nil {
+			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "Bounded START carries Workflow input", nil)
+		}
+	case classification.RequestModeWorkflow:
+		if workflowInput == nil || boundedInput != nil {
+			return RunReply{}, runtimeError("WORKFLOW_REQUEST_INVALID", "Workflow input is required", nil)
+		}
+		if !workflowConfigurationReady(project, engine.workflow) {
+			return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+		}
+		status = RunAwaitingSelection
+		event = "WORKFLOW_SELECTION_REQUIRED"
+		workflow = workflowAwaitingState(*workflowInput, engine.workflow)
 	default:
 		return RunReply{}, runtimeError("REQUEST_MODE_NOT_IMPLEMENTED", fmt.Sprintf("request mode %s is not implemented", decision.RequestMode), nil)
 	}
@@ -171,6 +194,7 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 			ClassificationDigest: decision.Digest(),
 			ConfigurationDigest:  project.ConfigurationDigest,
 			Bounded:              bounded,
+			Workflow:             workflow,
 			ProcessedMessages: []ProcessedMessage{{
 				IdempotencyKey: frame.IdempotencyKey,
 				ContentDigest:  messageDigest,
@@ -183,6 +207,8 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		candidateReply := directReleaseReply(snapshot)
 		if snapshot.RequestMode == classification.RequestModeBounded {
 			candidateReply = boundedReply(snapshot, selectionDiagnostic)
+		} else if snapshot.RequestMode == classification.RequestModeWorkflow {
+			candidateReply = workflowSelectionReply(snapshot)
 		}
 		committed, commitErr := engine.journal.commit(revisionRecord{
 			SchemaVersion:  revisionSchemaV1,
@@ -248,6 +274,15 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		if err != nil {
 			return RunReply{}, err
 		}
+	case SignalProfileSelected:
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection == nil {
+			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "PROFILE_SELECTED carries an invalid payload", nil)
+		}
+		selection, normalizeErr := normalizeProfileSelection(*frame.Continue.ProfileSelection)
+		if normalizeErr != nil {
+			return RunReply{}, normalizeErr
+		}
+		normalizedContinue = ContinueInput{Signal: SignalProfileSelected, ProfileSelection: &selection}
 	case SignalRequestDispatch:
 		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "REQUEST_DISPATCH carries an unexpected payload", nil)
@@ -305,6 +340,14 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		}
 		if frame.ExpectedRevision != current.Revision {
 			return runtimeError("RUN_REVISION_CONFLICT", fmt.Sprintf("expected revision %d, current revision %d", frame.ExpectedRevision, current.Revision), nil)
+		}
+		if normalizedContinue.Signal == SignalProfileSelected {
+			selected, selectErr := engine.selectWorkflowProfile(current, frame, normalizedContinue, messageDigest)
+			if selectErr != nil {
+				return selectErr
+			}
+			reply = selected
+			return nil
 		}
 		if normalizedContinue.Signal == SignalCapabilitySelected {
 			if current.Snapshot.RequestMode != classification.RequestModeBounded || current.Snapshot.Status != RunAwaitingCapability || current.Snapshot.Bounded == nil || current.Snapshot.Bounded.Selector != nil {

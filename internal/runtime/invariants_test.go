@@ -195,9 +195,9 @@ func TestStartRejectsInvalidInputsAndUnimplementedModesWithoutState(t *testing.T
 		{"project is file", Options{}, func(frame *RunFrame) { frame.Start.Project.Root = projectFile }, "PROJECT_IDENTITY_INVALID"},
 		{"invalid proposal", Options{}, func(frame *RunFrame) { frame.Start.Proposal.SchemaVersion = "wrong" }, "RUNTIME_FRAME_INVALID"},
 		{"invalid rules", Options{Rules: classification.ClassificationRules{User: classification.PolicyLayer{MinimumMode: "INVALID"}}}, func(*RunFrame) {}, "RUNTIME_FRAME_INVALID"},
-		{"workflow mode", Options{}, func(frame *RunFrame) {
+		{"workflow mode requires input", Options{}, func(frame *RunFrame) {
 			setInternalTrait(frame.Start.Proposal, classification.TraitSchemaChange, classification.TraitTrue)
-		}, "REQUEST_MODE_NOT_IMPLEMENTED"},
+		}, "WORKFLOW_REQUEST_INVALID"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
