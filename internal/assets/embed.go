@@ -5,7 +5,7 @@ import (
 	"io/fs"
 )
 
-//go:embed schemas/v1/*.json
+//go:embed schemas/v1/*.json providers/*.json
 var embedded embed.FS
 
 func FS() fs.FS { return embedded }
