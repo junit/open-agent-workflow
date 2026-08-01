@@ -323,7 +323,7 @@ coverage.
 ```bash
 rtk bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
 rtk shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
-rtk bash tests/run-tests.sh
+rtk bash tests/run.sh
 rtk go test ./internal/catalog ./internal/config ./internal/discovery ./internal/registry ./internal/classification ./internal/profile ./internal/integration
 rtk govulncheck ./...
 ```

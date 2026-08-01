@@ -79,3 +79,36 @@ The final diff does not parse request prose, call a model or network API, select
 a Provider or Capability, issue authority, mutate Runtime State, or add a CLI
 surface. The only selector retained in a decision is explicit Bounded intent;
 Workflow decisions carry no Capability selector.
+
+## Ticket 04 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `ebc04a8`
+
+**Scope:** Profile Recipe Compiler and deterministic Execution Graphs
+
+**Review owner:** Superpowers (inline main-agent review; no subagents)
+
+**Result:** Passed
+
+The diff was checked against Ticket 04, specification section 9, and the
+catalog/registry contracts. The compiler accepts a read-only `CatalogSource`
+and `EffectiveRegistry`, resolves aliases and custom Recipes through one path,
+and never discovers or executes Providers. Nodes are admitted only when the
+queried Provider Instance and Capability identities match and the verified Host
+Binding is declared by the selected descriptor. Provider brand names do not
+participate in eligibility.
+
+The graph is defensively immutable and pins normalized Recipe/Provider digests,
+Capability contract limits, Host Binding, executor topology, Procedures,
+Incident Routes, terminal gates, and stable boundaries. Binding duplicates,
+unknown selectors, missing verification, identity mismatch, duplicate/missing
+owners, unsupported effects/resources, unsupported Request Modes, missing
+targets, unreachable controls, invalid Procedures/terminals, and unclosed loops
+fail with stable compiler codes. Optional missing handlers are removed together
+with their routes; required nodes are never silently omitted.
+
+No Critical or Important findings remain. The only intentional non-blocking
+verification limitation is that `govulncheck` is not installed in the current
+environment.

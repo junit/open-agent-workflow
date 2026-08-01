@@ -57,3 +57,35 @@ The verified Ticket 03 paths are limited to the lifecycle tracker and plan, the
 classification proposal schema and registry entry, `internal/classification`,
 and one classification integration test. The untracked `.serena/` directory
 remains excluded.
+
+## Ticket 04 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed with one unavailable optional tool
+
+**Scope:** Profile Recipe Compiler, built-in and custom Recipe integration, and
+repository compatibility
+
+| Check | Result |
+| --- | --- |
+| `rtk go vet ./...` | Exit 0 |
+| `rtk go test -race ./...` | Exit 0: 284 tests in 13 packages |
+| Repository Go statement coverage | `85.1%`, required minimum `80%` |
+| `internal/profile` statement coverage | `91.3%`, target minimum `90%` |
+| `rtk bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh` | Exit 0 |
+| `rtk shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh` | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all existing installer cases passed |
+| `rtk go test ./internal/profile ./internal/integration` | Exit 0: 30 focused tests |
+| `rtk go test -race ./internal/profile ./internal/integration` | Exit 0 |
+| `rtk go test ./internal/classification -run '^$' -fuzz FuzzDecodeProposalFailsClosed -fuzztime 2s` | Exit 0 |
+| `rtk govulncheck ./...` | Not run: command unavailable in environment |
+
+The focused corpus compiled all built-in Recipes, `SP-FULL`, `MATT-FULL`,
+`ECC-FULL`, `MATT-SP-HYBRID`, and a user-defined `acme/*` Recipe. It proved
+verified-coverage failure, optional ECC handler omission, exact bindings,
+stable failure codes, closed loops, and equivalent-input digest equality.
+
+The Ticket 04 implementation is committed at `ebc04a8`; the executable plan
+and contract correction are committed at `88ca4e6` and `dd4c50d`. Untracked
+`.serena/` state was preserved and not staged.
