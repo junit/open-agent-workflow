@@ -13,14 +13,15 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: ticket-graph-user-review
-active_ticket: null
+current_stage: implementation-planning
+active_ticket: 01-contracts-and-builtin-catalog
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
   - docs/adr/0003-add-optional-capability-admission-runtime.md
   - docs/adr/0004-implement-runtime-core-in-go.md
-implementation_plans: null
+implementation_plans:
+  - docs/superpowers/plans/2026-08-01-oaw-runtime-vnext-01-contracts-and-builtin-catalog.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
@@ -79,5 +80,10 @@ completion_owner: superpowers
 
 The canonical written specification was approved by the user on 2026-08-01.
 Independent written-spec findings were remediated, and fresh documentation plus
-full Bash regression verification passed. Matt ticket decomposition is awaiting
-user approval. No implementation or Superpowers per-ticket plan has started.
+full Bash regression verification passed. Matt ticket decomposition was approved
+by the user on 2026-08-01. The lifecycle is now in Superpowers-owned
+implementation planning for Ticket 01. No implementation has started.
+
+Every published ticket carries Matt's `ready-for-agent` triage status,
+which means the ticket is specified for agent execution. Scheduling still
+honors `Blocked by` edges; Ticket 01 is the only current frontier item.
