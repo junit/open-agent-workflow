@@ -56,3 +56,29 @@ func TestRegistryRejectsSchemaViolations(t *testing.T) {
 		t.Fatalf("Validate(unsafe path) error = %v", err)
 	}
 }
+
+func TestRegistryValidatesNormalizedConfigurationSchemas(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	user := []byte(`{"schema_version":"oaw.user-config/v1","denied_providers":[],"provider_descriptors":[],"profile_recipes":[],"provider_pins":[],"binding_preferences":[],"project_trust":[]}`)
+	project := []byte(`{"schema_version":"oaw.project-config/v1","required_providers":[],"recommended_providers":[],"provider_descriptors":[],"profile_recipes":[],"capability_limits":[]}`)
+	if err := registry.Validate(UserConfigV1, user); err != nil {
+		t.Fatalf("Validate(user) error = %v", err)
+	}
+	if err := registry.Validate(ProjectConfigV1, project); err != nil {
+		t.Fatalf("Validate(project) error = %v", err)
+	}
+}
+
+func TestProjectConfigSchemaRejectsAuthorityFields(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	raw := []byte(`{"schema_version":"oaw.project-config/v1","required_providers":[],"recommended_providers":[],"provider_descriptors":[],"profile_recipes":[],"capability_limits":[],"enabled_providers":["acme/suite"]}`)
+	if err := registry.Validate(ProjectConfigV1, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(project authority) error = %v", err)
+	}
+}

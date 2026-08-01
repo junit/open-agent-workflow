@@ -31,79 +31,79 @@ const (
 )
 
 type ProviderDescriptorRecord struct {
-	SchemaVersion     string             `json:"schema_version"`
-	DescriptorVersion string             `json:"descriptor_version"`
-	ID                string             `json:"id"`
-	DisplayName       string             `json:"display_name"`
-	Discovery         []DiscoveryProbe   `json:"discovery"`
-	Capabilities      []CapabilityRecord `json:"capabilities"`
+	SchemaVersion     string             `json:"schema_version" toml:"schema_version"`
+	DescriptorVersion string             `json:"descriptor_version" toml:"descriptor_version"`
+	ID                string             `json:"id" toml:"id"`
+	DisplayName       string             `json:"display_name" toml:"display_name"`
+	Discovery         []DiscoveryProbe   `json:"discovery" toml:"discovery"`
+	Capabilities      []CapabilityRecord `json:"capabilities" toml:"capabilities"`
 }
 
 type DiscoveryProbe struct {
-	ID     string   `json:"id"`
-	Kind   string   `json:"kind"`
-	Root   string   `json:"root"`
-	Path   string   `json:"path,omitempty"`
-	Prefix string   `json:"prefix,omitempty"`
-	Suffix string   `json:"suffix,omitempty"`
-	Paths  []string `json:"paths,omitempty"`
+	ID     string   `json:"id" toml:"id"`
+	Kind   string   `json:"kind" toml:"kind"`
+	Root   string   `json:"root" toml:"root"`
+	Path   string   `json:"path,omitempty" toml:"path"`
+	Prefix string   `json:"prefix,omitempty" toml:"prefix"`
+	Suffix string   `json:"suffix,omitempty" toml:"suffix"`
+	Paths  []string `json:"paths,omitempty" toml:"paths"`
 }
 
 type CapabilityRecord struct {
-	ID                  string           `json:"id"`
-	InputSchema         string           `json:"input_schema"`
-	OutcomeSchema       string           `json:"outcome_schema"`
-	MaximumEffects      []string         `json:"maximum_effects"`
-	Resources           []string         `json:"resources"`
-	RequestModes        []RequestMode    `json:"request_modes"`
-	Responsibilities    []string         `json:"responsibilities"`
-	ExecutorTopology    ExecutorTopology `json:"executor_topology"`
-	DelegationAllowList []string         `json:"delegation_allow_list"`
-	HostBindings        []HostBinding    `json:"host_bindings"`
+	ID                  string           `json:"id" toml:"id"`
+	InputSchema         string           `json:"input_schema" toml:"input_schema"`
+	OutcomeSchema       string           `json:"outcome_schema" toml:"outcome_schema"`
+	MaximumEffects      []string         `json:"maximum_effects" toml:"maximum_effects"`
+	Resources           []string         `json:"resources" toml:"resources"`
+	RequestModes        []RequestMode    `json:"request_modes" toml:"request_modes"`
+	Responsibilities    []string         `json:"responsibilities" toml:"responsibilities"`
+	ExecutorTopology    ExecutorTopology `json:"executor_topology" toml:"executor_topology"`
+	DelegationAllowList []string         `json:"delegation_allow_list" toml:"delegation_allow_list"`
+	HostBindings        []HostBinding    `json:"host_bindings" toml:"host_bindings"`
 }
 
 type HostBinding struct {
-	Host      string `json:"host"`
-	Kind      string `json:"kind"`
-	Reference string `json:"reference"`
+	Host      string `json:"host" toml:"host"`
+	Kind      string `json:"kind" toml:"kind"`
+	Reference string `json:"reference" toml:"reference"`
 }
 
 type ProfileRecipeRecord struct {
-	SchemaVersion            string          `json:"schema_version"`
-	RecipeVersion            string          `json:"recipe_version"`
-	ID                       string          `json:"id"`
-	DisplayName              string          `json:"display_name"`
-	RequiredResponsibilities []string        `json:"required_responsibilities"`
-	Nodes                    []RecipeNode    `json:"nodes"`
-	IncidentRoutes           []IncidentRoute `json:"incident_routes"`
-	Entry                    string          `json:"entry"`
-	TerminalGates            []string        `json:"terminal_gates"`
-	StableBoundaries         []string        `json:"stable_boundaries"`
+	SchemaVersion            string          `json:"schema_version" toml:"schema_version"`
+	RecipeVersion            string          `json:"recipe_version" toml:"recipe_version"`
+	ID                       string          `json:"id" toml:"id"`
+	DisplayName              string          `json:"display_name" toml:"display_name"`
+	RequiredResponsibilities []string        `json:"required_responsibilities" toml:"required_responsibilities"`
+	Nodes                    []RecipeNode    `json:"nodes" toml:"nodes"`
+	IncidentRoutes           []IncidentRoute `json:"incident_routes" toml:"incident_routes"`
+	Entry                    string          `json:"entry" toml:"entry"`
+	TerminalGates            []string        `json:"terminal_gates" toml:"terminal_gates"`
+	StableBoundaries         []string        `json:"stable_boundaries" toml:"stable_boundaries"`
 }
 
 type RecipeNode struct {
-	ID             string             `json:"id"`
-	Kind           NodeKind           `json:"kind"`
-	Responsibility string             `json:"responsibility"`
-	Selector       CapabilitySelector `json:"selector"`
-	Phase          string             `json:"phase,omitempty"`
-	Optional       bool               `json:"optional,omitempty"`
-	Transitions    []RecipeTransition `json:"transitions"`
+	ID             string             `json:"id" toml:"id"`
+	Kind           NodeKind           `json:"kind" toml:"kind"`
+	Responsibility string             `json:"responsibility" toml:"responsibility"`
+	Selector       CapabilitySelector `json:"selector" toml:"selector"`
+	Phase          string             `json:"phase,omitempty" toml:"phase"`
+	Optional       bool               `json:"optional,omitempty" toml:"optional"`
+	Transitions    []RecipeTransition `json:"transitions" toml:"transitions"`
 }
 
 type RecipeTransition struct {
-	Signal string `json:"signal"`
-	Target string `json:"target"`
+	Signal string `json:"signal" toml:"signal"`
+	Target string `json:"target" toml:"target"`
 }
 
 type IncidentRoute struct {
-	Incident string `json:"incident"`
-	Handler  string `json:"handler"`
+	Incident string `json:"incident" toml:"incident"`
+	Handler  string `json:"handler" toml:"handler"`
 }
 
 type CapabilitySelector struct {
-	ProviderID   string `json:"provider_id"`
-	CapabilityID string `json:"capability_id"`
+	ProviderID   string `json:"provider_id" toml:"provider_id"`
+	CapabilityID string `json:"capability_id" toml:"capability_id"`
 }
 
 type ProfileAliasSetRecord struct {

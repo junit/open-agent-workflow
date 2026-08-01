@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "required_providers", "recommended_providers", "provider_descriptors", "profile_recipes", "capability_limits"],
+  "properties": {
+    "schema_version": {"const": "oaw.project-config/v1"},
+    "required_providers": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/qualified_id"}},
+    "recommended_providers": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/qualified_id"}},
+    "provider_descriptors": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/content_reference"}},
+    "profile_recipes": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/content_reference"}},
+    "capability_limits": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/capability_limit"}}
+  },
+  "$defs": {
+    "qualified_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._-]*$"},
+    "local_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "content_reference": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "path", "replace"],
+      "properties": {"id": {"$ref": "#/$defs/qualified_id"}, "path": {"type": "string", "minLength": 1}, "replace": {"type": "boolean"}}
+    },
+    "capability_limit": {
+      "type": "object", "additionalProperties": false,
+      "required": ["provider_id", "capability_ids"],
+      "properties": {"provider_id": {"$ref": "#/$defs/qualified_id"}, "capability_ids": {"type": "array", "minItems": 1, "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/local_id"}}}
+    }
+  }
+}
