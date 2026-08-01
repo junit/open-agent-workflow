@@ -293,6 +293,6 @@ journal, conflict, corruption, and idempotency codes remain stable.
   `govulncheck`, and Linux/Windows builds.
 - [x] Mark Ticket 06 complete and move the tracker to Ticket 07 only after every
   acceptance criterion has matching evidence.
-- [ ] Commit verification evidence, run a final clean `go test ./...`, merge the
+- [x] Commit verification evidence, run a final clean `go test ./...`, merge the
   named branch into `main`, re-run merged tests, remove only the Ticket 06
   worktree/branch, and continue to Ticket 07.
