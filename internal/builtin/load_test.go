@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"unicode"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
@@ -166,6 +167,82 @@ func TestBuiltInRecipesAndAliases(t *testing.T) {
 	if _, exists := gotAliases["CUSTOM-LOCKED"]; exists {
 		t.Fatal("CUSTOM-LOCKED must not be a built-in alias")
 	}
+}
+
+func TestBuiltInLoadIsDeterministic(t *testing.T) {
+	first, err := Load()
+	if err != nil {
+		t.Fatalf("first Load() error = %v", err)
+	}
+	second, err := Load()
+	if err != nil {
+		t.Fatalf("second Load() error = %v", err)
+	}
+	if first.Digest() != second.Digest() {
+		t.Fatalf("Load() digests differ: %s != %s", first.Digest(), second.Digest())
+	}
+	if got, want := len(first.Providers()), 3; got != want {
+		t.Fatalf("provider count = %d, want %d", got, want)
+	}
+	if got, want := len(first.Recipes()), 5; got != want {
+		t.Fatalf("recipe count = %d, want %d", got, want)
+	}
+	if got, want := len(first.Aliases()), 4; got != want {
+		t.Fatalf("alias count = %d, want %d", got, want)
+	}
+}
+
+func TestBuiltInLoadAssetShape(t *testing.T) {
+	for _, path := range []string{"profile-aliases.json", "providers/oaw-ecc.json", "recipes/oaw-hardening.json"} {
+		if _, err := fs.ReadFile(assets.FS(), path); err != nil {
+			t.Fatalf("asset %s is not readable: %v", path, err)
+		}
+	}
+}
+
+func TestLoadFromFSReportsMissingAsset(t *testing.T) {
+	_, err := loadFromFS(fstest.MapFS{})
+	if err == nil || !strings.Contains(err.Error(), "SCHEMA_READ_FAILED") {
+		t.Fatalf("loadFromFS(empty) error = %v", err)
+	}
+}
+
+func TestLoadFromFSReportsInvalidProvider(t *testing.T) {
+	files := embeddedMap()
+	files["providers/oaw-ecc.json"] = &fstest.MapFile{Data: []byte(`{"schema_version":"oaw.provider-descriptor/v2"}`)}
+	_, err := loadFromFS(files)
+	if err == nil || !strings.Contains(err.Error(), "BUILTIN_PROVIDER_INVALID") {
+		t.Fatalf("loadFromFS(invalid provider) error = %v", err)
+	}
+}
+
+func TestLoadFromFSReportsInvalidRecipeAndAlias(t *testing.T) {
+	files := embeddedMap()
+	files["recipes/oaw-hardening.json"] = &fstest.MapFile{Data: []byte(`{"schema_version":"oaw.profile-recipe/v2"}`)}
+	if _, err := loadFromFS(files); err == nil || !strings.Contains(err.Error(), "BUILTIN_RECIPE_INVALID") {
+		t.Fatalf("loadFromFS(invalid recipe) error = %v", err)
+	}
+	files = embeddedMap()
+	files["profile-aliases.json"] = &fstest.MapFile{Data: []byte(`{"schema_version":"oaw.profile-alias-set/v2"}`)}
+	if _, err := loadFromFS(files); err == nil || !strings.Contains(err.Error(), "BUILTIN_ALIAS_INVALID") {
+		t.Fatalf("loadFromFS(invalid alias) error = %v", err)
+	}
+}
+
+func embeddedMap() fstest.MapFS {
+	files := fstest.MapFS{}
+	_ = fs.WalkDir(assets.FS(), ".", func(path string, entry fs.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		data, readErr := fs.ReadFile(assets.FS(), path)
+		if readErr != nil {
+			return readErr
+		}
+		files[path] = &fstest.MapFile{Data: data}
+		return nil
+	})
+	return files
 }
 
 func assertSafeDiscoveryPath(t *testing.T, providerID, probeID, value string) {
