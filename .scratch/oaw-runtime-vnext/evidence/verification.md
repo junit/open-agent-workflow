@@ -501,3 +501,57 @@ The complete Bash oracle passed after the policy and renderer changes, and the
 Go shadow path remained byte-equivalent. No real paid/model-backed `codex exec`
 was invoked. Bash remains authoritative until Ticket 14; `.serena/`, the
 preserved stash, and unrelated branches/worktrees remain untouched.
+
+## Ticket 14 Fresh Verification
+
+**Date:** 2026-08-03
+
+**Result:** All locally available gates passed; actual WSL publication smoke is
+unavailable and remains blocking
+
+**Implementation fixed point:** `9c0f3a8`
+
+**Scope:** Public Go management, compatibility wrapper, release packaging,
+state non-import, conformance/eval regressions, security, documentation, and
+publication gates
+
+| Check | Result |
+| --- | --- |
+| `rtk gofmt -w internal/cli` and fixed-point diff check | Exit 0; formatting produced no diff |
+| `rtk git diff --check main...HEAD` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 1466 tests passed in 21 packages |
+| `rtk go test -race ./... -count=1` | Exit 0: 1466 tests passed in 21 packages |
+| Repository Go statement coverage | `87.4%`, required minimum `80%` |
+| `rtk go vet ./...` | Exit 0 |
+| Bash syntax and warning-level ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer, documentation, parity, wrapper, and release cases passed |
+| `rtk bash scripts/check-docs.sh` | Exit 0: bilingual contracts and local links passed |
+| Classification eval/critical corpus | Exit 0: 12 tests passed in 1 package |
+| Host conformance/Ticket 08 corpus | Exit 0: 44 tests passed in 2 packages |
+| Runtime transport fuzz target | Exit 0: `FuzzDecodeFrameFailsClosed`, 2 seconds |
+| Codex JSONL fuzz target | Exit 0: `FuzzNormalizeJSONLFailsClosed`, 2 seconds |
+| `rtk bash tests/14-cutover-release-test.sh release` | Exit 0: six offline cross-platform archives, checksums, and executables passed |
+| Official cached `govulncheck ./...` | Exit 0: 0 reachable and 0 imported-package vulnerabilities; 2 unreachable required-module findings |
+| Actual WSL smoke | Exit 77: `SKIP: WSL smoke requires an actual Microsoft WSL kernel` |
+
+The release contract builds darwin, Linux, and Windows archives for amd64 and
+arm64 without downloading executable code. It validates archive layout,
+checksums, executable modes, current-platform binary/wrapper behavior, and
+Install State versus Runtime State separation. The WSL selector follows the
+native `go env GOARCH`, so both released WSL architectures are covered by the
+same contract.
+
+The official scanner binary is `govulncheck` from `golang.org/x/vuln v1.6.0`.
+It found two vulnerabilities only in required modules whose affected symbols
+are not called; no dependency was changed solely for scanning. `go vet` and
+warning-level ShellCheck supplied the planned Go and shell static analysis.
+The optional standalone `staticcheck` executable is not installed and was not
+a command required by the approved Ticket 14 plan.
+
+The direct WSL gate was run separately on this macOS host and returned the
+specified non-WSL status 77. This proves truthful platform detection only; it
+does not prove Linux archive execution under Microsoft WSL. Ticket 14 therefore
+remains `in-progress`, and release publication must wait for a status-0 `PASS`
+from `scripts/smoke-wsl.sh` inside an actual WSL kernel. No real or
+model-backed `codex exec` was invoked. `.serena/`, the preserved stash, and
+unrelated branches/worktrees remain untouched.

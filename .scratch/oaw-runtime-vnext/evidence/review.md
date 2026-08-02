@@ -530,3 +530,61 @@ separation and reject tampering.
 
 No unresolved Critical, High, Important, Standards, or Spec finding remains.
 Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
+
+## Ticket 14 Implementation Review
+
+**Date:** 2026-08-03
+
+**Fixed point:** `9c0f3a8`
+
+**Scope:** Public Go management cutover, offline compatibility wrapper,
+cross-platform release archives, Install State and Runtime State separation,
+truthful Host/Policy boundaries, and publication verification
+
+**Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
+
+**Result:** Implementation review passed; release publication remains blocked
+by the required actual-WSL smoke pass
+
+### Standards and Security
+
+The complete `main...9c0f3a8` diff was checked against `CONTRIBUTING.md`, the
+repository's Bash 3.2 and bilingual-documentation contracts, wrapper and
+release trust boundaries, file-size and immutability rules, input validation,
+path containment, and the standard code-smell baseline. The wrapper resolves
+only a precompiled sibling `oaw` or `oaw.exe`; it has no `PATH`, network,
+compiler, or environment-override fallback. Release construction uses private
+temporary staging, refuses caller-output collisions, packages only the named
+files, cross-compiles with `CGO_ENABLED=0`, and emits sorted checksums. Empty or
+relative state roots, symlink redirection, changed sources, drifted state, and
+unverified backup coordinates continue to fail before mutation.
+
+No secret-like value, executable download, unrelated generated file, unsafe
+shell expansion, Provider promotion, or unresolved Critical, High, Important,
+or Standards finding remains. The official Go vulnerability scan found no
+reachable or imported-package vulnerability.
+
+### Spec
+
+The diff was checked separately against Ticket 14, the executable plan, Runtime
+vNext specification sections 15-19, and ADR 0004. The review covered public CLI
+routing and legacy statuses, wrapper byte/stream compatibility, changed-checkout
+semantics, six archive targets, checksum and archive contents, current-platform
+execution, Policy-only retention, disjoint Install/Runtime State, the pinned
+Codex Runtime-managed boundary, and truthful publication wording.
+
+One Spec finding was corrected before the fixed point: release verification
+hardcoded the WSL archive as `linux_amd64`, which would reject a native arm64
+WSL environment despite shipping `linux_arm64`. The test now selects
+`linux_$(go env GOARCH)` and accepts only the two released architectures.
+
+Public management is Go-authoritative at this fixed point, while `install.sh`
+is only an offline sibling-binary compatibility entrypoint. Management neither
+imports existing Install State nor adopts Policy-only tasks into Runtime State.
+Only the pinned Codex runner is Runtime-managed; every other adapter remains
+Policy-only. No real or model-backed `codex exec` was invoked.
+
+No unresolved Critical, High, Important, Standards, or Spec finding remains.
+Actual WSL execution is an external release gate, not a code-review finding;
+this macOS host returned the required status-77 `SKIP`, so publication and
+Ticket 14 completion are not claimed.

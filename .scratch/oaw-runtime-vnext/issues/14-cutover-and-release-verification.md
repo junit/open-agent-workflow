@@ -12,13 +12,18 @@ tests.
 
 **Status:** in-progress
 
-- [ ] install.sh becomes a compatibility wrapper only after command-level parity
+- [x] install.sh becomes a compatibility wrapper only after command-level parity
   evidence is complete.
-- [ ] Release archives include a precompiled binary and do not download executable
+- [x] Release archives include a precompiled binary and do not download executable
   code at execution time.
-- [ ] Existing Policy-only tasks and existing install state are not silently
+- [x] Existing Policy-only tasks and existing install state are not silently
   imported into Runtime State.
 - [ ] Cross-platform release builds and WSL smoke verification pass.
-- [ ] Go unit, race, coverage, vet, static analysis, vulnerability, conformance,
+- [x] Go unit, race, coverage, vet, static analysis, vulnerability, conformance,
   eval, Bash regression, and documentation checks all pass.
-- [ ] Release notes state Runtime-managed and Policy-only guarantees truthfully.
+- [x] Release notes state Runtime-managed and Policy-only guarantees truthfully.
+
+**Remaining gate:** The six release archives and local non-WSL detection pass,
+but this macOS host returns status 77 from `scripts/smoke-wsl.sh` because it is
+not an actual Microsoft WSL kernel. Ticket completion and release publication
+require a fresh status-0 WSL smoke pass against the native Linux archive.

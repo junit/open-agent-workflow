@@ -154,3 +154,15 @@ extensible Provider/Capability/Profile model; Runtime projections expose
 redacted Profile, Bundle-generation, stage, independent Active Ticket,
 evidence-reference, and lag-status views. Completion of Tickets 09, 10, and 13
 unblocks Ticket 14, `cutover-and-release-verification`.
+
+Ticket 14 implementation and locally available verification reached fixed point
+`9c0f3a8` on 2026-08-03. Public management is now Go-authoritative,
+`install.sh` is an offline sibling-binary wrapper, six checksummed release
+archives build without runtime downloads, Install State remains disjoint from
+Runtime State, and Policy-only tasks are not automatically adopted. Full Go,
+race, coverage, vet, ShellCheck, Bash regression, documentation, eval,
+conformance, fuzz, release-contract, and official vulnerability checks passed.
+The actual WSL publication smoke remains unavailable on this macOS host and
+returned the required status-77 `SKIP`. The active stage and Ticket 14 therefore
+remain `in-progress`; publication requires fresh status-0 WSL evidence. No
+other acceptance or implementation blocker remains.
