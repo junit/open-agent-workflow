@@ -498,7 +498,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 - Modify: `.scratch/oaw-runtime-vnext/evidence/verification.md`
 - Modify: `docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md`
 
-- [ ] **Step 1: Run the complete verification matrix.**
+- [x] **Step 1: Run the complete verification matrix.**
 
   ```bash
   rtk gofmt -w internal/host internal/config internal/runtime internal/integration internal/assets internal/schema
@@ -526,7 +526,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   `internal/runtime` statement coverage are each at least 90%; repository
   coverage remains at least 80%; no reachable vulnerability is reported.
 
-- [ ] **Step 2: Perform inline Superpowers review and remediation.**
+- [x] **Step 2: Perform inline Superpowers review and remediation.**
 
   Review `main...HEAD` for self-attested Features, project-granted Host trust,
   forged Manifest/Audit/Report digests, instruction-only promotion, incomplete
@@ -536,7 +536,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   Direct/Bounded regressions, and premature first-Host selection. Fix all
   Critical/High/Important findings and rerun the full matrix.
 
-- [ ] **Step 3: Close the tracker and evidence.**
+- [x] **Step 3: Close the tracker and evidence.**
 
   Set Ticket 08 to `completed`, check every acceptance item, set the tracker
   `current_stage: completed` and `active_ticket` to Ticket 08, add this plan path,
@@ -545,7 +545,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   first Runtime Host has been selected. Preserve `.serena/` and every unrelated
   worktree.
 
-- [ ] **Step 4: Commit documentation closure.**
+- [x] **Step 4: Commit documentation closure.**
 
   ```bash
   rtk git add .scratch/oaw-runtime-vnext docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md

@@ -14,7 +14,7 @@ bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
 current_stage: completed
-active_ticket: 07-workflow-runtime-orchestration
+active_ticket: 08-host-conformance-and-capability-audit
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -28,6 +28,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-05-direct-runtime-vertical-slice.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-06-bounded-admission-and-dispatch.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-07-workflow-runtime-orchestration.md
+  - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
@@ -91,11 +92,13 @@ by the user on 2026-08-01. Ticket 01 completed in the isolated worktree with
 fresh Go race, coverage, documentation, and full Bash verification. After
 reviewing delegated Task 1 execution, the user directed subsequent work to
 continue inline without additional subagents. Tickets 01 through 07 are
-complete on the implementation branches. Ticket 07 passed final inline review
+complete on the implementation branches. Ticket 08 passed final inline review
 and the full verification matrix on 2026-08-02 at implementation fixed point
-`8665458`; the lifecycle is complete for this ticket.
+`60ea7ee`; the lifecycle is complete for this ticket. Built-in Host records
+remain instruction-only, and no first production Runtime Host was selected.
 
-Every published ticket carries Matt's `ready-for-agent` triage status,
-which means the ticket is specified for agent execution. Scheduling still
-honors `Blocked by` edges; completion of Ticket 07 unblocks its declared
-successors without changing their independent scheduling or selection gates.
+Every unfinished published ticket carries Matt's `ready-for-agent` triage
+status, which means the ticket is specified for agent execution; completed
+tickets are marked `completed`. Scheduling still honors `Blocked by` edges;
+completion of Ticket 08 unblocks its declared successors without changing their
+independent scheduling or selection gates.

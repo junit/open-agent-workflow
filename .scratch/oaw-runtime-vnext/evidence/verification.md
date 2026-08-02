@@ -199,3 +199,47 @@ does not affect inspection, Grant issuance, recovery, or switching. State scans
 found no raw Provider output, credentials, or discovery evidence, and Runtime
 never invoked a Host Binding. All `.serena/` directories remain preserved and
 excluded from commits.
+
+## Ticket 08 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Scope:** Host records and schemas, built-in and user-trusted Configuration,
+Adapter conformance, Workflow admission and Bundle generations, recovery,
+security boundaries, and repository compatibility
+
+| Check | Result |
+| --- | --- |
+| `rtk git diff --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 889 tests passed in 17 packages |
+| `rtk go test -race ./...` | Exit 0: 889 tests passed in 17 packages |
+| `rtk go vet ./...` | Exit 0 |
+| `internal/host` statement coverage | `94.8%`, required minimum `90%` |
+| `internal/runtime` statement coverage | `90.0%`, required minimum `90%` |
+| Repository Go statement coverage | `87.7%`, required minimum `80%` |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer and documentation cases passed |
+| Classification proposal fuzz seam | Exit 0 after a fresh 2-second run |
+| Host conformance receipt fuzz seam | Exit 0 after a fresh 2-second run |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable module findings |
+
+Runner-managed and native-managed end-to-end fixtures executed
+`RunConformance`, loaded a real user Configuration, discovered and resolved
+Providers, selected a Workflow Profile, issued a Stage Grant, authorized
+dispatch, returned a normalized observation, restarted, and inspected the same
+pinned Host identities. Conformance invoked every declared Binding kind twice;
+Runtime did not add an Adapter call. Instruction-only fallback, missing
+Features, invalid audit/report evidence, wrong Binding Host/kind, per-run
+narrowing, stale Engines, changed Integration generations, historical Bundle
+tampering, and projection deletion/tampering all failed closed.
+
+Implementation commits are `b67ecca`, `ae4b37a`, `3ccc5d9`, `c40e4f6`,
+`3096294`, and review remediation `60ea7ee`; executable planning is `330ec3f`.
+Sensitive fixture credentials, raw audit text, raw Adapter output, and Adapter
+errors were absent from Conformance Reports, Runtime state, projections, and
+errors. Owner-only permissions remained intact. The nine built-in Host
+Integrations are still instruction-only; no first production Runtime Host was
+selected. All `.serena/` directories and unrelated worktrees remain preserved.

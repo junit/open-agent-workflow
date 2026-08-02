@@ -219,3 +219,43 @@ No unresolved Critical, High, or Important findings remain. Runtime invokes no
 Host Binding, projection sink failures cannot change a committed reply, and
 projection deletion or tampering cannot influence inspection, admission,
 recovery, or Bundle switching.
+
+## Ticket 08 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `60ea7ee`
+
+**Scope:** Trusted Host Integration records, capability audit evidence,
+deterministic Adapter conformance, Configuration pinning, Workflow admission,
+Lifecycle Bundle Host identities, stable switching, projection summaries, and
+security/recovery integration coverage
+
+**Review owner:** Superpowers (inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+The complete `main...HEAD` diff was checked for self-attested Features,
+project-granted Host trust, forged Manifest/Audit/Report digests,
+instruction-only promotion, incomplete Feature/check matrices, Runtime Adapter
+invocation, Binding substitution, stale Integration reuse, unsafe Bundle
+switching, mutable record leakage, transcript/raw-output leakage, unbounded
+inputs, unstable reason codes, Direct/Bounded regressions, and premature first
+Host selection.
+
+One Important finding was corrected before completion: a Manifest could declare
+multiple Binding kinds while the conformance harness exercised only the first
+sorted kind. The harness now performs two deterministic invocations for every
+declared kind, verifies exact Binding delivery, evidence normalization, Bundle
+inheritance, deduplication, and native receipts across the complete declared
+surface, and hashes the redacted multi-Binding transcript. A RED regression
+test proved that substituting only a non-first Binding kind was previously
+missed and is now rejected.
+
+No unresolved Critical, High, or Important findings remain. User configuration
+is the only external Host trust source; project configuration cannot register
+one. Runtime consumes immutable records and Reports but never holds or invokes
+a `ConformanceAdapter`. Old Bundle generations remain byte-for-byte immutable,
+and a Host change is admitted only in a new stable-boundary generation. The
+nine built-in integrations remain instruction-only, so Ticket 08 selects no
+first production Runtime Host.
