@@ -42,9 +42,9 @@ identities are:
 | Integration record | `bea2b3a7caee2062e7b058a8fbfe1187adfc5c60ac7c033275d02e251393d303` |
 
 The implementation commits are `a15c019`, `ab1dc6e`, `84dccc4`, `fb82114`,
-`82896b8`, dispatch identity/project-context remediation `8d3ef17`, and
-transport/deduplication hardening `3e23771`, and cross-process replay
-remediation `5bb0380`, and dispatch orchestration refactor `0cb396d`.
+`82896b8`, dispatch identity/project-context remediation `8d3ef17`,
+transport/deduplication hardening `3e23771`, cross-process replay remediation
+`5bb0380`, and dispatch orchestration refactor `0cb396d`.
 `oaw run --host codex` is the only runtime-managed entrypoint; it rejects every
 other Host and does not modify the existing Bash installer authority. Resumed
 non-START frames may supply `--project-root` so project configuration remains
@@ -53,9 +53,8 @@ explicit and pinned.
 ## Selection Audit
 
 Official automation surfaces and locally installed versions for Codex CLI,
-Claude Code, and Gemini CLI were checked on 2026-08-03. Codex CLI is the
-evidence-backed recommendation for the first `runner-managed` integration, but
-The user explicitly selected Codex CLI as the first `runner-managed` integration.
-This unblocks implementation planning but does not promote the Host until the
-exact Manifest, audit, adapter record, and conformance report pass the Ticket
-09 gates.
+Claude Code, and Gemini CLI were checked on 2026-08-03. Codex CLI was the
+evidence-backed recommendation, and the user explicitly selected it as the
+first `runner-managed` integration. That selection unblocked implementation;
+promotion completed only after the exact Manifest, audit, Integration record,
+and Conformance report passed the Ticket 09 gates.
