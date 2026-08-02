@@ -639,7 +639,7 @@ pass "stored project root mismatch fails before mutation"
 for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo copilot; do
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_PROJECT="$OAW_SANDBOX/project with spaces"
   OAW_MATRIX_RELATIVE=$(project_target_path_for_test "$OAW_MATRIX_TARGET")
   OAW_MATRIX_PATH=$OAW_PROJECT/$OAW_MATRIX_RELATIVE
@@ -669,6 +669,7 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo 
   printf '0.1.1-project-%s\n' "$OAW_MATRIX_TARGET" >"$OAW_UPDATE_CHECKOUT/VERSION"
   printf '\nTASK 4 MATRIX %s UPDATE SENTINEL\n' "$OAW_MATRIX_TARGET" \
     >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+  build_checkout_installer "$OAW_UPDATE_CHECKOUT"
   OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
   OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
@@ -707,7 +708,7 @@ pass "all nine project targets complete copied-update and dry-run lifecycle"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 run_oaw install --project "$OAW_PROJECT" --target opencode
@@ -730,6 +731,7 @@ OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-default
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-project-default\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nTASK 4 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_PROJECT_STATE")
@@ -758,7 +760,7 @@ pass "default project set completes update and selected uninstall lifecycle"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT/.cursor/rules"
 run_oaw install --project "$OAW_PROJECT" --target cursor

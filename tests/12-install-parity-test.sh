@@ -9,7 +9,7 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 OAW_PARITY_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-install-parity.XXXXXX")
 OAW_FIXED_SANDBOX=$OAW_PARITY_TEMP/sandbox
 OAW_BASH_TREE=$OAW_PARITY_TEMP/bash-tree
-OAW_GO_INSTALL=$OAW_PARITY_TEMP/oaw-install-shadow
+OAW_GO_INSTALL=$OAW_PARITY_TEMP/oaw-install
 OAW_REAL_PATH=$PATH
 
 cleanup_install_parity() {
@@ -23,7 +23,7 @@ cleanup_install_parity() {
 
 trap cleanup_install_parity EXIT HUP INT TERM
 
-go build -o "$OAW_GO_INSTALL" "$OAW_REPOSITORY/internal/cmd/oaw-management-shadow"
+go build -o "$OAW_GO_INSTALL" "$OAW_REPOSITORY/cmd/oaw"
 
 reset_install_fixture() {
   rm -rf "$OAW_FIXED_SANDBOX"
@@ -41,7 +41,7 @@ run_setup_install() {
     XDG_STATE_HOME="$OAW_STATE" \
     PATH="$OAW_REAL_PATH" \
     TMPDIR="$OAW_TMP" \
-    bash "$OAW_INSTALLER" install "$@" \
+    bash "$OAW_LEGACY_INSTALLER" install "$@" \
     >"$OAW_PARITY_TEMP/setup.stdout" 2>"$OAW_PARITY_TEMP/setup.stderr"
   setup_status=$?
   set -e
@@ -161,7 +161,7 @@ run_install_implementation() {
         XDG_STATE_HOME="$OAW_STATE" \
         PATH="$OAW_PATH" \
         TMPDIR="$OAW_TMP" \
-        bash "$OAW_INSTALLER" install "$@" >"$stdout_file" 2>"$stderr_file"
+        bash "$OAW_LEGACY_INSTALLER" install "$@" >"$stdout_file" 2>"$stderr_file"
       BASH_INSTALL_STATUS=$?
       ;;
     go)

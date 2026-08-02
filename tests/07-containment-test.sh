@@ -163,7 +163,7 @@ run_oaw_with_mkdir_race() {
     OAW_RACE_OUTSIDE="$OAW_OUTSIDE" \
     OAW_REAL_MKDIR="$OAW_REAL_MKDIR" \
     PATH="$OAW_PATH" \
-    bash "$OAW_INSTALLER" install --project "$OAW_PROJECT" --target cursor \
+    bash "$OAW_LEGACY_INSTALLER" install --project "$OAW_PROJECT" --target cursor \
     >"$OAW_OUTPUT_FILE" 2>&1
   OAW_STATUS=$?
   set -e

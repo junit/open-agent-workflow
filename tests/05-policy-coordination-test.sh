@@ -42,6 +42,7 @@ cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-policy-coordination\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nPROJECT UPDATE POLICY COORDINATION SENTINEL\n' \
   >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
 run_oaw update --project "$OAW_PROJECT" --target cursor
@@ -67,7 +68,7 @@ pass "project update coordinates shared policy state without rewriting user adap
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 
@@ -89,6 +90,7 @@ cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.2-reverse-coordination\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nUSER UPDATE POLICY COORDINATION SENTINEL\n' \
   >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
 run_oaw update --target codex
@@ -114,7 +116,7 @@ pass "user update coordinates shared policy state without rewriting project adap
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 
@@ -130,6 +132,7 @@ cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.3-new-scope-coordination\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nNEW PROJECT SCOPE POLICY COORDINATION SENTINEL\n' \
   >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
 run_oaw install --project "$OAW_PROJECT" --target cursor
@@ -161,6 +164,7 @@ OAW_USER_TARGET_BEFORE=$(file_fingerprint "$OAW_USER_TARGET")
 OAW_PROJECT_TARGET_BEFORE=$(file_fingerprint "$OAW_PROJECT_TARGET")
 printf '0.1.4-coordination-dry-run\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nCROSS SCOPE DRY RUN SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 
 run_oaw update --target codex --dry-run
 assert_status 0 "cross-scope policy update dry run"
@@ -180,7 +184,7 @@ pass "cross-scope policy dry run preserves every managed fingerprint"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 
@@ -203,6 +207,7 @@ OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.5-path-reference\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nPATH REFERENCE RETENTION SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 run_oaw update --project "$OAW_PROJECT" --target cursor
 assert_status 0 "path-reference project update"
@@ -220,7 +225,7 @@ pass "uninstall retains the canonical policy for every valid path reference"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 
@@ -238,6 +243,7 @@ OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.6-final-reference\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nFINAL POLICY REFERENCE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
 run_oaw update --project "$OAW_PROJECT" --target cursor
@@ -260,7 +266,7 @@ pass "canonical policy survives until the final clean scope reference"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 
@@ -290,6 +296,7 @@ OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.7-stale-reference\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nSTALE POLICY REFERENCE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 run_oaw update --project "$OAW_PROJECT" --target cursor
 assert_status 65 "stale cross-scope policy reference"
@@ -309,7 +316,7 @@ pass "stale policy references fail before every managed write"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 OAW_OTHER_PROJECT="$OAW_SANDBOX/other project"
 mkdir -p "$OAW_PROJECT" "$OAW_OTHER_PROJECT"
@@ -342,6 +349,7 @@ OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.8-invalid-binding\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nINVALID PROJECT BINDING SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 run_oaw update --target codex
 assert_status 65 "invalid cross-scope project binding"

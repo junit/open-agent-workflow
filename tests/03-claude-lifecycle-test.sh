@@ -55,6 +55,7 @@ OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-local\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nLOCAL UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
 run_oaw update --target claude
@@ -69,6 +70,7 @@ printf 'personal instruction after\n' >>"$OAW_CLAUDE"
 
 printf '0.1.2-dry-run\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
 printf '\nDRY RUN SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 run_oaw update --target claude --dry-run
@@ -113,7 +115,7 @@ pass "uninstall preserves an existing Claude file and is idempotent"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 mkdir -p "$OAW_HOME/.claude"
 OAW_NO_NEWLINE_EXPECTED=$OAW_SANDBOX/expected-without-final-newline
 OAW_NO_NEWLINE_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
@@ -134,7 +136,7 @@ pass "uninstall preserves exact user bytes without a final newline"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 run_oaw install --target claude
 assert_status 0 "install into an empty home"
 OAW_CREATED_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
@@ -147,7 +149,7 @@ pass "uninstall removes an OAW-created Claude file"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 run_oaw install --target claude
 assert_status 0 "install before shared policy reference test"
 OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md

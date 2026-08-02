@@ -9,11 +9,11 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 OAW_MUTATION_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-mutation-parity.XXXXXX")
 OAW_FIXED_SANDBOX=$OAW_MUTATION_TEMP/sandbox
 OAW_BASELINE_TREE=$OAW_MUTATION_TEMP/baseline-tree
-OAW_GO_MANAGEMENT=$OAW_MUTATION_TEMP/oaw-management-shadow
+OAW_GO_MANAGEMENT=$OAW_MUTATION_TEMP/oaw-management
 OAW_CHANGED_SOURCE=$OAW_MUTATION_TEMP/changed-source
-OAW_CHANGED_GO=$OAW_MUTATION_TEMP/oaw-management-shadow-changed
+OAW_CHANGED_GO=$OAW_CHANGED_SOURCE/oaw
 OAW_REAL_PATH=$PATH
-OAW_ACTIVE_INSTALLER=$OAW_INSTALLER
+OAW_ACTIVE_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_ACTIVE_GO=$OAW_GO_MANAGEMENT
 
 cleanup_mutation_parity() {
@@ -27,7 +27,7 @@ cleanup_mutation_parity() {
 
 trap cleanup_mutation_parity EXIT HUP INT TERM
 
-go build -o "$OAW_GO_MANAGEMENT" "$OAW_REPOSITORY/internal/cmd/oaw-management-shadow"
+go build -o "$OAW_GO_MANAGEMENT" "$OAW_REPOSITORY/cmd/oaw"
 
 mkdir -p "$OAW_CHANGED_SOURCE"
 cp -pR "$OAW_REPOSITORY/." "$OAW_CHANGED_SOURCE/"
@@ -35,7 +35,7 @@ printf '99.0.0\n' >"$OAW_CHANGED_SOURCE/VERSION"
 printf '\n<!-- mutation parity changed checkout -->\n' >>"$OAW_CHANGED_SOURCE/policy/ENGINEERING.md"
 (
   cd "$OAW_CHANGED_SOURCE"
-  go build -o "$OAW_CHANGED_GO" ./internal/cmd/oaw-management-shadow
+  go build -o "$OAW_CHANGED_GO" ./cmd/oaw
 )
 
 reset_mutation_fixture() {
@@ -44,7 +44,7 @@ reset_mutation_fixture() {
   setup_sandbox_at "$OAW_FIXED_SANDBOX"
   OAW_TMP=$OAW_FIXED_SANDBOX/tmp
   mkdir -p "$OAW_TMP"
-  OAW_ACTIVE_INSTALLER=$OAW_INSTALLER
+  OAW_ACTIVE_INSTALLER=$OAW_LEGACY_INSTALLER
   OAW_ACTIVE_GO=$OAW_GO_MANAGEMENT
 }
 
@@ -192,7 +192,7 @@ setup_mutation_case() {
       ;;
     changed-checkout)
       run_setup_command install --target claude
-      OAW_ACTIVE_INSTALLER=$OAW_CHANGED_SOURCE/install.sh
+      OAW_ACTIVE_INSTALLER=$OAW_CHANGED_SOURCE/tests/legacy-management.sh
       OAW_ACTIVE_GO=$OAW_CHANGED_GO
       ;;
     *)

@@ -33,7 +33,7 @@ assert_invalid_project_state() {
 
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_PROJECT="$OAW_SANDBOX/project with spaces"
   mkdir -p "$OAW_PROJECT"
   run_oaw install --project "$OAW_PROJECT" --target cursor
@@ -177,7 +177,7 @@ assert_project_drift_blocks_mutation() {
 
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_PROJECT="$OAW_SANDBOX/project with spaces"
   mkdir -p "$OAW_PROJECT"
   case "$drift_case" in
@@ -301,7 +301,7 @@ pass "recorded marker, owned-file, checksum, and missing-file drift blocks mutat
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
@@ -341,7 +341,7 @@ pass "untracked OAW markers block mutation without creating policy or state"
 setup_cross_scope_candidate_fixture() {
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_PROJECT="$OAW_SANDBOX/project with spaces"
   mkdir -p "$OAW_PROJECT"
   run_oaw install --target codex
@@ -420,7 +420,7 @@ setup_forged_candidate_fixture() {
 
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_PROJECT="$OAW_SANDBOX/forged project"
   mkdir -p "$OAW_PROJECT"
   run_oaw install --target codex
@@ -498,7 +498,7 @@ pass "forged non-live candidate cannot retain policy through a successful uninst
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT_ONE="$OAW_SANDBOX/project one"
 OAW_PROJECT_TWO="$OAW_SANDBOX/project two"
 mkdir -p "$OAW_PROJECT_ONE" "$OAW_PROJECT_TWO"
@@ -560,7 +560,7 @@ pass "retention preflight validates every matching candidate before mutation"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with symlink"
 OAW_OUTSIDE=$OAW_SANDBOX/outside
 mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE/rules"
@@ -600,7 +600,7 @@ assert_project_final_symlink_rejected() {
 
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_PROJECT="$OAW_SANDBOX/project with final symlink"
   mkdir -p "$OAW_PROJECT/$(dirname -- "$relative_target")" "$OAW_SANDBOX/outside"
   project_physical=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
@@ -656,7 +656,7 @@ run_oaw_with_roots() {
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_CONTROL_HOME=$(printf '%s\nbad' "$OAW_HOME")
 run_oaw_with_roots "$OAW_CONTROL_HOME" "$OAW_CONFIG" "$OAW_STATE" \
   install --target codex
@@ -672,7 +672,7 @@ pass "control characters in consumed roots fail before mutation"
 for OAW_ROOT_CASE in relative-home relative-config relative-state control-config control-state; do
   cleanup_sandbox
   setup_sandbox
-  OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+  OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_CUSTOM_HOME=$OAW_HOME
   OAW_CUSTOM_CONFIG=$OAW_CONFIG
   OAW_CUSTOM_STATE=$OAW_STATE
@@ -725,7 +725,7 @@ run_oaw_with_codex_home() {
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_IGNORED_CODEX_HOME=$OAW_SANDBOX/outside-codex-home
 mkdir -p "$OAW_IGNORED_CODEX_HOME"
 printf 'CODEX_HOME sentinel\n' >"$OAW_IGNORED_CODEX_HOME/sentinel"
@@ -752,7 +752,7 @@ pass "CODEX_HOME is ignored and parent traversal resolves to the physical projec
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_OUTSIDE=$OAW_SANDBOX/outside-user-target
 mkdir -p "$OAW_OUTSIDE"
 printf 'outside user sentinel\n' >"$OAW_OUTSIDE/sentinel"
@@ -776,7 +776,7 @@ pass "user target components cannot redirect writes through symlinks"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_OUTSIDE=$OAW_SANDBOX/outside-policy
 mkdir -p "$OAW_OUTSIDE"
 printf 'outside policy sentinel\n' >"$OAW_OUTSIDE/sentinel"

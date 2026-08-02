@@ -6,6 +6,8 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=tests/test-helper.sh
 . "$TEST_DIR/test-helper.sh"
 
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
+
 trap cleanup_sandbox EXIT HUP INT TERM
 
 assert_file_equals() {

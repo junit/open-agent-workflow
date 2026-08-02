@@ -5,6 +5,10 @@ set -eu
 TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 OAW_REPOSITORY=$(CDPATH='' cd -P -- "$TEST_DIR/.." && pwd)
 OAW_INSTALLER=${OAW_INSTALLER:-"$OAW_REPOSITORY/install.sh"}
+OAW_BASE_INSTALLER=$OAW_INSTALLER
+export OAW_BASE_INSTALLER
+OAW_LEGACY_INSTALLER=$OAW_REPOSITORY/tests/legacy-management.sh
+export OAW_LEGACY_INSTALLER
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -13,6 +17,11 @@ fail() {
 
 pass() {
   printf 'PASS: %s\n' "$*"
+}
+
+build_checkout_installer() {
+  checkout=$1
+  (cd "$checkout" && go build -o "$checkout/oaw" ./cmd/oaw)
 }
 
 assert_status() {

@@ -6,6 +6,8 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 # shellcheck source=tests/test-helper.sh
 . "$TEST_DIR/test-helper.sh"
 
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
+
 trap cleanup_sandbox EXIT HUP INT TERM
 
 scope_snapshot() {
@@ -40,7 +42,7 @@ all_scope_snapshot() {
 }
 
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'-project [glob]* ; touch PARTIAL-PAYLOAD'
 mkdir -p "$OAW_PROJECT/.claude"
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
@@ -61,7 +63,7 @@ pass "later invalid targets leave the complete scope byte-identical"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'fresh dry run project'
 mkdir -p "$OAW_PROJECT"
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
@@ -77,7 +79,7 @@ pass "fresh dry run previews planned directories without requiring creation"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'-project with spaces [*] ; exact-uninstall'
 mkdir -p "$OAW_PROJECT/.roo/rules"
 
@@ -128,7 +130,7 @@ pass "exact uninstall prunes only OAW-created empty target directories"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'project with inert $(touch OWNERSHIP-PAYLOAD) text'
 mkdir -p "$OAW_PROJECT"
 run_oaw install --project "$OAW_PROJECT" --target cursor
@@ -162,7 +164,7 @@ pass "owned-directory state is inert and registry-bound"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'directory ownership race project'
 OAW_FAKE_BIN=$OAW_SANDBOX/directory-race-bin
 OAW_RACE_MARKER=$OAW_SANDBOX/directory-race-triggered
@@ -216,7 +218,7 @@ pass "directories appearing after preparation are never claimed as OAW-owned"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'directory removal race project'
 OAW_OUTSIDE=$OAW_SANDBOX/directory-removal-outside
 OAW_FAKE_BIN=$OAW_SANDBOX/directory-removal-bin
@@ -277,7 +279,7 @@ pass "directory removal cannot follow a swapped parent outside scope"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'multi target drift project'
 mkdir -p "$OAW_PROJECT"
 run_oaw install --project "$OAW_PROJECT" --target claude,cursor
@@ -302,7 +304,7 @@ pass "later drift blocks multi-target update and uninstall before every write"
 
 cleanup_sandbox
 setup_sandbox
-OAW_INSTALLER=$OAW_REPOSITORY/install.sh
+OAW_INSTALLER=$OAW_LEGACY_INSTALLER
 OAW_PROJECT=$OAW_SANDBOX/'partial directory ownership project'
 mkdir -p "$OAW_PROJECT"
 run_oaw install --project "$OAW_PROJECT" --target cursor,roo

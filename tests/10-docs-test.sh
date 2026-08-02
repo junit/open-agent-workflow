@@ -626,11 +626,17 @@ pass "installer documents cover commands, options, defaults, isolation, drift, d
 DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home
 DOCS_RUNTIME_CONFIG=$DOCS_TEST_TEMP/runtime/config
 DOCS_RUNTIME_STATE=$DOCS_TEST_TEMP/runtime/state
-mkdir -p "$DOCS_RUNTIME_HOME" "$DOCS_RUNTIME_CONFIG" "$DOCS_RUNTIME_STATE"
+DOCS_RUNTIME_RELEASE=$DOCS_TEST_TEMP/runtime/release
+DOCS_RUNTIME_INSTALLER=$DOCS_RUNTIME_RELEASE/install.sh
+mkdir -p "$DOCS_RUNTIME_HOME" "$DOCS_RUNTIME_CONFIG" "$DOCS_RUNTIME_STATE" \
+  "$DOCS_RUNTIME_RELEASE"
+cp "$REPOSITORY/install.sh" "$DOCS_RUNTIME_INSTALLER"
+chmod 755 "$DOCS_RUNTIME_INSTALLER"
+(cd "$REPOSITORY" && go build -o "$DOCS_RUNTIME_RELEASE/oaw" ./cmd/oaw)
 
 if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" 2>&1); then
   installer_status=0
 else
   installer_status=$?
@@ -650,7 +656,7 @@ for help_form in help short-help long-help command-help; do
   esac
   if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
     XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-    bash "$REPOSITORY/install.sh" "$@" 2>&1); then
+    bash "$DOCS_RUNTIME_INSTALLER" "$@" 2>&1); then
     installer_status=0
   else
     installer_status=$?
@@ -665,7 +671,7 @@ done
 
 if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" uninstall --target claude 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" uninstall --target claude 2>&1); then
   installer_status=0
 else
   installer_status=$?
@@ -675,7 +681,7 @@ fi
 
 if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" update --target claude 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" update --target claude 2>&1); then
   installer_status=0
 else
   installer_status=$?
@@ -685,13 +691,13 @@ fi
 
 if ! installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" install --target claude 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" install --target claude 2>&1); then
   fail "runtime fixture install failed: $installer_output"
 fi
 
 if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" update --target codex 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" update --target codex 2>&1); then
   installer_status=0
 else
   installer_status=$?
@@ -707,7 +713,7 @@ mv "$DOCS_RUNTIME_HOME/.claude/CLAUDE.md.drift" \
   "$DOCS_RUNTIME_HOME/.claude/CLAUDE.md"
 if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" check --target claude 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" check --target claude 2>&1); then
   installer_status=0
 else
   installer_status=$?
@@ -723,7 +729,7 @@ printf '%s\n' 'invalid state fixture' \
   >"$DOCS_RUNTIME_STATE/open-agent-workflow/installations/user.state"
 if installer_output=$(env HOME="$DOCS_RUNTIME_HOME" \
   XDG_CONFIG_HOME="$DOCS_RUNTIME_CONFIG" XDG_STATE_HOME="$DOCS_RUNTIME_STATE" \
-  bash "$REPOSITORY/install.sh" check --target claude 2>&1); then
+  bash "$DOCS_RUNTIME_INSTALLER" check --target claude 2>&1); then
   installer_status=0
 else
   installer_status=$?

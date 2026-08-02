@@ -36,7 +36,7 @@ run_authoritative_setup() {
     XDG_STATE_HOME="$OAW_STATE" \
     PATH="$OAW_REAL_PATH" \
     TMPDIR="$OAW_TMP" \
-    bash "$OAW_INSTALLER" "$@" \
+    bash "$OAW_LEGACY_INSTALLER" "$@" \
     >"$OAW_PARITY_TEMP/setup.stdout" 2>"$OAW_PARITY_TEMP/setup.stderr"
   setup_status=$?
   set -e
@@ -58,7 +58,7 @@ run_parity_implementation() {
         XDG_STATE_HOME="$OAW_STATE" \
         PATH="$OAW_PATH" \
         TMPDIR="$OAW_TMP" \
-        bash "$OAW_INSTALLER" check "$@" >"$parity_stdout" 2>"$parity_stderr"
+        bash "$OAW_LEGACY_INSTALLER" check "$@" >"$parity_stdout" 2>"$parity_stderr"
       BASH_PARITY_STATUS=$?
       ;;
     go)
