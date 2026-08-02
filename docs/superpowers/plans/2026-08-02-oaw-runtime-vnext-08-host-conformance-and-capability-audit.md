@@ -374,7 +374,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 - Modify: `internal/runtime/workflow_invariants_test.go`
 - Modify: `internal/runtime/workflow_helpers_test.go`
 
-- [ ] **Step 1: Write failing pure admission tests.**
+- [x] **Step 1: Write failing pure admission tests.**
 
   Test `AdmitWorkflow` with a trusted Integration Record, Runtime frame, and the
   graph's exact Host Bindings. A conforming runner/native record succeeds and
@@ -385,13 +385,13 @@ the new generation, just as it may adopt a new Configuration/Registry.
   Prove the frame cannot name a higher level, claim Features, replace digests, or
   change the Integration identity after a Bundle is created.
 
-- [ ] **Step 2: Run focused tests and verify RED.**
+- [x] **Step 2: Run focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/host ./internal/runtime -run 'HostAdmission|Workflow.*Host|Bundle.*Host'
   ```
 
-- [ ] **Step 3: Implement Host admission and remove self-attestation.**
+- [x] **Step 3: Implement Host admission and remove self-attestation.**
 
   Replace `WorkflowHostDeclaration{PhysicalIsolation bool}` with
   `host.RuntimeFrame{IntegrationID, UnavailableFeatures}`. Resolve the selected
@@ -410,7 +410,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   Keep `HOST_ISOLATION_UNAVAILABLE` only as a compatibility diagnostic nested
   under `HOST_RUNTIME_REQUIREMENTS_UNMET`, not as evidence from a boolean frame.
 
-- [ ] **Step 4: Pin Host identities in Bundle generations.**
+- [x] **Step 4: Pin Host identities in Bundle generations.**
 
   Extend `newLifecycleBundle`, clone/validation helpers, canonical digesting,
   projection summaries, and revision-edge validation with the five locked Host
@@ -420,7 +420,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   Integration only in the new generation; old Bundles remain byte-for-byte
   immutable and old Engines cannot continue.
 
-- [ ] **Step 5: Update existing Workflow fixtures and run tests.**
+- [x] **Step 5: Update existing Workflow fixtures and run tests.**
 
   Replace every synthetic `PhysicalIsolation: true` fixture with a user-trusted,
   audited, conforming Integration Record whose Host ID matches the verified
@@ -434,7 +434,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   rtk go test ./...
   ```
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   rtk git add internal/host internal/runtime internal/integration

@@ -1,6 +1,7 @@
 package runtime_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/runtime"
@@ -55,9 +58,12 @@ func TestWorkflowStartRequiresExplicitProfileSelection(t *testing.T) {
 	if selected.Snapshot.LifecycleBundles[0] != bundle.ID || bundle.Selection.Profile != "MATT-SP-HYBRID" || bundle.RecipeID != "oaw/reliable-feature" || bundle.RecipeVersion != "1.0.0" || bundle.Configuration.Digest != fixture.snapshot.Digest() || bundle.RegistryDigest != fixture.registry.Digest() || bundle.GraphDigest == "" || len(bundle.ProviderInstances) != 2 || len(bundle.AddOns) != 0 {
 		t.Fatalf("Lifecycle Bundle pins = %#v", bundle)
 	}
+	if bundle.HostIntegrationID != fixture.hostIntegration.ID || bundle.HostIntegrationDigest != fixture.hostIntegration.Digest || bundle.HostManifestDigest != fixture.hostIntegration.ManifestDigest || bundle.HostAuditDigest != fixture.hostIntegration.Audit.Digest || bundle.HostConformanceDigest != fixture.hostIntegration.Conformance.Digest {
+		t.Fatalf("Lifecycle Bundle Host pins = %#v", bundle)
+	}
 }
 
-func TestWorkflowProfileSelectionRequiresTrustedPhysicalIsolation(t *testing.T) {
+func TestWorkflowProfileSelectionRejectsInstructionOnlyHost(t *testing.T) {
 	fixture := newWorkflowRuntimeFixture(t)
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	engine := newWorkflowEngine(t, stateRoot, fixture, false)
@@ -71,25 +77,46 @@ func TestWorkflowProfileSelectionRequiresTrustedPhysicalIsolation(t *testing.T) 
 		RunID: started.RunID, ExpectedRevision: started.Revision,
 		Continue: &runtime.ContinueInput{Signal: runtime.SignalProfileSelected, ProfileSelection: &runtime.ProfileSelection{Profile: "MATT-SP-HYBRID", Bindings: []profile.ProfileBinding{}}},
 	})
-	assertErrorCode(t, err, "HOST_ISOLATION_UNAVAILABLE")
+	assertErrorCode(t, err, "HOST_INTEGRATION_NOT_ADMITTED")
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
+}
+
+func TestWorkflowProfileSelectionRejectsUnavailableHostFeature(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{
+		IntegrationID: fixture.hostIntegration.ID, UnavailableFeatures: []host.Feature{host.FeaturePause},
+	})
+	started, err := engine.Exchange(workflowStartFrame(fixture, "workflow-host-feature-start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = engine.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "workflow-host-feature-select", IdempotencyKey: "workflow-host-feature-select",
+		RunID: started.RunID, ExpectedRevision: started.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalProfileSelected, ProfileSelection: &runtime.ProfileSelection{Profile: "MATT-SP-HYBRID"}},
+	})
+	assertErrorCode(t, err, "HOST_RUNTIME_REQUIREMENTS_UNMET")
+	if runtime.ErrorCode(errors.Unwrap(err)) != "HOST_ISOLATION_UNAVAILABLE" {
+		t.Fatalf("Host compatibility diagnostic = %v", errors.Unwrap(err))
+	}
 	assertRevisionCount(t, stateRoot, started.RunID, 1)
 }
 
 type workflowRuntimeFixture struct {
-	projectRoot string
-	home        string
-	snapshot    config.Snapshot
-	registry    registry.Registry
-	bindings    []catalog.HostBinding
+	projectRoot     string
+	home            string
+	snapshot        config.Snapshot
+	registry        registry.Registry
+	bindings        []catalog.HostBinding
+	hostIntegration host.IntegrationRecord
 }
 
 func newWorkflowRuntimeFixture(t *testing.T) workflowRuntimeFixture {
 	t.Helper()
 	projectRoot := t.TempDir()
-	snapshot, err := config.Load(config.LoadOptions{ProjectRoot: projectRoot})
-	if err != nil {
-		t.Fatalf("config.Load() error = %v", err)
-	}
+	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
 	for path, content := range map[string]string{
 		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "superpowers",
@@ -119,10 +146,19 @@ func newWorkflowRuntimeFixture(t *testing.T) workflowRuntimeFixture {
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
-	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, registry: effective, bindings: append([]catalog.HostBinding{}, bindings...)}
+	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, registry: effective, bindings: append([]catalog.HostBinding{}, bindings...), hostIntegration: hostIntegration}
 }
 
 func newWorkflowEngine(t *testing.T, stateRoot string, fixture workflowRuntimeFixture, isolated bool) *runtime.Engine {
+	t.Helper()
+	frame := host.RuntimeFrame{IntegrationID: "oaw/codex-instruction"}
+	if isolated {
+		frame = host.RuntimeFrame{IntegrationID: fixture.hostIntegration.ID}
+	}
+	return newWorkflowEngineWithHostFrame(t, stateRoot, fixture, frame)
+}
+
+func newWorkflowEngineWithHostFrame(t *testing.T, stateRoot string, fixture workflowRuntimeFixture, frame host.RuntimeFrame) *runtime.Engine {
 	t.Helper()
 	engine, err := runtime.NewEngine(runtime.Options{
 		StateRoot: stateRoot,
@@ -132,7 +168,7 @@ func newWorkflowEngine(t *testing.T, stateRoot string, fixture workflowRuntimeFi
 				Effects:   []string{"git-local", "read-project", "run-process", "write-project"},
 				Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
 			},
-			Host: runtime.WorkflowHostDeclaration{PhysicalIsolation: isolated},
+			Host: frame,
 			Executors: []runtime.WorkflowExecutorRegistration{
 				{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}},
 				{Registration: admission.ExecutorRegistration{ID: "executor-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},

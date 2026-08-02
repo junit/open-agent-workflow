@@ -35,10 +35,13 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 	if snapshot.RequestMode != classification.RequestModeWorkflow || snapshot.Status != RunReady || snapshot.Workflow == nil || snapshot.Workflow.ActiveGrantID != "" || len(snapshot.Workflow.Bundles) == 0 {
 		return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "Stage Grant requires a ready Workflow run without an active Grant", nil)
 	}
-	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) || snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() || !engine.workflow.Host.PhysicalIsolation {
-		return RunReply{}, runtimeError("HOST_ISOLATION_UNAVAILABLE", "Workflow trusted isolation or configuration is unavailable", nil)
+	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) || snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() {
+		return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "active Workflow trusted inputs do not match Engine options", nil)
 	}
 	bundle := snapshot.Workflow.Bundles[len(snapshot.Workflow.Bundles)-1]
+	if err := validateActiveWorkflowHost(engine.workflow, bundle); err != nil {
+		return RunReply{}, err
+	}
 	node, found := workflowGraphNode(bundle.Graph, snapshot.Workflow.ActiveNodeID)
 	if !found {
 		return RunReply{}, runtimeError("RUN_STATE_REVISION_INVALID", "active Workflow node is missing", nil)

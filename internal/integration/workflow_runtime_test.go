@@ -15,6 +15,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
@@ -142,16 +144,14 @@ type ticket07IntegrationFixture struct {
 	projectRoot          string
 	snapshot             config.Snapshot
 	registry             registry.Registry
+	hostIntegration      host.IntegrationRecord
 	hostInvocationMarker string
 }
 
 func newTicket07IntegrationFixture(t *testing.T, installECC bool) ticket07IntegrationFixture {
 	t.Helper()
 	projectRoot := t.TempDir()
-	snapshot, err := config.Load(config.LoadOptions{ProjectRoot: projectRoot})
-	if err != nil {
-		t.Fatal(err)
-	}
+	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "host-binding-invoked")
 	evidence := "#!/bin/sh\ntouch \"" + marker + "\"\nexit 97\n# " + integrationHostCredential + "\n"
@@ -185,7 +185,7 @@ func newTicket07IntegrationFixture(t *testing.T, installECC bool) ticket07Integr
 	if !found || installECC && ecc.State != registry.Verified || !installECC && ecc.State != registry.NotFound {
 		t.Fatalf("ECC resolution = %#v", ecc)
 	}
-	return ticket07IntegrationFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective, hostInvocationMarker: marker}
+	return ticket07IntegrationFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective, hostIntegration: hostIntegration, hostInvocationMarker: marker}
 }
 
 func newTicket07Engine(t *testing.T, stateRoot string, fixture ticket07IntegrationFixture, projection oawruntime.ProjectionOptions) *oawruntime.Engine {
@@ -198,7 +198,7 @@ func newTicket07Engine(t *testing.T, stateRoot string, fixture ticket07Integrati
 				Effects:   []string{"git-local", "read-project", "run-process", "write-project"},
 				Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
 			},
-			Host: oawruntime.WorkflowHostDeclaration{PhysicalIsolation: true},
+			Host: host.RuntimeFrame{IntegrationID: fixture.hostIntegration.ID},
 			Executors: []oawruntime.WorkflowExecutorRegistration{
 				{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}},
 				{Registration: admission.ExecutorRegistration{ID: "executor-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},

@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
 
@@ -49,6 +50,10 @@ func TestWorkflowProjectionEmitsRedactedCommittedRevisions(t *testing.T) {
 	last := records[len(records)-1]
 	if records[0].Status != oawruntime.RunAwaitingSelection || records[0].BundleID != "" || records[1].Status != oawruntime.RunReady || records[1].BundleID == "" || last.ActiveNodeID != "requirements" || last.Generation != 2 || last.BundleID != switched.Snapshot.Workflow.Bundles[1].ID {
 		t.Fatalf("projection state sequence = %#v", records)
+	}
+	bundle := switched.Snapshot.Workflow.Bundles[1]
+	if last.HostIntegrationID != bundle.HostIntegrationID || last.HostIntegrationDigest != bundle.HostIntegrationDigest || last.HostManifestDigest != bundle.HostManifestDigest || last.HostAuditDigest != bundle.HostAuditDigest || last.HostConformanceDigest != bundle.HostConformanceDigest {
+		t.Fatalf("projection Host pins = %#v, want %#v", last, bundle)
 	}
 }
 
@@ -215,7 +220,7 @@ func newWorkflowEngineWithProjection(t *testing.T, stateRoot string, fixture wor
 			Authority: admission.AuthorityCeiling{
 				Effects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
 			},
-			Host: oawruntime.WorkflowHostDeclaration{PhysicalIsolation: true},
+			Host: host.RuntimeFrame{IntegrationID: fixture.hostIntegration.ID},
 			Executors: []oawruntime.WorkflowExecutorRegistration{
 				{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}},
 				{Registration: admission.ExecutorRegistration{ID: "executor-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},

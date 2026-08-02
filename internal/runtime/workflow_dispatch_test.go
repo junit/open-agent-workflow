@@ -10,6 +10,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/runtime"
@@ -52,6 +54,47 @@ func TestWorkflowDispatchPreparedMovesOnlyTheCommittedGrantToInFlight(t *testing
 		t.Fatalf("Workflow dispatch replay = %#v, %v", replayed, err)
 	}
 	assertRevisionCount(t, stateRoot, granted.RunID, int(prepared.Revision))
+}
+
+func TestWorkflowContinueRevalidatesActiveHostAfterRestart(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	healthy := newWorkflowEngine(t, stateRoot, fixture, true)
+	ready := startAndSelectWorkflow(t, healthy, fixture, "workflow-host-restart")
+	granted := requestWorkflowStage(t, healthy, ready, "workflow-host-restart-grant", []string{"read-project"}, []string{"project-worktree"})
+	grant := granted.Snapshot.Grants[len(granted.Snapshot.Grants)-1]
+	unavailable := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{
+		IntegrationID: fixture.hostIntegration.ID, UnavailableFeatures: []host.Feature{host.FeaturePause},
+	})
+	_, err := unavailable.Exchange(inspectFrame(granted.RunID, "workflow-host-restart-inspect"))
+	assertErrorCode(t, err, "HOST_RUNTIME_REQUIREMENTS_UNMET")
+
+	_, err = unavailable.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "workflow-host-restart-dispatch", IdempotencyKey: "workflow-host-restart-dispatch",
+		RunID: granted.RunID, ExpectedRevision: granted.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalDispatchPrepared, DispatchPreparation: &runtime.DispatchPreparation{
+			GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID,
+		}},
+	})
+	assertErrorCode(t, err, "HOST_RUNTIME_REQUIREMENTS_UNMET")
+	assertRevisionCount(t, stateRoot, granted.RunID, int(granted.Revision))
+
+	prepared := prepareWorkflowStage(t, healthy, granted, "workflow-host-restart-prepared", grant)
+	_, err = unavailable.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "workflow-host-restart-observation", IdempotencyKey: "workflow-host-restart-observation",
+		RunID: prepared.RunID, ExpectedRevision: prepared.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalCapabilityObserved, StageObservation: &runtime.StageObservation{
+			CapabilityObservation: runtime.CapabilityObservation{
+				GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID,
+				Outcome: runtime.ObservationSucceeded, EvidenceReferences: []runtime.EvidenceReference{{Reference: "evidence://host-restart", Digest: strings.Repeat("a", 64)}},
+			},
+			Signal: "succeeded",
+		}},
+	})
+	assertErrorCode(t, err, "HOST_RUNTIME_REQUIREMENTS_UNMET")
+	assertRevisionCount(t, stateRoot, prepared.RunID, int(prepared.Revision))
 }
 
 func TestWorkflowObservationAdvancesThePinnedGraphAndReleasesSuccessfulLease(t *testing.T) {
@@ -209,6 +252,10 @@ func TestWorkflowStableBoundarySwitchCreatesANewBundleGeneration(t *testing.T) {
 	if switched.Snapshot.Workflow.ActiveGeneration != 2 || switched.Snapshot.Workflow.ActiveNodeID != "requirements" || len(switched.Snapshot.Workflow.Bundles) != 2 || switched.Snapshot.Workflow.Bundles[0].ID == switched.Snapshot.Workflow.Bundles[1].ID || switched.Snapshot.Workflow.Bundles[0].Digest == switched.Snapshot.Workflow.Bundles[1].Digest || len(switched.Snapshot.Workflow.RevokedGrantIDs) != 1 || switched.Snapshot.Workflow.RevokedGrantIDs[0] != grant.ID {
 		t.Fatalf("switched Workflow state = %#v", switched.Snapshot.Workflow)
 	}
+	newBundle := switched.Snapshot.Workflow.Bundles[1]
+	if newBundle.HostIntegrationID != fixture.hostIntegration.ID || newBundle.HostIntegrationDigest != fixture.hostIntegration.Digest || newBundle.HostManifestDigest != fixture.hostIntegration.ManifestDigest || newBundle.HostAuditDigest != fixture.hostIntegration.Audit.Digest || newBundle.HostConformanceDigest != fixture.hostIntegration.Conformance.Digest {
+		t.Fatalf("switched Bundle Host pins = %#v", newBundle)
+	}
 }
 
 func TestWorkflowStableBoundarySwitchExplicitlyAdoptsCurrentConfiguration(t *testing.T) {
@@ -222,13 +269,12 @@ func TestWorkflowStableBoundarySwitchExplicitlyAdoptsCurrentConfiguration(t *tes
 	observed := observeWorkflowStage(t, engine, prepared, grant, "workflow-config-switch-observed", runtime.ObservationSucceeded, "succeeded", "specification-approved")
 
 	userRoot := t.TempDir()
-	writeTestFile(t, filepath.Join(userRoot, "config.toml"), []byte(`
-schema_version = "oaw.user-config/v1"
+	hosttest.WriteManagedConfiguration(t, userRoot, `
 [[bounded_capability_defaults]]
 id = "review-default"
 provider_id = "oaw/superpowers"
 capability_id = "review"
-`))
+`)
 	updatedSnapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: fixture.projectRoot})
 	if err != nil {
 		t.Fatal(err)
@@ -264,7 +310,7 @@ capability_id = "review"
 			ExecutorID: "executor-write", RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "old configuration must not execute",
 		}},
 	})
-	assertErrorCode(t, err, "HOST_ISOLATION_UNAVAILABLE")
+	assertErrorCode(t, err, "WORKFLOW_CONFIGURATION_REQUIRED")
 	_ = requestWorkflowStage(t, updatedEngine, switched, "workflow-new-config-grant", []string{"read-project"}, []string{"project-worktree"})
 }
 

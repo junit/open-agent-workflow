@@ -5,22 +5,24 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
-	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
 func TestLifecycleBundlePinsWorkflowSelectionAndTrustedInputs(t *testing.T) {
-	configuration, err := config.Load(config.LoadOptions{})
-	if err != nil {
-		t.Fatalf("config.Load() error = %v", err)
-	}
+	configuration, integration := hosttest.LoadManagedSnapshot(t, "")
 	graph := workflowRecordGraph(t)
+	hostAdmission, err := host.AdmitWorkflow(configuration.HostIntegrations(), host.RuntimeFrame{IntegrationID: integration.ID}, []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: "acme:complete"}})
+	if err != nil {
+		t.Fatalf("host.AdmitWorkflow() error = %v", err)
+	}
 	bundle, err := newLifecycleBundle(bundleRequest{
 		RunID: "run-0123456789abcdef0123456789abcdef", DeliverableID: "delivery-1",
 		InputDigest: strings.Repeat("1", 64), Generation: 1, CreatedRevision: 2,
 		Selection:     ProfileSelection{Profile: "acme/delivery", Bindings: []profile.ProfileBinding{}},
-		Configuration: configuration.Record(), RegistryDigest: strings.Repeat("2", 64), Graph: graph.Record(),
+		Configuration: configuration.Record(), RegistryDigest: strings.Repeat("2", 64), Graph: graph.Record(), Host: hostAdmission,
 	})
 	if err != nil {
 		t.Fatalf("newLifecycleBundle() error = %v", err)
@@ -30,6 +32,16 @@ func TestLifecycleBundlePinsWorkflowSelectionAndTrustedInputs(t *testing.T) {
 	}
 	if err := validateLifecycleBundle(bundle); err != nil {
 		t.Fatalf("validateLifecycleBundle() error = %v", err)
+	}
+	tamperedAdmission := host.CloneWorkflowAdmission(hostAdmission)
+	tamperedAdmission.IntegrationDigest = strings.Repeat("0", 64)
+	if _, err := newLifecycleBundle(bundleRequest{
+		RunID: "run-0123456789abcdef0123456789abcdef", DeliverableID: "delivery-1",
+		InputDigest: strings.Repeat("1", 64), Generation: 1, CreatedRevision: 2,
+		Selection: ProfileSelection{Profile: "acme/delivery"}, Configuration: configuration.Record(),
+		RegistryDigest: strings.Repeat("2", 64), Graph: graph.Record(), Host: tamperedAdmission,
+	}); ErrorCode(err) != "WORKFLOW_BUNDLE_INVALID" {
+		t.Fatalf("tampered Bundle Host admission error = %v", err)
 	}
 
 	copyValue := cloneLifecycleBundle(bundle)

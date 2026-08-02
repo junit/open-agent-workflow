@@ -11,6 +11,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
@@ -26,13 +27,9 @@ type WorkflowOptions struct {
 	Configuration config.Snapshot
 	Registry      registry.Registry
 	Authority     admission.AuthorityCeiling
-	Host          WorkflowHostDeclaration
+	Host          host.RuntimeFrame
 	Executors     []WorkflowExecutorRegistration
 	Projection    ProjectionOptions
-}
-
-type WorkflowHostDeclaration struct {
-	PhysicalIsolation bool `json:"physical_isolation"`
 }
 
 type WorkflowExecutorRegistration struct {
@@ -75,25 +72,30 @@ type StableBoundarySwitch struct {
 }
 
 type LifecycleBundle struct {
-	SchemaVersion     string                          `json:"schema_version"`
-	ID                string                          `json:"id"`
-	RunID             string                          `json:"run_id"`
-	DeliverableID     string                          `json:"deliverable_id"`
-	InputDigest       string                          `json:"input_digest"`
-	Generation        uint64                          `json:"generation"`
-	CreatedRevision   uint64                          `json:"created_revision"`
-	Selection         ProfileSelection                `json:"selection"`
-	RecipeID          string                          `json:"recipe_id"`
-	RecipeVersion     string                          `json:"recipe_version"`
-	RecipeDigest      string                          `json:"recipe_digest"`
-	RegistryDigest    string                          `json:"registry_digest"`
-	ProviderInstances []profile.GraphProviderInstance `json:"provider_instances"`
-	Bindings          []profile.ProfileBinding        `json:"bindings"`
-	AddOns            []string                        `json:"add_ons"`
-	Configuration     config.SnapshotRecord           `json:"configuration"`
-	Graph             profile.ExecutionGraphRecord    `json:"execution_graph"`
-	GraphDigest       string                          `json:"graph_digest"`
-	Digest            string                          `json:"digest"`
+	SchemaVersion         string                          `json:"schema_version"`
+	ID                    string                          `json:"id"`
+	RunID                 string                          `json:"run_id"`
+	DeliverableID         string                          `json:"deliverable_id"`
+	InputDigest           string                          `json:"input_digest"`
+	Generation            uint64                          `json:"generation"`
+	CreatedRevision       uint64                          `json:"created_revision"`
+	Selection             ProfileSelection                `json:"selection"`
+	RecipeID              string                          `json:"recipe_id"`
+	RecipeVersion         string                          `json:"recipe_version"`
+	RecipeDigest          string                          `json:"recipe_digest"`
+	RegistryDigest        string                          `json:"registry_digest"`
+	ProviderInstances     []profile.GraphProviderInstance `json:"provider_instances"`
+	Bindings              []profile.ProfileBinding        `json:"bindings"`
+	AddOns                []string                        `json:"add_ons"`
+	Configuration         config.SnapshotRecord           `json:"configuration"`
+	Graph                 profile.ExecutionGraphRecord    `json:"execution_graph"`
+	GraphDigest           string                          `json:"graph_digest"`
+	HostIntegrationID     string                          `json:"host_integration_id"`
+	HostIntegrationDigest string                          `json:"host_integration_digest"`
+	HostManifestDigest    string                          `json:"host_manifest_digest"`
+	HostAuditDigest       string                          `json:"host_audit_digest"`
+	HostConformanceDigest string                          `json:"host_conformance_digest"`
+	Digest                string                          `json:"digest"`
 }
 
 type WorkflowState struct {
@@ -140,6 +142,7 @@ type bundleRequest struct {
 	Configuration   config.SnapshotRecord
 	RegistryDigest  string
 	Graph           profile.ExecutionGraphRecord
+	Host            host.WorkflowAdmission
 }
 
 func newLifecycleBundle(request bundleRequest) (LifecycleBundle, error) {
@@ -147,7 +150,7 @@ func newLifecycleBundle(request bundleRequest) (LifecycleBundle, error) {
 	if err != nil {
 		return LifecycleBundle{}, err
 	}
-	if !runIDPattern.MatchString(request.RunID) || validateIdentifier(request.DeliverableID) != nil || !validDigest(request.InputDigest) || request.Generation == 0 || request.CreatedRevision == 0 || !validDigest(request.RegistryDigest) {
+	if !runIDPattern.MatchString(request.RunID) || validateIdentifier(request.DeliverableID) != nil || !validDigest(request.InputDigest) || request.Generation == 0 || request.CreatedRevision == 0 || !validDigest(request.RegistryDigest) || validateIdentifier(request.Host.IntegrationID) != nil || !validDigest(request.Host.IntegrationDigest) || !validDigest(request.Host.ManifestDigest) || !validDigest(request.Host.AuditDigest) || !validDigest(request.Host.ConformanceDigest) {
 		return LifecycleBundle{}, runtimeError("WORKFLOW_BUNDLE_INVALID", "invalid Bundle identity", nil)
 	}
 	if request.Configuration.Digest == "" || request.Configuration.ContentDigest() != request.Configuration.Digest {
@@ -171,6 +174,12 @@ func newLifecycleBundle(request bundleRequest) (LifecycleBundle, error) {
 		RegistryDigest: request.RegistryDigest,
 		Bindings:       append([]profile.ProfileBinding{}, request.Graph.Bindings...), AddOns: addOns,
 		Configuration: cloneSnapshotRecord(request.Configuration), Graph: cloneGraphRecord(request.Graph), GraphDigest: request.Graph.Digest,
+		HostIntegrationID: request.Host.IntegrationID, HostIntegrationDigest: request.Host.IntegrationDigest,
+		HostManifestDigest: request.Host.ManifestDigest, HostAuditDigest: request.Host.AuditDigest,
+		HostConformanceDigest: request.Host.ConformanceDigest,
+	}
+	if !bundleHostPinsConfiguration(value) {
+		return LifecycleBundle{}, runtimeError("WORKFLOW_BUNDLE_INVALID", "Host pins do not match the Configuration Snapshot", nil)
 	}
 	seed := value
 	seed.ID, seed.Digest = "", ""
@@ -187,11 +196,14 @@ func newLifecycleBundle(request bundleRequest) (LifecycleBundle, error) {
 }
 
 func validateLifecycleBundle(value LifecycleBundle) error {
-	if value.SchemaVersion != lifecycleBundleSchemaV1 || !bundleIDPattern.MatchString(value.ID) || !runIDPattern.MatchString(value.RunID) || validateIdentifier(value.DeliverableID) != nil || !validDigest(value.InputDigest) || value.Generation == 0 || value.CreatedRevision == 0 || !validDigest(value.RegistryDigest) {
+	if value.SchemaVersion != lifecycleBundleSchemaV1 || !bundleIDPattern.MatchString(value.ID) || !runIDPattern.MatchString(value.RunID) || validateIdentifier(value.DeliverableID) != nil || !validDigest(value.InputDigest) || value.Generation == 0 || value.CreatedRevision == 0 || !validDigest(value.RegistryDigest) || validateIdentifier(value.HostIntegrationID) != nil || !validDigest(value.HostIntegrationDigest) || !validDigest(value.HostManifestDigest) || !validDigest(value.HostAuditDigest) || !validDigest(value.HostConformanceDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Lifecycle Bundle identity", nil)
 	}
 	if value.Configuration.Digest == "" || value.Configuration.ContentDigest() != value.Configuration.Digest || profile.ValidateExecutionGraphRecord(value.Graph) != nil || value.GraphDigest != value.Graph.Digest || value.RecipeID != value.Graph.RecipeID || value.RecipeVersion != value.Graph.RecipeVersion || value.RecipeDigest != value.Graph.RecipeDigest || !equalGraphProviders(value.ProviderInstances, value.Graph.ProviderInstances) || !equalBindings(value.Bindings, value.Graph.Bindings) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "persisted Lifecycle Bundle content mismatch", nil)
+	}
+	if !bundleHostPinsConfiguration(value) {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "persisted Lifecycle Bundle Host pins mismatch", nil)
 	}
 	selection, err := normalizeProfileSelection(value.Selection)
 	if err != nil || !equalProfileSelection(selection, value.Selection) {
@@ -251,7 +263,21 @@ func cloneSnapshotRecord(value config.SnapshotRecord) config.SnapshotRecord {
 	value.RequiredProviders = append([]string{}, value.RequiredProviders...)
 	value.RecommendedProviders = append([]string{}, value.RecommendedProviders...)
 	value.UntrustedProviderIDs = append([]string{}, value.UntrustedProviderIDs...)
+	value.HostIntegrations = append([]host.IntegrationRecord{}, value.HostIntegrations...)
+	for index := range value.HostIntegrations {
+		value.HostIntegrations[index] = host.CloneIntegration(value.HostIntegrations[index])
+	}
 	return value
+}
+
+func bundleHostPinsConfiguration(value LifecycleBundle) bool {
+	for _, integration := range value.Configuration.HostIntegrations {
+		if integration.ID != value.HostIntegrationID {
+			continue
+		}
+		return host.ValidateIntegrationRecord(integration) == nil && integration.Digest == value.HostIntegrationDigest && integration.ManifestDigest == value.HostManifestDigest && integration.Audit.Digest == value.HostAuditDigest && integration.Conformance != nil && integration.Conformance.Digest == value.HostConformanceDigest
+	}
+	return false
 }
 
 func cloneGraphRecord(value profile.ExecutionGraphRecord) profile.ExecutionGraphRecord {

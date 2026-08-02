@@ -273,6 +273,7 @@ func TestWorkflowProjectionValidationAndFilesystemBoundaries(t *testing.T) {
 	}
 	unselected := valid
 	unselected.Generation, unselected.BundleID, unselected.BundleDigest, unselected.ActiveNodeID, unselected.GraphDigest = 0, "", "", "", ""
+	unselected.HostIntegrationID, unselected.HostIntegrationDigest, unselected.HostManifestDigest, unselected.HostAuditDigest, unselected.HostConformanceDigest = "", "", "", "", ""
 	finalizeInternalProjection(t, &unselected)
 	if err := validateWorkflowProjection(unselected); err != nil {
 		t.Fatalf("valid unselected projection rejected: %v", err)
@@ -463,6 +464,9 @@ func validInternalWorkflowProjection(t *testing.T) WorkflowProjection {
 		Event: "WORKFLOW_BUNDLE_CREATED", ConfigurationDigest: strings.Repeat("3", 64),
 		BundleID: "bundle-0123456789abcdef0123456789abcdef", BundleDigest: strings.Repeat("4", 64),
 		Generation: 1, ActiveNodeID: "requirements", GraphDigest: strings.Repeat("5", 64),
+		HostIntegrationID: "acme/codex-runtime", HostIntegrationDigest: strings.Repeat("6", 64),
+		HostManifestDigest: strings.Repeat("7", 64), HostAuditDigest: strings.Repeat("8", 64),
+		HostConformanceDigest: strings.Repeat("9", 64),
 	}
 	finalizeInternalProjection(t, &value)
 	return value

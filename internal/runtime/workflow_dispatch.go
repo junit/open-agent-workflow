@@ -71,6 +71,15 @@ func normalizeStableBoundarySwitch(value *StableBoundarySwitch) (*StableBoundary
 }
 
 func (engine *Engine) continueWorkflow(current revisionRecord, frame RunFrame, normalized ContinueInput, messageDigest string) (RunReply, error) {
+	if normalized.Signal != SignalSwitchProfile {
+		bundle, err := workflowActiveBundle(current.Snapshot)
+		if err != nil {
+			return RunReply{}, err
+		}
+		if err := validateActiveWorkflowHost(engine.workflow, bundle); err != nil {
+			return RunReply{}, err
+		}
+	}
 	switch normalized.Signal {
 	case SignalDispatchPrepared:
 		return engine.authorizeWorkflowDispatch(current, frame, normalized.DispatchPreparation, messageDigest)
@@ -284,18 +293,22 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	if !containsWorkflowValue(bundle.Graph.StableBoundaries, request.Boundary) {
 		return RunReply{}, runtimeError("STABLE_BOUNDARY_INVALID", "stable boundary is not declared by the active Bundle", nil)
 	}
-	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) || !engine.workflow.Host.PhysicalIsolation {
-		return RunReply{}, runtimeError("HOST_ISOLATION_UNAVAILABLE", "Workflow trusted isolation or configuration is unavailable", nil)
+	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) {
+		return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "Workflow trusted inputs are unavailable", nil)
 	}
 	graph, err := profile.CompileProfile(engine.workflow.Configuration.Catalog(), engine.workflow.Registry, profile.CompileRequest{Profile: request.Selection.Profile, Bindings: request.Selection.Bindings})
 	if err != nil {
 		return RunReply{}, runtimeError("PROFILE_SELECTION_INVALID", "selected Profile is not available", err)
 	}
+	hostAdmission, err := admitWorkflowHost(engine.workflow, graph.Record())
+	if err != nil {
+		return RunReply{}, err
+	}
 	nextRevision := current.Revision + 1
 	newBundle, err := newLifecycleBundle(bundleRequest{
 		RunID: current.RunID, DeliverableID: current.Snapshot.Workflow.Input.DeliverableID, InputDigest: current.Snapshot.Workflow.Input.InputDigest,
 		Generation: current.Snapshot.Workflow.ActiveGeneration + 1, CreatedRevision: nextRevision, Selection: request.Selection,
-		Configuration: engine.workflow.Configuration.Record(), RegistryDigest: engine.workflow.Registry.Digest(), Graph: graph.Record(),
+		Configuration: engine.workflow.Configuration.Record(), RegistryDigest: engine.workflow.Registry.Digest(), Graph: graph.Record(), Host: hostAdmission,
 	})
 	if err != nil {
 		return RunReply{}, err

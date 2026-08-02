@@ -11,6 +11,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -280,10 +282,7 @@ type internalWorkflowFixture struct {
 func newInternalWorkflowEngine(t *testing.T) (*Engine, internalWorkflowFixture) {
 	t.Helper()
 	projectRoot := t.TempDir()
-	snapshot, err := config.Load(config.LoadOptions{ProjectRoot: projectRoot})
-	if err != nil {
-		t.Fatal(err)
-	}
+	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
 	for _, relative := range []string{
 		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md",
@@ -321,7 +320,7 @@ func newInternalWorkflowEngine(t *testing.T) (*Engine, internalWorkflowFixture) 
 		Workflow: WorkflowOptions{
 			Configuration: snapshot, Registry: effective,
 			Authority: admission.AuthorityCeiling{Effects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true},
-			Host:      WorkflowHostDeclaration{PhysicalIsolation: true},
+			Host:      host.RuntimeFrame{IntegrationID: hostIntegration.ID},
 			Executors: []WorkflowExecutorRegistration{
 				{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}},
 				{Registration: admission.ExecutorRegistration{ID: "executor-review-1", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},

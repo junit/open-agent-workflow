@@ -249,6 +249,15 @@ func (engine *Engine) inspect(frame RunFrame) (RunReply, error) {
 	if err != nil {
 		return RunReply{}, err
 	}
+	if committed.Snapshot.RequestMode == classification.RequestModeWorkflow && committed.Snapshot.Workflow != nil && committed.Snapshot.Workflow.ActiveGeneration > 0 {
+		bundle, bundleErr := workflowActiveBundle(committed.Snapshot)
+		if bundleErr != nil {
+			return RunReply{}, bundleErr
+		}
+		if hostErr := validateActiveWorkflowHost(engine.workflow, bundle); hostErr != nil {
+			return RunReply{}, hostErr
+		}
+	}
 	reply := RunReply{
 		SchemaVersion:   RuntimeSchemaV1,
 		Kind:            ReplyStateSnapshot,

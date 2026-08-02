@@ -21,20 +21,25 @@ type ProjectionSink interface {
 }
 
 type WorkflowProjection struct {
-	SchemaVersion       string    `json:"schema_version"`
-	RunID               string    `json:"run_id"`
-	Revision            uint64    `json:"revision"`
-	RevisionDigest      string    `json:"revision_digest"`
-	StateDigest         string    `json:"state_digest"`
-	Status              RunStatus `json:"status"`
-	Event               string    `json:"event"`
-	ConfigurationDigest string    `json:"configuration_digest"`
-	BundleID            string    `json:"bundle_id,omitempty"`
-	BundleDigest        string    `json:"bundle_digest,omitempty"`
-	Generation          uint64    `json:"generation,omitempty"`
-	ActiveNodeID        string    `json:"active_node_id,omitempty"`
-	GraphDigest         string    `json:"graph_digest,omitempty"`
-	Digest              string    `json:"digest"`
+	SchemaVersion         string    `json:"schema_version"`
+	RunID                 string    `json:"run_id"`
+	Revision              uint64    `json:"revision"`
+	RevisionDigest        string    `json:"revision_digest"`
+	StateDigest           string    `json:"state_digest"`
+	Status                RunStatus `json:"status"`
+	Event                 string    `json:"event"`
+	ConfigurationDigest   string    `json:"configuration_digest"`
+	BundleID              string    `json:"bundle_id,omitempty"`
+	BundleDigest          string    `json:"bundle_digest,omitempty"`
+	Generation            uint64    `json:"generation,omitempty"`
+	ActiveNodeID          string    `json:"active_node_id,omitempty"`
+	GraphDigest           string    `json:"graph_digest,omitempty"`
+	HostIntegrationID     string    `json:"host_integration_id,omitempty"`
+	HostIntegrationDigest string    `json:"host_integration_digest,omitempty"`
+	HostManifestDigest    string    `json:"host_manifest_digest,omitempty"`
+	HostAuditDigest       string    `json:"host_audit_digest,omitempty"`
+	HostConformanceDigest string    `json:"host_conformance_digest,omitempty"`
+	Digest                string    `json:"digest"`
 }
 
 type FilesystemProjectionSink struct {
@@ -182,6 +187,11 @@ func newWorkflowProjection(record revisionRecord) (WorkflowProjection, error) {
 		value.BundleID = bundle.ID
 		value.BundleDigest = bundle.Digest
 		value.GraphDigest = bundle.GraphDigest
+		value.HostIntegrationID = bundle.HostIntegrationID
+		value.HostIntegrationDigest = bundle.HostIntegrationDigest
+		value.HostManifestDigest = bundle.HostManifestDigest
+		value.HostAuditDigest = bundle.HostAuditDigest
+		value.HostConformanceDigest = bundle.HostConformanceDigest
 	}
 	digestValue := value
 	digestValue.Digest = ""
@@ -198,10 +208,10 @@ func validateWorkflowProjection(value WorkflowProjection) error {
 		return runtimeError("PROJECTION_INVALID", "invalid Workflow projection identity", nil)
 	}
 	if value.Generation == 0 {
-		if value.BundleID != "" || value.BundleDigest != "" || value.ActiveNodeID != "" || value.GraphDigest != "" {
+		if value.BundleID != "" || value.BundleDigest != "" || value.ActiveNodeID != "" || value.GraphDigest != "" || value.HostIntegrationID != "" || value.HostIntegrationDigest != "" || value.HostManifestDigest != "" || value.HostAuditDigest != "" || value.HostConformanceDigest != "" {
 			return runtimeError("PROJECTION_INVALID", "unselected Workflow projection contains Bundle state", nil)
 		}
-	} else if !bundleIDPattern.MatchString(value.BundleID) || !validDigest(value.BundleDigest) || value.ActiveNodeID == "" || !validDigest(value.GraphDigest) {
+	} else if !bundleIDPattern.MatchString(value.BundleID) || !validDigest(value.BundleDigest) || value.ActiveNodeID == "" || !validDigest(value.GraphDigest) || validateIdentifier(value.HostIntegrationID) != nil || !validDigest(value.HostIntegrationDigest) || !validDigest(value.HostManifestDigest) || !validDigest(value.HostAuditDigest) || !validDigest(value.HostConformanceDigest) {
 		return runtimeError("PROJECTION_INVALID", "selected Workflow projection is incomplete", nil)
 	}
 	stored := value.Digest
@@ -228,6 +238,11 @@ func renderWorkflowProjectionMarkdown(value WorkflowProjection) []byte {
 		fmt.Fprintf(&output, "- Generation: `%d`\n", value.Generation)
 		fmt.Fprintf(&output, "- Active node: `%s`\n", value.ActiveNodeID)
 		fmt.Fprintf(&output, "- Graph digest: `%s`\n", value.GraphDigest)
+		fmt.Fprintf(&output, "- Host Integration: `%s`\n", value.HostIntegrationID)
+		fmt.Fprintf(&output, "- Host Integration digest: `%s`\n", value.HostIntegrationDigest)
+		fmt.Fprintf(&output, "- Host Manifest digest: `%s`\n", value.HostManifestDigest)
+		fmt.Fprintf(&output, "- Host audit digest: `%s`\n", value.HostAuditDigest)
+		fmt.Fprintf(&output, "- Host conformance digest: `%s`\n", value.HostConformanceDigest)
 	}
 	return []byte(output.String())
 }

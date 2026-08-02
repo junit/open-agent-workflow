@@ -6,11 +6,13 @@ import (
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
 func cloneWorkflowOptions(value WorkflowOptions) WorkflowOptions {
 	value.Authority = admission.CloneAuthority(value.Authority)
+	value.Host = host.CloneRuntimeFrame(value.Host)
 	value.Executors = append([]WorkflowExecutorRegistration{}, value.Executors...)
 	return value
 }
@@ -49,21 +51,22 @@ func (engine *Engine) selectWorkflowProfile(current revisionRecord, frame RunFra
 	if !workflowConfigurationReady(current.Snapshot.Project, engine.workflow) || current.Snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || current.Snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() {
 		return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
 	}
-	if !engine.workflow.Host.PhysicalIsolation {
-		return RunReply{}, runtimeError("HOST_ISOLATION_UNAVAILABLE", "Workflow requires physical isolation from the Main Agent", nil)
-	}
 	graph, err := profile.CompileProfile(engine.workflow.Configuration.Catalog(), engine.workflow.Registry, profile.CompileRequest{
 		Profile: input.ProfileSelection.Profile, Bindings: input.ProfileSelection.Bindings,
 	})
 	if err != nil {
 		return RunReply{}, runtimeError("PROFILE_SELECTION_INVALID", "selected Profile is not available", err)
 	}
+	hostAdmission, err := admitWorkflowHost(engine.workflow, graph.Record())
+	if err != nil {
+		return RunReply{}, err
+	}
 	nextRevision := current.Revision + 1
 	bundle, err := newLifecycleBundle(bundleRequest{
 		RunID: current.RunID, DeliverableID: current.Snapshot.Workflow.Input.DeliverableID,
 		InputDigest: current.Snapshot.Workflow.Input.InputDigest, Generation: 1, CreatedRevision: nextRevision,
 		Selection: *input.ProfileSelection, Configuration: engine.workflow.Configuration.Record(),
-		RegistryDigest: engine.workflow.Registry.Digest(), Graph: graph.Record(),
+		RegistryDigest: engine.workflow.Registry.Digest(), Graph: graph.Record(), Host: hostAdmission,
 	})
 	if err != nil {
 		return RunReply{}, err
