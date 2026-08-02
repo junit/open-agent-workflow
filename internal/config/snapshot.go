@@ -12,6 +12,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
 
@@ -41,6 +42,7 @@ type Snapshot struct {
 	requiredProviders    []string
 	recommendedProviders []string
 	untrustedProviderIDs []string
+	hostIntegrations     []host.IntegrationRecord
 	userConfigDigest     string
 	projectRoot          string
 	projectConfigDigest  string
@@ -61,6 +63,7 @@ type SnapshotRecord struct {
 	RequiredProviders         []string                   `json:"required_providers"`
 	RecommendedProviders      []string                   `json:"recommended_providers"`
 	UntrustedProviderIDs      []string                   `json:"untrusted_provider_ids"`
+	HostIntegrations          []host.IntegrationRecord   `json:"host_integrations"`
 	Digest                    string                     `json:"digest"`
 }
 
@@ -78,6 +81,7 @@ func (snapshot Snapshot) Record() SnapshotRecord {
 		RequiredProviders:         append([]string{}, snapshot.requiredProviders...),
 		RecommendedProviders:      append([]string{}, snapshot.recommendedProviders...),
 		UntrustedProviderIDs:      append([]string{}, snapshot.untrustedProviderIDs...),
+		HostIntegrations:          cloneHostIntegrations(snapshot.hostIntegrations),
 		Digest:                    snapshot.digest,
 	}
 }
@@ -105,10 +109,17 @@ func Load(options LoadOptions) (Snapshot, error) {
 	}
 	providers := builtIn.Providers()
 	recipes := builtIn.Recipes()
+	hostIntegrations, err := host.LoadBuiltinIntegrations(assets.FS())
+	if err != nil {
+		return Snapshot{}, err
+	}
 	if err := mergeProviders(&providers, user.providers, user.config.Record.ProviderDescriptors); err != nil {
 		return Snapshot{}, err
 	}
 	if err := mergeRecipes(&recipes, user.recipes, user.config.Record.ProfileRecipes); err != nil {
+		return Snapshot{}, err
+	}
+	if err := mergeHostIntegrations(&hostIntegrations, user.hostIntegrations, user.config.Record.HostIntegrations); err != nil {
 		return Snapshot{}, err
 	}
 	projectStatus := ProjectAbsent
@@ -167,6 +178,7 @@ func Load(options LoadOptions) (Snapshot, error) {
 		requiredProviders:    requiredProviders,
 		recommendedProviders: recommendedProviders,
 		untrustedProviderIDs: untrustedProviderIDs,
+		hostIntegrations:     hostIntegrations,
 		userConfigDigest:     user.config.Digest,
 		projectRoot:          projectRoot,
 		projectConfigDigest:  projectDigest,
@@ -192,16 +204,17 @@ func projectOnlyProviderIDs(trusted []catalog.ProviderDescriptorRecord, projectI
 }
 
 type userInspection struct {
-	config    Decoded[UserConfigRecord]
-	providers []Decoded[catalog.ProviderDescriptorRecord]
-	recipes   []Decoded[catalog.ProfileRecipeRecord]
+	config           Decoded[UserConfigRecord]
+	providers        []Decoded[catalog.ProviderDescriptorRecord]
+	recipes          []Decoded[catalog.ProfileRecipeRecord]
+	hostIntegrations []host.IntegrationRecord
 }
 
 func inspectUser(root string, registry *schema.Registry) (userInspection, error) {
 	if root == "" {
 		empty := emptyUserConfig()
 		digest, encoded, err := canonicaljson.Digest(empty)
-		return userInspection{config: Decoded[UserConfigRecord]{Record: empty, CanonicalJSON: encoded, Digest: digest}, providers: []Decoded[catalog.ProviderDescriptorRecord]{}, recipes: []Decoded[catalog.ProfileRecipeRecord]{}}, err
+		return emptyUserInspection(empty, encoded, digest), err
 	}
 	physical, err := physicalRoot(root)
 	if err != nil {
@@ -210,7 +223,7 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 	if _, err := os.Stat(filepath.Join(physical, "config.toml")); errors.Is(err, os.ErrNotExist) {
 		empty := emptyUserConfig()
 		digest, encoded, digestErr := canonicaljson.Digest(empty)
-		return userInspection{config: Decoded[UserConfigRecord]{Record: empty, CanonicalJSON: encoded, Digest: digest}, providers: []Decoded[catalog.ProviderDescriptorRecord]{}, recipes: []Decoded[catalog.ProfileRecipeRecord]{}}, digestErr
+		return emptyUserInspection(empty, encoded, digest), digestErr
 	} else if err != nil {
 		return userInspection{}, fmt.Errorf("CONFIG_FILE_READ_FAILED: config.toml: %w", err)
 	}
@@ -222,7 +235,7 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 	if err != nil {
 		return userInspection{}, err
 	}
-	result := userInspection{config: decoded, providers: []Decoded[catalog.ProviderDescriptorRecord]{}, recipes: []Decoded[catalog.ProfileRecipeRecord]{}}
+	result := userInspection{config: decoded, providers: []Decoded[catalog.ProviderDescriptorRecord]{}, recipes: []Decoded[catalog.ProfileRecipeRecord]{}, hostIntegrations: []host.IntegrationRecord{}}
 	for _, reference := range decoded.Record.ProviderDescriptors {
 		content, _, readErr := readContained(physical, reference.Path, maximumTOMLBytes)
 		if readErr != nil {
@@ -251,7 +264,29 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 		}
 		result.recipes = append(result.recipes, recipe)
 	}
+	for _, reference := range decoded.Record.HostIntegrations {
+		content, _, readErr := readContained(physical, reference.Path, maximumTOMLBytes)
+		if readErr != nil {
+			return userInspection{}, readErr
+		}
+		integration, decodeErr := host.DecodeIntegrationTOML(content)
+		if decodeErr != nil {
+			return userInspection{}, fmt.Errorf("USER_HOST_INTEGRATION_INVALID: %s: %w", reference.ID, decodeErr)
+		}
+		if integration.ID != reference.ID {
+			return userInspection{}, fmt.Errorf("CONTENT_REFERENCE_ID_MISMATCH: %s != %s", reference.ID, integration.ID)
+		}
+		result.hostIntegrations = append(result.hostIntegrations, integration)
+	}
 	return result, nil
+}
+
+func emptyUserInspection(record UserConfigRecord, encoded []byte, digest string) userInspection {
+	return userInspection{
+		config:    Decoded[UserConfigRecord]{Record: record, CanonicalJSON: encoded, Digest: digest},
+		providers: []Decoded[catalog.ProviderDescriptorRecord]{}, recipes: []Decoded[catalog.ProfileRecipeRecord]{},
+		hostIntegrations: []host.IntegrationRecord{},
+	}
 }
 
 func mergeProviders(destination *[]catalog.ProviderDescriptorRecord, sources []Decoded[catalog.ProviderDescriptorRecord], references []ContentReference) error {
@@ -299,6 +334,30 @@ func mergeRecipes(destination *[]catalog.ProfileRecipeRecord, sources []Decoded[
 		index[id] = len(*destination)
 		*destination = append(*destination, source.Record)
 	}
+	return nil
+}
+
+func mergeHostIntegrations(destination *[]host.IntegrationRecord, sources []host.IntegrationRecord, references []ContentReference) error {
+	replacements := referenceIndex(references)
+	index := make(map[string]int, len(*destination))
+	for position, record := range *destination {
+		index[record.ID] = position
+	}
+	for _, source := range sources {
+		if strings.HasPrefix(source.ID, "oaw/") {
+			return fmt.Errorf("RESERVED_HOST_INTEGRATION_NAMESPACE: %s", source.ID)
+		}
+		if existing, found := index[source.ID]; found {
+			if !replacements[source.ID].Replace {
+				return fmt.Errorf("DUPLICATE_HOST_INTEGRATION_REPLACEMENT_REQUIRED: %s", source.ID)
+			}
+			(*destination)[existing] = host.CloneIntegration(source)
+			continue
+		}
+		index[source.ID] = len(*destination)
+		*destination = append(*destination, host.CloneIntegration(source))
+	}
+	sort.Slice(*destination, func(left, right int) bool { return (*destination)[left].ID < (*destination)[right].ID })
 	return nil
 }
 
@@ -433,6 +492,18 @@ func (snapshot Snapshot) BoundedCapabilityDefaults() []BoundedCapabilityDefault 
 	return append([]BoundedCapabilityDefault{}, snapshot.boundedDefaults...)
 }
 
+func (snapshot Snapshot) HostIntegration(id string) (host.IntegrationRecord, bool) {
+	index := sort.Search(len(snapshot.hostIntegrations), func(position int) bool { return snapshot.hostIntegrations[position].ID >= id })
+	if index == len(snapshot.hostIntegrations) || snapshot.hostIntegrations[index].ID != id {
+		return host.IntegrationRecord{}, false
+	}
+	return host.CloneIntegration(snapshot.hostIntegrations[index]), true
+}
+
+func (snapshot Snapshot) HostIntegrations() []host.IntegrationRecord {
+	return cloneHostIntegrations(snapshot.hostIntegrations)
+}
+
 func (snapshot *Snapshot) setDigest() error {
 	record := snapshot.Record()
 	digest, _, err := canonicaljson.Digest(snapshotRecordContent(record))
@@ -457,11 +528,13 @@ func snapshotRecordContent(record SnapshotRecord) any {
 		RequiredProviders         []string                   `json:"required_providers"`
 		RecommendedProviders      []string                   `json:"recommended_providers"`
 		UntrustedProviderIDs      []string                   `json:"untrusted_provider_ids"`
+		HostIntegrations          []host.IntegrationRecord   `json:"host_integrations"`
 	}{
 		record.SchemaVersion, record.CatalogDigest, record.UserConfigDigest,
 		record.ProjectRoot, record.ProjectConfigDigest, record.ProjectStatus,
 		record.ProjectReason, record.Settings, record.BoundedCapabilityDefaults,
 		record.RequiredProviders, record.RecommendedProviders, record.UntrustedProviderIDs,
+		record.HostIntegrations,
 	}
 }
 
@@ -469,6 +542,14 @@ func cloneProviderSettingsList(values []ProviderSettings) []ProviderSettings {
 	result := make([]ProviderSettings, len(values))
 	for index, value := range values {
 		result[index] = cloneProviderSettings(value)
+	}
+	return result
+}
+
+func cloneHostIntegrations(values []host.IntegrationRecord) []host.IntegrationRecord {
+	result := make([]host.IntegrationRecord, len(values))
+	for index, value := range values {
+		result[index] = host.CloneIntegration(value)
 	}
 	return result
 }
@@ -505,6 +586,7 @@ func emptyUserConfig() UserConfigRecord {
 		DeniedProviders:           []string{},
 		ProviderDescriptors:       []ContentReference{},
 		ProfileRecipes:            []ContentReference{},
+		HostIntegrations:          []ContentReference{},
 		ProviderPins:              []ProviderPin{},
 		BindingPreferences:        []BindingPreference{},
 		BoundedCapabilityDefaults: []BoundedCapabilityDefault{},

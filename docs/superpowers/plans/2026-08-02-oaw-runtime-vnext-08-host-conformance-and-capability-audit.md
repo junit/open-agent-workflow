@@ -302,7 +302,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 - Create: `internal/config/snapshot_test.go`
 - Create: `internal/integration/host_configuration_test.go`
 
-- [ ] **Step 1: Write failing configuration trust tests.**
+- [x] **Step 1: Write failing configuration trust tests.**
 
   Add built-in-record tests for every supported instruction target (`claude`,
   `codex`, `gemini`, `opencode`, `cursor`, `windsurf`, `cline`, `roo`, and
@@ -316,13 +316,13 @@ the new generation, just as it may adopt a new Configuration/Registry.
   unsafe paths, symlinks escaping the user root, and stale Manifest/Report
   digests.
 
-- [ ] **Step 2: Run tests and verify RED.**
+- [x] **Step 2: Run tests and verify RED.**
 
   ```bash
   rtk go test ./internal/host ./internal/config ./internal/integration -run 'HostIntegration|HostConfiguration|Project.*Host'
   ```
 
-- [ ] **Step 3: Load built-in and user-trusted records.**
+- [x] **Step 3: Load built-in and user-trusted records.**
 
   Add `HostIntegrations []ContentReference` only to `UserConfigRecord`; extend
   the user schema and normalization with a unique stable ID. Load a closed
@@ -332,7 +332,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   configuration for Host trust. Keep Host Integration source paths and raw audit
   documents out of Snapshot.
 
-- [ ] **Step 4: Extend immutable Snapshot records and digests.**
+- [x] **Step 4: Extend immutable Snapshot records and digests.**
 
   Store sorted `[]host.IntegrationRecord`, add `HostIntegration(id)` and
   `HostIntegrations()` defensive accessors, include the complete records in
@@ -340,7 +340,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   Equivalent user TOML and equivalent Integration ordering must yield identical
   Snapshot digests.
 
-- [ ] **Step 5: Run focused, integration, and compatibility tests.**
+- [x] **Step 5: Run focused, integration, and compatibility tests.**
 
   ```bash
   rtk gofmt -w internal/assets internal/schema internal/host internal/config internal/integration
@@ -351,7 +351,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   Expected: all pre-Ticket-08 tests remain green; no production Runtime Host is
   selected by Configuration loading.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   rtk git add internal/assets internal/schema internal/host internal/config internal/integration

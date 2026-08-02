@@ -8,11 +8,12 @@ import (
 
 func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 	want := map[string]string{
-		"schemas/v1/provider-descriptor.schema.json": "https://open-agent-workflow.dev/schemas/v1/provider-descriptor.schema.json",
-		"schemas/v1/profile-recipe.schema.json":      "https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json",
-		"schemas/v1/profile-alias-set.schema.json":   "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json",
-		"schemas/v1/host-manifest.schema.json":       "https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json",
-		"schemas/v1/host-integration.schema.json":    "https://open-agent-workflow.dev/schemas/v1/host-integration.schema.json",
+		"schemas/v1/provider-descriptor.schema.json":  "https://open-agent-workflow.dev/schemas/v1/provider-descriptor.schema.json",
+		"schemas/v1/profile-recipe.schema.json":       "https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json",
+		"schemas/v1/profile-alias-set.schema.json":    "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json",
+		"schemas/v1/host-manifest.schema.json":        "https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json",
+		"schemas/v1/host-integration.schema.json":     "https://open-agent-workflow.dev/schemas/v1/host-integration.schema.json",
+		"schemas/v1/host-integration-set.schema.json": "https://open-agent-workflow.dev/schemas/v1/host-integration-set.schema.json",
 	}
 	for path, id := range want {
 		data, err := fs.ReadFile(FS(), path)

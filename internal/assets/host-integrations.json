@@ -1,0 +1,194 @@
+{
+  "schema_version": "oaw.host-integration-set/v1",
+  "integrations": [
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/claude-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "claude",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "95943a5ec3b14dc4f2981309d712a31eb078431cc531e115d97b95136413d430",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "b67d467f895110a9a278758c1e19406207f90ef49cfe76e14045abe196419089"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/cline-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "cline",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "9450cc119a78cc0269025cc0984d3da7bc6456178663420aa5c7b2a0eb60a882",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "3c0d82c6a9ad7a8ee21a050b76372838358c15c3096ae6bcc70033834d02c1ee"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/codex-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "codex",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "021b6eb03f262e9dea099d10fb5f831040b8f6879409f7153535fed9d424482c",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "c55556db5ea7b01438ef56461cdd09c7b7091c9ee6464f367ee1f364a91f684e"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/copilot-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "copilot",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "8a26eb86caf3e49e3f87b53f6e300bad69edd2684fd91751493a28f5ee05940e",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "bf2355788e19aa061679693699bf9bd30985cb03ac3c0d10e8d5c0ff2851b172"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/cursor-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "cursor",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "505ec24f89bbb5e219f79c8eeb048282518903b11d71228ac2799ab63ec9bb0e",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "8e223c4e68bdb05a339b9538c842bdb1690a424347a26a825732f7a3e617fcbc"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/gemini-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "gemini",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "1aab6af283d1ff761f8d00d844cb0296a544f6002f1e20fe3603ce925cd2b00a",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "a927b72855192bcda57987a8964b7233ca36059b9c225e8d0c2e3b0d0630ac9e"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/opencode-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "opencode",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "18f2a32b48a9fb0d622a73b26540b36b36133b7e974d746c02c58e07aef4b7bb",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "d14e2a107cca5b745219e5a09396488bdb59ab01fa99c14ff0bbe673b44173a7"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/roo-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "roo",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "a04ef665af0070908c8c52fed8d768a06ab5b61035337ea17cbaf1bffdb2374d",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "e9b96c741f4375cccab6c5e80e3fd7c2777f57a7cfa50bee9e538269653e2c81"
+    },
+    {
+      "schema_version": "oaw.host-integration/v1",
+      "integration_version": "1.0.0",
+      "id": "oaw/windsurf-instruction",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v1",
+        "manifest_version": "1.0.0",
+        "host_id": "windsurf",
+        "integration_level": "instruction-only",
+        "protocols": [],
+        "binding_kinds": [],
+        "features": []
+      },
+      "manifest_digest": "8403cf01f86342743c27d1d3fd010a9a9f0d81c2495159437cb4a8aa9967f306",
+      "audit": {
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+      },
+      "digest": "e5fafc16673b658b63882fafb8a90041f3efd0cb0a8df0f1571149cb22b01495"
+    }
+  ]
+}

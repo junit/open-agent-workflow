@@ -61,7 +61,7 @@ version="2.0.0"
 
 func TestDecodeProjectRejectsAuthorityFields(t *testing.T) {
 	registry := testRegistry(t)
-	for _, field := range []string{"enabled_providers = [\"acme/suite\"]", "authority = \"write\"", "binding = \"agent\""} {
+	for _, field := range []string{"enabled_providers = [\"acme/suite\"]", "authority = \"write\"", "binding = \"agent\"", "host_integrations = []", "runtime_host = \"codex\""} {
 		raw := []byte("schema_version = \"oaw.project-config/v1\"\n" + field + "\n")
 		if _, err := DecodeProject(raw, registry); err == nil || !strings.Contains(err.Error(), "CONFIG_UNKNOWN_FIELD") {
 			t.Fatalf("DecodeProject(%q) error = %v", field, err)

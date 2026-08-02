@@ -43,6 +43,7 @@ type UserConfigRecord struct {
 	DeniedProviders           []string                   `json:"denied_providers" toml:"denied_providers"`
 	ProviderDescriptors       []ContentReference         `json:"provider_descriptors" toml:"provider_descriptors"`
 	ProfileRecipes            []ContentReference         `json:"profile_recipes" toml:"profile_recipes"`
+	HostIntegrations          []ContentReference         `json:"host_integrations" toml:"host_integrations"`
 	ProviderPins              []ProviderPin              `json:"provider_pins" toml:"provider_pins"`
 	BindingPreferences        []BindingPreference        `json:"binding_preferences" toml:"binding_preferences"`
 	BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults" toml:"bounded_capability_defaults"`

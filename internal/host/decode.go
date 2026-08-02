@@ -30,6 +30,9 @@ func DecodeIntegrationJSON(raw []byte) (IntegrationRecord, error) {
 		}
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_DECODE_INVALID", "invalid trailing Integration JSON", err)
 	}
+	if !authoredIntegrationDigestsPresent(record) {
+		return IntegrationRecord{}, hostError("HOST_INTEGRATION_DECODE_INVALID", "Integration record omits a required digest", nil)
+	}
 	validated, err := NewIntegration(record)
 	if err != nil {
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_DECODE_INVALID", "invalid Integration record", err)
@@ -49,11 +52,21 @@ func DecodeIntegrationTOML(raw []byte) (IntegrationRecord, error) {
 	if unknown := metadata.Undecoded(); len(unknown) != 0 {
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_DECODE_INVALID", fmt.Sprintf("unknown Integration field %s", unknown[0]), nil)
 	}
+	if !authoredIntegrationDigestsPresent(record) {
+		return IntegrationRecord{}, hostError("HOST_INTEGRATION_DECODE_INVALID", "Integration record omits a required digest", nil)
+	}
 	validated, err := NewIntegration(record)
 	if err != nil {
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_DECODE_INVALID", "invalid Integration record", err)
 	}
 	return validated, nil
+}
+
+func authoredIntegrationDigestsPresent(record IntegrationRecord) bool {
+	if !digestPattern.MatchString(record.Digest) || !digestPattern.MatchString(record.ManifestDigest) || !digestPattern.MatchString(record.Audit.Digest) {
+		return false
+	}
+	return record.Conformance == nil || digestPattern.MatchString(record.Conformance.Digest)
 }
 
 func validateEncodedIntegration(raw []byte) error {

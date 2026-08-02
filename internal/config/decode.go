@@ -132,6 +132,9 @@ func normalizeUser(record *UserConfigRecord) error {
 	if err := normalizeReferences(record.ProfileRecipes, "DUPLICATE_RECIPE_REFERENCE"); err != nil {
 		return err
 	}
+	if err := normalizeReferences(record.HostIntegrations, "DUPLICATE_HOST_INTEGRATION_REFERENCE"); err != nil {
+		return err
+	}
 	for _, pin := range record.ProviderPins {
 		if _, err := catalog.ParseQualifiedID(pin.ID); err != nil {
 			return fmt.Errorf("INVALID_PROVIDER_PIN: %w", err)
@@ -308,6 +311,9 @@ func normalizeUserCollections(record *UserConfigRecord) {
 	}
 	if record.ProfileRecipes == nil {
 		record.ProfileRecipes = []ContentReference{}
+	}
+	if record.HostIntegrations == nil {
+		record.HostIntegrations = []ContentReference{}
 	}
 	if record.ProviderPins == nil {
 		record.ProviderPins = []ProviderPin{}

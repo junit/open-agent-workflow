@@ -231,6 +231,38 @@ func TestDecodeIntegrationJSONAndTOMLAreStrict(t *testing.T) {
 	}
 }
 
+func TestDecodeIntegrationRequiresEveryAuthoredDigest(t *testing.T) {
+	base := runnerIntegration(t)
+	for _, test := range []struct {
+		name   string
+		mutate func(*host.IntegrationRecord)
+	}{
+		{"Integration", func(value *host.IntegrationRecord) { value.Digest = "" }},
+		{"Manifest", func(value *host.IntegrationRecord) { value.ManifestDigest = "" }},
+		{"audit", func(value *host.IntegrationRecord) { value.Audit.Digest = "" }},
+		{"Conformance", func(value *host.IntegrationRecord) { value.Conformance.Digest = "" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := host.CloneIntegration(base)
+			test.mutate(&value)
+			jsonRaw, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := host.DecodeIntegrationJSON(jsonRaw); host.ErrorCode(err) != "HOST_INTEGRATION_DECODE_INVALID" {
+				t.Fatalf("DecodeIntegrationJSON() error = %v", err)
+			}
+			var tomlRaw bytes.Buffer
+			if err := toml.NewEncoder(&tomlRaw).Encode(value); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := host.DecodeIntegrationTOML(tomlRaw.Bytes()); host.ErrorCode(err) != "HOST_INTEGRATION_DECODE_INVALID" {
+				t.Fatalf("DecodeIntegrationTOML() error = %v", err)
+			}
+		})
+	}
+}
+
 func runnerIntegration(t *testing.T) host.IntegrationRecord {
 	t.Helper()
 	manifest := runnerManifest(t)
