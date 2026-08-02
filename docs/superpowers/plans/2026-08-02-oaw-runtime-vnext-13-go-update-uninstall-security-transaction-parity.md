@@ -279,7 +279,7 @@ rtk git commit -m "feat: prepare Go update operations"
 - Modify: `internal/management/managed.go`
 - Modify: `internal/management/filesystem.go`
 
-- [ ] **Step 1: Write failing zero-write uninstall preparation tests.**
+- [x] **Step 1: Write failing zero-write uninstall preparation tests.**
 
 Cover missing-state idempotency, selected absent targets, partial uninstall,
 final uninstall, managed blocks in created/existing files with and without final
@@ -288,7 +288,7 @@ backup references, non-empty user directories, namespace directory cleanup,
 hostile path names, malformed state and all clean drift refusal cases. Snapshot
 every root and require no preparation changes.
 
-- [ ] **Step 2: Run uninstall preparation tests and record RED.**
+- [x] **Step 2: Run uninstall preparation tests and record RED.**
 
 ```bash
 rtk go test ./internal/management -run 'PrepareUninstall|UninstallPlan|PolicyRetention|DirectoryRemoval' -count=1
@@ -296,7 +296,7 @@ rtk go test ./internal/management -run 'PrepareUninstall|UninstallPlan|PolicyRet
 
 Expected: missing `UninstallRequest` and `PrepareUninstall` symbols.
 
-- [ ] **Step 3: Implement target filtering and managed-content removal.**
+- [x] **Step 3: Implement target filtering and managed-content removal.**
 
 For installed selected IDs, remove their records and only act on a physical
 destination after its last record is removed. For managed blocks, remove exactly
@@ -305,7 +305,7 @@ a created file only when its rendered remainder is empty. Remove owned files onl
 when state origin is `created-file`. Missing selected IDs emit
 `oaw: unchanged: <id>` before filesystem action output.
 
-- [ ] **Step 4: Implement state/Policy retention and directory plans.**
+- [x] **Step 4: Implement state/Policy retention and directory plans.**
 
 When targets remain, replace state with retained records/directories/version,
 Policy checksum, and prior backup reference. When none remain, remove current
@@ -315,7 +315,7 @@ removals deepest-first then bytewise, classify target versus OAW namespace
 directories, and predict `would-remove-directory` only when planned removals
 make the directory empty; otherwise emit `unchanged-directory`.
 
-- [ ] **Step 5: Run focused GREEN, existing Bash lifecycle tests, and commit.**
+- [x] **Step 5: Run focused GREEN, existing Bash lifecycle tests, and commit.**
 
 ```bash
 rtk gofmt -w internal/management

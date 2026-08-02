@@ -1,6 +1,10 @@
 package management
 
-import "bytes"
+import (
+	"bytes"
+	"os"
+	"path/filepath"
+)
 
 type mutationOperation uint8
 
@@ -17,20 +21,34 @@ type mutationRequest struct {
 }
 
 type mutationPlan struct {
-	operation     mutationOperation
-	source        Source
-	environment   Environment
-	request       mutationRequest
-	resolved      resolvedRequest
-	coordinates   coordinates
-	targetActions []mutationAction
-	policyAction  mutationAction
-	stateActions  []mutationAction
-	predicted     Result
+	operation        mutationOperation
+	source           Source
+	environment      Environment
+	request          mutationRequest
+	resolved         resolvedRequest
+	coordinates      coordinates
+	targetActions    []mutationAction
+	policyAction     mutationAction
+	stateActions     []mutationAction
+	directoryActions []directoryAction
+	leadingLines     []string
+	predicted        Result
 }
 
 type PreparedUpdate struct {
 	plan mutationPlan
+}
+
+type PreparedUninstall struct {
+	plan mutationPlan
+}
+
+type directoryAction struct {
+	destination    string
+	allowedRoot    string
+	relativeSuffix string
+	before         installPathSnapshot
+	namespace      bool
 }
 
 func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest) error {
@@ -112,6 +130,9 @@ func newStateMutationAction(label string, data []byte, destination, root string)
 }
 
 func predictMutationResult(plan mutationPlan) Result {
+	if plan.operation == mutationUninstall {
+		return predictUninstallResult(plan)
+	}
 	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
 	actions = append(actions, plan.targetActions...)
 	actions = append(actions, plan.policyAction)
@@ -140,12 +161,88 @@ func predictMutationResult(plan mutationPlan) Result {
 	return Result{Lines: lines}
 }
 
+func predictUninstallResult(plan mutationPlan) Result {
+	lines := append([]string(nil), plan.leadingLines...)
+	for _, action := range plan.targetActions {
+		lines = append(lines, predictMutationAction(action)...)
+	}
+	lines = append(lines, predictDirectoryRemovalClass(plan, false)...)
+	lines = append(lines, predictMutationAction(plan.policyAction)...)
+	for _, action := range plan.stateActions {
+		lines = append(lines, predictMutationAction(action)...)
+	}
+	lines = append(lines, predictDirectoryRemovalClass(plan, true)...)
+	return Result{Lines: lines}
+}
+
+func predictMutationAction(action mutationAction) []string {
+	switch action.effect {
+	case mutationRetain, 0:
+		return nil
+	case mutationRemove:
+		if action.before.kind == installPathMissing {
+			return nil
+		}
+		return []string{"oaw: would-remove: " + action.destination}
+	case mutationReplace:
+		if action.before.kind == installPathRegular && bytes.Equal(action.before.data, action.data) {
+			return []string{"oaw: unchanged: " + action.label}
+		}
+		verb := "would-update"
+		if action.before.kind == installPathMissing {
+			verb = "would-create"
+		}
+		return []string{"oaw: " + verb + ": " + action.destination}
+	default:
+		return nil
+	}
+}
+
+func predictDirectoryRemovalClass(plan mutationPlan, namespace bool) []string {
+	planned := make(map[string]struct{})
+	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
+	actions = append(actions, plan.targetActions...)
+	actions = append(actions, plan.policyAction)
+	actions = append(actions, plan.stateActions...)
+	for _, action := range actions {
+		if action.effect == mutationRemove {
+			planned[action.destination] = struct{}{}
+		}
+	}
+	lines := make([]string, 0)
+	for _, action := range plan.directoryActions {
+		if action.namespace != namespace || action.before.kind == installPathMissing {
+			continue
+		}
+		entries, err := os.ReadDir(action.destination)
+		if err != nil {
+			continue
+		}
+		empty := true
+		for _, entry := range entries {
+			if _, removed := planned[filepath.Join(action.destination, entry.Name())]; !removed {
+				empty = false
+				break
+			}
+		}
+		if empty {
+			lines = append(lines, "oaw: would-remove-directory: "+action.destination)
+			planned[action.destination] = struct{}{}
+		} else {
+			lines = append(lines, "oaw: unchanged-directory: "+action.destination)
+		}
+	}
+	return lines
+}
+
 func cloneMutationPlan(plan mutationPlan) mutationPlan {
 	plan.source = Source{version: plan.source.version, policy: bytes.Clone(plan.source.policy)}
 	plan.resolved = cloneResolvedRequest(plan.resolved)
 	plan.targetActions = cloneMutationActions(plan.targetActions)
 	plan.policyAction = cloneMutationAction(plan.policyAction)
 	plan.stateActions = cloneMutationActions(plan.stateActions)
+	plan.directoryActions = cloneDirectoryActions(plan.directoryActions)
+	plan.leadingLines = append([]string(nil), plan.leadingLines...)
 	plan.predicted = cloneManagementResult(plan.predicted)
 	return plan
 }

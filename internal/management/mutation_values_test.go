@@ -3,6 +3,7 @@ package management
 import (
 	"bytes"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -136,6 +137,13 @@ func TestMutationActionDeduplicationAndConflict(t *testing.T) {
 	if _, err := addMutationAction(actions, remove); err == nil || !strings.Contains(err.Error(), "conflicting mutation actions") {
 		t.Fatalf("conflict error = %v", err)
 	}
+	differentData, err := newMutationAction(mutationReplace, "different", []byte("other"), destination, 0o644, root, "target", installPathSnapshot{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := addMutationAction(actions, differentData); err == nil || !strings.Contains(err.Error(), "conflicting mutation actions") {
+		t.Fatalf("data conflict error = %v", err)
+	}
 
 	copyOfActions := cloneMutationActions(actions)
 	copyOfActions[0].data[0] = 'X'
@@ -213,5 +221,77 @@ func TestNewStateMutationActionRejectsDestinationOutsideRoot(t *testing.T) {
 	outside := filepath.Join(filepath.Dir(root), "outside.state")
 	if _, err := newStateMutationAction("state", []byte("state"), outside, root); err == nil || !strings.Contains(err.Error(), "escapes its allowed root") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestDirectoryActionContracts(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, "nested")
+	if err := os.Mkdir(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	action, err := newDirectoryAction(directory, root, "nested", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if action.destination != directory || action.before.kind != installPathDirectory || action.namespace {
+		t.Fatalf("action = %#v", action)
+	}
+	missing, err := newDirectoryAction(filepath.Join(root, "missing"), root, "missing", true)
+	if err != nil || missing.before.kind != installPathMissing || !missing.namespace {
+		t.Fatalf("missing action = %#v, %v", missing, err)
+	}
+
+	tests := []struct {
+		name        string
+		destination string
+		root        string
+		suffix      string
+		want        string
+	}{
+		{name: "empty", root: root, suffix: "nested", want: "cannot be serialized"},
+		{name: "unsafe suffix", destination: directory, root: root, suffix: "../nested", want: "unsafe component"},
+		{name: "mismatch", destination: directory + "-other", root: root, suffix: "nested", want: "does not match registry"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := newDirectoryAction(tt.destination, tt.root, tt.suffix, false)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("error = %v, want %q", err, tt.want)
+			}
+		})
+	}
+	regular := filepath.Join(root, "regular")
+	writePrepareFile(t, regular, []byte("not a directory"), 0o644)
+	if _, err := newDirectoryAction(regular, root, "regular", false); err == nil || !strings.Contains(err.Error(), "changed before removal") {
+		t.Fatalf("regular error = %v", err)
+	}
+
+	left, err := newDirectoryAction(filepath.Join(root, "aa"), root, "aa", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := newDirectoryAction(filepath.Join(root, "bb"), root, "bb", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actions := []directoryAction{right, left, action}
+	sortDirectoryActions(actions)
+	if actions[0].destination != directory || actions[1].destination != left.destination || actions[2].destination != right.destination {
+		t.Fatalf("sorted = %#v", actions)
+	}
+	clone := cloneDirectoryActions(actions)
+	clone[0].before.data = []byte("changed")
+	if len(actions[0].before.data) != 0 {
+		t.Fatal("directory clone aliases source")
+	}
+}
+
+func TestPredictMutationActionIgnoresZeroAndUnknownEffects(t *testing.T) {
+	if got := predictMutationAction(mutationAction{}); got != nil {
+		t.Fatalf("zero prediction = %v", got)
+	}
+	if got := predictMutationAction(mutationAction{effect: mutationEffect(99)}); got != nil {
+		t.Fatalf("unknown prediction = %v", got)
 	}
 }

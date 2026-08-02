@@ -51,6 +51,13 @@ type UpdateRequest struct {
 	Force   bool
 }
 
+type UninstallRequest struct {
+	Project string
+	Targets string
+	DryRun  bool
+	Force   bool
+}
+
 type Result struct {
 	Lines    []string
 	Trailing string

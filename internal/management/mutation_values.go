@@ -3,6 +3,7 @@ package management
 import (
 	"bytes"
 	"io/fs"
+	"sort"
 )
 
 type mutationEffect uint8
@@ -129,4 +130,47 @@ func installActionFromMutation(action mutationAction) (installAction, error) {
 		action.label, action.data, action.destination, action.mode,
 		action.allowedRoot, action.relativeSuffix, action.before,
 	)
+}
+
+func newDirectoryAction(destination, root, suffix string, namespace bool) (directoryAction, error) {
+	if destination == "" || !safeStateField(destination) || root == "" || !safeStateField(root) || suffix == "" || !safeStateField(suffix) {
+		return directoryAction{}, compatibilityError("directory action cannot be serialized")
+	}
+	rebuilt, err := validatedDestinationPath(root, suffix)
+	if err != nil {
+		return directoryAction{}, err
+	}
+	if rebuilt != destination {
+		return directoryAction{}, compatibilityError("directory action destination does not match registry: " + destination)
+	}
+	before, err := inspectInstallPath(destination)
+	if err != nil {
+		return directoryAction{}, err
+	}
+	if before.kind != installPathMissing && before.kind != installPathDirectory {
+		return directoryAction{}, compatibilityError("owned directory changed before removal: " + destination)
+	}
+	return directoryAction{
+		destination: destination, allowedRoot: root, relativeSuffix: suffix,
+		before: cloneInstallPathSnapshot(before), namespace: namespace,
+	}, nil
+}
+
+func cloneDirectoryActions(actions []directoryAction) []directoryAction {
+	result := make([]directoryAction, len(actions))
+	for index, action := range actions {
+		action.before = cloneInstallPathSnapshot(action.before)
+		result[index] = action
+	}
+	return result
+}
+
+func sortDirectoryActions(actions []directoryAction) {
+	sort.Slice(actions, func(left, right int) bool {
+		leftPath, rightPath := actions[left].destination, actions[right].destination
+		if len(leftPath) != len(rightPath) {
+			return len(leftPath) > len(rightPath)
+		}
+		return leftPath < rightPath
+	})
 }

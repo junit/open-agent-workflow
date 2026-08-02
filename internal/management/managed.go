@@ -2,9 +2,32 @@ package management
 
 import (
 	"bufio"
+	"bytes"
 	"io"
 	"os"
 )
+
+func renderManagedFileWithoutBlock(current []byte) ([]byte, error) {
+	view := installPathSnapshot{kind: installPathRegular, data: bytes.Clone(current)}
+	status, _ := managedInstallStatus(view)
+	if status != "present" {
+		return nil, compatibilityError("managed markers are invalid")
+	}
+	lines := managedLineSpans(current)
+	beginIndex, endIndex := -1, -1
+	for index, line := range lines {
+		switch string(current[line.start:line.contentEnd]) {
+		case beginMarker:
+			beginIndex = index
+		case endMarker:
+			endIndex = index
+		}
+	}
+	result := make([]byte, 0, len(current))
+	result = append(result, current[:lines[beginIndex].start]...)
+	result = append(result, current[lines[endIndex].end:]...)
+	return result, nil
+}
 
 const (
 	beginMarker = "<!-- BEGIN OPEN AGENT WORKFLOW -->"
