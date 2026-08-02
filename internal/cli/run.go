@@ -20,6 +20,9 @@ func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	if len(args) != 0 && args[0] == "runtime" {
 		return runRuntimeExchange(args[1:], stdin, stdout, stderr)
 	}
+	if len(args) != 0 && args[0] == "run" {
+		return runCodex(args[1:], stdin, stdout, stderr)
+	}
 	if len(args) != 0 && args[0] == "check" {
 		return runCheck(args[1:], stdout, stderr)
 	}

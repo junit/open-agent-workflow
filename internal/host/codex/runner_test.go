@@ -88,3 +88,29 @@ func TestRunnerUsesFixtureExecutableAndSeparatesDiagnostics(t *testing.T) {
 		t.Fatalf("diagnostics = %q", diagnostics.String())
 	}
 }
+
+func TestRunnerCancelStopsActiveInvocation(t *testing.T) {
+	started := make(chan struct{})
+	runner := &Runner{
+		command: "codex", maxOutputBytes: 1024, maxEvents: 4,
+		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc),
+		run: func(ctx context.Context, _ string, _ []string, _ int64) ([]byte, []byte, error) {
+			close(started)
+			<-ctx.Done()
+			return nil, nil, ctx.Err()
+		},
+	}
+	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	if err := runner.Prepare(request); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { _, err := runner.Invoke(request); done <- err }()
+	<-started
+	if err := runner.Cancel(request.InvocationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err == nil {
+		t.Fatal("cancelled invocation unexpectedly succeeded")
+	}
+}

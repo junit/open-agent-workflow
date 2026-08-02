@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
@@ -47,6 +48,8 @@ func normalizeJSONL(request host.DispatchRequest, raw []byte, maxEvents int) (ho
 		var trailing any
 		if err := decoder.Decode(&trailing); err == nil {
 			return host.DispatchResult{}, errors.New("CODEX_OUTPUT_INVALID: event has trailing JSON")
+		} else if !errors.Is(err, io.EOF) {
+			return host.DispatchResult{}, fmt.Errorf("CODEX_OUTPUT_INVALID: event has invalid trailing JSON: %w", err)
 		}
 		event := normalizedEvent{Type: strings.TrimSpace(value.Type), ID: strings.TrimSpace(value.ID), Status: strings.TrimSpace(value.Status)}
 		if value.Item != nil {
