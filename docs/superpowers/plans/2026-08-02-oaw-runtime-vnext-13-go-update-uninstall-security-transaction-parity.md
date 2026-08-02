@@ -408,7 +408,7 @@ rtk git commit -m "feat: add Go forced recovery backups"
 - Modify: `internal/management/update.go`
 - Modify: `internal/management/uninstall.go`
 
-- [ ] **Step 1: Write failing apply-order and fault-matrix tests.**
+- [x] **Step 1: Write failing apply-order and fault-matrix tests.**
 
 Define private typed failpoints before and after backup, each target effect,
 target-directory removal, Policy effect, each state effect, and namespace
@@ -418,7 +418,7 @@ pre-existing non-backup roots equal the snapshot, no temporary files remain,
 and a completed forced backup remains valid. Also test rollback failure reporting
 without exposing file bytes.
 
-- [ ] **Step 2: Run apply/fault tests and record RED.**
+- [x] **Step 2: Run apply/fault tests and record RED.**
 
 ```bash
 rtk go test ./internal/management -run 'ApplyUpdate|ApplyUninstall|MutationFault|Rollback' -count=1
@@ -426,7 +426,7 @@ rtk go test ./internal/management -run 'ApplyUpdate|ApplyUninstall|MutationFault
 
 Expected: apply entrypoints and failpoint executor are undefined.
 
-- [ ] **Step 3: Add root-scoped replace/remove/directory primitives.**
+- [x] **Step 3: Add root-scoped replace/remove/directory primitives.**
 
 Use `os.Root` for every destination. Rebuild and revalidate lexical coordinates,
 opened-root identity, each component, parent identity, final path type, and the
@@ -435,7 +435,7 @@ temporary file, sync, chmod and rename. `remove` rejects symlinks/non-regular
 paths and removes only the exact final name. Empty-directory removal reopens and
 revalidates the exact directory and never follows links.
 
-- [ ] **Step 4: Implement ordered apply and inverse journal.**
+- [x] **Step 4: Implement ordered apply and inverse journal.**
 
 Update order is targets, target directories, Policy, states. Uninstall order is
 targets, non-namespace directories, optional Policy remove, state, namespace
@@ -447,7 +447,7 @@ restore original bytes/modes, remove files created by the operation, and remove
 only operation-created empty directories. Return the original error when
 rollback succeeds; return a stable combined error when rollback fails.
 
-- [ ] **Step 5: Implement public wrappers and dry-run no-write apply.**
+- [x] **Step 5: Implement public wrappers and dry-run no-write apply.**
 
 `ApplyUpdate`/`ApplyUninstall` clone and validate their private plans, revalidate
 all snapshots before any write, and return copied result lines. `Update` and
@@ -455,7 +455,7 @@ all snapshots before any write, and return copied result lines. `Update` and
 returns predicted output without backup or filesystem creation. The test-only
 executor accepts failpoints by direct Go value; no env/CLI failpoint exists.
 
-- [ ] **Step 6: Run GREEN, containment regression, coverage, and commit.**
+- [x] **Step 6: Run GREEN, containment regression, coverage, and commit.**
 
 ```bash
 rtk gofmt -w internal/management

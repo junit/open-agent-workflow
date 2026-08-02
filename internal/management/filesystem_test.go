@@ -337,3 +337,184 @@ func TestScopedFilesystemAndBoundedReadsDetectCoordinateRaces(t *testing.T) {
 		t.Fatal("root below a file was opened")
 	}
 }
+
+func TestScopedMutationReplaceAndRemoveRoundTrip(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "artifact")
+	create, err := newMutationAction(
+		mutationReplace, "artifact", []byte("created\n"), destination, 0o600,
+		root, "artifact", installPathSnapshot{kind: installPathMissing},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scopedAtomicReplaceMutation(create); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(destination); err != nil || string(data) != "created\n" {
+		t.Fatalf("created data = %q, %v", data, err)
+	}
+
+	created, err := inspectInstallPath(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replace, err := newMutationAction(
+		mutationReplace, "artifact", []byte("replaced\n"), destination, 0o644,
+		root, "artifact", created,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scopedAtomicReplaceMutation(replace); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := inspectInstallPath(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remove, err := newMutationAction(mutationRemove, "artifact", nil, destination, 0, root, "artifact", replaced)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := scopedAtomicRemoveMutation(remove); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(destination); !os.IsNotExist(err) {
+		t.Fatalf("removed destination exists: %v", err)
+	}
+	remove.before = installPathSnapshot{kind: installPathMissing}
+	if err := scopedAtomicRemoveMutation(remove); err != nil {
+		t.Fatalf("removing absent destination: %v", err)
+	}
+}
+
+func TestScopedMutationPrimitivesRejectStaleAndUnsafeDestinations(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "artifact")
+	writePrepareFile(t, destination, []byte("original\n"), 0o640)
+	before, err := inspectInstallPath(destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	replace, err := newMutationAction(mutationReplace, "artifact", []byte("replacement\n"), destination, 0o644, root, "artifact", before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remove, err := newMutationAction(mutationRemove, "artifact", nil, destination, 0, root, "artifact", before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(destination, []byte("changed\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	for name, call := range map[string]func() error{
+		"replace": func() error { return scopedAtomicReplaceMutation(replace) },
+		"remove":  func() error { return scopedAtomicRemoveMutation(remove) },
+	} {
+		t.Run(name+" stale", func(t *testing.T) {
+			if err := call(); err == nil || !strings.Contains(err.Error(), "changed after preparation") {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+
+	outside := filepath.Join(root, "outside")
+	writePrepareFile(t, outside, []byte("outside\n"), 0o600)
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	linkBefore, err := inspectInstallPath(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	symlinkRemove := mutationAction{
+		effect: mutationRemove, label: "link", destination: link,
+		allowedRoot: root, relativeSuffix: "link", before: linkBefore,
+	}
+	if err := scopedAtomicRemoveMutation(symlinkRemove); err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("symlink remove error = %v", err)
+	}
+	if data, err := os.ReadFile(outside); err != nil || string(data) != "outside\n" {
+		t.Fatalf("outside data = %q, %v", data, err)
+	}
+
+	directory := filepath.Join(root, "directory")
+	if err := os.Mkdir(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	directoryBefore, err := inspectInstallPath(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	directoryRemove := mutationAction{
+		effect: mutationRemove, label: "directory", destination: directory,
+		allowedRoot: root, relativeSuffix: "directory", before: directoryBefore,
+	}
+	if err := scopedAtomicRemoveMutation(directoryRemove); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("directory remove error = %v", err)
+	}
+}
+
+func TestScopedMutationDirectoryRemovalIsExactAndEmptyOnly(t *testing.T) {
+	root := t.TempDir()
+	missing := directoryAction{
+		destination: filepath.Join(root, "missing"), allowedRoot: root, relativeSuffix: "missing",
+		before: installPathSnapshot{kind: installPathMissing},
+	}
+	if removed, err := scopedRemoveMutationDirectory(missing); err != nil || removed {
+		t.Fatalf("missing directory removed=%t error=%v", removed, err)
+	}
+
+	emptyPath := filepath.Join(root, "empty")
+	if err := os.Mkdir(emptyPath, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	empty, err := newDirectoryAction(emptyPath, root, "empty", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := scopedRemoveMutationDirectory(empty); err != nil || !removed {
+		t.Fatalf("empty directory removed=%t error=%v", removed, err)
+	}
+
+	nonemptyPath := filepath.Join(root, "nonempty")
+	if err := os.Mkdir(nonemptyPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePrepareFile(t, filepath.Join(nonemptyPath, "user-file"), []byte("user\n"), 0o600)
+	nonempty, err := newDirectoryAction(nonemptyPath, root, "nonempty", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := scopedRemoveMutationDirectory(nonempty); err != nil || removed {
+		t.Fatalf("nonempty directory removed=%t error=%v", removed, err)
+	}
+	if data, err := os.ReadFile(filepath.Join(nonemptyPath, "user-file")); err != nil || string(data) != "user\n" {
+		t.Fatalf("user file = %q, %v", data, err)
+	}
+
+	changedPath := filepath.Join(root, "changed")
+	if err := os.Mkdir(changedPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := newDirectoryAction(changedPath, root, "changed", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(changedPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if removed, err := scopedRemoveMutationDirectory(changed); err == nil || removed || !strings.Contains(err.Error(), "changed after preparation") {
+		t.Fatalf("changed directory removed=%t error=%v", removed, err)
+	}
+
+	mismatch := directoryAction{
+		destination: nonemptyPath, allowedRoot: root, relativeSuffix: "other", before: nonempty.before,
+	}
+	if removed, err := scopedRemoveMutationDirectory(mismatch); err == nil || removed || !strings.Contains(err.Error(), "does not match registry") {
+		t.Fatalf("mismatched directory removed=%t error=%v", removed, err)
+	}
+}

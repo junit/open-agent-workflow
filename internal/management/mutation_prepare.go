@@ -133,7 +133,7 @@ func newStateMutationAction(label string, data []byte, destination, root string)
 
 func predictMutationResult(plan mutationPlan) Result {
 	if plan.operation == mutationUninstall {
-		return prependBackupPrediction(plan, predictUninstallResult(plan))
+		return predictUninstallResult(plan)
 	}
 	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
 	actions = append(actions, plan.targetActions...)
@@ -173,6 +173,9 @@ func prependBackupPrediction(plan mutationPlan, result Result) Result {
 
 func predictUninstallResult(plan mutationPlan) Result {
 	lines := append([]string(nil), plan.leadingLines...)
+	if plan.backup.required {
+		lines = append(lines, "oaw: would-backup: "+plan.backup.path)
+	}
 	for _, action := range plan.targetActions {
 		lines = append(lines, predictMutationAction(action)...)
 	}

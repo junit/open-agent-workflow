@@ -9,8 +9,159 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"reflect"
 	"strings"
+	"syscall"
 )
+
+func scopedAtomicReplaceMutation(action mutationAction) error {
+	root, err := openInstallRoot(action.allowedRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	install := installAction{
+		label: action.label, data: action.data, destination: action.destination,
+		mode: action.mode, allowedRoot: action.allowedRoot,
+		relativeSuffix: action.relativeSuffix, before: action.before,
+	}
+	if err := revalidateScopedAction(root, install); err != nil {
+		return err
+	}
+	directoryRoot, err := openScopedActionDirectory(root, install)
+	if err != nil {
+		return err
+	}
+	defer directoryRoot.Close()
+	temporaryName, temporary, err := createScopedTemporary(directoryRoot, ".")
+	if err != nil {
+		return err
+	}
+	keepTemporary := true
+	defer func() {
+		_ = temporary.Close()
+		if keepTemporary {
+			_ = directoryRoot.Remove(temporaryName)
+		}
+	}()
+	if _, err := temporary.Write(action.data); err != nil {
+		return installIOError("cannot write temporary file for " + action.destination)
+	}
+	if err := temporary.Chmod(action.mode); err != nil {
+		return installIOError("cannot set destination mode for " + action.destination)
+	}
+	if err := temporary.Sync(); err != nil {
+		return installIOError("cannot sync temporary file for " + action.destination)
+	}
+	if err := temporary.Close(); err != nil {
+		return installIOError("cannot close temporary file for " + action.destination)
+	}
+	if err := revalidateScopedAction(root, install); err != nil {
+		return err
+	}
+	if err := verifyScopedActionDirectory(directoryRoot, install); err != nil {
+		return err
+	}
+	if err := revalidateMutationActionSnapshot(action); err != nil {
+		return err
+	}
+	destinationName := path.Base(action.relativeSuffix)
+	if info, err := directoryRoot.Lstat(destinationName); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return compatibilityError("destination path contains a symlink: " + action.destination)
+	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return compatibilityError("destination path could not be inspected: " + action.destination)
+	}
+	if err := directoryRoot.Rename(temporaryName, destinationName); err != nil {
+		return installIOError("cannot replace destination: " + action.destination)
+	}
+	keepTemporary = false
+	syncScopedDirectory(directoryRoot, ".")
+	return nil
+}
+
+func scopedAtomicRemoveMutation(action mutationAction) error {
+	root, err := openInstallRoot(action.allowedRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	install := installAction{
+		label: action.label, destination: action.destination, allowedRoot: action.allowedRoot,
+		relativeSuffix: action.relativeSuffix, before: action.before,
+	}
+	if err := revalidateScopedAction(root, install); err != nil {
+		return err
+	}
+	if err := revalidateMutationActionSnapshot(action); err != nil {
+		return err
+	}
+	directoryRoot, err := openScopedActionDirectory(root, install)
+	if err != nil {
+		return err
+	}
+	defer directoryRoot.Close()
+	name := path.Base(action.relativeSuffix)
+	info, err := directoryRoot.Lstat(name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return compatibilityError("destination path could not be inspected: " + action.destination)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return compatibilityError("destination path contains a symlink: " + action.destination)
+	}
+	if !info.Mode().IsRegular() {
+		return compatibilityError("mutation destination is not a regular file: " + action.destination)
+	}
+	if err := revalidateMutationActionSnapshot(action); err != nil {
+		return err
+	}
+	if err := directoryRoot.Remove(name); err != nil {
+		return installIOError("cannot remove destination: " + action.destination)
+	}
+	syncScopedDirectory(directoryRoot, ".")
+	return nil
+}
+
+func scopedRemoveMutationDirectory(action directoryAction) (bool, error) {
+	current, err := inspectInstallPath(action.destination)
+	if err != nil {
+		return false, err
+	}
+	if !reflect.DeepEqual(current, action.before) {
+		return false, compatibilityError("owned directory changed after preparation: " + action.destination)
+	}
+	if current.kind == installPathMissing {
+		return false, nil
+	}
+	root, err := openInstallRoot(action.allowedRoot)
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	rebuilt, err := validatedDestinationPath(action.allowedRoot, action.relativeSuffix)
+	if err != nil {
+		return false, err
+	}
+	if rebuilt != action.destination {
+		return false, compatibilityError("directory action destination does not match registry: " + action.destination)
+	}
+	info, err := root.Lstat(filepath.ToSlash(action.relativeSuffix))
+	if err != nil {
+		return false, compatibilityError("owned directory changed before removal: " + action.destination)
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return false, compatibilityError("owned directory changed before removal: " + action.destination)
+	}
+	if err := root.Remove(filepath.ToSlash(action.relativeSuffix)); err != nil {
+		if errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
+			return false, nil
+		}
+		return false, installIOError("cannot remove owned directory: " + action.destination)
+	}
+	return true, nil
+}
 
 func scopedAtomicReplace(action installAction, planned, created map[string]struct{}) error {
 	root, err := openInstallRoot(action.allowedRoot)
