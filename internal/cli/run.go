@@ -12,6 +12,9 @@ import (
 type catalogLoader func() (catalog.Catalog, error)
 
 func Run(args []string, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 0 && args[0] == "check" {
+		return runCheck(args[1:], stdout, stderr)
+	}
 	return run(args, stdout, stderr, builtin.Load)
 }
 
