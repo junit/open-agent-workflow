@@ -38,6 +38,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-11-go-check-black-box-parity.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-12-go-install-rendering-state-parity.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-13-go-update-uninstall-security-transaction-parity.md
+  - docs/superpowers/plans/2026-08-03-oaw-runtime-vnext-14-cutover-and-release-verification.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 host_selection_evidence: .scratch/oaw-runtime-vnext/evidence/host-selection.md

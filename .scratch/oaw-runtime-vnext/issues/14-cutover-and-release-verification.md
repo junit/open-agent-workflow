@@ -10,7 +10,7 @@ tests.
 
 **Blocked by:** 09 — First Runtime Host and oaw run; 10 — Policy vNext and Runtime Projections; 13 — Go update, Uninstall and Security Transaction Parity
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] install.sh becomes a compatibility wrapper only after command-level parity
   evidence is complete.
