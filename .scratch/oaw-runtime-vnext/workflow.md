@@ -14,7 +14,7 @@ bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
 current_stage: completed
-active_ticket: 08-host-conformance-and-capability-audit
+active_ticket: 11-go-check-black-box-parity
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -29,6 +29,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-06-bounded-admission-and-dispatch.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-07-workflow-runtime-orchestration.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md
+  - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-11-go-check-black-box-parity.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
@@ -94,8 +95,12 @@ reviewing delegated Task 1 execution, the user directed subsequent work to
 continue inline without additional subagents. Tickets 01 through 07 are
 complete on the implementation branches. Ticket 08 passed final inline review
 and the full verification matrix on 2026-08-02 at implementation fixed point
-`60ea7ee`; the lifecycle is complete for this ticket. Built-in Host records
-remain instruction-only, and no first production Runtime Host was selected.
+`60ea7ee`. Ticket 11 passed final inline review and the full Bash/Go parity,
+race, coverage, fuzz, cross-platform build, and vulnerability matrix on
+2026-08-02 at implementation fixed point `07f1552`. Bash remains the
+authoritative management interface, while `oaw check` remains a
+non-authoritative shadow path. Built-in Host records remain instruction-only,
+and no first production Runtime Host was selected.
 
 Every unfinished published ticket carries Matt's `ready-for-agent` triage
 status, which means the ticket is specified for agent execution; completed

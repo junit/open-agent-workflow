@@ -243,3 +243,43 @@ errors were absent from Conformance Reports, Runtime state, projections, and
 errors. Owner-only permissions remained intact. The nine built-in Host
 Integrations are still instruction-only; no first production Runtime Host was
 selected. All `.serena/` directories and unrelated worktrees remain preserved.
+
+## Ticket 11 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Scope:** Go `check` compatibility behavior, Bash authority preservation,
+read-only same-fixture parity, repository compatibility, security checks, and
+cross-platform compilation
+
+| Check | Result |
+| --- | --- |
+| `rtk git diff --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 979 tests passed in 19 packages |
+| `rtk go test -race ./...` | Exit 0: 979 tests passed in 19 packages |
+| `rtk go vet ./...` | Exit 0 |
+| `internal/check` statement coverage | `90.2%`, required minimum `90%` |
+| Repository Go statement coverage | `87.5%`, required minimum `80%` |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer, documentation, and parity cases passed |
+| Same-fixture Bash/Go parity matrix | Exit 0: 32 stream/status/snapshot cases passed |
+| Classification proposal fuzz seam | Exit 0 after a fresh 2-second run |
+| Host conformance receipt fuzz seam | Exit 0 after a fresh 2-second run |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable module findings |
+| `rtk git diff --exit-code 9e0daca -- install.sh lib` | Exit 0: authoritative Bash implementation unchanged |
+
+The parity corpus compares stdout, stderr, status, and sandbox snapshots after
+running Bash and Go sequentially against the same fixture. It covers user and
+project defaults, target normalization and errors, all built-in Provider
+diagnostics, hidden Provider versions, physical project roots, clean and
+drifted managed/owned targets, invalid and shell-compatible TSV state, shared
+destinations, scope/path mismatches, help, and symlinked target coordinates.
+
+Implementation commits are `f99b872`, `f5e894a`, `284a2e6`, `5552950`, and
+review remediation `07f1552`; executable planning is `2ed87b3`, and bilingual
+shadow documentation is `d9c740b`. Bash remains authoritative and no Go
+management cutover occurred. All `.serena/` directories, unrelated branches,
+and unrelated worktrees remain preserved.

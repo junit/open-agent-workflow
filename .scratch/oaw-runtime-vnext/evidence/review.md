@@ -259,3 +259,43 @@ a `ConformanceAdapter`. Old Bundle generations remain byte-for-byte immutable,
 and a Host change is admitted only in a new stable-boundary generation. The
 nine built-in integrations remain instruction-only, so Ticket 08 selects no
 first production Runtime Host.
+
+## Ticket 11 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `07f1552`
+
+**Scope:** Go `check` shadow command, frozen Bash compatibility diagnostics,
+legacy Install State health, same-fixture parity harness, and bilingual
+migration documentation
+
+**Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+### Standards
+
+The complete `9e0daca...HEAD` diff was checked against `CONTRIBUTING.md`, the
+repository's Bash 3.2, bilingual documentation, black-box fixture, provider
+neutrality, and read-only network rules, plus the standard code-smell baseline.
+The review removed the unused `Environment.TempDir` interface and internal
+resolver parameter, bounded state reads, streamed checksums, managed-block
+scanning, and version-directory discovery, and rejected non-regular inputs
+before opening them. No documented-standard violation or unresolved baseline
+smell remains.
+
+### Spec
+
+The diff was checked separately against Ticket 11, the approved Runtime vNext
+specification, and the executable plan. Remediation aligned hidden Provider
+version matching with shell glob rules, Bash TSV `IFS` and unterminated-record
+behavior, partial stdout on path errors, empty-`HOME` path concatenation,
+symlinked Provider indicators, long and unterminated managed lines, and
+non-regular state, target, checksum, and version-root handling. The final
+command keeps Bash authoritative, does not mutate Install State, does not
+enumerate arbitrary configured Providers, and does not implement Go
+`install`, `update`, or `uninstall`.
+
+No unresolved Critical, High, Important, Standards, or Spec finding remains.
+Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.

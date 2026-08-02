@@ -93,7 +93,7 @@ it does not contain filesystem or health rules.
 - Modify: `internal/cli/run.go`
 - Modify: `internal/cli/catalog_test.go`
 
-- [ ] **Step 1: Write failing version, parser, scope, and target tests.**
+- [x] **Step 1: Write failing version, parser, scope, and target tests.**
 
   Assert the embedded version equals trimmed `VERSION`; `oaw check` accepts only
   one `--target` and one `--project`, rejects `--dry-run`, `--force`, unknown
@@ -104,7 +104,7 @@ it does not contain filesystem or health rules.
   control-character project paths, and command-scoped help. Invalid arguments
   must fail before catalog loading or filesystem inspection.
 
-- [ ] **Step 2: Run focused tests and verify RED.**
+- [x] **Step 2: Run focused tests and verify RED.**
 
   ```bash
   rtk go test ./ ./internal/check ./internal/cli -run 'Version|Check|Scope|Target'
@@ -113,7 +113,7 @@ it does not contain filesystem or health rules.
   Expected: the root version package, `internal/check`, and Go `check` command do
   not yet exist.
 
-- [ ] **Step 3: Embed the release version and implement immutable target resolution.**
+- [x] **Step 3: Embed the release version and implement immutable target resolution.**
 
   Use root `//go:embed VERSION`, return a trimmed non-empty version, and define
   the target registry as copied values rather than caller-mutable global slices:
@@ -141,7 +141,7 @@ it does not contain filesystem or health rules.
   reject controls and non-directories; keep user defaults to four core targets
   and project defaults to all nine.
 
-- [ ] **Step 4: Add the CLI compatibility parser and renderer.**
+- [x] **Step 4: Add the CLI compatibility parser and renderer.**
 
   Route only first argument `check` to the new parser. Preserve the existing
   catalog parser and catalog error vocabulary. Construct `check.Environment`
@@ -150,7 +150,7 @@ it does not contain filesystem or health rules.
   the exact Bash global usage for `oaw check --help`. Do not append Go catalog
   usage to check failures.
 
-- [ ] **Step 5: Run focused GREEN tests and commit.**
+- [x] **Step 5: Run focused GREEN tests and commit.**
 
   ```bash
   rtk gofmt -w version.go version_test.go internal/check internal/cli
@@ -171,7 +171,7 @@ it does not contain filesystem or health rules.
 - Modify: `internal/check/check.go`
 - Modify: `internal/check/check_test.go`
 
-- [ ] **Step 1: Write failing Provider and readiness tests.**
+- [x] **Step 1: Write failing Provider and readiness tests.**
 
   Cover every Superpowers direct/versioned/marketplace indicator as OR probes,
   incomplete and complete Matt bundles as four-probe AND, ECC global skill as
@@ -181,13 +181,13 @@ it does not contain filesystem or health rules.
   stable output order: version, scope, targets, three Providers, selected target
   readiness, selected installation health.
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/assets ./internal/check -run 'Provider|Readiness|Report'
   ```
 
-- [ ] **Step 3: Complete Matt descriptor evidence and implement compatibility matching.**
+- [x] **Step 3: Complete Matt descriptor evidence and implement compatibility matching.**
 
   Add `matt-tdd` and `matt-diagnosing-bugs` probes to the built-in descriptor so
   the descriptor expresses every path consumed by compatibility diagnostics.
@@ -197,14 +197,14 @@ it does not contain filesystem or health rules.
   `ecc-global-skill` is a regular file. The compatibility matcher must not infer
   lifecycle selection or enumerate user-configured Providers.
 
-- [ ] **Step 4: Implement readiness and deterministic report assembly.**
+- [x] **Step 4: Implement readiness and deterministic report assembly.**
 
   Mirror `command -v` with `exec.LookPath` under the injected PATH. For core
   targets accept either the executable or the exact config directory; render
   `detected|missing (user, project)`. Render extension targets as
   `adapter-only (project)` without probing commands or creating directories.
 
-- [ ] **Step 5: Run focused GREEN, descriptor regression tests, and commit.**
+- [x] **Step 5: Run focused GREEN, descriptor regression tests, and commit.**
 
   ```bash
   rtk gofmt -w internal/check
@@ -226,7 +226,7 @@ it does not contain filesystem or health rules.
 - Create: `internal/check/health_test.go`
 - Modify: `internal/check/check.go`
 
-- [ ] **Step 1: Write failing checksum, marker, state, and health tests.**
+- [x] **Step 1: Write failing checksum, marker, state, and health tests.**
 
   Compare Go checksums against fixed POSIX `cksum` vectors, including empty,
   text, binary, and project-root bytes without a newline. Cover absent/present/
@@ -244,13 +244,13 @@ it does not contain filesystem or health rules.
   scope/root mismatch. Diagnostic drift and invalid state still exit zero;
   unsafe path resolution returns the same Bash status/message.
 
-- [ ] **Step 2: Run focused tests and verify RED.**
+- [x] **Step 2: Run focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/check -run 'Checksum|Managed|State|Health'
   ```
 
-- [ ] **Step 3: Implement POSIX checksum and managed-block readers.**
+- [x] **Step 3: Implement POSIX checksum and managed-block readers.**
 
   Implement the POSIX CRC algorithm locally—do not invoke `cksum` or write a
   temporary file. Complement the CRC after folding the input length and render
@@ -258,7 +258,7 @@ it does not contain filesystem or health rules.
   line equality, and checksum an extracted managed block with one newline after
   every extracted line to match Bash `awk` output.
 
-- [ ] **Step 4: Implement strict, bounded read-only TSV state parsing.**
+- [x] **Step 4: Implement strict, bounded read-only TSV state parsing.**
 
   Parse records into immutable values and validate before exposing metadata.
   Never repair, rewrite, chmod, mkdir, remove, or rename anything. Preserve Bash
@@ -267,7 +267,7 @@ it does not contain filesystem or health rules.
   failures remain command errors. Derive project state identity with the same
   POSIX checksum over physical project-root bytes.
 
-- [ ] **Step 5: Implement installation-health evaluation.**
+- [x] **Step 5: Implement installation-health evaluation.**
 
   Use these exact terminal values:
 
@@ -283,7 +283,7 @@ it does not contain filesystem or health rules.
   state falls back to untracked health. A malformed state makes every selected
   installed line `invalid-state` without changing exit zero.
 
-- [ ] **Step 6: Run focused GREEN, race, coverage, and commit.**
+- [x] **Step 6: Run focused GREEN, race, coverage, and commit.**
 
   ```bash
   rtk gofmt -w internal/check
@@ -303,7 +303,7 @@ it does not contain filesystem or health rules.
 - Create: `tests/11-check-parity-test.sh`
 - Modify: `tests/run.sh`
 
-- [ ] **Step 1: Add a failing command-level parity harness.**
+- [x] **Step 1: Add a failing command-level parity harness.**
 
   Build `cmd/oaw` once into a private temporary directory. Add helpers that:
 
@@ -321,7 +321,7 @@ it does not contain filesystem or health rules.
   checksum for HOME, XDG config/state, and project. Run Bash first and snapshot
   again before Go so either implementation's mutation is attributed correctly.
 
-- [ ] **Step 2: Add the complete fixture matrix and verify RED.**
+- [x] **Step 2: Add the complete fixture matrix and verify RED.**
 
   Include empty user defaults; explicit deduplicated targets; physical project
   path with spaces; all project adapters; each Provider missing/detected and
@@ -339,13 +339,13 @@ it does not contain filesystem or health rules.
   Expected: the harness reports the first exact stream/status or mutation
   difference and exits nonzero before promotion.
 
-- [ ] **Step 3: Complete parity remediation without editing Bash behavior.**
+- [x] **Step 3: Complete parity remediation without editing Bash behavior.**
 
   Fix only Go compatibility code or the parity harness. Treat any requested Bash
   behavior change as a new migration decision outside Ticket 11. Add a focused
   Go regression test for every mismatch found by the black-box harness.
 
-- [ ] **Step 4: Run the Bash suite and commit.**
+- [x] **Step 4: Run the Bash suite and commit.**
 
   ```bash
   rtk bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
@@ -371,14 +371,14 @@ it does not contain filesystem or health rules.
 - Modify: `.scratch/oaw-runtime-vnext/evidence/verification.md`
 - Modify: `docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-11-go-check-black-box-parity.md`
 
-- [ ] **Step 1: Add failing bilingual documentation assertions.**
+- [x] **Step 1: Add failing bilingual documentation assertions.**
 
   Require both installer guides to name `oaw check`, shadow/parity mode, Bash as
   authoritative for all management mutations, the no-cutover guarantee, and the
   same-fixture parity gate. Assert neither guide claims Go `install`, `update`,
   or `uninstall` is authoritative.
 
-- [ ] **Step 2: Document the migration boundary and run docs tests.**
+- [x] **Step 2: Document the migration boundary and run docs tests.**
 
   Explain that `oaw check` is available for conformance and diagnostics only;
   users continue to use `install.sh` for management, and a later explicit ticket
@@ -389,7 +389,7 @@ it does not contain filesystem or health rules.
   rtk bash tests/run.sh
   ```
 
-- [ ] **Step 3: Perform inline Superpowers review and remediation.**
+- [x] **Step 3: Perform inline Superpowers review and remediation.**
 
   Review `main...HEAD` for Bash behavior drift, accidental writes, TOCTOU path
   escapes, symlink following differences, unbounded reads, malformed TSV
@@ -398,7 +398,7 @@ it does not contain filesystem or health rules.
   destination errors, platform-specific path assumptions, and premature Go
   authority. Fix every Critical/High/Important issue and rerun focused parity.
 
-- [ ] **Step 4: Run the complete verification matrix.**
+- [x] **Step 4: Run the complete verification matrix.**
 
   ```bash
   rtk gofmt -w .
@@ -424,7 +424,7 @@ it does not contain filesystem or health rules.
   Expected: all checks pass; `internal/check` coverage is at least 90%, total Go
   coverage stays above 80%, and there are no reachable vulnerabilities.
 
-- [ ] **Step 5: Close artifacts, commit, and fast-forward `main`.**
+- [x] **Step 5: Close artifacts, commit, and fast-forward `main`.**
 
   Mark Ticket 11 complete, check every acceptance item, set tracker stage and
   active ticket, record exact commits/results in review and verification
