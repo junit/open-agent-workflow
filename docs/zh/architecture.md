@@ -16,6 +16,8 @@ adapter 输出，以及确实由它创建的目录。
 3. 路径与 state 代码推导 canonical destination，并把现有安装记录作为 inert data 验证。
 4. Transaction 代码准备每项变更、创建所有必需 backup，再应用已准备文件。
 5. Adapter target 通过各工具自己的指令机制让已安装 policy 可见。
+6. 可选的 Runtime Plane 提供 canonical Runtime Protocol、`oaw runtime exchange`，
+   以及已选择的 `oaw run --host codex` Host driver。
 
 Policy 是规范性的 workflow 来源。Adapter 文件是传输层，不是独立的 policy 副本。
 Agent 工具、Superpowers、Matt Pocock skills 和 ECC 都保持独立安装与版本管理。
@@ -46,6 +48,21 @@ checkout policy -> pure renderer -> preflight/prepare -> required backup -> appl
 这些箭头表达数据与控制流，不承诺整个操作具有全局原子性。Renderer 接收已验证的值，
 只把 prospective content 写入调用方提供的临时路径。作为 **pure renderer**，它不会检查
 或变更最终 destination。
+
+## Runtime Plane
+
+Runtime Plane 是可选层，不会替代 Policy Plane。Canonical `oaw.runtime/v1` transport
+通过 `oaw runtime exchange` 提供；`oaw run --host codex` 使用同一个
+`runtime.Engine.Exchange` seam，并在有界 Codex process 外围驱动有序的
+`GRANT_ISSUED`、`DISPATCH_PREPARED`、`DISPATCH_AUTHORIZED` 与
+`CAPABILITY_OBSERVED` handshake。只有 pin 的 `runner-managed` integration
+`oaw/codex-runner` 可以通过 Runtime admission。其他内置 adapter 仍是 Policy-only，
+不会被 discovery 或 project configuration 晋级。
+
+Host output 不可信。Codex driver 限制 process output，把 diagnostics 保持在 stderr，
+把 JSONL 归一化为封闭的 outcome，并且只向 Runtime state 返回 digest-pinned evidence
+reference。恢复运行时可以显式提供 project root，使可信的 project Configuration
+Snapshot 继续参与 admission。
 
 在 **prepare phase**，OAW 解析 source 与 destination，渲染 prospective file，检查
 containment 与 symlink 规则，解析旧 state，检测 drift，并在写入任何 managed destination

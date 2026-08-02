@@ -418,3 +418,47 @@ projections with the already merged, currently passing implementation. They do
 not alter scope, dependency edges, Runtime authority, Host selection, or the
 Ticket 09 requirement for explicit user selection of the first production
 Runtime Host.
+
+## Ticket 09 Fresh Verification
+
+**Date:** 2026-08-03
+
+**Result:** Passed
+
+**Implementation fixed point:** `0cb396d`
+
+**Scope:** Codex Host asset admission, strict Runtime transport, `oaw run`
+dispatch and replay recovery, bounded Codex process normalization, capability
+gating, project configuration reload, bilingual documentation, and preserved
+Bash management authority.
+
+| Check | Result |
+| --- | --- |
+| `rtk git diff --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 1463 tests passed in 22 packages |
+| `rtk go test -race ./...` | Exit 0: 1463 tests passed in 22 packages |
+| `rtk go vet ./...` | Exit 0 |
+| Repository Go statement coverage | `87.2%`, required minimum `80%` |
+| Runtime transport fuzz target | Exit 0: `FuzzDecodeFrameFailsClosed`, 2 seconds |
+| Codex JSONL fuzz target | Exit 0: `FuzzNormalizeJSONLFailsClosed`, 2 seconds |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: complete installer and documentation suite passed |
+| Bilingual docs and link checks | Exit 0: `tests/10-docs-test.sh` and `scripts/check-docs.sh` passed |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable module findings |
+
+The public CLI fixture test runs an isolated HOME, XDG configuration root,
+project root, PATH fixture, and Runtime state root. It executes a deterministic
+Codex fixture only, verifies the exact Runtime handshake and stderr separation,
+replays the same dispatch through a newly constructed CLI Runner, and confirms
+the fixture process runs exactly once. A second recovery fixture proves an
+authorized invocation without an observation transitions to
+`EXECUTION_UNCERTAIN` without invoking the Host. Transport fuzzing found and
+closed the previously missing frame-kind validation before this fixed point.
+
+The selected Codex Manifest, audit, Conformance, and Integration digests are
+recorded in the Ticket 09 issue and Host selection evidence. All other built-in
+Hosts remain `instruction-only`; no project configuration or discovery result
+can promote them. `install.sh` and existing management renderers are unchanged,
+and no real paid/model-backed `codex exec` was invoked. `.serena/` and unrelated
+worktrees remain preserved.

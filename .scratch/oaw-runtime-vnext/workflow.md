@@ -18,8 +18,8 @@ runtime_integration_id: oaw/codex-runner
 runtime_integration_level: runner-managed
 runtime_host_selection_source: user-explicit
 runtime_host_selected_at: 2026-08-03
-current_stage: host-selection
-active_ticket: 09-first-runtime-host-and-oaw-run
+current_stage: policy-vnext
+active_ticket: 10-policy-vnext-and-runtime-projections
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -137,6 +137,13 @@ Runtime Host or change any dependency edge.
 Ticket 09 capability evidence was recorded on 2026-08-03 from official Codex
 CLI, Claude Code, and Gemini CLI sources plus locally observed versions. The
 user explicitly selected Codex CLI as the first `runner-managed` Host with
-integration ID `oaw/codex-runner`. Every other built-in Host remains
-instruction-only. Ticket 09 must still pass the exact Manifest, audit, adapter,
-and conformance gates before promotion.
+integration ID `oaw/codex-runner`. Ticket 09 completed at implementation fixed
+point `0cb396d`; its Manifest, audit, conformance, and Integration digests are
+pinned in the issue and Host selection evidence. Every other built-in Host
+remains instruction-only. The next active dependency is Ticket 10,
+`policy-vnext-and-runtime-projections`.
+
+Ticket 09 completion preserved the selected `MATT-SP-HYBRID` policy ownership.
+Runtime state remains authoritative, Workflow dispatch remains isolated behind
+the Host Driver seam, and the existing Bash installer remains authoritative
+until Ticket 14.

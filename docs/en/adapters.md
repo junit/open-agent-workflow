@@ -27,7 +27,23 @@ Official sources **Retrieved: 2026-07-30**.
 Core adapters are installed by default for user scope:
 `claude,codex,gemini,opencode`. Project scope defaults to all nine targets in
 the registry order shown above. Unsupported user-scope extension adapters are
-an OAW support decision, not a claim that the provider has no global settings.
+ an OAW support decision, not a claim that the provider has no global settings.
+
+## Runtime Host Support
+
+Adapter installation and Runtime Host capability are separate concerns. The
+only built-in `runner-managed` Host is the explicitly selected Codex CLI
+integration `oaw/codex-runner`. Its pinned Manifest, audit evidence,
+Conformance report, and Integration record are checked by `oaw run --host codex`
+before any Host process is started. Claude, Gemini, OpenCode, Cursor, Windsurf,
+Cline, Roo Code, and Copilot remain `instruction-only`; their policy adapters do
+not imply Runtime Protocol, isolation, dispatch, or evidence guarantees.
+
+`oaw run` uses the shared Runtime Protocol. A resumed `CONTINUE` or `INSPECT`
+frame can pass `--project-root /absolute/project/path` so project configuration
+is loaded explicitly; a START frame's project identity takes precedence and a
+mismatch is rejected. The existing Bash installer remains authoritative and
+does not install a Runtime claim for a Policy-only adapter.
 
 ## OAW Paths
 

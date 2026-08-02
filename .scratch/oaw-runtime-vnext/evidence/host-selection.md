@@ -18,13 +18,11 @@ an OAW recommendation never selects or promotes a Host by itself.
 
 ## Admission Boundary
 
-Every built-in Host integration currently remains `instruction-only` with an
-`audit.status` of `pending`. A selected Host may be promoted only after its
-exact Manifest, official capability references, adapter audit, and OAW
-conformance report are pinned in one trusted integration record. Until then it
-must not claim Runtime Protocol support, physical Executor isolation, exact
-Binding invocation, pause, Bundle inheritance, evidence return, invocation
-deduplication, cancellation, or normalized observations.
+Before Ticket 09, every built-in Host integration was `instruction-only` with an
+`audit.status` of `pending`. The selected Host is promoted only after its exact
+Manifest, official capability references, adapter audit, and OAW conformance
+report are pinned in one trusted integration record. All non-Codex integrations
+remain `instruction-only` and continue to make no Runtime claims.
 
 The official CLI sources below prove automation transport features only. They
 do not prove the full OAW feature set. OAW-specific features remain pending
@@ -49,10 +47,20 @@ binding. Codex output is untrusted Host output and must be bounded, strictly
 parsed, normalized into OAW's closed observation vocabulary, and kept out of
 authoritative state except through digest-pinned evidence references.
 
-This explicit selection does not by itself promote the Host. Ticket 09 must
-still pin the exact Manifest, official audit references, adapter integration
-record, and a passing digest-pinned conformance report before Runtime claims
-are enabled.
+Ticket 09 completed the promotion gates at implementation fixed point `0cb396d`.
+The Codex Runtime claims are limited to the pinned `runner-managed`
+`oaw/codex-runner` record. `oaw run --host codex` checks that exact record at
+startup; no discovery result, project configuration, or unsupported Host can
+enable a Runtime entrypoint.
+
+## Pinned Runtime Identities
+
+| Asset | Digest |
+| --- | --- |
+| Manifest | `1cdbf2d09620d585486000418f1770fc604ae323a9cd8c27bd3e0bdef5c30d5d` |
+| Audit evidence | `2e0e3c9e74bae4a8d249507ac1573596f5ad06964c19b8c739b2ef1e093052ec` |
+| Conformance report | `7ea7026fda4146cbd6a19db8ea25168a9c02bf2f81f67a29ba37ab3fac419e4b` |
+| Integration record | `bea2b3a7caee2062e7b058a8fbfe1187adfc5c60ac7c033275d02e251393d303` |
 
 ## Official Sources
 

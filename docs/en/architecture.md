@@ -20,6 +20,8 @@ The repository contains five cooperating layers:
    then applies the prepared files.
 5. Adapter targets make the installed policy visible through each tool's own
    instruction mechanism.
+6. The optional Runtime Plane provides the canonical Runtime Protocol,
+   `oaw runtime exchange`, and the selected `oaw run --host codex` Host driver.
 
 The policy is the normative workflow source. Adapter files are transport
 layers, not independent policy copies. Agent tools, Superpowers, Matt Pocock
@@ -54,6 +56,23 @@ The arrows describe data and control flow, not a promise of operation-wide
 atomicity. A renderer receives validated values and writes prospective content
 only to a caller-provided temporary path. Because it is a **pure renderer**, it
 does not inspect or mutate the eventual destination.
+
+## Runtime Plane
+
+The Runtime Plane is optional and does not replace the Policy Plane. The
+canonical `oaw.runtime/v1` transport is available through `oaw runtime exchange`;
+`oaw run --host codex` uses the same `runtime.Engine.Exchange` seam and adds the
+ordered `GRANT_ISSUED`, `DISPATCH_PREPARED`, `DISPATCH_AUTHORIZED`, and
+`CAPABILITY_OBSERVED` handshake around a bounded Codex process. Runtime-aware
+execution is admitted only for the pinned `runner-managed` integration
+`oaw/codex-runner`. Other built-in adapters remain Policy-only and are never
+promoted by discovery or project configuration.
+
+Host output is untrusted. The Codex driver bounds process output, keeps
+diagnostics on stderr, normalizes JSONL into closed outcomes, and returns only
+digest-pinned evidence references to Runtime state. A resumed run can provide
+an explicit project root so the trusted project Configuration Snapshot remains
+part of admission.
 
 During the **prepare phase**, OAW resolves the source and destinations, renders
 prospective files, checks containment and symlink rules, parses prior state,

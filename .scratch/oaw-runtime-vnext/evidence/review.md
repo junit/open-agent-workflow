@@ -300,6 +300,70 @@ enumerate arbitrary configured Providers, and does not implement Go
 No unresolved Critical, High, Important, Standards, or Spec finding remains.
 Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
 
+## Ticket 09 Implementation Review
+
+**Date:** 2026-08-03
+
+**Fixed point:** `0cb396d`
+
+**Scope:** Codex Host promotion, canonical Runtime transport, `oaw run`,
+bounded Host dispatch, ordered Runtime handshake, Host capability gating,
+configuration/discovery loading, and migration evidence.
+
+**Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+### Standards
+
+The complete `main...0cb396d` diff was checked against `CONTRIBUTING.md`, the
+Runtime vNext spec, the executable Ticket 09 plan, repository immutability and
+file-size rules, provider neutrality, no-real-model-test policy, and the
+standard code-smell baseline. The review found no unresolved documented
+standard violation. The changed CLI and Host code keeps bounded inputs,
+defensive copies, closed outcomes, and diagnostics out of machine stdout.
+
+### Spec and Security
+
+The review separately checked the selected Host identity, exact Manifest and
+Conformance pins, unsupported-Host fallback, strict frame/reply canonicalization,
+grant ordering, isolated Executor registration, exact Binding delivery,
+deduplication, cancellation, normalized evidence, raw-output exclusion, and
+Bash authority boundaries.
+
+Five Important findings were corrected before closure:
+
+- Workflow dispatch initially used the Grant `GraphDigest` as the Host Bundle
+  identity. The loop now resolves the committed `LifecycleBundle.Digest` by
+  `BundleID` and fails closed when the pinned Bundle is absent; Bounded dispatch
+  retains its pinned `RegistryDigest` context.
+- Resumed `CONTINUE` and `INSPECT` frames did not carry a project root, so a
+  project configuration could be omitted during restart. `oaw run` now accepts
+  a validated `--project-root`, and rejects a mismatch with a START frame's
+  project identity.
+- Strict transport decoding accepted an empty or unknown frame kind before
+  deferring rejection to the Engine. The shared frame validator now closes the
+  kind vocabulary at decode time, with deterministic and fuzz regressions.
+- Concurrent deliveries of one Invocation ID could both start a Codex process
+  before either result entered the cache. Runner attempts now coalesce both
+  in-flight and completed duplicate delivery, including repeated failures, and
+  the race corpus proves one process call.
+- Runner deduplication was initially process-local, while each `oaw run`
+  invocation processes one external frame. Before Host preparation, the runner
+  now inspects authoritative Runtime state: an existing observation returns the
+  committed state, and a previously authorized invocation without observation
+  transitions to `EXECUTION_UNCERTAIN` instead of replaying. A POSIX fixture
+  executable verifies START, dispatch, replay, exact one-process execution,
+  stderr separation, and project Configuration reload through the public CLI.
+
+The review also confirmed that the existing management renderer remains
+unchanged: `oaw run --host codex` performs the exact capability gate at runtime,
+while unsupported adapters remain Policy-only until a later management-cutover
+ticket explicitly owns that change. No unresolved Critical, High, Important,
+Standards, or Spec finding remains.
+
+Summary: Standards 0 unresolved findings; Spec/Security 0 unresolved findings.
+
 ## Ticket 12 Implementation Review
 
 **Date:** 2026-08-02

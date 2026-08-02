@@ -27,6 +27,21 @@ User scope 默认安装 core adapter：`claude,codex,gemini,opencode`。Project 
 按上表 registry order 安装全部九个 target。Extension adapter 不支持 user scope 是 OAW
 的支持决策，不代表 provider 没有全局设置。
 
+## Runtime Host 支持
+
+Adapter 安装与 Runtime Host 能力是两个不同问题。当前唯一的
+`runner-managed` Host 是用户明确选择的 Codex CLI integration
+`oaw/codex-runner`。`oaw run --host codex` 会在启动任何 Host process 之前检查其
+已 pin 的 Manifest、audit evidence、Conformance report 与 Integration record。
+Claude、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot 仍是
+`instruction-only`；它们的 policy adapter 不表示 Runtime Protocol、隔离、dispatch
+或 evidence 保证。
+
+`oaw run` 使用共享 Runtime Protocol。恢复 `CONTINUE` 或 `INSPECT` frame 时可以传入
+`--project-root /absolute/project/path`，显式加载 project configuration；START frame
+中的 project identity 优先，二者不一致会被拒绝。现有 Bash installer 仍是权威实现，
+不会为 Policy-only adapter 安装 Runtime claim。
+
 ## OAW 路径
 
 Canonical OAW policy 安装在
