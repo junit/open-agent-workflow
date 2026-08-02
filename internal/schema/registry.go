@@ -18,6 +18,8 @@ const (
 	UserConfigV1             = "https://open-agent-workflow.dev/schemas/v1/user-config.schema.json"
 	ProjectConfigV1          = "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json"
 	ClassificationProposalV1 = "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json"
+	HostManifestV1           = "https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json"
+	HostIntegrationV1        = "https://open-agent-workflow.dev/schemas/v1/host-integration.schema.json"
 )
 
 type Registry struct {
@@ -34,6 +36,8 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v1/user-config.schema.json", UserConfigV1},
 		{"schemas/v1/project-config.schema.json", ProjectConfigV1},
 		{"schemas/v1/classification-proposal.schema.json", ClassificationProposalV1},
+		{"schemas/v1/host-manifest.schema.json", HostManifestV1},
+		{"schemas/v1/host-integration.schema.json", HostIntegrationV1},
 	}
 	for _, resource := range resources {
 		data, err := fs.ReadFile(files, resource.path)

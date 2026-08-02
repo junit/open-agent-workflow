@@ -165,7 +165,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 - Create: `internal/host/decode.go`
 - Create: `internal/host/records_test.go`
 
-- [ ] **Step 1: Write failing schema and record tests.**
+- [x] **Step 1: Write failing schema and record tests.**
 
   Cover all three Integration Levels, the exact closed Feature vocabulary,
   deterministic set ordering, defensive copies, canonical Manifest/Audit/
@@ -177,7 +177,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   reject missing passed audit evidence, incomplete required Features, absent or
   failed Reports, stale suite versions, and Manifest/Integration mismatches.
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/assets ./internal/schema ./internal/host -run 'Host|Manifest|Integration|ConformanceRecord'
@@ -185,7 +185,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 
   Expected: `internal/host` and the new schema constants do not exist.
 
-- [ ] **Step 3: Add strict schemas and immutable domain constructors.**
+- [x] **Step 3: Add strict schemas and immutable domain constructors.**
 
   Register both embedded schemas. Implement `NewManifest`, `NewAuditEvidence`,
   `NewConformanceReport`, `NewIntegration`, `DecodeIntegrationJSON`,
@@ -194,7 +194,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   digest during decode. Keep each file below 400 lines and every validator
   fail-closed on unknown enum values.
 
-- [ ] **Step 4: Run focused tests and coverage.**
+- [x] **Step 4: Run focused tests and coverage.**
 
   ```bash
   rtk gofmt -w internal/host internal/assets internal/schema
@@ -205,7 +205,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 
   Expected: all pass and `internal/host` statement coverage is at least 90%.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
   ```bash
   rtk git add internal/assets internal/schema internal/host

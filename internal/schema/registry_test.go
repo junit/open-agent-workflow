@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -14,6 +15,26 @@ func TestNewCompilesEmbeddedSchemas(t *testing.T) {
 	}
 	if registry == nil {
 		t.Fatal("New() returned nil registry")
+	}
+}
+
+func TestRegistryValidatesClosedHostSchemas(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := []byte(`{"schema_version":"oaw.host-manifest/v1","manifest_version":"1.0.0","host_id":"codex","integration_level":"instruction-only","protocols":[],"binding_kinds":[],"features":[]}`)
+	if err := registry.Validate(HostManifestV1, manifest); err != nil {
+		t.Fatalf("Validate(Manifest) error = %v", err)
+	}
+	digest := strings.Repeat("a", 64)
+	integration := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-integration/v1","integration_version":"1.0.0","id":"oaw/codex-instruction","manifest":%s,"manifest_digest":"%s","audit":{"status":"pending","references":[],"digest":"%s"},"digest":"%s"}`, manifest, digest, digest, digest))
+	if err := registry.Validate(HostIntegrationV1, integration); err != nil {
+		t.Fatalf("Validate(Integration) error = %v", err)
+	}
+	invalid := []byte(strings.Replace(string(integration), `"features":[]`, `"features":["isolated-executor"]`, 1))
+	if err := registry.Validate(HostIntegrationV1, invalid); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(instruction-only feature) error = %v", err)
 	}
 }
 

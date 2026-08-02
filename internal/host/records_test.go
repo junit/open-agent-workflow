@@ -1,0 +1,267 @@
+package host_test
+
+import (
+	"bytes"
+	"encoding/json"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/BurntSushi/toml"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+)
+
+func TestNewManifestNormalizesAndDefendsCollections(t *testing.T) {
+	features := []host.Feature{
+		host.FeaturePause,
+		host.FeatureBundleInheritance,
+		host.FeatureCancellation,
+		host.FeatureEvidenceReturn,
+		host.FeatureExactBindingInvocation,
+		host.FeatureInvocationDedup,
+		host.FeatureIsolatedExecutor,
+		host.FeatureNormalizedObservation,
+	}
+	manifest, err := host.NewManifest(host.Manifest{
+		SchemaVersion:    host.HostManifestSchemaV1,
+		ManifestVersion:  "1.0.0",
+		HostID:           "codex",
+		IntegrationLevel: host.RunnerManaged,
+		Protocols:        []string{host.RuntimeProtocolV1},
+		BindingKinds:     []string{"tool", "agent", "skill"},
+		Features:         features,
+	})
+	if err != nil {
+		t.Fatalf("NewManifest() error = %v", err)
+	}
+	wantKinds := []string{"agent", "skill", "tool"}
+	if !slices.Equal(manifest.BindingKinds, wantKinds) {
+		t.Fatalf("BindingKinds = %#v, want %#v", manifest.BindingKinds, wantKinds)
+	}
+	if manifest.ContentDigest() == "" {
+		t.Fatal("ContentDigest() is empty")
+	}
+
+	features[0] = host.FeatureNativeInvocation
+	manifest.BindingKinds[0] = "changed"
+	fresh := host.CloneManifest(manifest)
+	if slices.Contains(fresh.Features, host.FeatureNativeInvocation) || fresh.BindingKinds[0] != "changed" {
+		t.Fatalf("CloneManifest() did not isolate caller mutation: %#v", fresh)
+	}
+	fresh.BindingKinds[0] = "mutated-again"
+	if manifest.BindingKinds[0] != "changed" {
+		t.Fatalf("CloneManifest() exposed source storage: %#v", manifest.BindingKinds)
+	}
+	if manifest.ContentDigest() == fresh.ContentDigest() {
+		t.Fatal("ContentDigest() ignored changed clone content")
+	}
+}
+
+func TestNewAuditEvidencePinsCanonicalReferences(t *testing.T) {
+	references := []host.AuditEvidenceReference{
+		{Reference: "https://example.test/host/release-notes", Digest: strings.Repeat("b", 64)},
+		{Reference: "https://example.test/host/docs", Digest: strings.Repeat("a", 64)},
+	}
+	audit, err := host.NewAuditEvidence(host.AuditEvidence{Status: host.AuditPassed, References: references})
+	if err != nil {
+		t.Fatalf("NewAuditEvidence() error = %v", err)
+	}
+	if audit.Digest == "" || audit.References[0].Digest != strings.Repeat("a", 64) {
+		t.Fatalf("audit = %#v", audit)
+	}
+	references[0].Reference = "changed"
+	if audit.References[1].Reference != "https://example.test/host/release-notes" {
+		t.Fatalf("audit shares caller storage: %#v", audit.References)
+	}
+	fresh := host.CloneAuditEvidence(audit)
+	fresh.References[0].Reference = "mutated"
+	if audit.References[0].Reference == "mutated" {
+		t.Fatal("CloneAuditEvidence() exposed source storage")
+	}
+
+	if _, err := host.NewAuditEvidence(host.AuditEvidence{Status: host.AuditPassed}); host.ErrorCode(err) != "HOST_AUDIT_INVALID" {
+		t.Fatalf("empty passed audit error = %v", err)
+	}
+	if _, err := host.NewAuditEvidence(host.AuditEvidence{
+		Status:     host.AuditPending,
+		References: []host.AuditEvidenceReference{{Reference: "https://example.test", Digest: strings.Repeat("c", 64)}},
+	}); host.ErrorCode(err) != "HOST_AUDIT_INVALID" {
+		t.Fatalf("pending evidence error = %v", err)
+	}
+}
+
+func TestNewIntegrationPinsManifestAuditAndConformance(t *testing.T) {
+	manifest := runnerManifest(t)
+	audit, err := host.NewAuditEvidence(host.AuditEvidence{
+		Status: host.AuditPassed,
+		References: []host.AuditEvidenceReference{{
+			Reference: "https://example.test/codex/official-audit",
+			Digest:    strings.Repeat("a", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks := []host.ConformanceCheck{
+		{ID: host.CheckPause, Passed: true, Evidence: strings.Repeat("3", 64)},
+		{ID: host.CheckBundleInheritance, Passed: true, Evidence: strings.Repeat("1", 64)},
+		{ID: host.CheckCancellation, Passed: true, Evidence: strings.Repeat("2", 64)},
+		{ID: host.CheckEvidenceReturn, Passed: true, Evidence: strings.Repeat("4", 64)},
+		{ID: host.CheckExactBindingInvocation, Passed: true, Evidence: strings.Repeat("5", 64)},
+		{ID: host.CheckInvocationDedup, Passed: true, Evidence: strings.Repeat("6", 64)},
+		{ID: host.CheckIsolatedExecutor, Passed: true, Evidence: strings.Repeat("7", 64)},
+		{ID: host.CheckNormalizedObservation, Passed: true, Evidence: strings.Repeat("8", 64)},
+	}
+	report, err := host.NewConformanceReport(host.ConformanceReport{
+		SchemaVersion:    host.ConformanceReportSchemaV1,
+		SuiteVersion:     host.ConformanceSuiteV1,
+		IntegrationID:    "acme/codex-runtime",
+		ManifestDigest:   manifest.ContentDigest(),
+		Checks:           checks,
+		TranscriptDigest: strings.Repeat("f", 64),
+		Passed:           true,
+	})
+	if err != nil {
+		t.Fatalf("NewConformanceReport() error = %v", err)
+	}
+	integration, err := host.NewIntegration(host.IntegrationRecord{
+		SchemaVersion:      host.HostIntegrationSchemaV1,
+		IntegrationVersion: "1.0.0",
+		ID:                 "acme/codex-runtime",
+		Manifest:           manifest,
+		ManifestDigest:     manifest.ContentDigest(),
+		Audit:              audit,
+		Conformance:        &report,
+	})
+	if err != nil {
+		t.Fatalf("NewIntegration() error = %v", err)
+	}
+	if integration.Digest == "" || integration.Conformance == nil || integration.Conformance.Digest == "" {
+		t.Fatalf("integration = %#v", integration)
+	}
+	checks[0].Passed = false
+	report.Checks[0].Passed = false
+	if !integration.Conformance.Checks[0].Passed {
+		t.Fatal("Integration shares caller conformance storage")
+	}
+	fresh := host.CloneIntegration(integration)
+	fresh.Conformance.Checks[0].Passed = false
+	if !integration.Conformance.Checks[0].Passed {
+		t.Fatal("CloneIntegration() exposed source storage")
+	}
+
+	tampered := integration
+	tampered.ManifestDigest = strings.Repeat("0", 64)
+	if _, err := host.NewIntegration(tampered); host.ErrorCode(err) != "HOST_INTEGRATION_INVALID" {
+		t.Fatalf("tampered Manifest digest error = %v", err)
+	}
+	missing := integration
+	missing.Conformance = nil
+	missing.Digest = ""
+	if _, err := host.NewIntegration(missing); host.ErrorCode(err) != "HOST_INTEGRATION_INVALID" {
+		t.Fatalf("missing Conformance error = %v", err)
+	}
+}
+
+func runnerManifest(t *testing.T) host.Manifest {
+	t.Helper()
+	value, err := host.NewManifest(host.Manifest{
+		SchemaVersion:    host.HostManifestSchemaV1,
+		ManifestVersion:  "1.0.0",
+		HostID:           "codex",
+		IntegrationLevel: host.RunnerManaged,
+		Protocols:        []string{host.RuntimeProtocolV1},
+		BindingKinds:     []string{"agent", "skill", "tool"},
+		Features: []host.Feature{
+			host.FeatureBundleInheritance,
+			host.FeatureCancellation,
+			host.FeatureEvidenceReturn,
+			host.FeatureExactBindingInvocation,
+			host.FeatureInvocationDedup,
+			host.FeatureIsolatedExecutor,
+			host.FeatureNormalizedObservation,
+			host.FeaturePause,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func TestDecodeIntegrationJSONAndTOMLAreStrict(t *testing.T) {
+	integration := runnerIntegration(t)
+	jsonRaw, err := json.Marshal(integration)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decodedJSON, err := host.DecodeIntegrationJSON(jsonRaw)
+	if err != nil || decodedJSON.Digest != integration.Digest {
+		t.Fatalf("DecodeIntegrationJSON() = %#v, %v", decodedJSON, err)
+	}
+
+	var tomlRaw bytes.Buffer
+	if err := toml.NewEncoder(&tomlRaw).Encode(integration); err != nil {
+		t.Fatal(err)
+	}
+	decodedTOML, err := host.DecodeIntegrationTOML(tomlRaw.Bytes())
+	if err != nil || decodedTOML.Digest != integration.Digest {
+		t.Fatalf("DecodeIntegrationTOML() = %#v, %v", decodedTOML, err)
+	}
+
+	unknownJSON := append([]byte(`{"unknown":true,`), jsonRaw[1:]...)
+	for name, raw := range map[string][]byte{
+		"unknown JSON":  unknownJSON,
+		"trailing JSON": append(append([]byte{}, jsonRaw...), []byte(` {}`)...),
+		"unknown TOML":  append(append([]byte{}, tomlRaw.Bytes()...), []byte("\nunknown = true\n")...),
+		"invalid UTF-8": {0xff, 0xfe},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var decodeErr error
+			if strings.Contains(name, "TOML") {
+				_, decodeErr = host.DecodeIntegrationTOML(raw)
+			} else {
+				_, decodeErr = host.DecodeIntegrationJSON(raw)
+			}
+			if host.ErrorCode(decodeErr) != "HOST_INTEGRATION_DECODE_INVALID" {
+				t.Fatalf("decode error = %v", decodeErr)
+			}
+		})
+	}
+}
+
+func runnerIntegration(t *testing.T) host.IntegrationRecord {
+	t.Helper()
+	manifest := runnerManifest(t)
+	audit, err := host.NewAuditEvidence(host.AuditEvidence{
+		Status: host.AuditPassed,
+		References: []host.AuditEvidenceReference{{
+			Reference: "https://example.test/codex/official-audit",
+			Digest:    strings.Repeat("a", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	checks := make([]host.ConformanceCheck, 0, len(manifest.Features))
+	for index, feature := range manifest.Features {
+		checks = append(checks, host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789"[index]), 64)})
+	}
+	report, err := host.NewConformanceReport(host.ConformanceReport{
+		SchemaVersion: host.ConformanceReportSchemaV1, SuiteVersion: host.ConformanceSuiteV1,
+		IntegrationID: "acme/codex-runtime", ManifestDigest: manifest.ContentDigest(),
+		Checks: checks, TranscriptDigest: strings.Repeat("f", 64), Passed: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	integration, err := host.NewIntegration(host.IntegrationRecord{
+		SchemaVersion: host.HostIntegrationSchemaV1, IntegrationVersion: "1.0.0", ID: "acme/codex-runtime",
+		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return integration
+}
