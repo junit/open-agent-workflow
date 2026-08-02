@@ -89,12 +89,6 @@ func runCodex(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 }
 
 func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunFrame, hostID string) (*oawruntime.Engine, error) {
-	if frame.Start != nil && frame.Start.Proposal != nil {
-		decision, err := classification.Classify(frame.Start.Proposal, classification.ClassificationRules{})
-		if err == nil && decision.RequestMode == classification.RequestModeDirect {
-			return oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
-		}
-	}
 	projectRoot := configuredProjectRoot
 	if frame.Start != nil {
 		frameProjectRoot := frame.Start.Project.Root
@@ -102,6 +96,12 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 			return nil, fmt.Errorf("RUNTIME_PROJECT_ROOT_MISMATCH: --project-root does not match START project root")
 		}
 		projectRoot = frameProjectRoot
+	}
+	if frame.Start != nil && frame.Start.Proposal != nil {
+		decision, err := classification.Classify(frame.Start.Proposal, classification.ClassificationRules{})
+		if err == nil && decision.RequestMode == classification.RequestModeDirect {
+			return oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
+		}
 	}
 	userConfigRoot := defaultConfigRoot()
 	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userConfigRoot, ProjectRoot: projectRoot})
@@ -276,6 +276,16 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	if err != nil {
 		return err
 	}
+	current, err := exchanger.Exchange(dispatchInspectFrame(reply, grant))
+	if err != nil {
+		return err
+	}
+	if current.RunID != reply.RunID || current.Revision < reply.Revision {
+		return fmt.Errorf("RUNTIME_RUN_INVALID: dispatch inspection returned inconsistent state")
+	}
+	if current.Revision > reply.Revision {
+		return resumeCommittedDispatch(exchanger, output, current, grant)
+	}
 	bundleDigest, err := grantDispatchDigest(reply.Snapshot, grant)
 	if err != nil {
 		return err
@@ -286,7 +296,7 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	}
 	preparedFrame := oawruntime.RunFrame{
 		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue,
-		MessageID: frame.MessageID + "-dispatch-prepared", IdempotencyKey: frame.IdempotencyKey + "-dispatch-prepared",
+		MessageID: derivedRunnerID("dispatch-prepared", grant), IdempotencyKey: derivedRunnerID("dispatch-prepared", grant),
 		RunID: reply.RunID, ExpectedRevision: reply.Revision,
 		Continue: &oawruntime.ContinueInput{Signal: oawruntime.SignalDispatchPrepared, DispatchPreparation: &oawruntime.DispatchPreparation{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID}},
 	}
@@ -304,7 +314,7 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	if invokeErr != nil {
 		uncertain := oawruntime.RunFrame{
 			SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue,
-			MessageID: frame.MessageID + "-execution-uncertain", IdempotencyKey: frame.IdempotencyKey + "-execution-uncertain",
+			MessageID: derivedRunnerID("execution-uncertain", grant), IdempotencyKey: derivedRunnerID("execution-uncertain", grant),
 			RunID: authorized.RunID, ExpectedRevision: authorized.Revision,
 			Continue: &oawruntime.ContinueInput{Signal: oawruntime.SignalExecutionUncertain},
 		}
@@ -323,6 +333,54 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 		return err
 	}
 	return writeReplyLine(output, observed)
+}
+
+func dispatchInspectFrame(reply oawruntime.RunReply, grant admission.CapabilityGrant) oawruntime.RunFrame {
+	return oawruntime.RunFrame{
+		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameInspect,
+		MessageID: derivedRunnerID("dispatch-state", grant), IdempotencyKey: derivedRunnerID("dispatch-state", grant),
+		RunID: reply.RunID,
+	}
+}
+
+func resumeCommittedDispatch(exchanger runtimeExchanger, output io.Writer, current oawruntime.RunReply, grant admission.CapabilityGrant) error {
+	if grantObserved(current.Snapshot, grant) || current.Snapshot.Status == oawruntime.RunPaused || current.Snapshot.Status == oawruntime.RunFinished {
+		return writeReplyLine(output, current)
+	}
+	if current.Snapshot.Status != oawruntime.RunInFlight {
+		return fmt.Errorf("RUNTIME_RUN_INVALID: newer Runtime state lacks the Grant observation")
+	}
+	uncertain := oawruntime.RunFrame{
+		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue,
+		MessageID: derivedRunnerID("execution-uncertain", grant), IdempotencyKey: derivedRunnerID("execution-uncertain", grant),
+		RunID: current.RunID, ExpectedRevision: current.Revision,
+		Continue: &oawruntime.ContinueInput{Signal: oawruntime.SignalExecutionUncertain},
+	}
+	paused, err := exchanger.Exchange(uncertain)
+	if err != nil {
+		return err
+	}
+	return writeReplyLine(output, paused)
+}
+
+func grantObserved(snapshot oawruntime.RunSnapshot, grant admission.CapabilityGrant) bool {
+	for _, observation := range snapshot.Observations {
+		if observation.GrantID == grant.ID && observation.InvocationID == grant.InvocationID && observation.ExecutorID == grant.Executor.ID {
+			return true
+		}
+	}
+	if snapshot.Workflow != nil {
+		for _, observation := range snapshot.Workflow.Observations {
+			if observation.GrantID == grant.ID && observation.InvocationID == grant.InvocationID && observation.ExecutorID == grant.Executor.ID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func derivedRunnerID(kind string, grant admission.CapabilityGrant) string {
+	return "oaw-" + grant.ID + "-" + kind
 }
 
 func latestGrant(grants []admission.CapabilityGrant) (admission.CapabilityGrant, error) {
@@ -371,7 +429,7 @@ func observationFrame(original oawruntime.RunFrame, authorized oawruntime.RunRep
 	} else {
 		continueInput.Observation = &base
 	}
-	return oawruntime.RunFrame{SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue, MessageID: original.MessageID + "-capability-observed", IdempotencyKey: original.IdempotencyKey + "-capability-observed", RunID: authorized.RunID, ExpectedRevision: authorized.Revision, Continue: continueInput}
+	return oawruntime.RunFrame{SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue, MessageID: derivedRunnerID("capability-observed", grant), IdempotencyKey: derivedRunnerID("capability-observed", grant), RunID: authorized.RunID, ExpectedRevision: authorized.Revision, Continue: continueInput}
 }
 
 func writeReplyLine(output io.Writer, reply oawruntime.RunReply) error {

@@ -21,6 +21,10 @@ type fakeHostExchange struct {
 
 func (fake *fakeHostExchange) Exchange(frame oawruntime.RunFrame) (oawruntime.RunReply, error) {
 	fake.frames = append(fake.frames, frame)
+	if frame.Kind == oawruntime.FrameInspect {
+		snapshot := oawruntime.RunSnapshot{SchemaVersion: "oaw.runtime-snapshot/v1", RunID: "run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Revision: uint64(fake.step), RequestMode: classification.RequestModeBounded, Status: oawruntime.RunGranted, Grants: []admission.CapabilityGrant{fake.grant}}
+		return oawruntime.RunReply{SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.ReplyStateSnapshot, RunID: snapshot.RunID, Revision: snapshot.Revision, Snapshot: snapshot, Diagnostics: []oawruntime.Diagnostic{}, RecoveryActions: []string{}}, nil
+	}
 	fake.step++
 	snapshot := oawruntime.RunSnapshot{SchemaVersion: "oaw.runtime-snapshot/v1", RunID: "run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Revision: uint64(fake.step), RequestMode: classification.RequestModeBounded, Status: oawruntime.RunGranted, Grants: []admission.CapabilityGrant{fake.grant}}
 	switch fake.step {
@@ -57,6 +61,25 @@ func (fake *fakeHostDriver) Invoke(request host.DispatchRequest) (host.DispatchR
 
 func (fake *fakeHostDriver) Cancel(string) error { return nil }
 
+type replayedInFlightExchange struct {
+	frames []oawruntime.RunFrame
+	grant  admission.CapabilityGrant
+}
+
+func (fake *replayedInFlightExchange) Exchange(frame oawruntime.RunFrame) (oawruntime.RunReply, error) {
+	fake.frames = append(fake.frames, frame)
+	revision := uint64(2)
+	status := oawruntime.RunGranted
+	kind := oawruntime.ReplyGrantIssued
+	if frame.Kind == oawruntime.FrameInspect {
+		revision, status, kind = 3, oawruntime.RunInFlight, oawruntime.ReplyStateSnapshot
+	} else if frame.Continue != nil && frame.Continue.Signal == oawruntime.SignalExecutionUncertain {
+		revision, status, kind = 4, oawruntime.RunPaused, oawruntime.ReplyPaused
+	}
+	snapshot := oawruntime.RunSnapshot{SchemaVersion: "oaw.runtime-snapshot/v1", RunID: "run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Revision: revision, RequestMode: classification.RequestModeBounded, Status: status, Grants: []admission.CapabilityGrant{fake.grant}}
+	return oawruntime.RunReply{SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: kind, RunID: snapshot.RunID, Revision: revision, Snapshot: snapshot, Reason: oawruntime.ReasonExecutionUncertain, Diagnostics: []oawruntime.Diagnostic{}, RecoveryActions: []string{}}, nil
+}
+
 func TestRunHostLoopUsesRuntimeExchangeForOrderedDispatch(t *testing.T) {
 	grant := admission.CapabilityGrant{ID: "grant", InvocationID: "invocation", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
 	engine := &fakeHostExchange{grant: grant}
@@ -67,7 +90,7 @@ func TestRunHostLoopUsesRuntimeExchangeForOrderedDispatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte{'\n'})
-	if len(lines) != 3 || driver.invoked != 1 || len(engine.frames) != 3 {
+	if len(lines) != 3 || driver.invoked != 1 || len(engine.frames) != 4 {
 		t.Fatalf("output lines=%d invoked=%d frames=%d output=%q", len(lines), driver.invoked, len(engine.frames), output.String())
 	}
 	for _, line := range lines {
@@ -80,7 +103,7 @@ func TestRunHostLoopUsesRuntimeExchangeForOrderedDispatch(t *testing.T) {
 			t.Fatalf("non-canonical reply %q", line)
 		}
 	}
-	if engine.frames[1].Continue == nil || engine.frames[1].Continue.Signal != oawruntime.SignalDispatchPrepared || engine.frames[2].Continue == nil || engine.frames[2].Continue.Signal != oawruntime.SignalCapabilityObserved {
+	if engine.frames[1].Kind != oawruntime.FrameInspect || engine.frames[2].Continue == nil || engine.frames[2].Continue.Signal != oawruntime.SignalDispatchPrepared || engine.frames[3].Continue == nil || engine.frames[3].Continue.Signal != oawruntime.SignalCapabilityObserved {
 		t.Fatalf("runtime handshake frames = %#v", engine.frames)
 	}
 	if driver.prepared.Binding != grant.Binding || driver.prepared.InvocationID != grant.InvocationID {
@@ -93,6 +116,28 @@ func TestRunRejectsUnsupportedHostWithoutInvokingAnything(t *testing.T) {
 	status := RunWithInput([]string{"run", "--host", "gemini", "--state-root", t.TempDir()}, strings.NewReader(`{}`), &stdout, &stderr)
 	if status != 69 || !json.Valid(stdout.Bytes()) || !strings.Contains(stderr.String(), "HOST_RUNTIME_UNSUPPORTED") {
 		t.Fatalf("unsupported Host status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestRunHostLoopPausesReplayedInFlightGrantWithoutInvoking(t *testing.T) {
+	grant := admission.CapabilityGrant{ID: "grant-replayed", InvocationID: "invocation-replayed", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	exchanger := &replayedInFlightExchange{grant: grant}
+	driver := &fakeHostDriver{}
+	input := `{"schema_version":"oaw.runtime/v1","kind":"CONTINUE","message_id":"m","idempotency_key":"k","run_id":"run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expected_revision":1,"continue":{"signal":"REQUEST_DISPATCH"}}`
+	var output bytes.Buffer
+	if err := runHostLoop(strings.NewReader(input), exchanger, driver, &output); err != nil {
+		t.Fatal(err)
+	}
+	if driver.invoked != 0 || len(exchanger.frames) != 3 || exchanger.frames[2].Continue == nil || exchanger.frames[2].Continue.Signal != oawruntime.SignalExecutionUncertain {
+		t.Fatalf("invoked=%d frames=%#v", driver.invoked, exchanger.frames)
+	}
+	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte{'\n'})
+	if len(lines) != 2 {
+		t.Fatalf("output = %q", output.String())
+	}
+	var paused oawruntime.RunReply
+	if err := json.Unmarshal(lines[1], &paused); err != nil || paused.Kind != oawruntime.ReplyPaused || paused.Snapshot.Status != oawruntime.RunPaused {
+		t.Fatalf("paused reply = %#v, %v", paused, err)
 	}
 }
 
