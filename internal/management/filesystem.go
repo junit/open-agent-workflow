@@ -21,6 +21,9 @@ func scopedAtomicReplace(action installAction, planned, created map[string]struc
 	if err := ensureScopedInstallDirectory(root, action, planned, created); err != nil {
 		return err
 	}
+	if _, err := revalidateInstallActionSnapshot(action); err != nil {
+		return err
+	}
 	if err := revalidateScopedAction(root, action); err != nil {
 		return err
 	}
@@ -54,6 +57,9 @@ func scopedAtomicReplace(action installAction, planned, created map[string]struc
 		return installIOError("cannot close temporary file for " + action.destination)
 	}
 	if err := revalidateScopedAction(root, action); err != nil {
+		return err
+	}
+	if _, err := revalidateInstallActionSnapshot(action); err != nil {
 		return err
 	}
 	if err := verifyScopedActionDirectory(directoryRoot, action); err != nil {
@@ -122,7 +128,19 @@ func openInstallRoot(name string) (*os.Root, error) {
 	if err != nil {
 		return nil, compatibilityError("cannot enter allowed root: " + name)
 	}
+	if err := verifyOpenedInstallRoot(name, info, root); err != nil {
+		root.Close()
+		return nil, err
+	}
 	return root, nil
+}
+
+func verifyOpenedInstallRoot(name string, inspected fs.FileInfo, root *os.Root) error {
+	opened, err := root.Stat(".")
+	if err != nil || !opened.IsDir() || !os.SameFile(inspected, opened) {
+		return compatibilityError("allowed root changed while opening: " + name)
+	}
+	return nil
 }
 
 func ensureScopedInstallDirectory(root *os.Root, action installAction, planned, created map[string]struct{}) error {

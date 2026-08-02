@@ -93,6 +93,21 @@ complete operation, and creates the scope's state record after applying the
 targets. Existing foreign content at an owned-file destination or conflicting
 managed ownership is refused, including with `--force`.
 
+#### Go install shadow/parity boundary
+
+An internal Go install driver exists for parity-only validation. The parity
+harness builds that test-only command and replays Bash and Go against the same
+physical sandbox path, comparing status, stdout, stderr, file types, modes,
+symlink targets, exact bytes, Install State, and backup-tree effects.
+
+`install.sh` remains authoritative. The public `oaw install` is not enabled,
+the internal driver is not a release entrypoint, and passing parity does not
+authorize a management cutover.
+
+A normal `install` creates no operation backup, including when `--force` is
+present. Extending or coordinating valid Install State preserves any existing valid `backup` reference,
+while a rejected install changes neither state nor the backup tree. Ticket 13 owns Go `update`, `uninstall`, and forced-backup parity.
+
 ### `update`
 
 `update` requires an existing valid installation record. Updates read policy,
@@ -135,10 +150,11 @@ stored under the XDG config root, while state and operation backups are stored
 under the XDG state root; see the [architecture guide](architecture.md) for
 exact paths and the record schema.
 
-A normal clean operation need not create a backup. A forced mutation creates
-an operation-scoped, verified backup before any prepared destination is
-changed. The installer uses atomic replacement per destination but does not
-promise whole-operation rollback.
+A normal `install` creates no operation backup. Clean `update` and `uninstall`
+need not create one. A forced `update` or `uninstall` creates an
+operation-scoped, verified backup before any prepared destination is changed.
+The installer uses atomic replacement per destination but does not promise
+whole-operation rollback.
 
 ## Exit Codes
 

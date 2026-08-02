@@ -86,6 +86,19 @@ Go 不提供权威的 `install`、`update` 或 `uninstall`。未来若要 cutove
 scope 的 state record。Owned-file destination 中已有的 foreign content 或冲突的 managed
 ownership 即使使用 `--force` 也会被拒绝。
 
+#### Go install shadow/parity 边界
+
+内部 Go install driver 仅用于 parity 验证。Parity harness 会构建这个 test-only command，
+让 Bash 与 Go 在同一个物理 sandbox 路径上重放，并比较 status、stdout、stderr、file type、
+mode、symlink target、精确 bytes、Install State 与 backup-tree effect。
+
+`install.sh` 仍是权威入口。public `oaw install` 尚未启用，内部 driver 不是 release
+entrypoint，通过 parity 也不会授权 management cutover。
+
+普通 `install` 不创建 operation backup，即使提供 `--force` 也是如此。扩展或协调有效
+Install State 时会保留已有且有效的 `backup` 引用；被拒绝的 install 不会改变 state 或
+backup tree。Ticket 13 负责 Go `update`、`uninstall` 与 forced-backup parity。
+
 ### `update`
 
 `update` 要求现有且有效的安装记录。更新只从 **current checkout** 读取 policy、version、
@@ -119,9 +132,10 @@ User 与 project installation 绝不共用 state file。不同物理 project roo
 state file。已安装 policy 位于 XDG config root，state 与 operation backup 位于 XDG state
 root；精确路径与 record schema 见[架构指南](architecture.md)。
 
-普通 clean operation 不一定创建 backup。Forced mutation 会在任何 prepared destination
-改变前创建经过验证的 operation-scoped backup。安装器提供 atomic replacement per
-destination，但不承诺整个操作 rollback。
+普通 `install` 不创建 operation backup。Clean `update` 与 `uninstall` 不一定创建 backup；
+forced `update` 或 `uninstall` 会在任何 prepared destination 改变前创建经过验证的
+operation-scoped backup。安装器提供 atomic replacement per destination，但不承诺整个
+操作 rollback。
 
 ## 退出码
 

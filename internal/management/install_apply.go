@@ -48,12 +48,9 @@ func Install(source Source, environment Environment, request InstallRequest) (Re
 }
 
 func applyPreparedInstallAction(action installAction, planned, created map[string]struct{}) (string, error) {
-	current, err := inspectInstallPath(action.destination)
+	current, err := revalidateInstallActionSnapshot(action)
 	if err != nil {
 		return "", err
-	}
-	if !reflect.DeepEqual(current, action.before) {
-		return "", compatibilityError("destination changed after preparation: " + action.destination)
 	}
 	if current.kind == installPathRegular && bytes.Equal(current.data, action.data) {
 		return "oaw: unchanged: " + action.label, nil
@@ -66,6 +63,17 @@ func applyPreparedInstallAction(action installAction, planned, created map[strin
 		return "", err
 	}
 	return "oaw: " + verb + ": " + action.destination, nil
+}
+
+func revalidateInstallActionSnapshot(action installAction) (installPathSnapshot, error) {
+	current, err := inspectInstallPath(action.destination)
+	if err != nil {
+		return installPathSnapshot{}, err
+	}
+	if !reflect.DeepEqual(current, action.before) {
+		return installPathSnapshot{}, compatibilityError("destination changed after preparation: " + action.destination)
+	}
+	return current, nil
 }
 
 func cloneManagementResult(result Result) Result {

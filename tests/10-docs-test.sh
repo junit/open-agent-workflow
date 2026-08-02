@@ -538,6 +538,26 @@ for shadow_contract in \
   'Go 不提供权威的 `install`、`update` 或 `uninstall`'; do
   assert_contains docs/zh/installer.md "$shadow_contract"
 done
+for install_shadow_contract in \
+  'internal Go install driver' \
+  'parity-only' \
+  '`install.sh` remains authoritative' \
+  'public `oaw install` is not enabled' \
+  'A normal `install` creates no operation backup' \
+  'preserves any existing valid `backup` reference' \
+  'Ticket 13 owns Go `update`, `uninstall`, and forced-backup parity'; do
+  assert_contains docs/en/installer.md "$install_shadow_contract"
+done
+for install_shadow_contract in \
+  '内部 Go install driver' \
+  '仅用于 parity' \
+  '`install.sh` 仍是权威' \
+  'public `oaw install` 尚未启用' \
+  '普通 `install` 不创建 operation backup' \
+  '保留已有且有效的 `backup` 引用' \
+  'Ticket 13 负责 Go `update`、`uninstall` 与 forced-backup parity'; do
+  assert_contains docs/zh/installer.md "$install_shadow_contract"
+done
 pass "installer documents cover commands, options, defaults, isolation, drift, dry-run, uninstall, and exits"
 
 DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home

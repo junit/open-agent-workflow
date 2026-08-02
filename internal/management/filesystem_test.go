@@ -98,6 +98,37 @@ func TestAtomicReplaceRefusesPlannedDirectoryThatAppeared(t *testing.T) {
 	}
 }
 
+func TestAtomicReplaceRefusesDestinationThatChangedAfterValidation(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "artifact")
+	writePrepareFile(t, destination, []byte("foreign\n"), 0o644)
+	action := installAction{
+		label: "artifact", data: []byte("replacement\n"), destination: destination, mode: 0o644,
+		allowedRoot: root, relativeSuffix: "artifact", before: installPathSnapshot{kind: installPathMissing},
+	}
+
+	if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "changed after preparation") {
+		t.Fatalf("scopedAtomicReplace() error = %v", err)
+	}
+	if data, err := os.ReadFile(destination); err != nil || string(data) != "foreign\n" {
+		t.Fatalf("destination data=%q error=%v", data, err)
+	}
+}
+
+func TestInstallActionSnapshotRejectsUninspectableDestination(t *testing.T) {
+	root := t.TempDir()
+	parent := filepath.Join(root, "parent")
+	writePrepareFile(t, parent, []byte("not a directory\n"), 0o644)
+	action := installAction{
+		destination: filepath.Join(parent, "artifact"),
+		allowedRoot: root, relativeSuffix: "parent/artifact", before: installPathSnapshot{kind: installPathMissing},
+	}
+
+	if _, err := revalidateInstallActionSnapshot(action); err == nil || !strings.Contains(err.Error(), "could not be inspected") {
+		t.Fatalf("revalidateInstallActionSnapshot() error = %v", err)
+	}
+}
+
 func TestAtomicReplaceCreatesMissingAllowedRoot(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing-root")
 	destination := filepath.Join(root, "artifact")
@@ -135,6 +166,24 @@ func TestAtomicReplaceRejectsUnsafeAllowedRoots(t *testing.T) {
 			t.Fatalf("scopedAtomicReplace() error = %v", err)
 		}
 	})
+}
+
+func TestOpenedInstallRootMustMatchInspectedDirectory(t *testing.T) {
+	inspectedPath := t.TempDir()
+	openedPath := t.TempDir()
+	inspected, err := os.Lstat(inspectedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := os.OpenRoot(openedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer opened.Close()
+
+	if err := verifyOpenedInstallRoot(inspectedPath, inspected, opened); err == nil || !strings.Contains(err.Error(), "changed while opening") {
+		t.Fatalf("verifyOpenedInstallRoot() error = %v", err)
+	}
 }
 
 func TestInstallDirectorySetsFailClosed(t *testing.T) {
@@ -219,9 +268,13 @@ func TestScopedFilesystemDetectsChangedDirectoryHandleAndFinalSymlink(t *testing
 	if err := os.Symlink(outside, link); err != nil {
 		t.Fatal(err)
 	}
+	linkBefore, err := inspectInstallPath(link)
+	if err != nil {
+		t.Fatal(err)
+	}
 	linkAction := installAction{
 		label: "artifact", data: []byte("replacement\n"), destination: link, mode: 0o644,
-		allowedRoot: rootPath, relativeSuffix: "artifact-link",
+		allowedRoot: rootPath, relativeSuffix: "artifact-link", before: linkBefore,
 	}
 	if err := scopedAtomicReplace(linkAction, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("final symlink error = %v", err)
