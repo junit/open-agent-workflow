@@ -9,7 +9,7 @@ Policy-only behavior.
 
 **Blocked by:** 08 — Host Conformance and Capability Audit; explicit user Host selection
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Selection evidence:** `.scratch/oaw-runtime-vnext/evidence/host-selection.md`
 
@@ -22,10 +22,18 @@ Policy-only behavior.
   permits them.
 - [ ] User selection of the first Runtime Host is recorded as migration evidence.
 
-## Pre-selection Audit
+## Explicit Host Selection
+
+The user selected **Codex CLI** on 2026-08-03 as the first production Runtime
+Host. Ticket 09 implements the pinned `runner-managed` integration
+`oaw/codex-runner`; every other built-in Host remains `instruction-only`.
+
+## Selection Audit
 
 Official automation surfaces and locally installed versions for Codex CLI,
 Claude Code, and Gemini CLI were checked on 2026-08-03. Codex CLI is the
 evidence-backed recommendation for the first `runner-managed` integration, but
-no Host is selected or promoted by this recommendation. Implementation planning
-remains blocked until the user explicitly selects one candidate.
+The user explicitly selected Codex CLI as the first `runner-managed` integration.
+This unblocks implementation planning but does not promote the Host until the
+exact Manifest, audit, adapter record, and conformance report pass the Ticket
+09 gates.

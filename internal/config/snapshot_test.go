@@ -60,7 +60,7 @@ func TestLoadRejectsUntrustedHostIntegrationInputs(t *testing.T) {
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v1"
 [[host_integrations]]
-id = "oaw/codex-instruction"
+id = "oaw/codex-runner"
 path = "integrations/codex.toml"
 replace = true
 `)

@@ -13,6 +13,11 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
+runtime_host: codex
+runtime_integration_id: oaw/codex-runner
+runtime_integration_level: runner-managed
+runtime_host_selection_source: user-explicit
+runtime_host_selected_at: 2026-08-03
 current_stage: host-selection
 active_ticket: 09-first-runtime-host-and-oaw-run
 domain_glossary: CONTEXT.md
@@ -129,8 +134,9 @@ A pre-Ticket 09 consistency audit on 2026-08-02 reverified the current Ticket
 through 08 implementation. This projection-only correction did not select a
 Runtime Host or change any dependency edge.
 
-Ticket 09 pre-selection capability evidence was recorded on 2026-08-03 from
-official Codex CLI, Claude Code, and Gemini CLI sources plus locally observed
-versions. Codex CLI is recommended as the first `runner-managed` candidate, but
-the selection remains `pending-user-selection`; every built-in Host integration
-remains instruction-only and no Ticket 09 implementation plan has started.
+Ticket 09 capability evidence was recorded on 2026-08-03 from official Codex
+CLI, Claude Code, and Gemini CLI sources plus locally observed versions. The
+user explicitly selected Codex CLI as the first `runner-managed` Host with
+integration ID `oaw/codex-runner`. Every other built-in Host remains
+instruction-only. Ticket 09 must still pass the exact Manifest, audit, adapter,
+and conformance gates before promotion.

@@ -2,13 +2,13 @@
 
 **Audit date:** 2026-08-03
 
-**Selection status:** `pending-user-selection`
+**Selection status:** `selected`
 
 ```yaml
-selected_host: null
-selected_integration_id: null
-selection_source: null
-selected_at: null
+selected_host: codex
+selected_integration_id: oaw/codex-runner
+selection_source: user-explicit
+selected_at: 2026-08-03
 ```
 
 This artifact records the pre-selection capability evidence and, after an
@@ -39,17 +39,20 @@ real-process integration tests.
 | Claude Code | `2.1.212` | Print mode supports text, JSON, and stream-JSON input/output; `--json-schema` constrains final output; permission modes are explicit per invocation. | Viable alternate candidate. Official structured transport is strong, but physical isolation and the complete OAW control feature set are not established by the CLI reference alone. |
 | Gemini CLI | `0.46.0` | Headless mode supports JSON and streaming JSON events for session, messages, tool use/results, errors, and final results, with documented exit codes. | Viable later candidate. Its basic transport is sufficient for adapter prototyping, but the first promotion would carry more error-normalization risk and still requires the same OAW conformance work. |
 
-## Recommendation
+## Selected Host
 
-Select **Codex CLI** as the first production Runtime Host and implement it as a
-`runner-managed` integration, not `native-managed`. The reference `oaw run`
-process remains the Runtime Protocol authority and invokes an exact Codex CLI
-process binding. Codex output is untrusted Host output and must be bounded,
-strictly parsed, normalized into OAW's closed observation vocabulary, and kept
-out of authoritative state except through digest-pinned evidence references.
+The user explicitly selected **Codex CLI** as the first production Runtime Host
+on 2026-08-03. OAW records it as the `runner-managed` integration
+`oaw/codex-runner`, not `native-managed`. The reference `oaw run` process
+remains the Runtime Protocol authority and invokes an exact Codex CLI process
+binding. Codex output is untrusted Host output and must be bounded, strictly
+parsed, normalized into OAW's closed observation vocabulary, and kept out of
+authoritative state except through digest-pinned evidence references.
 
-This recommendation is not a selection. Ticket 09 remains blocked until the
-user explicitly names one candidate.
+This explicit selection does not by itself promote the Host. Ticket 09 must
+still pin the exact Manifest, official audit references, adapter integration
+record, and a passing digest-pinned conformance report before Runtime claims
+are enabled.
 
 ## Official Sources
 
@@ -64,8 +67,8 @@ Retrieved 2026-08-03:
 
 After the user chooses a Host:
 
-1. Replace the four `null` fields at the top with the exact Host ID,
-   integration ID, `user-explicit` selection source, and decision date.
+1. Record the exact Host ID, integration ID, `user-explicit` selection source,
+   and decision date in the fields above.
 2. Record the user's exact choice in Ticket 09 and the workflow tracker.
 3. Produce the executable Ticket 09 implementation plan for only that Host.
 4. Keep every other built-in integration `instruction-only`.

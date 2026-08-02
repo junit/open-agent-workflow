@@ -46,23 +46,98 @@
     {
       "schema_version": "oaw.host-integration/v1",
       "integration_version": "1.0.0",
-      "id": "oaw/codex-instruction",
+      "id": "oaw/codex-runner",
       "manifest": {
         "schema_version": "oaw.host-manifest/v1",
         "manifest_version": "1.0.0",
         "host_id": "codex",
-        "integration_level": "instruction-only",
-        "protocols": [],
-        "binding_kinds": [],
-        "features": []
+        "integration_level": "runner-managed",
+        "protocols": [
+          "oaw.runtime/v1"
+        ],
+        "binding_kinds": [
+          "agent",
+          "skill",
+          "tool"
+        ],
+        "features": [
+          "bundle-inheritance",
+          "cancellation",
+          "evidence-return",
+          "exact-binding-invocation",
+          "invocation-deduplication",
+          "isolated-executor",
+          "normalized-observation",
+          "pause"
+        ]
       },
-      "manifest_digest": "021b6eb03f262e9dea099d10fb5f831040b8f6879409f7153535fed9d424482c",
+      "manifest_digest": "1cdbf2d09620d585486000418f1770fc604ae323a9cd8c27bd3e0bdef5c30d5d",
       "audit": {
-        "status": "pending",
-        "references": [],
-        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
+        "status": "passed",
+        "references": [
+          {
+            "reference": "https://developers.openai.com/codex/agent-approvals-security",
+            "digest": "dccefbfc624107f9bc0e8952cf426eb648856ea6f0cb49fdeda85d7543bf2a5f"
+          },
+          {
+            "reference": "https://developers.openai.com/codex/non-interactive-mode",
+            "digest": "041202ee4e4036b4fa1ea2e6a653d9ea81c2f315534d6f1d2646ee7f41af45b9"
+          }
+        ],
+        "digest": "2e0e3c9e74bae4a8d249507ac1573596f5ad06964c19b8c739b2ef1e093052ec"
       },
-      "digest": "c55556db5ea7b01438ef56461cdd09c7b7091c9ee6464f367ee1f364a91f684e"
+      "conformance": {
+        "schema_version": "oaw.host-conformance-report/v1",
+        "suite_version": "oaw.host-conformance/v1",
+        "integration_id": "oaw/codex-runner",
+        "manifest_digest": "1cdbf2d09620d585486000418f1770fc604ae323a9cd8c27bd3e0bdef5c30d5d",
+        "checks": [
+          {
+            "id": "bundle-inheritance",
+            "passed": true,
+            "evidence": "414f5003c442c7d5f2338aa813575464068f201ba3add55d1aff4b4c65b00746"
+          },
+          {
+            "id": "cancellation",
+            "passed": true,
+            "evidence": "7f69fe67d6f7e38cfce2d6bc8cb0b90b54fd7324ea6a1529ba53cb977a6321bb"
+          },
+          {
+            "id": "evidence-return",
+            "passed": true,
+            "evidence": "b3c54487b907a84536826eb6544c356b6443df427e417190dcd0716eb86f48af"
+          },
+          {
+            "id": "exact-binding-invocation",
+            "passed": true,
+            "evidence": "5bc19488048d24242bbd23b1ba1b677654b287511cbd607118144dfe6aba435c"
+          },
+          {
+            "id": "invocation-deduplication",
+            "passed": true,
+            "evidence": "a6057d82c17f3ac6e36ab8809ddb04ca795a8d298557e75c20870724b9a8dac2"
+          },
+          {
+            "id": "isolated-executor",
+            "passed": true,
+            "evidence": "bcdf5e7262707817dda086bad36ff7de6fa75b60ce223dcbc0239d1f55eb7fed"
+          },
+          {
+            "id": "normalized-observation",
+            "passed": true,
+            "evidence": "5a0ae7ad8fbbae478acd4332d23af49d2ae5d87156a15fa79ea658ec1f8b02fa"
+          },
+          {
+            "id": "pause",
+            "passed": true,
+            "evidence": "a3b239d0096b009dda3d0e5082f490673479c48632ddffee1ba6c1df1d1d74fa"
+          }
+        ],
+        "transcript_digest": "4786a868ac9bcfdbc7d7577bd2cd77b489de19e4a502a3c0ae5a8dae2727f380",
+        "passed": true,
+        "digest": "7ea7026fda4146cbd6a19db8ea25168a9c02bf2f81f67a29ba37ab3fac419e4b"
+      },
+      "digest": "bea2b3a7caee2062e7b058a8fbfe1187adfc5c60ac7c033275d02e251393d303"
     },
     {
       "schema_version": "oaw.host-integration/v1",
