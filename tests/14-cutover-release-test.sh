@@ -124,12 +124,139 @@ run_wrapper_contract() {
   pass "install.sh is an offline colocated-binary compatibility wrapper"
 }
 
+verify_release_checksums() {
+  release_output=$1
+  if command -v shasum >/dev/null 2>&1; then
+    (cd "$release_output" && shasum -a 256 -c SHA256SUMS >/dev/null)
+    return
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    (cd "$release_output" && sha256sum -c SHA256SUMS >/dev/null)
+    return
+  fi
+  fail "no local SHA-256 verification tool is available"
+}
+
+assert_archive_contents() {
+  archive=$1
+  package_name=$2
+  binary_name=$3
+  actual=$CUTOVER_TEMP/archive-actual
+  expected=$CUTOVER_TEMP/archive-expected
+  tar -tzf "$archive" | LC_ALL=C sort >"$actual"
+  printf '%s\n' \
+    "$package_name/" \
+    "$package_name/CHANGELOG.md" \
+    "$package_name/LICENSE" \
+    "$package_name/README-zh.md" \
+    "$package_name/README.md" \
+    "$package_name/VERSION" \
+    "$package_name/install.sh" \
+    "$package_name/$binary_name" \
+    | LC_ALL=C sort >"$expected"
+  if ! cmp -s "$expected" "$actual"; then
+    diff -u "$expected" "$actual" >&2 || true
+    fail "release archive has unexpected contents: $archive"
+  fi
+}
+
+run_release_contract() {
+  release_output=$CUTOVER_TEMP/dist
+  mkdir -p "$release_output"
+  if ! bash "$REPOSITORY/scripts/build-release.sh" "$release_output" \
+    >"$CUTOVER_TEMP/release.stdout" 2>"$CUTOVER_TEMP/release.stderr"; then
+    fail "release build failed: $(cat "$CUTOVER_TEMP/release.stderr")"
+  fi
+
+  version=$(tr -d '\r\n' <"$REPOSITORY/VERSION")
+  archive_count=0
+  for platform in \
+    darwin_amd64 darwin_arm64 \
+    linux_amd64 linux_arm64 \
+    windows_amd64 windows_arm64; do
+    package_name=open-agent-workflow_${version}_${platform}
+    archive=$release_output/$package_name.tar.gz
+    [ -f "$archive" ] || fail "missing release archive: $archive"
+    case "$platform" in
+      windows_*) binary_name=oaw.exe ;;
+      *) binary_name=oaw ;;
+    esac
+    assert_archive_contents "$archive" "$package_name" "$binary_name"
+    archive_extract=$CUTOVER_TEMP/inspect-$platform
+    mkdir -p "$archive_extract"
+    tar -xzf "$archive" -C "$archive_extract"
+    go version -m "$archive_extract/$package_name/$binary_name" >/dev/null 2>&1 ||
+      fail "$archive does not contain a Go executable"
+    archive_count=$((archive_count + 1))
+  done
+  [ "$archive_count" -eq 6 ] || fail "release matrix did not contain six archives"
+  [ -f "$release_output/SHA256SUMS" ] || fail "release output omitted SHA256SUMS"
+  [ "$(find "$release_output" -type f | wc -l | tr -d ' ')" -eq 7 ] ||
+    fail "release output contains files outside the six archives and SHA256SUMS"
+  verify_release_checksums "$release_output"
+
+  current_platform=$(go env GOOS)_$(go env GOARCH)
+  current_package=open-agent-workflow_${version}_${current_platform}
+  current_root=$CUTOVER_TEMP/inspect-$current_platform/$current_package
+  current_binary=oaw
+  if [ "$(go env GOOS)" = windows ]; then
+    current_binary=oaw.exe
+  fi
+  [ -x "$current_root/$current_binary" ] || fail "current-platform binary is not executable"
+  [ -x "$current_root/install.sh" ] || fail "current-platform wrapper is not executable"
+  "$current_root/$current_binary" --help >"$CUTOVER_TEMP/current-help"
+  "$current_root/$current_binary" catalog validate >"$CUTOVER_TEMP/current-catalog"
+  grep -F 'catalog valid' "$CUTOVER_TEMP/current-catalog" >/dev/null ||
+    fail "current-platform catalog validation failed"
+  bash "$current_root/install.sh" --help >"$CUTOVER_TEMP/current-wrapper-help"
+  cmp -s "$CUTOVER_TEMP/current-help" "$CUTOVER_TEMP/current-wrapper-help" ||
+    fail "released wrapper help differs from released binary help"
+
+  smoke_home=$CUTOVER_TEMP/release-home
+  smoke_config=$CUTOVER_TEMP/release-config
+  smoke_state=$CUTOVER_TEMP/release-state
+  mkdir -p "$smoke_home" "$smoke_config" "$smoke_state"
+  HOME="$smoke_home" XDG_CONFIG_HOME="$smoke_config" XDG_STATE_HOME="$smoke_state" \
+    "$current_root/$current_binary" check --target claude >"$CUTOVER_TEMP/current-check"
+  [ ! -e "$smoke_state/open-agent-workflow/runtime" ] ||
+    fail "released check created Runtime State"
+
+  set +e
+  bash "$REPOSITORY/scripts/build-release.sh" "$release_output" \
+    >"$CUTOVER_TEMP/repeated.stdout" 2>"$CUTOVER_TEMP/repeated.stderr"
+  repeated_status=$?
+  set -e
+  [ "$repeated_status" -ne 0 ] || fail "release builder overwrote existing artifacts"
+
+  linux_archive=$release_output/open-agent-workflow_${version}_linux_amd64.tar.gz
+  set +e
+  bash "$REPOSITORY/scripts/smoke-wsl.sh" "$linux_archive" \
+    >"$CUTOVER_TEMP/wsl.stdout" 2>"$CUTOVER_TEMP/wsl.stderr"
+  wsl_status=$?
+  set -e
+  if [ -r /proc/sys/kernel/osrelease ] && grep -qi microsoft /proc/sys/kernel/osrelease; then
+    [ "$wsl_status" -eq 0 ] || fail "WSL smoke failed: $(cat "$CUTOVER_TEMP/wsl.stderr")"
+    grep -F 'PASS:' "$CUTOVER_TEMP/wsl.stdout" >/dev/null ||
+      fail "WSL smoke returned no PASS evidence"
+  else
+    [ "$wsl_status" -eq 77 ] || fail "non-WSL smoke returned $wsl_status instead of 77"
+    grep -F 'SKIP:' "$CUTOVER_TEMP/wsl.stderr" >/dev/null ||
+      fail "non-WSL smoke did not report SKIP"
+  fi
+
+  pass "release archives are offline, cross-platform, checksummed, and executable"
+}
+
 trap cleanup EXIT HUP INT TERM
 CUTOVER_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-cutover.XXXXXX") ||
   fail "cannot create cutover test directory"
 
 case "${1:-all}" in
-  all|wrapper) run_wrapper_contract ;;
-  release) fail "release archive test is not implemented" ;;
+  all)
+    run_wrapper_contract
+    run_release_contract
+    ;;
+  wrapper) run_wrapper_contract ;;
+  release) run_release_contract ;;
   *) fail "unknown cutover test mode: $1" ;;
 esac
