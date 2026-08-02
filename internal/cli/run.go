@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
@@ -12,6 +13,13 @@ import (
 type catalogLoader func() (catalog.Catalog, error)
 
 func Run(args []string, stdout io.Writer, stderr io.Writer) int {
+	return RunWithInput(args, os.Stdin, stdout, stderr)
+}
+
+func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	if len(args) != 0 && args[0] == "runtime" {
+		return runRuntimeExchange(args[1:], stdin, stdout, stderr)
+	}
 	if len(args) != 0 && args[0] == "check" {
 		return runCheck(args[1:], stdout, stderr)
 	}
@@ -108,5 +116,5 @@ func parse(args []string) (command, error) {
 }
 
 func usage() string {
-	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n"
+	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw runtime exchange [--state-root path]\n"
 }

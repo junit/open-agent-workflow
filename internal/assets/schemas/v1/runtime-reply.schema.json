@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v1/runtime-reply.schema.json",
+  "title": "Open Agent Workflow Runtime Reply",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "run_id", "revision", "snapshot", "diagnostics", "recovery_actions"],
+  "properties": {
+    "schema_version": {"const": "oaw.runtime/v1"},
+    "kind": {"type": "string", "minLength": 1},
+    "run_id": {"type": "string", "minLength": 1},
+    "revision": {"type": "integer", "minimum": 1},
+    "revision_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "snapshot": {"type": "object"},
+    "diagnostics": {"type": "array"},
+    "reason": {"type": "string"},
+    "recovery_actions": {"type": "array", "items": {"type": "string"}}
+  }
+}
