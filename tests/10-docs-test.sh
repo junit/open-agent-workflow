@@ -558,6 +558,28 @@ for install_shadow_contract in \
   'Ticket 13 负责 Go `update`、`uninstall` 与 forced-backup parity'; do
   assert_contains docs/zh/installer.md "$install_shadow_contract"
 done
+for mutation_shadow_contract in \
+  'internal Go update/uninstall shadow driver' \
+  'normal update and uninstall behavior matches Bash' \
+  '`install.sh` remains authoritative' \
+  'public `oaw update` and `oaw uninstall` are not enabled' \
+  'verified operation backup before the first forced mutation' \
+  'injected Go failure restores every pre-existing destination' \
+  'Bash does not promise whole-operation rollback' \
+  'Ticket 14 alone owns management cutover'; do
+  assert_contains docs/en/installer.md "$mutation_shadow_contract"
+done
+for mutation_shadow_contract in \
+  '内部 Go update/uninstall shadow driver' \
+  '普通 update/uninstall 行为与 Bash 匹配' \
+  '`install.sh` 仍是权威入口' \
+  'public `oaw update` 与 `oaw uninstall` 尚未启用' \
+  '第一次 forced mutation 之前完成经过验证的 operation backup' \
+  '注入的 Go failure 会恢复每个预先存在的 destination' \
+  'Bash 不承诺整个操作 rollback' \
+  '只有 Ticket 14 负责 management cutover'; do
+  assert_contains docs/zh/installer.md "$mutation_shadow_contract"
+done
 pass "installer documents cover commands, options, defaults, isolation, drift, dry-run, uninstall, and exits"
 
 DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home

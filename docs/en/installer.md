@@ -132,6 +132,23 @@ fragment, **drift exits 65** before normal mutation. `--force` does not erase
 that history silently: every affected artifact is placed in a verified backup
 before apply.
 
+#### Go update/uninstall shadow/parity boundary
+
+An internal Go update/uninstall shadow driver exists only for parity testing;
+it is not a release entrypoint. Its normal update and uninstall behavior matches Bash
+across status, stdout, stderr, trees, modes, symlinks, exact file bytes, Install State,
+and backup effects on the same physical fixture.
+
+`install.sh` remains authoritative. The public `oaw update` and `oaw uninstall` are not enabled,
+and parity success grants no management authority. Ticket 14 alone owns management cutover.
+
+For forced operations, the Go shadow completes a verified operation backup before the first forced mutation.
+In its deterministic fault-injection matrix, an
+injected Go failure restores every pre-existing destination that the operation
+changed, in reverse effect order, while leaving the completed backup valid. This
+is a Go-only acceptance guard: Bash does not promise whole-operation rollback,
+and its public contract remains atomic replacement per destination.
+
 ## Dry Run
 
 For `install`, `update`, and `uninstall`, `--dry-run` executes argument parsing,

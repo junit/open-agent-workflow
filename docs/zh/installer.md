@@ -118,6 +118,21 @@ managed-block destination 不含 untracked OAW marker，然后作为成功 no-op
 正常 mutation 不会开始。`--force` 也不会静默抹掉历史：apply 前，每个受影响构件都会进入
 经过验证的 backup。
 
+#### Go update/uninstall shadow/parity 边界
+
+内部 Go update/uninstall shadow driver 仅用于 parity 测试，不是 release entrypoint。
+普通 update/uninstall 行为与 Bash 匹配：在同一物理 fixture 上比较 status、stdout、stderr、
+tree、mode、symlink、精确文件 bytes、Install State 与 backup effect。
+
+`install.sh` 仍是权威入口。public `oaw update` 与 `oaw uninstall` 尚未启用。
+parity 通过不会授予 management authority。只有 Ticket 14 负责 management cutover。
+
+对于 forced operation，Go shadow 会在第一次 forced mutation 之前完成经过验证的 operation backup。
+在确定性的 fault-injection matrix 中，注入的 Go failure 会恢复每个预先存在的 destination，
+但只处理本次操作实际改变的对象，并按 effect 逆序执行，同时保持已完成 backup 有效。
+这只是 Go shadow 的 acceptance guard：Bash 不承诺整个操作 rollback；它的公开契约仍是每个
+destination 的 atomic replacement。
+
 ## Dry Run
 
 对于 `install`、`update` 和 `uninstall`，`--dry-run` 会执行参数解析、路径推导、rendering、
