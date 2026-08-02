@@ -51,9 +51,11 @@ func Execute(value catalog.Catalog, environment Environment, request Request) (R
 	}
 	lines = append(lines, providers...)
 	lines = append(lines, readinessLines(environment, resolved.targets)...)
-	for _, targetID := range resolved.targets {
-		lines = append(lines, "installed "+targetID+": not-installed")
+	installed, err := installationLines(environment, resolved)
+	if err != nil {
+		return Result{}, err
 	}
+	lines = append(lines, installed...)
 	return Result{Lines: lines}, nil
 }
 
