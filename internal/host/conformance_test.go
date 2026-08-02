@@ -74,6 +74,18 @@ func TestRunConformanceRequiresNativeInvocationForNativeManaged(t *testing.T) {
 	}
 }
 
+func TestRunConformanceChecksEveryDeclaredBindingKind(t *testing.T) {
+	adapter := &mutatingAdapter{observation: func(_ int, value *host.ObservationFixtureReceipt) {
+		if value.Binding.Kind == "skill" {
+			value.Binding.Reference = "substituted"
+		}
+	}}
+	report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
+	if err != nil || report.Passed || conformanceCheckPassed(report, host.CheckExactBindingInvocation) {
+		t.Fatalf("Report accepted a substituted declared Binding kind: %#v, %v", report, err)
+	}
+}
+
 func TestRunConformanceReportsEachBehavioralFailure(t *testing.T) {
 	for _, test := range []struct {
 		name   string

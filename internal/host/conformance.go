@@ -74,6 +74,25 @@ type ConformanceAdapter interface {
 	Cancel(CancelFixtureRequest) (CancelFixtureReceipt, error)
 }
 
+type conformanceInvocationTranscript struct {
+	Request     InvocationFixtureRequest
+	First       ObservationFixtureReceipt
+	FirstError  bool
+	Second      ObservationFixtureReceipt
+	SecondError bool
+}
+
+type conformanceInvocationResult struct {
+	Transcripts        []conformanceInvocationTranscript
+	CancelInvocationID string
+	BindingValid       bool
+	BundleValid        bool
+	EvidenceValid      bool
+	ObservationValid   bool
+	DedupValid         bool
+	NativeValid        bool
+}
+
 func RunConformance(integrationID string, manifest Manifest, adapter ConformanceAdapter) (ConformanceReport, error) {
 	normalized, err := NewManifest(manifest)
 	if err != nil {
@@ -89,54 +108,36 @@ func RunConformance(integrationID string, manifest Manifest, adapter Conformance
 	bundleDigest := fixtureDigest("bundle", integrationID, normalized.ContentDigest())
 	executorRequest := ExecutorFixtureRequest{ExecutorID: "oaw-conformance-executor", BundleDigest: bundleDigest}
 	executorReceipt, executorErr := adapter.CreateExecutor(executorRequest)
-	binding := catalog.HostBinding{Host: normalized.HostID, Kind: normalized.BindingKinds[0], Reference: "oaw-conformance-binding"}
-	invocationRequest := InvocationFixtureRequest{
-		InvocationID: "oaw-conformance-invocation", ExecutorID: executorRequest.ExecutorID,
-		Binding: binding, BundleDigest: bundleDigest,
-		EvidenceChallengeDigest: fixtureDigest("evidence", integrationID, normalized.ContentDigest()),
-	}
-	first, firstErr := adapter.Invoke(invocationRequest)
-	second, secondErr := adapter.Invoke(invocationRequest)
+	invocations := runConformanceInvocations(integrationID, normalized, adapter, executorRequest)
 	pauseRequest := PauseFixtureRequest{RunID: "oaw-conformance-run"}
 	pauseReceipt, pauseErr := adapter.Pause(pauseRequest)
-	cancelRequest := CancelFixtureRequest{InvocationID: invocationRequest.InvocationID}
+	cancelRequest := CancelFixtureRequest{InvocationID: invocations.CancelInvocationID}
 	cancelReceipt, cancelErr := adapter.Cancel(cancelRequest)
 
-	firstSafe := normalizedObservation(first)
-	secondSafe := normalizedObservation(second)
 	executorValid := executorErr == nil && executorReceipt.ExecutorID == executorRequest.ExecutorID && executorReceipt.Isolated
-	bindingValid := firstErr == nil && secondErr == nil && firstSafe.Binding == binding && secondSafe.Binding == binding
-	bundleValid := executorReceipt.BundleDigest == bundleDigest && firstSafe.BundleDigest == bundleDigest && secondSafe.BundleDigest == bundleDigest
-	evidenceValid := firstErr == nil && secondErr == nil && validFixtureEvidence(firstSafe.Evidence, invocationRequest.EvidenceChallengeDigest) && validFixtureEvidence(secondSafe.Evidence, invocationRequest.EvidenceChallengeDigest)
-	observationValid := firstErr == nil && secondErr == nil && validFixtureObservation(firstSafe, invocationRequest) && validFixtureObservation(secondSafe, invocationRequest)
-	dedupValid := observationValid && firstSafe.ExecutionID == secondSafe.ExecutionID && reflect.DeepEqual(firstSafe, secondSafe)
+	bundleValid := executorReceipt.BundleDigest == bundleDigest && invocations.BundleValid
 	pauseValid := pauseErr == nil && pauseReceipt.RunID == pauseRequest.RunID && pauseReceipt.Paused
 	cancelValid := cancelErr == nil && cancelReceipt.InvocationID == cancelRequest.InvocationID && cancelReceipt.Cancelled
-	nativeValid := firstErr == nil && secondErr == nil && firstSafe.Native && secondSafe.Native
 
 	results := map[CheckID]bool{
-		CheckIsolatedExecutor: executorValid, CheckExactBindingInvocation: bindingValid,
+		CheckIsolatedExecutor: executorValid, CheckExactBindingInvocation: invocations.BindingValid,
 		CheckPause: pauseValid, CheckBundleInheritance: bundleValid,
-		CheckEvidenceReturn: evidenceValid, CheckInvocationDedup: dedupValid,
-		CheckCancellation: cancelValid, CheckNormalizedObservation: observationValid,
-		CheckNativeInvocation: nativeValid,
+		CheckEvidenceReturn: invocations.EvidenceValid, CheckInvocationDedup: invocations.DedupValid,
+		CheckCancellation: cancelValid, CheckNormalizedObservation: invocations.ObservationValid,
+		CheckNativeInvocation: invocations.NativeValid,
 	}
 	transcript := struct {
-		ExecutorRequest   ExecutorFixtureRequest
-		ExecutorReceipt   ExecutorFixtureReceipt
-		ExecutorError     bool
-		InvocationRequest InvocationFixtureRequest
-		First             ObservationFixtureReceipt
-		FirstError        bool
-		Second            ObservationFixtureReceipt
-		SecondError       bool
-		PauseRequest      PauseFixtureRequest
-		PauseReceipt      PauseFixtureReceipt
-		PauseError        bool
-		CancelRequest     CancelFixtureRequest
-		CancelReceipt     CancelFixtureReceipt
-		CancelError       bool
-	}{executorRequest, executorReceipt, executorErr != nil, invocationRequest, firstSafe, firstErr != nil, secondSafe, secondErr != nil, pauseRequest, pauseReceipt, pauseErr != nil, cancelRequest, cancelReceipt, cancelErr != nil}
+		ExecutorRequest ExecutorFixtureRequest
+		ExecutorReceipt ExecutorFixtureReceipt
+		ExecutorError   bool
+		Invocations     []conformanceInvocationTranscript
+		PauseRequest    PauseFixtureRequest
+		PauseReceipt    PauseFixtureReceipt
+		PauseError      bool
+		CancelRequest   CancelFixtureRequest
+		CancelReceipt   CancelFixtureReceipt
+		CancelError     bool
+	}{executorRequest, executorReceipt, executorErr != nil, invocations.Transcripts, pauseRequest, pauseReceipt, pauseErr != nil, cancelRequest, cancelReceipt, cancelErr != nil}
 	transcriptDigest, _, err := canonicaljson.Digest(transcript)
 	if err != nil {
 		return ConformanceReport{}, hostError("HOST_CONFORMANCE_INVALID", "fixture transcript cannot be canonicalized", err)
@@ -154,6 +155,36 @@ func RunConformance(integrationID string, manifest Manifest, adapter Conformance
 		IntegrationID: integrationID, ManifestDigest: normalized.ContentDigest(),
 		Checks: checks, TranscriptDigest: transcriptDigest, Passed: allPassed,
 	})
+}
+
+func runConformanceInvocations(integrationID string, manifest Manifest, adapter ConformanceAdapter, executor ExecutorFixtureRequest) conformanceInvocationResult {
+	result := conformanceInvocationResult{
+		Transcripts: []conformanceInvocationTranscript{}, BindingValid: true, BundleValid: true,
+		EvidenceValid: true, ObservationValid: true, DedupValid: true, NativeValid: true,
+	}
+	for index, kind := range manifest.BindingKinds {
+		binding := catalog.HostBinding{Host: manifest.HostID, Kind: kind, Reference: "oaw-conformance-binding-" + kind}
+		request := InvocationFixtureRequest{
+			InvocationID: "oaw-conformance-invocation-" + kind, ExecutorID: executor.ExecutorID,
+			Binding: binding, BundleDigest: executor.BundleDigest,
+			EvidenceChallengeDigest: fixtureDigest("evidence", integrationID, manifest.ContentDigest(), kind),
+		}
+		first, firstErr := adapter.Invoke(request)
+		second, secondErr := adapter.Invoke(request)
+		firstSafe, secondSafe := normalizedObservation(first), normalizedObservation(second)
+		if index == 0 {
+			result.CancelInvocationID = request.InvocationID
+		}
+		result.BindingValid = result.BindingValid && firstErr == nil && secondErr == nil && firstSafe.Binding == binding && secondSafe.Binding == binding
+		result.BundleValid = result.BundleValid && firstSafe.BundleDigest == executor.BundleDigest && secondSafe.BundleDigest == executor.BundleDigest
+		result.EvidenceValid = result.EvidenceValid && firstErr == nil && secondErr == nil && validFixtureEvidence(firstSafe.Evidence, request.EvidenceChallengeDigest) && validFixtureEvidence(secondSafe.Evidence, request.EvidenceChallengeDigest)
+		observationValid := firstErr == nil && secondErr == nil && validFixtureObservation(firstSafe, request) && validFixtureObservation(secondSafe, request)
+		result.ObservationValid = result.ObservationValid && observationValid
+		result.DedupValid = result.DedupValid && observationValid && firstSafe.ExecutionID == secondSafe.ExecutionID && reflect.DeepEqual(firstSafe, secondSafe)
+		result.NativeValid = result.NativeValid && firstErr == nil && secondErr == nil && firstSafe.Native && secondSafe.Native
+		result.Transcripts = append(result.Transcripts, conformanceInvocationTranscript{Request: request, First: firstSafe, FirstError: firstErr != nil, Second: secondSafe, SecondError: secondErr != nil})
+	}
+	return result
 }
 
 func normalizedObservation(value ObservationFixtureReceipt) ObservationFixtureReceipt {

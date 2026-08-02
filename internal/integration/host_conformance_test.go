@@ -33,8 +33,9 @@ func TestTicket08ConformanceToRestartPinsRunnerAndNativeHosts(t *testing.T) {
 		t.Run(string(level), func(t *testing.T) {
 			adapter := &ticket08Adapter{native: level == host.NativeManaged}
 			integration := ticket08ConformingIntegration(t, "acme/codex-"+string(level), "1.0.0", level, "codex", []string{"agent", "skill", "tool"}, adapter)
-			if adapter.calls != 5 {
-				t.Fatalf("conformance Adapter calls = %d, want 5", adapter.calls)
+			wantCalls := 3 + 2*len(integration.Manifest.BindingKinds)
+			if adapter.calls != wantCalls {
+				t.Fatalf("conformance Adapter calls = %d, want %d", adapter.calls, wantCalls)
 			}
 			projectRoot := t.TempDir()
 			fixture := ticket08RuntimeFixture(t, projectRoot, integration)
@@ -61,7 +62,7 @@ func TestTicket08ConformanceToRestartPinsRunnerAndNativeHosts(t *testing.T) {
 			if bundle.HostIntegrationID != integration.ID || bundle.HostIntegrationDigest != integration.Digest || bundle.HostManifestDigest != integration.ManifestDigest || bundle.HostAuditDigest != integration.Audit.Digest || bundle.HostConformanceDigest != integration.Conformance.Digest {
 				t.Fatalf("Bundle Host pins = %#v", bundle)
 			}
-			if adapter.calls != 5 {
+			if adapter.calls != wantCalls {
 				t.Fatalf("Runtime invoked the conformance Adapter: calls=%d", adapter.calls)
 			}
 			assertTicket08Redacted(t, integration.Conformance, inspected, stateRoot, projectionRoot)
@@ -155,7 +156,9 @@ func TestTicket08StableSwitchAdoptsCurrentHostAndRejectsStaleEngine(t *testing.T
 	if oawruntime.ErrorCode(err) != "HOST_INTEGRATION_CHANGED" || ticket08Head(t, stateRoot, switched.RunID) != headBefore {
 		t.Fatalf("stale Host INSPECT = %v", err)
 	}
-	if firstAdapter.calls != 5 || secondAdapter.calls != 5 {
+	wantFirst := 3 + 2*len(first.Manifest.BindingKinds)
+	wantSecond := 3 + 2*len(second.Manifest.BindingKinds)
+	if firstAdapter.calls != wantFirst || secondAdapter.calls != wantSecond {
 		t.Fatalf("Runtime invoked Adapters: first=%d second=%d", firstAdapter.calls, secondAdapter.calls)
 	}
 }
