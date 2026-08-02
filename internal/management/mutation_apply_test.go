@@ -619,6 +619,56 @@ func TestRestoreMutationDirectoryPreservesOriginalMode(t *testing.T) {
 	if err != nil || info.Mode().Perm() != 0o777 {
 		t.Fatalf("restored directory mode = %v, %v", info, err)
 	}
+	wrongMode := action
+	wrongMode.before.mode = 0o700
+	if err := restoreMutationDirectory(wrongMode); err == nil || !strings.Contains(err.Error(), "changed before rollback") {
+		t.Fatalf("wrong mode error = %v", err)
+	}
+	invalidSnapshot := action
+	invalidSnapshot.before.kind = installPathMissing
+	if err := restoreMutationDirectory(invalidSnapshot); err == nil || !strings.Contains(err.Error(), "cannot restore") {
+		t.Fatalf("invalid snapshot error = %v", err)
+	}
+}
+
+func TestRestoreMutationDirectoryRejectsUnsafeRollbackCoordinates(t *testing.T) {
+	t.Run("changed root identity", func(t *testing.T) {
+		parent := t.TempDir()
+		root := filepath.Join(parent, "root")
+		if err := os.Mkdir(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		destination := filepath.Join(root, "owned")
+		identity, err := captureMutationPathIdentity(root, destination)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Rename(root, root+".prepared"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Mkdir(root, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		action := directoryAction{
+			destination: destination, allowedRoot: root, relativeSuffix: "owned",
+			before:   installPathSnapshot{kind: installPathDirectory, mode: 0o755},
+			identity: identity,
+		}
+		if err := restoreMutationDirectory(action); err == nil || !strings.Contains(err.Error(), "identity changed") {
+			t.Fatalf("changed identity error = %v", err)
+		}
+	})
+
+	t.Run("unsafe suffix", func(t *testing.T) {
+		root := t.TempDir()
+		action := directoryAction{
+			destination: filepath.Join(root, "owned"), allowedRoot: root, relativeSuffix: "../owned",
+			before: installPathSnapshot{kind: installPathDirectory, mode: 0o755},
+		}
+		if err := restoreMutationDirectory(action); err == nil || !strings.Contains(err.Error(), "unsafe component") {
+			t.Fatalf("unsafe suffix error = %v", err)
+		}
+	})
 }
 
 func TestRollbackFailureReturnsCombinedRedactedDiagnostic(t *testing.T) {
@@ -657,6 +707,9 @@ func TestRollbackFailureReturnsCombinedRedactedDiagnostic(t *testing.T) {
 }
 
 func TestRollbackRefusesToOverwriteConcurrentFileChanges(t *testing.T) {
+	if err := revalidateAppliedMutationForRollback(mutationAction{}, installPathSnapshot{}); err == nil || !strings.Contains(err.Error(), "cannot restore") {
+		t.Fatalf("invalid rollback effect error = %v", err)
+	}
 	tests := []struct {
 		name   string
 		before installPathSnapshot
