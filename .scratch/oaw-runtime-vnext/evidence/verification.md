@@ -283,3 +283,46 @@ review remediation `07f1552`; executable planning is `2ed87b3`, and bilingual
 shadow documentation is `d9c740b`. Bash remains authoritative and no Go
 management cutover occurred. All `.serena/` directories, unrelated branches,
 and unrelated worktrees remain preserved.
+
+## Ticket 12 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Scope:** Go `install` rendering, state, prepare/apply and filesystem safety;
+Bash authority preservation; same-path mutating parity; repository
+compatibility; documentation; security checks; and cross-platform compilation
+
+| Check | Result |
+| --- | --- |
+| Go formatting and `rtk git diff --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 1138 tests passed in 21 packages |
+| `rtk go test -race ./...` | Exit 0: 1138 tests passed in 21 packages |
+| `rtk go vet ./...` | Exit 0 |
+| `internal/management` statement coverage | `90.0%`, required minimum `90%` |
+| Repository Go statement coverage | `87.7%`, required minimum `80%` |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer, documentation, check-parity, and install-parity cases passed |
+| Same-path Bash/Go install parity matrix | Exit 0: 45 stream/status/tree/byte/backup cases passed |
+| Classification proposal fuzz seam | Exit 0 after a fresh 2-second run |
+| Host conformance receipt fuzz seam | Exit 0 after a fresh 2-second run |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable module findings |
+| `rtk git diff --exit-code main -- install.sh lib internal/cli/run.go` | Exit 0: Bash authority and public routing unchanged |
+
+The parity corpus replays deterministic setup at the same physical sandbox
+path for Bash and Go. It compares status, stdout, stderr, path type, mode,
+symlink target, checksum, every regular-file byte, Install State, backup-tree
+bytes, and zero-write refusal/dry-run snapshots. The 45 cases cover fresh,
+repeated, additive, and default user installs; all four user and nine project
+targets; managed-file newline placement; shared destinations; physical paths;
+cross-scope coordination; dry-run; backup references; drift, collision, parser,
+scope, symlink, hostile-path, and later-target preflight failures.
+
+Implementation commits are `a19baa1`, `bb9c950`, `3349c42`, `41b616e`, and
+`d51750d`; executable planning is `c8cbbdc`, and review/documentation
+remediation is `6f15694`. Bash remains authoritative, the internal Go install
+driver remains parity-only, and no Go management cutover occurred. All
+`.serena/` directories, unrelated branches, and unrelated worktrees remain
+preserved.

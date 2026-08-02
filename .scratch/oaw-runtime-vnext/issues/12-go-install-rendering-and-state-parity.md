@@ -8,12 +8,12 @@ backup behavior without making Go authoritative before parity passes.
 
 **Blocked by:** 11 — Go check Black-box Parity
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Bash install behavior remains authoritative until parity passes.
-- [ ] Go install fixtures reproduce managed block rendering, owned-file rendering,
+- [x] Bash install behavior remains authoritative until parity passes.
+- [x] Go install fixtures reproduce managed block rendering, owned-file rendering,
   install state records, checksums, and dry-run output.
-- [ ] Existing user content outside OAW-owned surfaces is preserved.
-- [ ] Recoverable backup behavior matches Bash for every supported target and
+- [x] Existing user content outside OAW-owned surfaces is preserved.
+- [x] Recoverable backup behavior matches Bash for every supported target and
   scope.
-- [ ] Parity failures leave Bash behavior and user files untouched.
+- [x] Parity failures leave Bash behavior and user files untouched.

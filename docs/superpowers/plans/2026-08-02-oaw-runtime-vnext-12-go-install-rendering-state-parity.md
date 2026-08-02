@@ -112,7 +112,7 @@ entrypoint.
 - Modify: `internal/check/check.go`
 - Modify: external `internal/check/*_test.go` imports only if required
 
-- [ ] **Step 1: Add a failing facade-compatibility test.**
+- [x] **Step 1: Add a failing facade-compatibility test.**
 
 Add `internal/check/facade_test.go` that calls both the existing `check.Execute`
 and the proposed `management.Check` over the same catalog and fixture, compares
@@ -120,7 +120,7 @@ and the proposed `management.Check` over the same catalog and fixture, compares
 asserts byte equality. Include success, invalid target, invalid state, and the
 partial-output symlink case.
 
-- [ ] **Step 2: Run the facade test and verify RED.**
+- [x] **Step 2: Run the facade test and verify RED.**
 
 ```bash
 rtk go test ./internal/check -run 'FacadeCompatibility' -count=1
@@ -129,7 +129,7 @@ rtk go test ./internal/check -run 'FacadeCompatibility' -count=1
 Expected: compile failure because `internal/management` and `Check` do not yet
 exist; no implementation file changes before this RED evidence.
 
-- [ ] **Step 3: Move the compatibility domain and add the facade.**
+- [x] **Step 3: Move the compatibility domain and add the facade.**
 
 Move the Ticket 11 implementation without changing algorithms. Rename the
 entrypoint to `management.Check`, keep the check-specific request name, and use
@@ -153,7 +153,7 @@ func Write(result Result, output io.Writer) error {
 Do not introduce exported mutable slices or maps. Move internal tests next to
 the implementation; keep the black-box-facing tests on the facade.
 
-- [ ] **Step 4: Run Ticket 11 and repository regression gates.**
+- [x] **Step 4: Run Ticket 11 and repository regression gates.**
 
 ```bash
 rtk gofmt -w internal/check internal/management
@@ -165,7 +165,7 @@ rtk bash tests/11-check-parity-test.sh
 Expected: all existing check bytes, streams, statuses, and snapshots remain
 unchanged.
 
-- [ ] **Step 5: Commit the extraction.**
+- [x] **Step 5: Commit the extraction.**
 
 ```bash
 rtk git add internal/check internal/management
@@ -182,7 +182,7 @@ rtk git commit -m "refactor: extract management compatibility domain"
 - Create: `internal/management/install_state.go`
 - Create: `internal/management/install_state_test.go`
 
-- [ ] **Step 1: Write failing source-copy and renderer tests.**
+- [x] **Step 1: Write failing source-copy and renderer tests.**
 
 Assert `CanonicalPolicy()` equals `policy/ENGINEERING.md`, is non-empty, and
 returns defensive copies. For every user/project target, assert the exact Bash
@@ -200,7 +200,7 @@ zero markers                               -> installable
 duplicate/reversed/partial markers         -> reject as untracked drift
 ```
 
-- [ ] **Step 2: Run renderer tests and verify RED.**
+- [x] **Step 2: Run renderer tests and verify RED.**
 
 ```bash
 rtk go test ./ ./internal/management -run 'CanonicalPolicy|Render|ManagedFile|SerializeInstallState' -count=1
@@ -208,7 +208,7 @@ rtk go test ./ ./internal/management -run 'CanonicalPolicy|Render|ManagedFile|Se
 
 Expected: missing Policy and renderer symbols.
 
-- [ ] **Step 3: Embed Policy and implement pure renderers.**
+- [x] **Step 3: Embed Policy and implement pure renderers.**
 
 Use root `//go:embed policy/ENGINEERING.md`; return `bytes.Clone`. Implement
 one closed `(scope,target)` renderer switch matching `lib/render.sh`, then wrap
@@ -220,7 +220,7 @@ func renderManagedBlock(id targetID, scope scope, policyPath string) ([]byte, er
 func renderManagedFile(current, block []byte) ([]byte, error)
 ```
 
-- [ ] **Step 4: Implement exact Install State serialization.**
+- [x] **Step 4: Implement exact Install State serialization.**
 
 Serialize validated immutable state in Bash order: `format`, `version`,
 `scope`, optional `project`, `policy`, optional `backup`, ordered `directory`
@@ -229,7 +229,7 @@ bad shared destinations, invalid origins, and non-absolute coordinates before
 returning bytes. Reparse rendered bytes with the existing strict parser in
 tests and compare every value.
 
-- [ ] **Step 5: Run focused GREEN and commit.**
+- [x] **Step 5: Run focused GREEN and commit.**
 
 ```bash
 rtk gofmt -w policy.go policy_test.go internal/management
@@ -246,7 +246,7 @@ rtk git commit -m "feat: render install artifacts in Go"
 - Modify: `internal/management/management.go`
 - Modify: shared target/path/state files only for extracted helpers
 
-- [ ] **Step 1: Write failing preparation tests with complete snapshot guards.**
+- [x] **Step 1: Write failing preparation tests with complete snapshot guards.**
 
 Build table fixtures for fresh/repeated/additive user installs; every project
 target; physical project symlinks and spaces; project `codex+opencode` shared
@@ -256,7 +256,7 @@ state; checkout Policy/version mismatch; registry-order normalization; and a
 later invalid target after a valid first target. Snapshot all roots before and
 after `PrepareInstall` and require byte equality.
 
-- [ ] **Step 2: Run preparation tests and verify RED.**
+- [x] **Step 2: Run preparation tests and verify RED.**
 
 ```bash
 rtk go test ./internal/management -run 'PrepareInstall' -count=1
@@ -264,7 +264,7 @@ rtk go test ./internal/management -run 'PrepareInstall' -count=1
 
 Expected: `PrepareInstall` is undefined.
 
-- [ ] **Step 3: Implement immutable source/request resolution and action values.**
+- [x] **Step 3: Implement immutable source/request resolution and action values.**
 
 Validate and defensively copy source bytes. Reuse frozen scope/target/path rules.
 Represent actions as private values containing type, label, source bytes,
@@ -272,7 +272,7 @@ destination, mode, allowed root, and relative suffix; reject conflicting
 actions for one destination unless rendered bytes and coordinates are equal.
 Return copied slices from test-only accessors.
 
-- [ ] **Step 4: Implement installed-state merge and cross-scope coordination.**
+- [x] **Step 4: Implement installed-state merge and cross-scope coordination.**
 
 Match `operation_install` exactly:
 
@@ -289,14 +289,14 @@ Match `operation_install` exactly:
 Do not create a backup action. Assert `Force=false` and `Force=true` produce the
 same install plan for clean input and the same refusal for conflicts.
 
-- [ ] **Step 5: Implement deterministic dry-run/action prediction.**
+- [x] **Step 5: Implement deterministic dry-run/action prediction.**
 
 Compute Bash action order without writes: selected targets, target-directory
 effects as applicable, Policy, then state/state-reference actions. Use exactly
 `unchanged: <label>`, `would-create: <path>`, and `would-update: <path>` with one
 newline per result line. Dry-run still performs full validation and preparation.
 
-- [ ] **Step 6: Run focused GREEN, race, coverage, and commit.**
+- [x] **Step 6: Run focused GREEN, race, coverage, and commit.**
 
 ```bash
 rtk gofmt -w internal/management
@@ -319,7 +319,7 @@ fixture.
 - Create: `internal/management/install_apply.go`
 - Create: `internal/management/install_apply_test.go`
 
-- [ ] **Step 1: Write failing apply and fault-boundary tests.**
+- [x] **Step 1: Write failing apply and fault-boundary tests.**
 
 Cover modes `0600` for Policy/state and `0644` for targets; existing user bytes;
 created vs pre-existing directories; sibling preservation; idempotent mtime and
@@ -329,7 +329,7 @@ components; destination appearance after preparation; source/state change after
 preparation; and write failure reporting after any already-completed Bash-order
 action. Assert no backup directory is created for any install case.
 
-- [ ] **Step 2: Run apply tests and verify RED.**
+- [x] **Step 2: Run apply tests and verify RED.**
 
 ```bash
 rtk go test ./internal/management -run 'ApplyInstall|AtomicReplace|OwnedDirector' -count=1
@@ -337,7 +337,7 @@ rtk go test ./internal/management -run 'ApplyInstall|AtomicReplace|OwnedDirector
 
 Expected: apply/filesystem symbols are missing.
 
-- [ ] **Step 3: Implement scoped directory creation and atomic replacement.**
+- [x] **Step 3: Implement scoped directory creation and atomic replacement.**
 
 Validate every component with `Lstat`, never follow a symlink, create missing
 components one at a time, and record only planned directories actually created.
@@ -346,7 +346,7 @@ the destination coordinate, rename atomically, and sync the file and directory
 where supported. Clean temporary files on failure. Never use a shell or expand
 state-derived text.
 
-- [ ] **Step 4: Implement final-plan revalidation and Bash-order apply.**
+- [x] **Step 4: Implement final-plan revalidation and Bash-order apply.**
 
 Before any mutation, revalidate all roots, paths, existing state/live bytes,
 planned-directory absence, action uniqueness, and immutable rendered checksums.
@@ -355,7 +355,7 @@ registry order, then Policy, then current and cross-scope states. Report
 `create: <path>`, `update: <path>`, or `unchanged: <label>` exactly. Verify that
 created directories equal the prepared ownership set before returning.
 
-- [ ] **Step 5: Run GREEN, full regressions, and commit.**
+- [x] **Step 5: Run GREEN, full regressions, and commit.**
 
 ```bash
 rtk gofmt -w internal/management
@@ -378,7 +378,7 @@ rtk git commit -m "feat: apply Go install operations"
 - Modify: `tests/run.sh`
 - Do not modify: `internal/cli/run.go` public routing
 
-- [ ] **Step 1: Write failing parser and shadow-authority tests.**
+- [x] **Step 1: Write failing parser and shadow-authority tests.**
 
 Assert the shadow parser accepts Bash install's one `--target`, one `--project`,
 one `--dry-run`, one `--force`, and one help flag; rejects missing/empty values,
@@ -386,7 +386,7 @@ duplicates, unknown options, and operands with exact status 64 messages. Assert
 the normal `cli.Run([]string{"install"}, ...)` still follows the existing public
 catalog error path and never calls management install.
 
-- [ ] **Step 2: Implement the internal driver without public routing.**
+- [x] **Step 2: Implement the internal driver without public routing.**
 
 `RunShadowInstall(args, stdout, stderr)` accepts the full argument vector,
 requires first argument `install`, constructs `Source` from embedded
@@ -395,7 +395,7 @@ or complete stdout before typed stderr, and maps statuses exactly. The internal
 command's main passes `os.Args[1:]` only to this function. Do not add `install` handling to
 `internal/cli.Run`, public help, README usage, or release packaging.
 
-- [ ] **Step 3: Build a same-path replay harness and verify RED.**
+- [x] **Step 3: Build a same-path replay harness and verify RED.**
 
 Build the internal driver once. For each case, allocate one fixed sandbox path
 and define a deterministic setup function. Invoke setup, snapshot, run Bash and
@@ -410,7 +410,7 @@ rtk bash tests/12-install-parity-test.sh
 
 Expected before remediation: the first Bash/Go stream or tree mismatch fails.
 
-- [ ] **Step 4: Complete the parity matrix.**
+- [x] **Step 4: Complete the parity matrix.**
 
 Include fresh/default/idempotent/additive user installs; all four user
 renderers; existing content with and without newline; all nine project targets;
@@ -421,7 +421,7 @@ owned-file collision; untracked/malformed markers; invalid/drifted/mismatched
 state; checkout mismatch; `--force` conflicts; target/scope/parser failures;
 symlink components; hostile inert path text; and later-target preflight failure.
 
-- [ ] **Step 5: Run the legacy suite and commit.**
+- [x] **Step 5: Run the legacy suite and commit.**
 
 ```bash
 rtk bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
@@ -444,21 +444,21 @@ rtk git commit -m "test: enforce Bash Go install parity"
 - Modify: `.scratch/oaw-runtime-vnext/evidence/verification.md`
 - Modify: this plan
 
-- [ ] **Step 1: Add failing bilingual authority assertions.**
+- [x] **Step 1: Add failing bilingual authority assertions.**
 
 Require both guides to say the internal Go install driver is parity-only,
 `install.sh` remains authoritative, public `oaw install` is not enabled, normal
 install creates no backup, existing backup references are preserved, and
 Ticket 13 owns update/uninstall/forced-backup parity. Reject cutover wording.
 
-- [ ] **Step 2: Document the boundary and run docs tests.**
+- [x] **Step 2: Document the boundary and run docs tests.**
 
 ```bash
 rtk bash tests/10-docs-test.sh
 rtk bash tests/12-install-parity-test.sh
 ```
 
-- [ ] **Step 3: Perform inline two-axis review and remediation.**
+- [x] **Step 3: Perform inline two-axis review and remediation.**
 
 Review `main...HEAD` separately for repository standards and Ticket 12 spec.
 Check Bash drift, public authority leakage, duplicate management rules, mutable
@@ -469,7 +469,7 @@ TOCTOU gaps, unbounded reads, unsafe modes, temp-file leaks, output/status/order
 differences, platform assumptions, and Ticket 13 scope creep. Fix every
 Critical/High/Important issue and rerun focused parity.
 
-- [ ] **Step 4: Run the complete verification matrix.**
+- [x] **Step 4: Run the complete verification matrix.**
 
 ```bash
 rtk gofmt -w .
@@ -495,7 +495,7 @@ rtk git diff --exit-code main -- install.sh lib
 Expected: management coverage is at least 90%, total Go coverage stays above
 80%, every parity/legacy case passes, and there are no reachable vulnerabilities.
 
-- [ ] **Step 5: Close artifacts, commit, and fast-forward `main`.**
+- [x] **Step 5: Close artifacts, commit, and fast-forward `main`.**
 
 Mark Ticket 12 completed, record the exact review/verification fixed point,
 check every acceptance item, and preserve `.serena/`, branches, and unrelated

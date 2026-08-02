@@ -13,7 +13,7 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: planning
+current_stage: completed
 active_ticket: 12-go-install-rendering-and-state-parity
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
@@ -100,11 +100,15 @@ and the full verification matrix on 2026-08-02 at implementation fixed point
 race, coverage, fuzz, cross-platform build, and vulnerability matrix on
 2026-08-02 at implementation fixed point `07f1552`. Bash remains the
 authoritative management interface, while `oaw check` remains a
-non-authoritative shadow path. Built-in Host records remain instruction-only,
-and no first production Runtime Host was selected.
+non-authoritative shadow path. Ticket 12 passed final two-axis inline review
+and the complete rendering, state, mutating parity, race, coverage, fuzz,
+cross-platform build, and vulnerability matrix on 2026-08-02 at implementation
+fixed point `6f15694`. Its internal Go install driver remains parity-only;
+public `oaw install` is not enabled. Built-in Host records remain
+instruction-only, and no first production Runtime Host was selected.
 
 Every unfinished published ticket carries Matt's `ready-for-agent` triage
 status, which means the ticket is specified for agent execution; completed
 tickets are marked `completed`. Scheduling still honors `Blocked by` edges;
-completion of Ticket 08 unblocks its declared successors without changing their
-independent scheduling or selection gates.
+completion of Ticket 12 unblocks Ticket 13 without changing its independent
+scheduling or selection gates.

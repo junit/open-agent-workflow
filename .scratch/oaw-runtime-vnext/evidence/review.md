@@ -299,3 +299,55 @@ enumerate arbitrary configured Providers, and does not implement Go
 
 No unresolved Critical, High, Important, Standards, or Spec finding remains.
 Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
+
+## Ticket 12 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `6f15694`
+
+**Scope:** Go `install` rendering and Install State compatibility, immutable
+prepare/apply, scoped filesystem writes, the internal shadow command,
+same-path mutating parity, and bilingual authority boundaries
+
+**Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+### Standards
+
+The complete `main...6f15694` diff was checked against `CONTRIBUTING.md`, the
+repository's Bash 3.2 and bilingual-documentation contracts, the standard
+code-smell baseline, and the project file-size and immutability rules. One
+documented limit was corrected: `install_prepare.go` had reached 803 lines.
+Pure clone/value helpers now live in focused `install_values.go`, leaving the
+prepare orchestration file at 753 lines without changing behavior. The final
+diff contains no unrelated generated files, secret-like values, unsafe shell
+expansion, Provider mutation, or unresolved documented-standard violation.
+
+### Spec
+
+The diff was checked separately against Ticket 12, Runtime vNext migration
+sections 15-18, ADR 0004, and the executable plan. The review covered Bash and
+public-CLI authority, immutable copied source/plan values, zero-write prepare
+and dry-run, full preflight, rendering and checksum bytes, shared destinations,
+cross-scope state rewrites, backup-reference preservation, symlink containment,
+bounded reads, modes, temporary files, output/status/order, and Ticket 13 scope.
+
+Two Important TOCTOU findings were remediated. Opening an allowed root now
+verifies that the `os.Root` handle has the same filesystem identity as the
+directory inspected immediately before opening. Scoped replacement also
+revalidates the complete destination snapshot after directory preparation and
+again before rename, so a newly appeared or changed foreign destination is not
+silently overwritten. Deterministic RED tests reproduced both missing guards
+and now pass. Earlier parity remediation also preserved caller-lexical XDG
+roots across state discovery, fixing repeated-separator idempotent and
+cross-scope installs without changing Bash.
+
+The final command remains internal and test-only. `install.sh` is authoritative,
+public `oaw install` is not routed, install creates no operation backup, valid
+existing backup references survive, and Go `update`, `uninstall`, forced
+recovery, and cutover remain in Tickets 13 and 14.
+
+No unresolved Critical, High, Important, Standards, or Spec finding remains.
+Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
