@@ -9,7 +9,7 @@ capabilities, loops, or scope expansion are required.
 
 **Blocked by:** 02 — Configuration, Trust and Provider Discovery; 03 — Deterministic Request Classifier; 05 — Direct Runtime Vertical Slice
 
-**Status:** complete
+**Status:** completed
 
 - [x] Missing or ambiguous Capability selection returns CAPABILITY_SELECTION_REQUIRED.
 - [x] A top-level Bounded request can use only explicit user intent or a matching

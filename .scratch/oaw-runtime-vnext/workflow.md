@@ -121,3 +121,9 @@ tickets are marked `completed`. Scheduling still honors `Blocked by` edges;
 completion of Ticket 13 satisfies its Ticket 14 dependency, but Ticket 14
 remains blocked by Tickets 09 and 10. Ticket 09 still requires the user's
 explicit first production Runtime Host selection; no Host is assumed here.
+
+A pre-Ticket 09 consistency audit on 2026-08-02 reverified the current Ticket
+01 through 03 implementation surfaces and aligned the stale Ticket 01 through
+06 issue status/acceptance projections with the already completed Ticket 01
+through 08 implementation. This projection-only correction did not select a
+Runtime Host or change any dependency edge.

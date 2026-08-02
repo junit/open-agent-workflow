@@ -9,20 +9,20 @@ Missing or uncertain critical information fails upward.
 
 **Blocked by:** 01 — Built-in Catalog and Contracts; 02 — Configuration, Trust and Provider Discovery
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] The classifier never calls a model API and never uses keyword-only natural
+- [x] The classifier never calls a model API and never uses keyword-only natural
   language parsing as its authority.
-- [ ] Decisions distinguish DIRECT, BOUNDED, and WORKFLOW from workflow complexity
+- [x] Decisions distinguish DIRECT, BOUNDED, and WORKFLOW from workflow complexity
   and risk class.
-- [ ] Direct Mode requires clear scope, no public contract or high-risk semantic
+- [x] Direct Mode requires clear scope, no public contract or high-risk semantic
   changes, and a focused verification command.
-- [ ] Bounded Mode requires an exact user-authorized or trusted-rule Capability
+- [x] Bounded Mode requires an exact user-authorized or trusted-rule Capability
   selector before admission.
-- [ ] Workflow Mode is selected for unresolved requirements, architectural
+- [x] Workflow Mode is selected for unresolved requirements, architectural
   decisions, multiple responsibilities, sensitive mutations, multi-ticket work,
   missing valid proposals, or unknown critical traits.
-- [ ] User and trusted-project rules can only raise mode, risk, or evidence
+- [x] User and trusted-project rules can only raise mode, risk, or evidence
   requirements.
-- [ ] Critical release scenarios in the classifier eval corpus are never released
+- [x] Critical release scenarios in the classifier eval corpus are never released
   as Direct or Bounded.

@@ -10,7 +10,7 @@ closed.
 
 **Blocked by:** 01 — Built-in Catalog and Contracts; 02 — Configuration, Trust and Provider Discovery
 
-**Status:** complete
+**Status:** completed
 
 - [x] Full-family eligibility is determined by verified Capability coverage for
   the selected Recipe, not Provider brand or hardcoded specialty.

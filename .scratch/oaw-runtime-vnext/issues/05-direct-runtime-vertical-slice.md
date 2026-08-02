@@ -8,7 +8,7 @@ that Direct work is outside Capability admission and Resource Lease guarantees.
 
 **Blocked by:** 03 — Deterministic Request Classifier
 
-**Status:** complete
+**Status:** completed
 
 - [x] START accepts a valid classification proposal and project identity.
 - [x] The Runtime commits a durable Direct decision before replying.

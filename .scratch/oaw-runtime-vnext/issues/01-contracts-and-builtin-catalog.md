@@ -10,18 +10,18 @@ readable output without changing existing Bash management behavior.
 
 **Blocked by:** None — can start immediately
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] The repository has an initial Go module and a testable package layout for
+- [x] The repository has an initial Go module and a testable package layout for
   schemas, provider descriptors, capability declarations, recipe declarations,
   aliases, and catalog loading.
-- [ ] Built-in catalog records exist for oaw/superpowers, oaw/matt, and oaw/ecc.
-- [ ] Built-in recipes exist for oaw/delivery, oaw/domain-engineering,
+- [x] Built-in catalog records exist for oaw/superpowers, oaw/matt, and oaw/ecc.
+- [x] Built-in recipes exist for oaw/delivery, oaw/domain-engineering,
   oaw/ecc-engineering, oaw/reliable-feature, and oaw/hardening.
-- [ ] Compatibility aliases map SP-FULL, MATT-FULL, ECC-FULL, and MATT-SP-HYBRID
+- [x] Compatibility aliases map SP-FULL, MATT-FULL, ECC-FULL, and MATT-SP-HYBRID
   to their approved built-in recipes.
-- [ ] The catalog validates duplicate IDs, missing references, unsupported schema
+- [x] The catalog validates duplicate IDs, missing references, unsupported schema
   versions, missing capabilities, missing recipe responsibility ownership, and
   alias targets.
-- [ ] Human and JSON catalog inspection are deterministic across runs.
-- [ ] Existing Bash installer commands and regression tests continue to pass.
+- [x] Human and JSON catalog inspection are deterministic across runs.
+- [x] Existing Bash installer commands and regression tests continue to pass.

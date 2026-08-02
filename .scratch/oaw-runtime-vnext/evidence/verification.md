@@ -396,3 +396,25 @@ documentation is `b4c98f7`. Bash remains authoritative,
 public Go management routing remains closed, and Ticket 14 alone owns cutover.
 All `.serena/` directories, unrelated branches, and unrelated worktrees remain
 preserved.
+
+## Pre-Ticket 09 Tracker Consistency Audit
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+The current `main` implementation was rechecked before normalizing the stale
+issue projections for Tickets 01 through 06. The isolated-worktree baseline
+passed 1419 tests in 21 packages. Ticket 01 catalog, schema, canonical JSON,
+built-in asset, and CLI surfaces passed 162 focused tests in six packages;
+Ticket 02 configuration, trust, discovery, registry, and integration surfaces
+passed 40 focused tests in four packages; and Ticket 03 classifier, critical
+eval, Direct, Bounded, Workflow, and integration surfaces passed 52 focused
+tests in two packages. Tickets 04 through 08 already carried checked acceptance
+items and dedicated review/verification evidence.
+
+The issue edits only align completed status spelling and checked acceptance
+projections with the already merged, currently passing implementation. They do
+not alter scope, dependency edges, Runtime authority, Host selection, or the
+Ticket 09 requirement for explicit user selection of the first production
+Runtime Host.
