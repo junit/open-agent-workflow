@@ -160,3 +160,42 @@ checks, restart inspection, concurrent single-Grant admission, matching and
 conflicting orphan revisions, immutable Grant/observation state, permission
 modes, Resource Lease deferral, and the absence of future Stage/Host authority
 fields. Direct Runtime tests remain passing.
+
+## Ticket 07 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Scope:** Workflow Runtime orchestration, projection/recovery behavior,
+repository compatibility, security checks, and cross-platform compilation
+
+| Check | Result |
+| --- | --- |
+| `rtk git diff --cached --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 751 tests passed in 15 packages |
+| `rtk go test -race ./...` | Exit 0: 751 tests passed in 15 packages |
+| `rtk go vet ./...` | Exit 0 |
+| `internal/runtime` statement coverage | `90.1%`, required minimum `90%` |
+| Repository Go statement coverage | `87.9%`, required minimum `80%` |
+| Final focused Workflow invariant tests | Exit 0: 62 tests passed |
+| Bash syntax and ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all implemented installer cases passed |
+| Classification proposal fuzz seam | Exit 0 after a fresh 2-second run |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable module findings |
+
+The Workflow corpus verifies the blocking selection Gate, immutable Bundle
+generations, fresh review Executors, physical Worktree lease conflicts across
+two Engines, graph-controlled observations, stable-boundary switching,
+configuration adoption only through an explicit new Bundle, replay and restart
+recovery, and fail-closed journal history validation. Integration tests use the
+real Configuration load, Provider discovery, and Registry resolution path.
+
+Projection JSON and Markdown are owner-only one-way outputs. Sink errors and
+panics cannot change a committed reply; lag sidecars are non-authoritative;
+symlink destinations are rejected; deleting or tampering with projection files
+does not affect inspection, Grant issuance, recovery, or switching. State scans
+found no raw Provider output, credentials, or discovery evidence, and Runtime
+never invoked a Host Binding. All `.serena/` directories remain preserved and
+excluded from commits.

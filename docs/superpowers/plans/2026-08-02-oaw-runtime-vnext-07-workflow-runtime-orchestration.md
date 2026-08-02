@@ -96,7 +96,7 @@ active Grant, revocations, and projection lag references.
 - Modify: `internal/profile/records.go`, `internal/profile/compile.go`, `internal/profile/profile_test.go`
 - Create: `internal/runtime/workflow_records.go`, `internal/runtime/workflow_records_test.go`
 
-- [ ] **Step 1: Write failing record tests.**
+- [x] **Step 1: Write failing record tests.**
 
   Test `config.Snapshot.Record()` for a non-empty loaded snapshot, verify its
   digest equals `Snapshot.Digest()`, mutate returned catalog/settings/defaults,
@@ -107,7 +107,7 @@ active Grant, revocations, and projection lag references.
   duplicate bindings/add-ons, invalid digests, generation zero, and missing
   graph/recipe identity.
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   Run:
 
@@ -118,7 +118,7 @@ active Grant, revocations, and projection lag references.
   Expected: compilation failures for the new record accessors and Workflow
   records.
 
-- [ ] **Step 3: Implement immutable records.**
+- [x] **Step 3: Implement immutable records.**
 
   Add a public `config.SnapshotRecord` that is exactly the canonical record
   already used by `Snapshot.setDigest`, plus `Snapshot.Record()` returning
@@ -129,7 +129,7 @@ active Grant, revocations, and projection lag references.
   records, clone helpers, canonical digest finalization, sorted-set helpers,
   and stable validation errors in `internal/runtime/workflow_records.go`.
 
-- [ ] **Step 4: Run focused tests and compatibility tests.**
+- [x] **Step 4: Run focused tests and compatibility tests.**
 
   Run:
 
@@ -142,7 +142,7 @@ active Grant, revocations, and projection lag references.
   Expected: all new and existing tests pass; existing Direct/Bounded snapshot
   JSON still contains empty compatibility arrays.
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
   ```bash
   rtk git add internal/config internal/profile internal/runtime/workflow_records.go
@@ -156,7 +156,7 @@ active Grant, revocations, and projection lag references.
 - Create: `internal/runtime/workflow_start.go`, `internal/runtime/workflow_start_test.go`
 - Modify: `internal/runtime/runtime_test.go`, `internal/runtime/invariants_test.go`
 
-- [ ] **Step 1: Write failing startup tests.**
+- [x] **Step 1: Write failing startup tests.**
 
   Add table-driven tests proving Direct START still returns `RELEASED` without
   a Bundle, Bounded START still returns `READY`/`AWAITING_CAPABILITY` without a
@@ -171,7 +171,7 @@ active Grant, revocations, and projection lag references.
   `PhysicalIsolation`, unknown profile, and unverified capability; all fail
   without a revision write and use stable diagnostics.
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/runtime -run 'WorkflowStart|ProfileSelected|SelectionRequired'
@@ -180,7 +180,7 @@ active Grant, revocations, and projection lag references.
   Expected: the current `REQUEST_MODE_NOT_IMPLEMENTED` behavior or missing
   symbols causes failures; Direct and Bounded baseline tests remain green.
 
-- [ ] **Step 3: Implement the Workflow START path.**
+- [x] **Step 3: Implement the Workflow START path.**
 
   Extend `Options` and `Engine` with cloned Workflow options. Route only
   `classification.RequestModeWorkflow` to `workflowStart`; do not run the
@@ -194,7 +194,7 @@ active Grant, revocations, and projection lag references.
   optional nodes, create generation 1 Bundle, set the entry node and `READY`,
   and commit `WORKFLOW_BUNDLE_CREATED` before returning `MODE_DECIDED`.
 
-- [ ] **Step 4: Extend journal validation and revision edges.**
+- [x] **Step 4: Extend journal validation and revision edges.**
 
   Add `validateWorkflowState`, `validateWorkflowReply`, and
   `validateWorkflowRevisionTransition`. Enforce immutable Run/classification/
@@ -204,7 +204,7 @@ active Grant, revocations, and projection lag references.
   requested. Extend `validateRevision` dispatch without altering Direct or
   Bounded validators.
 
-- [ ] **Step 5: Run focused and full tests.**
+- [x] **Step 5: Run focused and full tests.**
 
   ```bash
   rtk gofmt -w internal/runtime
@@ -214,7 +214,7 @@ active Grant, revocations, and projection lag references.
 
   Expected: Workflow Gate tests pass and all pre-Ticket-07 tests remain green.
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   rtk git add internal/runtime
@@ -228,7 +228,7 @@ active Grant, revocations, and projection lag references.
 - Modify: `internal/runtime/records.go`, `internal/runtime/engine.go`, `internal/runtime/journal.go`, `internal/runtime/transitions.go`
 - Create: `internal/runtime/workflow_grants.go`, `internal/runtime/workflow_grants_test.go`
 
-- [ ] **Step 1: Write failing admission tests.**
+- [x] **Step 1: Write failing admission tests.**
 
   Add `IssueWorkflowStageGrant` cases for exact compiled-node Provider and
   Binding pinning, generation and Bundle/Node/Graph identity, effects/resources
@@ -241,13 +241,13 @@ active Grant, revocations, and projection lag references.
   isolated Executor. Missing physical isolation returns
   `HOST_ISOLATION_UNAVAILABLE`; no revision or Grant is created.
 
-- [ ] **Step 2: Run focused tests and verify RED.**
+- [x] **Step 2: Run focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/admission ./internal/runtime -run 'WorkflowGrant|StageGrant|ReviewExecutor|Isolation'
   ```
 
-- [ ] **Step 3: Implement the admission seam.**
+- [x] **Step 3: Implement the admission seam.**
 
   Add `StageGrantRequest` and `IssueWorkflowStageGrant` as a pure function that
   validates a compiled `profile.GraphNode` against the pinned Catalog/Registry,
@@ -257,7 +257,7 @@ active Grant, revocations, and projection lag references.
   bounded and workflow identity fields; never weaken existing `ValidateGrant`
   checks.
 
-- [ ] **Step 4: Implement Runtime stage issuance and Executor choice.**
+- [x] **Step 4: Implement Runtime stage issuance and Executor choice.**
 
   Add `SignalRequestStageGrant` (with `StageGrantRequest` payload) and route it
   only for Workflow `READY` snapshots. Resolve the active graph node, choose a
@@ -267,7 +267,7 @@ active Grant, revocations, and projection lag references.
   commit `WORKFLOW_STAGE_GRANT_ISSUED`. Reject a second active Grant, a node or
   generation mismatch, and any write request without the future lease check.
 
-- [ ] **Step 5: Validate grant-state transitions and run tests.**
+- [x] **Step 5: Validate grant-state transitions and run tests.**
 
   Add strict `GRANTED` state/reply validation, append-only Grant history,
   immutable old Bundles, and active Grant identity checks. Run:
@@ -278,7 +278,7 @@ active Grant, revocations, and projection lag references.
   rtk go test ./...
   ```
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   rtk git add internal/admission internal/runtime
@@ -292,7 +292,7 @@ active Grant, revocations, and projection lag references.
 - Modify: `internal/runtime/journal.go`, `internal/runtime/engine.go`, `internal/runtime/records.go`, `internal/runtime/transitions.go`
 - Modify: `internal/runtime/bounded_test.go`, `internal/runtime/runtime_test.go`
 
-- [ ] **Step 1: Write failing lease tests.**
+- [x] **Step 1: Write failing lease tests.**
 
   Start two Workflow Runs in the same state root and canonical project root.
   Prove a write-capable stage Grant in Run A commits one lease, while Run B's
@@ -302,13 +302,13 @@ active Grant, revocations, and projection lag references.
   completed observation releases the lease, a failed/uncertain stage retains
   it, and Direct/Bounded Runs never create or inspect OAW leases.
 
-- [ ] **Step 2: Run the focused tests and verify RED.**
+- [x] **Step 2: Run the focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/runtime -run 'Lease|ConcurrentWorkflow|Direct.*Lease|Bounded.*Lease'
   ```
 
-- [ ] **Step 3: Implement the lease primitive.**
+- [x] **Step 3: Implement the lease primitive.**
 
   Add `ResourceLease` with immutable ID, Run/Grant/Bundle generation, resource
   kind, canonical physical worktree, acquisition revision, and digest. Add a
@@ -321,7 +321,7 @@ active Grant, revocations, and projection lag references.
   state but retains immutable history. Do not add lease logic to Direct or
   Bounded branches.
 
-- [ ] **Step 4: Integrate lease ordering safely.**
+- [x] **Step 4: Integrate lease ordering safely.**
 
   Use one lock ordering (`resource lock` then `run lock`) for Workflow stage
   issuance and completion/switch transitions. Never hold a run lock while
@@ -330,7 +330,7 @@ active Grant, revocations, and projection lag references.
   same physical-root helper used by project identity and reject non-absolute
   paths.
 
-- [ ] **Step 5: Run race and recovery tests.**
+- [x] **Step 5: Run race and recovery tests.**
 
   ```bash
   rtk gofmt -w internal/runtime
@@ -338,7 +338,7 @@ active Grant, revocations, and projection lag references.
   rtk go test ./...
   ```
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   rtk git add internal/runtime
@@ -352,7 +352,7 @@ active Grant, revocations, and projection lag references.
 - Create: `internal/runtime/workflow_dispatch.go`, `internal/runtime/workflow_dispatch_test.go`
 - Modify: `internal/runtime/workflow_records.go`, `internal/runtime/workflow_grants.go`
 
-- [ ] **Step 1: Write failing dispatch and graph tests.**
+- [x] **Step 1: Write failing dispatch and graph tests.**
 
   Prove exact `DISPATCH_PREPARED` moves Workflow `GRANTED` to `IN_FLIGHT` only
   for the committed Grant/invocation/Executor, and wrong/stale preparations do
@@ -364,7 +364,7 @@ active Grant, revocations, and projection lag references.
   Prove graph nodes cannot be skipped, Provider output cannot invent a target,
   and no new Grant is minted until the next explicit stage request.
 
-- [ ] **Step 2: Write failing stable-boundary switch tests.**
+- [x] **Step 2: Write failing stable-boundary switch tests.**
 
   Mark a declared stable boundary on a successful observation, then switch to
   another verified Profile. Require generation 2, a new Bundle ID and digest,
@@ -373,13 +373,13 @@ active Grant, revocations, and projection lag references.
   `IN_FLIGHT`, and a switch without explicit user selection. A tampered old
   Bundle or projection must never influence the new Bundle.
 
-- [ ] **Step 3: Run focused tests and verify RED.**
+- [x] **Step 3: Run focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/runtime -run 'WorkflowDispatch|GraphTransition|StableBoundary|BundleSwitch'
   ```
 
-- [ ] **Step 4: Implement the dispatch handshake and graph driver.**
+- [x] **Step 4: Implement the dispatch handshake and graph driver.**
 
   Add Workflow-specific preparation validation while reusing the Ticket 06
   ordered handshake. On authorized observation, append an immutable
@@ -393,7 +393,7 @@ active Grant, revocations, and projection lag references.
   generation, clears active leases, compiles the explicitly selected new graph,
   and commits the new Bundle generation atomically in the new revision.
 
-- [ ] **Step 5: Extend chain/state invariants and verify.**
+- [x] **Step 5: Extend chain/state invariants and verify.**
 
   Enforce append-only observations and Grants, legal `READY -> GRANTED ->
   IN_FLIGHT -> READY/FINISHED` edges, generation-bound Grant identity,
@@ -407,7 +407,7 @@ active Grant, revocations, and projection lag references.
   rtk go test ./...
   ```
 
-- [ ] **Step 6: Commit.**
+- [x] **Step 6: Commit.**
 
   ```bash
   rtk git add internal/runtime
@@ -422,7 +422,7 @@ active Grant, revocations, and projection lag references.
 - Create/Modify: `internal/integration/workflow_runtime_test.go`
 - Modify: `.scratch/oaw-runtime-vnext/workflow.md`, `.scratch/oaw-runtime-vnext/issues/07-workflow-runtime-orchestration.md`, `.scratch/oaw-runtime-vnext/evidence/review.md`, `.scratch/oaw-runtime-vnext/evidence/verification.md`
 
-- [ ] **Step 1: Write failing projection and restart tests.**
+- [x] **Step 1: Write failing projection and restart tests.**
 
   Inject a projection sink and prove every committed Workflow revision emits a
   summary containing Run/Bundle/node/status/revision digests but no full Grant,
@@ -433,13 +433,13 @@ active Grant, revocations, and projection lag references.
   must reproduce the persisted snapshot and never read projection files.
   Tamper/delete a projection and prove Runtime behavior is unchanged.
 
-- [ ] **Step 2: Run focused tests and verify RED.**
+- [x] **Step 2: Run focused tests and verify RED.**
 
   ```bash
   rtk go test ./internal/runtime ./internal/integration -run 'Projection|Workflow.*Restart|Workflow.*Recovery'
   ```
 
-- [ ] **Step 3: Implement the one-way projection sink.**
+- [x] **Step 3: Implement the one-way projection sink.**
 
   Define a small `ProjectionSink` interface and a filesystem implementation
   that atomically writes a redacted JSON/Markdown projection from a committed
@@ -449,7 +449,7 @@ active Grant, revocations, and projection lag references.
   Invoke projection only after journal commit and return the persisted reply
   regardless of projection success.
 
-- [ ] **Step 4: Add integration and security coverage.**
+- [x] **Step 4: Add integration and security coverage.**
 
   Build a real `config.Load`/`discovery.Discover`/`registry.Resolve` fixture for
   `oaw/reliable-feature`, verify optional ECC add-ons are pinned only when
@@ -458,7 +458,7 @@ active Grant, revocations, and projection lag references.
   bytes for forbidden raw output and credentials. Confirm Runtime never calls
   Host Bindings by using bindings that would fail if invoked.
 
-- [ ] **Step 5: Run the complete verification matrix.**
+- [x] **Step 5: Run the complete verification matrix.**
 
   ```bash
   rtk gofmt -w internal/runtime internal/integration
@@ -481,7 +481,7 @@ active Grant, revocations, and projection lag references.
   at least 90%, repository coverage remains at least 80%, and no Direct or
   Bounded regression appears.
 
-- [ ] **Step 6: Perform Superpowers review and remediation.**
+- [x] **Step 6: Perform Superpowers review and remediation.**
 
   Review `main...HEAD` for Gate leakage into Direct/Bounded, selection
   bypasses, unpinned Bundle fields, graph digest forgery, Provider invocation,
@@ -491,13 +491,13 @@ active Grant, revocations, and projection lag references.
   exposure. Fix all Critical/High findings, re-run focused tests and the full
   matrix, and record findings plus evidence in the existing ticket evidence.
 
-- [ ] **Step 7: Update tracker and close the ticket.**
+- [x] **Step 7: Update tracker and close the ticket.**
 
   Change the tracker to `current_stage: completed`, add Ticket 07's plan and
   evidence paths, mark every issue acceptance checkbox complete, record commit
   hashes and exact verification output, and preserve `.serena/` untouched.
 
-- [ ] **Step 8: Commit documentation closure.**
+- [x] **Step 8: Commit documentation closure.**
 
   ```bash
   rtk git add .scratch/oaw-runtime-vnext docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-07-workflow-runtime-orchestration.md

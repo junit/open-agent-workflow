@@ -13,7 +13,7 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: implementation-planning
+current_stage: completed
 active_ticket: 07-workflow-runtime-orchestration
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
@@ -90,12 +90,12 @@ full Bash regression verification passed. Matt ticket decomposition was approved
 by the user on 2026-08-01. Ticket 01 completed in the isolated worktree with
 fresh Go race, coverage, documentation, and full Bash verification. After
 reviewing delegated Task 1 execution, the user directed subsequent work to
-continue inline without additional subagents. Tickets 01 through 06 are
-complete on the implementation branches. Ticket 06 passed final review and
-verification on 2026-08-02; Ticket 07 is now the next unblocked frontier and
-the lifecycle remains in Superpowers-owned implementation planning.
+continue inline without additional subagents. Tickets 01 through 07 are
+complete on the implementation branches. Ticket 07 passed final inline review
+and the full verification matrix on 2026-08-02 at implementation fixed point
+`8665458`; the lifecycle is complete for this ticket.
 
 Every published ticket carries Matt's `ready-for-agent` triage status,
 which means the ticket is specified for agent execution. Scheduling still
-honors `Blocked by` edges; completion of Tickets 01 through 06 makes Ticket 07
-the current frontier item.
+honors `Blocked by` edges; completion of Ticket 07 unblocks its declared
+successors without changing their independent scheduling or selection gates.

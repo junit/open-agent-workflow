@@ -180,3 +180,42 @@ No unresolved Critical or Important findings remain. Runtime never invokes a
 Host Binding; it persists `DISPATCH_AUTHORIZED` before any external Host may
 act. Ticket 07 Resource Leases and Ticket 08 Host Manifest/Adapter fields remain
 outside the Runtime state surface.
+
+## Ticket 07 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `8665458`
+
+**Scope:** Workflow Profile selection, immutable Lifecycle Bundles, isolated
+Stage Grants, Worktree leases, graph observations, stable-boundary switching,
+one-way projections, restart recovery, and Direct/Bounded compatibility
+
+**Review owner:** Superpowers (inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+The review checked Workflow-only Gate enforcement, Bundle and graph pinning,
+Provider invocation boundaries, Main Agent and Host-isolation rejection,
+generation-bound Grants, review Executor freshness, cross-Run lease
+serialization, switch timing, projection authority, journal recovery,
+permissions, and credential/raw-output persistence.
+
+Three findings were corrected before completion:
+
+- Projection lag references were removed from authoritative `WorkflowState`;
+  failures now exist only as immutable owner-only sidecars, and Runtime never
+  reads them as authority.
+- Built-in Superpowers, Matt, and ECC completion capabilities now declare both
+  `git-repository` and `project-worktree` resources when allowing `git-local`,
+  closing the Grant resource contract.
+- Explicit stable-boundary switching can now adopt the current trusted
+  Configuration and Registry in the new Bundle generation. Run and Project
+  identity and every old Bundle remain immutable; old Engines cannot issue new
+  Grants after the switch, while an Engine holding the current trusted inputs
+  can continue.
+
+No unresolved Critical, High, or Important findings remain. Runtime invokes no
+Host Binding, projection sink failures cannot change a committed reply, and
+projection deletion or tampering cannot influence inspection, admission,
+recovery, or Bundle switching.
