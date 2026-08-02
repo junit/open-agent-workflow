@@ -13,8 +13,8 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: completed
-active_ticket: 13-go-update-uninstall-and-security-transaction-parity
+current_stage: host-selection
+active_ticket: 09-first-runtime-host-and-oaw-run
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -34,6 +34,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-13-go-update-uninstall-security-transaction-parity.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
+host_selection_evidence: .scratch/oaw-runtime-vnext/evidence/host-selection.md
 requirements_owner: matt
 domain_owner: matt
 specification_owner: matt
@@ -127,3 +128,9 @@ A pre-Ticket 09 consistency audit on 2026-08-02 reverified the current Ticket
 06 issue status/acceptance projections with the already completed Ticket 01
 through 08 implementation. This projection-only correction did not select a
 Runtime Host or change any dependency edge.
+
+Ticket 09 pre-selection capability evidence was recorded on 2026-08-03 from
+official Codex CLI, Claude Code, and Gemini CLI sources plus locally observed
+versions. Codex CLI is recommended as the first `runner-managed` candidate, but
+the selection remains `pending-user-selection`; every built-in Host integration
+remains instruction-only and no Ticket 09 implementation plan has started.

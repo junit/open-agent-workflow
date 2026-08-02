@@ -11,6 +11,8 @@ Policy-only behavior.
 
 **Status:** ready-for-agent
 
+**Selection evidence:** `.scratch/oaw-runtime-vnext/evidence/host-selection.md`
+
 - [ ] The selected Host has a pinned conforming Manifest and integration record.
 - [ ] oaw run uses the same Runtime Protocol as native Host integrations.
 - [ ] Machine-facing exchange output is canonical JSON on stdout with diagnostics
@@ -19,3 +21,11 @@ Policy-only behavior.
 - [ ] Runtime-aware entrypoints are installed only where exact Host capability
   permits them.
 - [ ] User selection of the first Runtime Host is recorded as migration evidence.
+
+## Pre-selection Audit
+
+Official automation surfaces and locally installed versions for Codex CLI,
+Claude Code, and Gemini CLI were checked on 2026-08-03. Codex CLI is the
+evidence-backed recommendation for the first `runner-managed` integration, but
+no Host is selected or promoted by this recommendation. Implementation planning
+remains blocked until the user explicitly selects one candidate.
