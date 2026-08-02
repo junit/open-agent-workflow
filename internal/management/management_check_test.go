@@ -88,6 +88,18 @@ func TestCheckManagementDomainExercisesDiagnosticsAndHealth(t *testing.T) {
 		if err != nil || !resultContainsLine(result, "installed claude: drift") {
 			t.Fatalf("target drift Check() result=%#v error=%v", result, err)
 		}
+		writePrepareFile(t, prepared.targetActions[0].destination, prepared.targetActions[0].data, 0o644)
+		state := parsePreparedState(t, prepared.stateActions[0])
+		state.targets[0].path = filepath.Join(fixture.environment.Home, ".claude", "wrong.md")
+		stateBytes, serializeErr := serializeInstallState(state)
+		if serializeErr != nil {
+			t.Fatal(serializeErr)
+		}
+		writePrepareFile(t, prepared.stateActions[0].destination, stateBytes, 0o600)
+		result, err = Check(catalog, fixture.environment, CheckRequest{Targets: "claude"})
+		if err != nil || !resultContainsLine(result, "installed claude: invalid-state") {
+			t.Fatalf("target mismatch Check() result=%#v error=%v", result, err)
+		}
 	})
 
 	t.Run("clean project owned file", func(t *testing.T) {
