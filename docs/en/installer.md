@@ -68,6 +68,24 @@ reporting these human-readable statuses, including drift or invalid state. That
 status does not authorize mutation: a later mutation still validates ownership
 and exits 65 when the reported problem has not been resolved or forced safely.
 
+#### Go shadow/parity path
+
+The compiled Go CLI also exposes `oaw check`. It is a non-authoritative
+**shadow/parity** implementation of the read-only Bash command: it reports the
+same scope, normalized targets, built-in Provider compatibility diagnostics,
+target readiness, Install State health, output streams, and exit status.
+
+Bash remains authoritative for installation management. The parity gate runs
+`./install.sh check` and `oaw check` against the same isolated fixture, compares
+stdout, stderr, and exit status byte for byte, and verifies that neither command
+changes the fixture. A drift, scope, target, Provider, status, stream, or
+filesystem difference fails that gate.
+
+Passing this check parity does not cut over management authority. Users and
+automation continue to use `install.sh` for mutations. Go does not implement authoritative `install`, `update`, or `uninstall`.
+Any later cutover requires a separate explicit migration decision and
+command-level parity evidence.
+
 ### `install`
 
 `install` renders the policy adapters from the current checkout, prepares the

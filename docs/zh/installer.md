@@ -65,6 +65,21 @@ destination 与 ownership mode。
 不会授权 mutation；后续 mutation 仍会验证 ownership，问题未解决或不能安全 force 时以
 65 退出。
 
+#### Go shadow/parity 路径
+
+编译后的 Go CLI 也提供 `oaw check`。它是只读 Bash 命令的非权威
+**shadow/parity** 实现：报告相同的 scope、规范化 target、内置 Provider 兼容诊断、
+target readiness、Install State health、输出流与退出状态。
+
+Bash 仍是权威的安装管理入口。Parity gate 会让 `./install.sh check` 与 `oaw check`
+读取 same isolated fixture，逐字节比较 stdout、stderr 与退出状态，并验证两条命令都未
+改变 fixture。drift、scope、target、Provider、状态、输出流或文件系统只要存在差异，
+该 gate 就会失败。
+
+通过 check parity 不会切换管理权威。用户与自动化仍使用 `install.sh` 执行 mutation。
+Go 不提供权威的 `install`、`update` 或 `uninstall`。未来若要 cutover，必须另行作出明确
+迁移决策，并提供 command-level parity 证据。
+
 ### `install`
 
 `install` 从当前 checkout 渲染 policy adapter，准备完整操作，并在应用 target 后创建该

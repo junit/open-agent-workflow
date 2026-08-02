@@ -519,6 +519,25 @@ for installer_contract in \
   '`66` | 没有安装 state 时请求 `update`'; do
   assert_contains docs/zh/installer.md "$installer_contract"
 done
+for shadow_contract in \
+  'oaw check' \
+  'shadow/parity' \
+  'same isolated fixture'; do
+  assert_contains docs/en/installer.md "$shadow_contract"
+  assert_contains docs/zh/installer.md "$shadow_contract"
+done
+for shadow_contract in \
+  'Bash remains authoritative' \
+  'does not cut over' \
+  'Go does not implement authoritative `install`, `update`, or `uninstall`'; do
+  assert_contains docs/en/installer.md "$shadow_contract"
+done
+for shadow_contract in \
+  'Bash 仍是权威' \
+  '不会切换' \
+  'Go 不提供权威的 `install`、`update` 或 `uninstall`'; do
+  assert_contains docs/zh/installer.md "$shadow_contract"
+done
 pass "installer documents cover commands, options, defaults, isolation, drift, dry-run, uninstall, and exits"
 
 DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home
