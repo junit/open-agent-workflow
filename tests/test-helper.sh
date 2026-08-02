@@ -87,3 +87,33 @@ assert_empty_xdg_roots() {
   assert_empty_dir "$OAW_CONFIG" "XDG_CONFIG_HOME must remain unchanged"
   assert_empty_dir "$OAW_STATE" "XDG_STATE_HOME must remain unchanged"
 }
+
+portable_mode() {
+  mode_path=$1
+  if stat -f '%Lp' "$mode_path" >/dev/null 2>&1; then
+    stat -f '%Lp' "$mode_path"
+  else
+    stat -c '%a' "$mode_path"
+  fi
+}
+
+snapshot_tree() {
+  snapshot_root=$1
+  find "$snapshot_root" -print | LC_ALL=C sort | while IFS= read -r snapshot_path; do
+    snapshot_relative=${snapshot_path#"$snapshot_root"}
+    [ -n "$snapshot_relative" ] || snapshot_relative=/
+    snapshot_mode=$(portable_mode "$snapshot_path")
+    if [ -L "$snapshot_path" ]; then
+      printf 'link\t%s\t%s\t%s\n' \
+        "$snapshot_relative" "$snapshot_mode" "$(readlink "$snapshot_path")"
+    elif [ -d "$snapshot_path" ]; then
+      printf 'directory\t%s\t%s\n' "$snapshot_relative" "$snapshot_mode"
+    elif [ -f "$snapshot_path" ]; then
+      snapshot_checksum=$(cksum <"$snapshot_path" | awk '{ print $1 ":" $2 }')
+      printf 'file\t%s\t%s\t%s\n' \
+        "$snapshot_relative" "$snapshot_mode" "$snapshot_checksum"
+    else
+      printf 'other\t%s\t%s\n' "$snapshot_relative" "$snapshot_mode"
+    fi
+  done
+}

@@ -56,7 +56,7 @@ func initializeCoordinates(environment Environment, resolved resolvedRequest) (c
 	if err != nil {
 		return coordinates{}, err
 	}
-	projects := filepath.Join(installations, "projects")
+	projects := installations + string(filepath.Separator) + "projects"
 	stateSuffix := "open-agent-workflow/installations/user.state"
 	if resolved.scope == "project" {
 		stateSuffix = "open-agent-workflow/installations/projects/" + checksumBytes([]byte(resolved.projectRoot)) + ".state"
@@ -93,7 +93,7 @@ func validatedDestinationPath(root, suffix string) (string, error) {
 		if hasControl(component) {
 			return "", compatibilityError("destination suffix contains control characters")
 		}
-		candidate = filepath.Join(candidate, filepath.FromSlash(component))
+		candidate = candidate + string(filepath.Separator) + filepath.FromSlash(component)
 		info, err := os.Lstat(candidate)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -108,7 +108,7 @@ func validatedDestinationPath(root, suffix string) (string, error) {
 			return "", compatibilityError("destination path component is not a directory: " + candidate)
 		}
 	}
-	return filepath.Clean(candidate), nil
+	return candidate, nil
 }
 
 func targetDestination(coords coordinates, scope, project, id string) (string, error) {

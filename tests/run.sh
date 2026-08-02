@@ -15,7 +15,8 @@ for test_script in \
   07-containment-test.sh \
   08-backup-test.sh \
   09-transaction-test.sh \
-  10-docs-test.sh; do
+  10-docs-test.sh \
+  11-check-parity-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 

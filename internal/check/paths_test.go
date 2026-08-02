@@ -66,6 +66,18 @@ func TestValidatedDestinationPathRejectsUnsafeSuffixAndNonDirectory(t *testing.T
 	}
 }
 
+func TestValidatedDestinationPathPreservesConsumedRootSpelling(t *testing.T) {
+	root := t.TempDir() + string(filepath.Separator)
+	path, err := validatedDestinationPath(root, "open-agent-workflow/ENGINEERING.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := root + string(filepath.Separator) + "open-agent-workflow" + string(filepath.Separator) + "ENGINEERING.md"
+	if path != want {
+		t.Fatalf("path = %q, want %q", path, want)
+	}
+}
+
 func TestValidateOwnedDirectoriesAcceptsOnlyNamespacesAndCreatedTargetAncestors(t *testing.T) {
 	root := t.TempDir()
 	environment := Environment{Home: filepath.Join(root, "home"), ConfigHome: filepath.Join(root, "config"), StateHome: filepath.Join(root, "state")}

@@ -198,7 +198,7 @@ func validateOwnedDirectories(state installationState, coords coordinates) error
 
 func recordedCoordinateMatches(root, candidate string) bool {
 	prefix := root + string(filepath.Separator)
-	if !strings.HasPrefix(candidate, prefix) || filepath.Clean(candidate) != candidate {
+	if !strings.HasPrefix(candidate, prefix) {
 		return false
 	}
 	rebuilt, err := validatedDestinationPath(root, strings.TrimPrefix(candidate, prefix))
