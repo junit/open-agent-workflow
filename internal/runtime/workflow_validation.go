@@ -20,10 +20,10 @@ func validateWorkflowState(record revisionRecord) error {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow identity", nil)
 	}
 	workflow := snapshot.Workflow
-	if snapshot.ConfigurationDigest != workflow.ConfigurationDigest || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) {
+	if !validDigest(workflow.ConfigurationDigest) || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow trusted inputs", nil)
 	}
-	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.Observations != nil || snapshot.GrantIDs == nil || snapshot.ResourceLeaseIDs == nil || workflow.Observations == nil || workflow.RevokedGrantIDs == nil || workflow.ResourceLeases == nil || workflow.ProjectionLag == nil {
+	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.Observations != nil || snapshot.GrantIDs == nil || snapshot.ResourceLeaseIDs == nil || workflow.Observations == nil || workflow.RevokedGrantIDs == nil || workflow.ResourceLeases == nil || workflow.ProjectionLag == nil || len(workflow.ProjectionLag) != 0 {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Workflow authority collections", nil)
 	}
 	if snapshot.Classification.WorkflowComplexity == nil || snapshot.Classification.CapabilitySelector != nil || snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil {
@@ -82,7 +82,7 @@ func validateWorkflowMessages(record revisionRecord) error {
 func validateWorkflowBundles(snapshot RunSnapshot, record revisionRecord) error {
 	workflow := snapshot.Workflow
 	for index, bundle := range workflow.Bundles {
-		if err := validateLifecycleBundle(bundle); err != nil || bundle.RunID != snapshot.RunID || bundle.DeliverableID != workflow.Input.DeliverableID || bundle.InputDigest != workflow.Input.InputDigest || bundle.Configuration.Digest != workflow.ConfigurationDigest || bundle.RegistryDigest != workflow.RegistryDigest || bundle.Generation != uint64(index+1) || bundle.CreatedRevision > record.Revision || snapshot.LifecycleBundles[index] != bundle.ID {
+		if err := validateLifecycleBundle(bundle); err != nil || bundle.RunID != snapshot.RunID || bundle.DeliverableID != workflow.Input.DeliverableID || bundle.InputDigest != workflow.Input.InputDigest || bundle.Generation != uint64(index+1) || bundle.CreatedRevision > record.Revision || snapshot.LifecycleBundles[index] != bundle.ID {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow Bundle", err)
 		}
 		if index > 0 && workflow.Bundles[index-1].Generation >= bundle.Generation {
@@ -95,6 +95,9 @@ func validateWorkflowBundles(snapshot RunSnapshot, record revisionRecord) error 
 	}
 	if active.ID != workflow.Bundles[len(workflow.Bundles)-1].ID || active.Generation != workflow.ActiveGeneration || workflow.ActiveNodeID == "" {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow active Bundle does not match the latest generation", nil)
+	}
+	if active.Configuration.Digest != workflow.ConfigurationDigest || active.RegistryDigest != workflow.RegistryDigest {
+		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow active trusted inputs do not match the active Bundle", nil)
 	}
 	if _, found := workflowGraphNode(active.Graph, workflow.ActiveNodeID); !found {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow active node is missing from the active Bundle", nil)
@@ -464,6 +467,8 @@ func validateWorkflowBundleSwitchTransition(previous, current RunSnapshot) error
 	previousState.ActiveGrantID, currentState.ActiveGrantID = "", ""
 	previousState.RevokedGrantIDs, currentState.RevokedGrantIDs = nil, nil
 	previousState.LastStableBoundary, currentState.LastStableBoundary = "", ""
+	previousState.ConfigurationDigest, currentState.ConfigurationDigest = "", ""
+	previousState.RegistryDigest, currentState.RegistryDigest = "", ""
 	if !reflect.DeepEqual(previousState, currentState) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow Bundle switch changed immutable history", nil)
 	}

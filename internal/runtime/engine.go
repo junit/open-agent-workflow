@@ -18,10 +18,11 @@ import (
 const maximumIdentifierLength = 256
 
 type Engine struct {
-	rules    classification.ClassificationRules
-	bounded  BoundedOptions
-	workflow WorkflowOptions
-	journal  *journal
+	rules      classification.ClassificationRules
+	bounded    BoundedOptions
+	workflow   WorkflowOptions
+	projection ProjectionSink
+	journal    *journal
 }
 
 func NewEngine(options Options) (*Engine, error) {
@@ -29,7 +30,12 @@ func NewEngine(options Options) (*Engine, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Engine{rules: cloneRules(options.Rules), bounded: cloneBoundedOptions(options.Bounded), workflow: cloneWorkflowOptions(options.Workflow), journal: journal}, nil
+	workflow := cloneWorkflowOptions(options.Workflow)
+	projection, err := projectionSinkFromOptions(workflow.Projection)
+	if err != nil {
+		return nil, err
+	}
+	return &Engine{rules: cloneRules(options.Rules), bounded: cloneBoundedOptions(options.Bounded), workflow: workflow, projection: projection, journal: journal}, nil
 }
 
 func (engine *Engine) Exchange(frame RunFrame) (RunReply, error) {
@@ -222,6 +228,9 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		})
 		if commitErr != nil {
 			return commitErr
+		}
+		if snapshot.RequestMode == classification.RequestModeWorkflow {
+			engine.projectCommittedWorkflow(committed)
 		}
 		reply = cloneReply(committed.Reply)
 		return nil

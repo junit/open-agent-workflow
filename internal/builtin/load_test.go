@@ -63,6 +63,17 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 			if capability.ExecutorTopology == catalog.MainAgentAllowed {
 				t.Errorf("%s/%s permits main-agent execution", record.ID, capability.ID)
 			}
+			gitLocal := false
+			worktree := false
+			for _, effect := range capability.MaximumEffects {
+				gitLocal = gitLocal || effect == "git-local"
+			}
+			for _, resource := range capability.Resources {
+				worktree = worktree || resource == "project-worktree"
+			}
+			if gitLocal && !worktree {
+				t.Errorf("%s/%s allows git-local without project-worktree lease coverage", record.ID, capability.ID)
+			}
 		}
 		sort.Strings(capabilityIDs)
 		if strings.Join(capabilityIDs, "\x00") != strings.Join(expectedCapabilities[record.ID], "\x00") {

@@ -253,6 +253,7 @@ func (engine *Engine) commitWorkflowTransition(current revisionRecord, frame Run
 	if err != nil {
 		return RunReply{}, err
 	}
+	engine.projectCommittedWorkflow(committed)
 	return cloneReply(committed.Reply), nil
 }
 
@@ -283,7 +284,7 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	if !containsWorkflowValue(bundle.Graph.StableBoundaries, request.Boundary) {
 		return RunReply{}, runtimeError("STABLE_BOUNDARY_INVALID", "stable boundary is not declared by the active Bundle", nil)
 	}
-	if !workflowConfigurationReady(current.Snapshot.Project, engine.workflow) || current.Snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || current.Snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() || !engine.workflow.Host.PhysicalIsolation {
+	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) || !engine.workflow.Host.PhysicalIsolation {
 		return RunReply{}, runtimeError("HOST_ISOLATION_UNAVAILABLE", "Workflow trusted isolation or configuration is unavailable", nil)
 	}
 	graph, err := profile.CompileProfile(engine.workflow.Configuration.Catalog(), engine.workflow.Registry, profile.CompileRequest{Profile: request.Selection.Profile, Bindings: request.Selection.Bindings})
@@ -302,6 +303,8 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	snapshot := workflowTransitionSnapshot(current.Snapshot, frame, messageDigest, nextRevision)
 	snapshot.Status = RunReady
 	snapshot.Workflow.Bundles = append(snapshot.Workflow.Bundles, cloneLifecycleBundle(newBundle))
+	snapshot.Workflow.ConfigurationDigest = newBundle.Configuration.Digest
+	snapshot.Workflow.RegistryDigest = newBundle.RegistryDigest
 	snapshot.Workflow.ActiveGeneration = newBundle.Generation
 	snapshot.Workflow.ActiveNodeID = newBundle.Graph.Entry
 	snapshot.Workflow.ActiveGrantID = ""

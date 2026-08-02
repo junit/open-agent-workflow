@@ -8,7 +8,10 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
+	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
 
@@ -206,6 +209,63 @@ func TestWorkflowStableBoundarySwitchCreatesANewBundleGeneration(t *testing.T) {
 	if switched.Snapshot.Workflow.ActiveGeneration != 2 || switched.Snapshot.Workflow.ActiveNodeID != "requirements" || len(switched.Snapshot.Workflow.Bundles) != 2 || switched.Snapshot.Workflow.Bundles[0].ID == switched.Snapshot.Workflow.Bundles[1].ID || switched.Snapshot.Workflow.Bundles[0].Digest == switched.Snapshot.Workflow.Bundles[1].Digest || len(switched.Snapshot.Workflow.RevokedGrantIDs) != 1 || switched.Snapshot.Workflow.RevokedGrantIDs[0] != grant.ID {
 		t.Fatalf("switched Workflow state = %#v", switched.Snapshot.Workflow)
 	}
+}
+
+func TestWorkflowStableBoundarySwitchExplicitlyAdoptsCurrentConfiguration(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngine(t, stateRoot, fixture, true)
+	ready := startAndSelectWorkflow(t, engine, fixture, "workflow-config-switch")
+	granted := requestWorkflowStage(t, engine, ready, "workflow-config-switch-grant", []string{"read-project"}, []string{"project-worktree"})
+	grant := granted.Snapshot.Grants[0]
+	prepared := prepareWorkflowStage(t, engine, granted, "workflow-config-switch-prepared", grant)
+	observed := observeWorkflowStage(t, engine, prepared, grant, "workflow-config-switch-observed", runtime.ObservationSucceeded, "succeeded", "specification-approved")
+
+	userRoot := t.TempDir()
+	writeTestFile(t, filepath.Join(userRoot, "config.toml"), []byte(`
+schema_version = "oaw.user-config/v1"
+[[bounded_capability_defaults]]
+id = "review-default"
+provider_id = "oaw/superpowers"
+capability_id = "review"
+`))
+	updatedSnapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: fixture.projectRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updatedSnapshot.Digest() == fixture.snapshot.Digest() {
+		t.Fatal("updated Configuration Snapshot retained the old digest")
+	}
+	evidence, err := discovery.Discover(updatedSnapshot.Catalog(), discovery.Options{UserHome: fixture.home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, updatedRegistry, err := registry.Resolve(updatedSnapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: fixture.bindings})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedFixture := fixture
+	updatedFixture.snapshot = updatedSnapshot
+	updatedFixture.registry = updatedRegistry
+	updatedEngine := newWorkflowEngine(t, stateRoot, updatedFixture, true)
+	switched := switchWorkflowProfile(t, updatedEngine, observed, "workflow-config-switch-profile", "specification-approved", "SP-FULL")
+	workflow := switched.Snapshot.Workflow
+	if len(workflow.Bundles) != 2 || workflow.Bundles[0].Configuration.Digest != fixture.snapshot.Digest() || workflow.Bundles[1].Configuration.Digest != updatedSnapshot.Digest() || workflow.ConfigurationDigest != updatedSnapshot.Digest() || workflow.RegistryDigest != updatedRegistry.Digest() {
+		t.Fatalf("explicit Configuration adoption = %#v", workflow)
+	}
+	if switched.Snapshot.ConfigurationDigest != fixture.snapshot.Digest() || switched.Snapshot.Project.ConfigurationDigest != fixture.snapshot.Digest() {
+		t.Fatalf("Bundle switch changed immutable Run identity = %#v", switched.Snapshot.Project)
+	}
+
+	_, err = engine.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "workflow-old-config-grant", IdempotencyKey: "workflow-old-config-grant", RunID: switched.RunID, ExpectedRevision: switched.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestStageGrant, StageGrant: &runtime.StageGrantRequest{
+			ExecutorID: "executor-write", RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "old configuration must not execute",
+		}},
+	})
+	assertErrorCode(t, err, "HOST_ISOLATION_UNAVAILABLE")
+	_ = requestWorkflowStage(t, updatedEngine, switched, "workflow-new-config-grant", []string{"read-project"}, []string{"project-worktree"})
 }
 
 func TestWorkflowStableBoundarySwitchRejectsInvalidTimingAndSelectionWithoutRevision(t *testing.T) {

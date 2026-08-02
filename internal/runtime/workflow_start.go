@@ -89,6 +89,7 @@ func (engine *Engine) selectWorkflowProfile(current revisionRecord, frame RunFra
 	if err != nil {
 		return RunReply{}, err
 	}
+	engine.projectCommittedWorkflow(committed)
 	return cloneReply(committed.Reply), nil
 }
 

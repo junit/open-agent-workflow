@@ -35,7 +35,7 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 	if snapshot.RequestMode != classification.RequestModeWorkflow || snapshot.Status != RunReady || snapshot.Workflow == nil || snapshot.Workflow.ActiveGrantID != "" || len(snapshot.Workflow.Bundles) == 0 {
 		return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "Stage Grant requires a ready Workflow run without an active Grant", nil)
 	}
-	if !workflowConfigurationReady(snapshot.Project, engine.workflow) || snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() || !engine.workflow.Host.PhysicalIsolation {
+	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) || snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() || !engine.workflow.Host.PhysicalIsolation {
 		return RunReply{}, runtimeError("HOST_ISOLATION_UNAVAILABLE", "Workflow trusted isolation or configuration is unavailable", nil)
 	}
 	bundle := snapshot.Workflow.Bundles[len(snapshot.Workflow.Bundles)-1]
@@ -100,6 +100,7 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 	if err != nil {
 		return RunReply{}, err
 	}
+	engine.projectCommittedWorkflow(committed)
 	return cloneReply(committed.Reply), nil
 }
 

@@ -77,8 +77,10 @@ func TestWorkflowProfileSelectionRequiresTrustedPhysicalIsolation(t *testing.T) 
 
 type workflowRuntimeFixture struct {
 	projectRoot string
+	home        string
 	snapshot    config.Snapshot
 	registry    registry.Registry
+	bindings    []catalog.HostBinding
 }
 
 func newWorkflowRuntimeFixture(t *testing.T) workflowRuntimeFixture {
@@ -117,7 +119,7 @@ func newWorkflowRuntimeFixture(t *testing.T) workflowRuntimeFixture {
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
-	return workflowRuntimeFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective}
+	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, registry: effective, bindings: append([]catalog.HostBinding{}, bindings...)}
 }
 
 func newWorkflowEngine(t *testing.T, stateRoot string, fixture workflowRuntimeFixture, isolated bool) *runtime.Engine {

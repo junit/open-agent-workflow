@@ -42,7 +42,8 @@ type WorkflowExecutorRegistration struct {
 }
 
 type ProjectionOptions struct {
-	Root string `json:"root"`
+	Root string         `json:"root"`
+	Sink ProjectionSink `json:"-"`
 }
 
 type WorkflowInput struct {
