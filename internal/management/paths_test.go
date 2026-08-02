@@ -95,6 +95,27 @@ func TestValidatedDestinationPathPreservesConsumedRootSpelling(t *testing.T) {
 	}
 }
 
+func TestStateActionRelativeSuffixAcceptsCanonicalEquivalentRootSpelling(t *testing.T) {
+	root := t.TempDir() + string(filepath.Separator)
+	destination := filepath.Join(root, "open-agent-workflow", "backups", "operation")
+
+	suffix, err := stateActionRelativeSuffix(root, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "open-agent-workflow/backups/operation"; suffix != want {
+		t.Fatalf("suffix = %q, want %q", suffix, want)
+	}
+	outside := filepath.Join(filepath.Dir(filepath.Clean(root)), "outside")
+	if _, err := stateActionRelativeSuffix(root, outside); err == nil || !strings.Contains(err.Error(), "escapes its allowed root") {
+		t.Fatalf("outside destination error = %v", err)
+	}
+	alias := filepath.Clean(root) + string(filepath.Separator) + "child" + string(filepath.Separator) + ".." + string(filepath.Separator) + "artifact"
+	if _, err := stateActionRelativeSuffix(root, alias); err == nil || !strings.Contains(err.Error(), "does not match its allowed root") {
+		t.Fatalf("lexical alias error = %v", err)
+	}
+}
+
 func TestValidateOwnedDirectoriesAcceptsOnlyNamespacesAndCreatedTargetAncestors(t *testing.T) {
 	root := t.TempDir()
 	environment := Environment{Home: filepath.Join(root, "home"), ConfigHome: filepath.Join(root, "config"), StateHome: filepath.Join(root, "state")}

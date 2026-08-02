@@ -412,7 +412,7 @@ func revalidateScopedAction(root *os.Root, action installAction) error {
 	if err != nil {
 		return err
 	}
-	if rebuilt != action.destination {
+	if !matchesValidatedDestination(rebuilt, action.destination) {
 		return compatibilityError("destination changed after preparation: " + action.destination)
 	}
 	components := strings.Split(action.relativeSuffix, "/")

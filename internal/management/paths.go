@@ -111,6 +111,10 @@ func validatedDestinationPath(root, suffix string) (string, error) {
 	return candidate, nil
 }
 
+func matchesValidatedDestination(rebuilt, destination string) bool {
+	return rebuilt == destination || filepath.Clean(rebuilt) == destination
+}
+
 func targetDestination(coords coordinates, scope, project, id string) (string, error) {
 	candidate, found := findTarget(id)
 	if !found {

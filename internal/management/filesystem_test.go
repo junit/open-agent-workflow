@@ -311,6 +311,25 @@ func TestScopedFilesystemHelpersRejectMissingDirectoryAndInvalidRoot(t *testing.
 	}
 }
 
+func TestRevalidateScopedActionAcceptsCanonicalEquivalentRootSpelling(t *testing.T) {
+	rootPath := t.TempDir() + string(filepath.Separator)
+	destination := filepath.Join(rootPath, "artifact")
+	writePrepareFile(t, destination, []byte("artifact\n"), 0o600)
+	root, err := openExistingInstallRoot(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+
+	action := installAction{
+		destination: destination, allowedRoot: rootPath,
+		relativeSuffix: "artifact",
+	}
+	if err := revalidateScopedAction(root, action); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestScopedFilesystemAndBoundedReadsDetectCoordinateRaces(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "artifact")

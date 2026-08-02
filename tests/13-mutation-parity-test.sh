@@ -101,6 +101,13 @@ setup_mutation_case() {
     dry-run-update|dry-run-uninstall|clean-force-update|clean-force-uninstall)
       run_setup_command install --target claude,codex
       ;;
+    repeated-root-spelling)
+      OAW_HOME=$OAW_HOME/
+      OAW_CONFIG=$OAW_CONFIG/
+      OAW_STATE=$OAW_STATE/
+      run_setup_command install --target claude
+      write_target_drift
+      ;;
     target-drift|forced-target-drift|recoverable-begin|recoverable-end|manual-recovery|backup-root-symlink)
       run_setup_command install --target claude
       case "$mutation_case" in
@@ -274,7 +281,7 @@ execute_mutation_case() {
     target-drift|policy-drift|invalid-state|scope-drift|project-drift|directory-redirection|later-invalid-state-record)
       run_mutation_implementation "$implementation" update --target claude,codex
       ;;
-    forced-target-drift|forced-policy-drift|recoverable-begin|recoverable-end|manual-recovery|backup-root-symlink)
+    forced-target-drift|forced-policy-drift|repeated-root-spelling|recoverable-begin|recoverable-end|manual-recovery|backup-root-symlink)
       run_mutation_implementation "$implementation" update --target claude --force
       ;;
     hostile-project)
@@ -391,6 +398,7 @@ for mutation_case in \
   target-drift \
   policy-drift \
   forced-target-drift \
+  repeated-root-spelling \
   forced-policy-drift \
   recoverable-begin \
   recoverable-end \

@@ -694,16 +694,17 @@ func predictInstallResult(prepared PreparedInstall) Result {
 }
 
 func stateActionRelativeSuffix(root, destination string) (string, error) {
-	prefix := root + string(filepath.Separator)
-	if !strings.HasPrefix(destination, prefix) {
+	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(destination))
+	if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return "", compatibilityError("destination escapes its allowed root: " + destination)
 	}
-	relative := filepath.ToSlash(strings.TrimPrefix(destination, prefix))
+	relative = filepath.ToSlash(relative)
 	rebuilt, err := validatedDestinationPath(root, relative)
 	if err != nil {
 		return "", err
 	}
-	if rebuilt != destination {
+	if !matchesValidatedDestination(rebuilt, destination) {
 		return "", compatibilityError("destination does not match its allowed root: " + destination)
 	}
 	return relative, nil
