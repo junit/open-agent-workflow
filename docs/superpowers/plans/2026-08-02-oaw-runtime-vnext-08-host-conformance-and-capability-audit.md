@@ -219,7 +219,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 - Create: `internal/host/conformance_test.go`
 - Create: `internal/host/conformance_fuzz_test.go`
 
-- [ ] **Step 1: Write failing conformance-suite tests.**
+- [x] **Step 1: Write failing conformance-suite tests.**
 
   Define a deterministic fake Adapter and prove a runner-managed Integration
   passes isolated Executor creation, exact Binding delivery, pause receipt,
@@ -231,7 +231,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   marker and assert the report fails with that exact check ID. Raw adapter output
   must not enter a Report or transcript.
 
-- [ ] **Step 2: Run the tests and verify RED.**
+- [x] **Step 2: Run the tests and verify RED.**
 
   ```bash
   rtk go test ./internal/host -run 'ConformanceSuite|ConformanceFailure|InstructionOnly'
@@ -239,7 +239,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 
   Expected: the Adapter fixture interface and `RunConformance` are undefined.
 
-- [ ] **Step 3: Implement the pure conformance harness.**
+- [x] **Step 3: Implement the pure conformance harness.**
 
   Add closed request/receipt records and this seam:
 
@@ -264,7 +264,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   complete failed Report for behavioral nonconformance; reserve Go errors for
   invalid inputs or an unusable harness.
 
-- [ ] **Step 4: Add fail-closed fuzz coverage and run tests.**
+- [x] **Step 4: Add fail-closed fuzz coverage and run tests.**
 
   Fuzz receipt validation and Report decoding with bounded values; a panic,
   unbounded allocation, unknown Feature/check, or accepted digest mismatch is a
@@ -276,7 +276,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   rtk go test ./internal/host -run '^$' -fuzz FuzzConformanceReceiptFailsClosed -fuzztime 2s
   ```
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
   ```bash
   rtk git add internal/host
