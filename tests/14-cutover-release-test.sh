@@ -228,7 +228,12 @@ run_release_contract() {
   set -e
   [ "$repeated_status" -ne 0 ] || fail "release builder overwrote existing artifacts"
 
-  linux_archive=$release_output/open-agent-workflow_${version}_linux_amd64.tar.gz
+  wsl_arch=$(go env GOARCH)
+  case "$wsl_arch" in
+    amd64|arm64) ;;
+    *) fail "WSL release smoke has no archive for host architecture: $wsl_arch" ;;
+  esac
+  linux_archive=$release_output/open-agent-workflow_${version}_linux_${wsl_arch}.tar.gz
   set +e
   bash "$REPOSITORY/scripts/smoke-wsl.sh" "$linux_archive" \
     >"$CUTOVER_TEMP/wsl.stdout" 2>"$CUTOVER_TEMP/wsl.stderr"
