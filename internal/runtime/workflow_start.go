@@ -38,7 +38,7 @@ func workflowAwaitingState(input WorkflowInput, options WorkflowOptions) *Workfl
 	return &WorkflowState{
 		Input: input, ConfigurationDigest: options.Configuration.Digest(), RegistryDigest: options.Registry.Digest(),
 		Bundles: []LifecycleBundle{}, ActiveGeneration: 0, ActiveNodeID: "", ActiveGrantID: "",
-		RevokedGrantIDs: []string{}, ResourceLeases: []ResourceLease{}, ProjectionLag: []ProjectionLag{},
+		Observations: []StageObservation{}, RevokedGrantIDs: []string{}, ResourceLeases: []ResourceLease{}, ProjectionLag: []ProjectionLag{},
 	}
 }
 
@@ -114,6 +114,10 @@ func cloneWorkflowState(value WorkflowState) WorkflowState {
 		value.Bundles[index] = cloneLifecycleBundle(value.Bundles[index])
 	}
 	value.RevokedGrantIDs = append([]string{}, value.RevokedGrantIDs...)
+	value.Observations = append([]StageObservation{}, value.Observations...)
+	for index := range value.Observations {
+		value.Observations[index].CapabilityObservation.EvidenceReferences = append([]EvidenceReference{}, value.Observations[index].CapabilityObservation.EvidenceReferences...)
+	}
 	value.ResourceLeases = append([]ResourceLease{}, value.ResourceLeases...)
 	value.ProjectionLag = append([]ProjectionLag{}, value.ProjectionLag...)
 	return value

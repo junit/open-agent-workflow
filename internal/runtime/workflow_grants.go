@@ -79,8 +79,12 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 	next.GrantIDs = append(next.GrantIDs, grant.ID)
 	next.Workflow.ActiveGrantID = grant.ID
 	if lease.ID != "" {
-		next.Workflow.ResourceLeases = append(next.Workflow.ResourceLeases, lease)
-		next.ResourceLeaseIDs = append(next.ResourceLeaseIDs, lease.ID)
+		if _, found := workflowResourceLease(next.Workflow.ResourceLeases, lease.ID); !found {
+			next.Workflow.ResourceLeases = append(next.Workflow.ResourceLeases, lease)
+		}
+		if !containsWorkflowValue(next.ResourceLeaseIDs, lease.ID) {
+			next.ResourceLeaseIDs = append(next.ResourceLeaseIDs, lease.ID)
+		}
 	}
 	next.ProcessedMessages = append(next.ProcessedMessages, ProcessedMessage{
 		IdempotencyKey: frame.IdempotencyKey, ContentDigest: messageDigest, Revision: nextRevision,

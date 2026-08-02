@@ -260,12 +260,12 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 	var normalizedContinue ContinueInput
 	switch frame.Continue.Signal {
 	case SignalScopeExpanded:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "SCOPE_EXPANDED carries an unexpected payload", nil)
 		}
 		normalizedContinue = ContinueInput{Signal: SignalScopeExpanded}
 	case SignalCapabilitySelected:
-		if frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil {
+		if frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "CAPABILITY_SELECTED carries a dispatch payload", nil)
 		}
 		var err error
@@ -274,7 +274,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 			return RunReply{}, err
 		}
 	case SignalProfileSelected:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.StageGrant != nil || frame.Continue.ProfileSelection == nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil || frame.Continue.ProfileSelection == nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "PROFILE_SELECTED carries an invalid payload", nil)
 		}
 		selection, normalizeErr := normalizeProfileSelection(*frame.Continue.ProfileSelection)
@@ -283,7 +283,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		}
 		normalizedContinue = ContinueInput{Signal: SignalProfileSelected, ProfileSelection: &selection}
 	case SignalRequestStageGrant:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "REQUEST_STAGE_GRANT carries an invalid payload", nil)
 		}
 		stage, normalizeErr := normalizeStageGrantRequest(frame.Continue.StageGrant)
@@ -292,12 +292,12 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		}
 		normalizedContinue = ContinueInput{Signal: SignalRequestStageGrant, StageGrant: stage}
 	case SignalRequestDispatch:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "REQUEST_DISPATCH carries an unexpected payload", nil)
 		}
 		normalizedContinue = ContinueInput{Signal: SignalRequestDispatch}
 	case SignalDispatchPrepared:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.Observation != nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "DISPATCH_PREPARED carries an unexpected payload", nil)
 		}
 		preparation, normalizeErr := normalizeDispatchPreparation(frame.Continue.DispatchPreparation)
@@ -306,16 +306,33 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		}
 		normalizedContinue = ContinueInput{Signal: SignalDispatchPrepared, DispatchPreparation: preparation}
 	case SignalCapabilityObserved:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StableBoundarySwitch != nil || (frame.Continue.Observation == nil && frame.Continue.StageObservation == nil) || (frame.Continue.Observation != nil && frame.Continue.StageObservation != nil) {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "CAPABILITY_OBSERVED carries an unexpected payload", nil)
 		}
-		observation, normalizeErr := normalizeCapabilityObservation(frame.Continue.Observation)
+		if frame.Continue.StageObservation != nil {
+			observation, normalizeErr := normalizeStageObservation(frame.Continue.StageObservation)
+			if normalizeErr != nil {
+				return RunReply{}, normalizeErr
+			}
+			normalizedContinue = ContinueInput{Signal: SignalCapabilityObserved, StageObservation: observation}
+		} else {
+			observation, normalizeErr := normalizeCapabilityObservation(frame.Continue.Observation)
+			if normalizeErr != nil {
+				return RunReply{}, normalizeErr
+			}
+			normalizedContinue = ContinueInput{Signal: SignalCapabilityObserved, Observation: observation}
+		}
+	case SignalSwitchProfile:
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch == nil {
+			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "SWITCH_PROFILE carries an invalid payload", nil)
+		}
+		switchRequest, normalizeErr := normalizeStableBoundarySwitch(frame.Continue.StableBoundarySwitch)
 		if normalizeErr != nil {
 			return RunReply{}, normalizeErr
 		}
-		normalizedContinue = ContinueInput{Signal: SignalCapabilityObserved, Observation: observation}
+		normalizedContinue = ContinueInput{Signal: SignalSwitchProfile, StableBoundarySwitch: switchRequest}
 	case SignalExecutionUncertain, SignalAdditionalCapabilityRequired, SignalRemediationRequired, SignalArchitectureRequired:
-		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil {
+		if frame.Continue.CapabilitySelector != nil || frame.Continue.TrustedRuleID != "" || frame.Continue.DispatchPreparation != nil || frame.Continue.Observation != nil || frame.Continue.ProfileSelection != nil || frame.Continue.StageGrant != nil || frame.Continue.StageObservation != nil || frame.Continue.StableBoundarySwitch != nil {
 			return RunReply{}, runtimeError("RUNTIME_FRAME_INVALID", "control signal carries an unexpected payload", nil)
 		}
 		normalizedContinue = ContinueInput{Signal: frame.Continue.Signal}
@@ -363,6 +380,14 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 				return grantErr
 			}
 			reply = granted
+			return nil
+		}
+		if current.Snapshot.RequestMode == classification.RequestModeWorkflow {
+			workflowReply, workflowErr := engine.continueWorkflow(current, frame, normalizedContinue, messageDigest)
+			if workflowErr != nil {
+				return workflowErr
+			}
+			reply = workflowReply
 			return nil
 		}
 		if normalizedContinue.Signal == SignalCapabilitySelected {
@@ -504,7 +529,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 		reply = cloneReply(committed.Reply)
 		return nil
 	}
-	if normalizedContinue.Signal == SignalRequestStageGrant && workflowStageNeedsResourceLease(normalizedContinue.StageGrant) {
+	if normalizedContinue.Signal == SignalRequestStageGrant || normalizedContinue.Signal == SignalCapabilityObserved || normalizedContinue.Signal == SignalSwitchProfile {
 		err = engine.journal.withResourceLeaseLock(func() error {
 			return engine.journal.withRunLock(frame.RunID, runAction)
 		})

@@ -125,6 +125,15 @@ func (value *journal) acquireWorkflowResourceLease(current revisionRecord, grant
 	if err != nil {
 		return ResourceLease{}, runtimeError("RESOURCE_LEASE_INVALID", "resolve Workflow project root", err)
 	}
+	for _, leaseID := range current.Snapshot.ResourceLeaseIDs {
+		lease, found := workflowResourceLease(current.Snapshot.Workflow.ResourceLeases, leaseID)
+		if !found {
+			return ResourceLease{}, runtimeError("RUN_STATE_REVISION_INVALID", "active Resource Lease is missing from history", nil)
+		}
+		if lease.PhysicalRoot == physicalRoot {
+			return lease, nil
+		}
+	}
 	conflict, err := value.findActiveWorkflowLease(current.RunID, physicalRoot)
 	if err != nil {
 		return ResourceLease{}, err
@@ -238,12 +247,29 @@ func validateWorkflowResourceLeases(record revisionRecord) error {
 		if !exists || !workflowGrantNeedsResourceLease(grant) || !containsWorkflowValue(grant.Resources, resourceLeaseProjectWorktree) || grant.BundleID != lease.BundleID || grant.Generation != lease.Generation || grant.IssuedRevision != lease.AcquiredRevision {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "active Resource Lease is not bound to a write Grant", nil)
 		}
-		if workflow.ActiveGrantID != grant.ID || snapshot.Status != RunGranted && snapshot.Status != RunInFlight && snapshot.Status != RunPaused {
-			return runtimeError("RUN_STATE_REVISION_INVALID", "active Resource Lease has no active Workflow Grant", nil)
+		activeBundle, bundleFound := workflowBundleByID(workflow.Bundles, lease.BundleID)
+		if !bundleFound || lease.Generation != workflow.ActiveGeneration || activeBundle.Generation != workflow.ActiveGeneration {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "active Resource Lease is outside the active Workflow generation", nil)
 		}
-	}
-	if snapshot.Status == RunReady && len(snapshot.ResourceLeaseIDs) != 0 {
-		return runtimeError("RUN_STATE_REVISION_INVALID", "ready Workflow Run retains an active Resource Lease", nil)
+		if snapshot.Status != RunGranted && snapshot.Status != RunInFlight && snapshot.Status != RunPaused && snapshot.Status != RunReady {
+			return runtimeError("RUN_STATE_REVISION_INVALID", "active Resource Lease has no resumable Workflow state", nil)
+		}
+		if snapshot.Status == RunReady {
+			if workflow.ActiveGrantID != "" || len(workflow.Observations) == 0 {
+				return runtimeError("RUN_STATE_REVISION_INVALID", "ready Workflow Run has no failed observation holding its Resource Lease", nil)
+			}
+			last := workflow.Observations[len(workflow.Observations)-1]
+			lastGrant, found := grants[last.GrantID]
+			if !found || lastGrant.Generation != lease.Generation || lastGrant.BundleID != lease.BundleID || last.Outcome == ObservationSucceeded || last.Signal == workflowSignalRemediated {
+				return runtimeError("RUN_STATE_REVISION_INVALID", "ready Workflow Run retains a released Resource Lease", nil)
+			}
+		}
+		if workflow.ActiveGrantID != "" {
+			activeGrant, found := grants[workflow.ActiveGrantID]
+			if !found || activeGrant.Generation != lease.Generation || activeGrant.BundleID != lease.BundleID {
+				return runtimeError("RUN_STATE_REVISION_INVALID", "active Resource Lease is outside the active Workflow generation", nil)
+			}
+		}
 	}
 	return nil
 }

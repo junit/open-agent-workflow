@@ -96,17 +96,18 @@ type LifecycleBundle struct {
 }
 
 type WorkflowState struct {
-	Input               WorkflowInput     `json:"input"`
-	ConfigurationDigest string            `json:"configuration_digest"`
-	RegistryDigest      string            `json:"registry_digest"`
-	Bundles             []LifecycleBundle `json:"bundles"`
-	ActiveGeneration    uint64            `json:"active_generation"`
-	ActiveNodeID        string            `json:"active_node_id"`
-	ActiveGrantID       string            `json:"active_grant_id,omitempty"`
-	RevokedGrantIDs     []string          `json:"revoked_grant_ids"`
-	ResourceLeases      []ResourceLease   `json:"resource_leases"`
-	LastStableBoundary  string            `json:"last_stable_boundary,omitempty"`
-	ProjectionLag       []ProjectionLag   `json:"projection_lag"`
+	Input               WorkflowInput      `json:"input"`
+	ConfigurationDigest string             `json:"configuration_digest"`
+	RegistryDigest      string             `json:"registry_digest"`
+	Bundles             []LifecycleBundle  `json:"bundles"`
+	ActiveGeneration    uint64             `json:"active_generation"`
+	ActiveNodeID        string             `json:"active_node_id"`
+	ActiveGrantID       string             `json:"active_grant_id,omitempty"`
+	Observations        []StageObservation `json:"observations"`
+	RevokedGrantIDs     []string           `json:"revoked_grant_ids"`
+	ResourceLeases      []ResourceLease    `json:"resource_leases"`
+	LastStableBoundary  string             `json:"last_stable_boundary,omitempty"`
+	ProjectionLag       []ProjectionLag    `json:"projection_lag"`
 }
 
 type ResourceLease struct {

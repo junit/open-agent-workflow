@@ -40,6 +40,7 @@ const (
 	SignalArchitectureRequired         ContinueSignal = "ARCHITECTURE_REQUIRED"
 	SignalProfileSelected              ContinueSignal = "PROFILE_SELECTED"
 	SignalRequestStageGrant            ContinueSignal = "REQUEST_STAGE_GRANT"
+	SignalSwitchProfile                ContinueSignal = "SWITCH_PROFILE"
 )
 
 type ReplyKind string
@@ -112,13 +113,15 @@ type StartInput struct {
 }
 
 type ContinueInput struct {
-	Signal              ContinueSignal                     `json:"signal"`
-	CapabilitySelector  *classification.CapabilitySelector `json:"capability_selector,omitempty"`
-	TrustedRuleID       string                             `json:"trusted_rule_id,omitempty"`
-	DispatchPreparation *DispatchPreparation               `json:"dispatch_preparation,omitempty"`
-	Observation         *CapabilityObservation             `json:"observation,omitempty"`
-	ProfileSelection    *ProfileSelection                  `json:"profile_selection,omitempty"`
-	StageGrant          *StageGrantRequest                 `json:"stage_grant,omitempty"`
+	Signal               ContinueSignal                     `json:"signal"`
+	CapabilitySelector   *classification.CapabilitySelector `json:"capability_selector,omitempty"`
+	TrustedRuleID        string                             `json:"trusted_rule_id,omitempty"`
+	DispatchPreparation  *DispatchPreparation               `json:"dispatch_preparation,omitempty"`
+	Observation          *CapabilityObservation             `json:"observation,omitempty"`
+	ProfileSelection     *ProfileSelection                  `json:"profile_selection,omitempty"`
+	StageGrant           *StageGrantRequest                 `json:"stage_grant,omitempty"`
+	StageObservation     *StageObservation                  `json:"stage_observation,omitempty"`
+	StableBoundarySwitch *StableBoundarySwitch              `json:"stable_boundary_switch,omitempty"`
 }
 
 type DispatchPreparation struct {
