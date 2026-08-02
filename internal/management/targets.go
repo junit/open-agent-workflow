@@ -1,4 +1,4 @@
-package check
+package management
 
 import (
 	"fmt"
@@ -34,7 +34,7 @@ type resolvedRequest struct {
 	targets     []string
 }
 
-func resolve(request Request) (resolvedRequest, error) {
+func resolve(request CheckRequest) (resolvedRequest, error) {
 	result := resolvedRequest{scope: "user"}
 	if request.Project != "" {
 		if hasControl(request.Project) {

@@ -1,4 +1,4 @@
-package check
+package management
 
 import (
 	"os"

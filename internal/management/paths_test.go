@@ -1,4 +1,4 @@
-package check
+package management
 
 import (
 	"bytes"
@@ -127,7 +127,7 @@ func TestTargetDestinationRejectsUnsupportedCoordinates(t *testing.T) {
 
 func TestWriteRendersOneLinePerResultEntry(t *testing.T) {
 	var output bytes.Buffer
-	if err := Write(Result{Lines: []string{"one", "two"}, Trailing: "partial"}, &output); err != nil {
+	if err := WriteResult(Result{Lines: []string{"one", "two"}, Trailing: "partial"}, &output); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != "one\ntwo\npartial" {
@@ -136,7 +136,7 @@ func TestWriteRendersOneLinePerResultEntry(t *testing.T) {
 }
 
 func TestWriteReturnsOutputFailure(t *testing.T) {
-	if err := Write(Result{Lines: []string{"one"}}, failingWriter{}); err == nil {
+	if err := WriteResult(Result{Lines: []string{"one"}}, failingWriter{}); err == nil {
 		t.Fatal("Write() ignored output failure")
 	}
 }
