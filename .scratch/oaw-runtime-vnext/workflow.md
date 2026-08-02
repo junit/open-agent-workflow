@@ -13,8 +13,8 @@ selection_source: user-selected
 bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
-current_stage: completed
-active_ticket: 11-go-check-black-box-parity
+current_stage: planning
+active_ticket: 12-go-install-rendering-and-state-parity
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -30,6 +30,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-07-workflow-runtime-orchestration.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-11-go-check-black-box-parity.md
+  - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-12-go-install-rendering-state-parity.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
