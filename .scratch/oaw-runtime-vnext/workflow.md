@@ -18,8 +18,8 @@ runtime_integration_id: oaw/codex-runner
 runtime_integration_level: runner-managed
 runtime_host_selection_source: user-explicit
 runtime_host_selected_at: 2026-08-03
-current_stage: policy-vnext
-active_ticket: 10-policy-vnext-and-runtime-projections
+current_stage: cutover-and-release-verification
+active_ticket: 14-cutover-and-release-verification
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -147,7 +147,9 @@ remains instruction-only. The next active dependency is Ticket 10,
 Ticket 09 completion preserved the selected `MATT-SP-HYBRID` policy ownership.
 Runtime state remains authoritative, Workflow dispatch remains isolated behind
 the Host Driver seam, and the existing Bash installer remains authoritative
-until Ticket 14. Ticket 10 is now in progress: the canonical Policy Plane is
-being aligned to Direct/Bounded/Workflow modes and Runtime projections are
-being extended with redacted Profile, stage, ticket, evidence-reference, and
-lag-status views.
+until Ticket 14. Ticket 10 completed at implementation fixed point `8fdd78a`.
+The canonical Policy Plane now uses Direct/Bounded/Workflow modes and an
+extensible Provider/Capability/Profile model; Runtime projections expose
+redacted Profile, Bundle-generation, stage, independent Active Ticket,
+evidence-reference, and lag-status views. Completion of Tickets 09, 10, and 13
+unblocks Ticket 14, `cutover-and-release-verification`.

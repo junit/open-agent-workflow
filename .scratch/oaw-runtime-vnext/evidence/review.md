@@ -483,3 +483,50 @@ Ticket 14 alone owns cutover.
 
 No unresolved Critical, High, Important, Standards, or Spec finding remains.
 Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
+
+## Ticket 10 Implementation Review
+
+**Date:** 2026-08-03
+
+**Fixed point:** `8fdd78a`
+
+**Scope:** Runtime vNext Policy Plane semantics, extensible Provider/Profile
+selection, Workflow-only Startup Gate activation, Policy-only Host limits,
+Runtime project projection fields/redaction, and bilingual lifecycle guidance
+
+**Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+### Standards
+
+The complete `4a80ae0...8fdd78a` change was checked against
+`CONTRIBUTING.md`, the repository Bash 3.2, black-box, bilingual-documentation,
+provider-neutrality, file-size, immutability, input-validation, and security
+rules, plus the standard code-smell baseline. The Bash and Go Codex renderers
+remain byte-equivalent and are exercised through the real CLI black-box seam.
+Projection values are immutable copies, evidence references are validated,
+sorted, and deduplicated, and changed implementation files remain focused and
+below repository size limits. No unrelated generated file, Provider mutation,
+credential, unsafe path expansion, or unresolved documented-standard finding
+remains.
+
+### Spec
+
+The diff was checked separately against Ticket 10, the approved Runtime vNext
+specification, canonical glossary, ADRs 0003/0004, and the executable plan. The
+review covered all three Request Modes, Workflow-only Gate activation,
+built-in/third-party Provider symmetry, complete ECC lifecycle eligibility,
+user-defined Profile selection, Workflow isolation, Policy-only disclaimers,
+all required projection fields, one-way authority, lag behavior, and exclusion
+of credentials, Grants, raw output, and sensitive Evidence content.
+
+One Important domain finding was remediated before completion. The first
+projection draft used immutable `DeliverableID` as `active_ticket`, contradicting
+the glossary's explicit distinction between Deliverable and Ticket. Runtime now
+stores an independent optional `ActiveTicket`, projections never infer it from
+Deliverable identity, and focused RED/GREEN plus invariant tests prove the
+separation and reject tampering.
+
+No unresolved Critical, High, Important, Standards, or Spec finding remains.
+Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.

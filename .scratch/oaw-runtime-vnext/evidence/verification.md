@@ -462,3 +462,42 @@ Hosts remain `instruction-only`; no project configuration or discovery result
 can promote them. `install.sh` and existing management renderers are unchanged,
 and no real paid/model-backed `codex exec` was invoked. `.serena/` and unrelated
 worktrees remain preserved.
+
+## Ticket 10 Fresh Verification
+
+**Date:** 2026-08-03
+
+**Result:** Passed
+
+**Implementation fixed point:** `8fdd78a`
+
+**Scope:** Policy vNext classification and ownership, extensible Profiles,
+Policy-only Host limits, independent Active Ticket state, redacted Runtime
+project projections, Codex bootstrap parity, and bilingual lifecycle guidance.
+
+| Check | Result |
+| --- | --- |
+| `rtk git diff --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 1465 tests passed in 22 packages |
+| `rtk go test -race ./... -count=1` | Exit 0: 1465 tests passed in 22 packages |
+| `rtk go vet ./...` | Exit 0 |
+| Repository Go statement coverage | `87.2%`, required minimum `80%` |
+| Runtime transport fuzz target | Exit 0: `FuzzDecodeFrameFailsClosed`, 2 seconds |
+| Codex JSONL fuzz target | Exit 0: `FuzzNormalizeJSONLFailsClosed`, 2 seconds |
+| Bash syntax and warning-level ShellCheck | Exit 0 |
+| `rtk bash tests/run.sh` | Exit 0: all installer, security, docs, and Bash/Go parity cases passed |
+| Bilingual docs and link checks | Exit 0: `tests/10-docs-test.sh` and `scripts/check-docs.sh` passed |
+| Linux and Windows `cmd/oaw` builds | Exit 0 |
+| Versioned official `govulncheck` | Exit 0: 0 reachable vulnerabilities; 2 unreachable required-module findings |
+
+Projection-focused tests validate selected/unselected templates, Profile
+switch generations, active stage, independent Active Ticket, sorted and
+deduplicated evidence references, explicit current/lagging status, owner-only
+file modes, symlink rejection, restart non-authority, and failure/panic lag
+recording. Redaction checks reject complete Grant fields, invocation/executor
+identity, raw output, credentials, and provider output in JSON and Markdown.
+
+The complete Bash oracle passed after the policy and renderer changes, and the
+Go shadow path remained byte-equivalent. No real paid/model-backed `codex exec`
+was invoked. Bash remains authoritative until Ticket 14; `.serena/`, the
+preserved stash, and unrelated branches/worktrees remain untouched.
