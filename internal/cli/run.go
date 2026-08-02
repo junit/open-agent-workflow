@@ -119,5 +119,5 @@ func parse(args []string) (command, error) {
 }
 
 func usage() string {
-	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw runtime exchange [--state-root path]\n"
+	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw runtime exchange [--state-root path]\n       oaw run --host codex [--state-root path] [--project-root path]\n"
 }

@@ -58,7 +58,7 @@ func (fake *fakeHostDriver) Invoke(request host.DispatchRequest) (host.DispatchR
 func (fake *fakeHostDriver) Cancel(string) error { return nil }
 
 func TestRunHostLoopUsesRuntimeExchangeForOrderedDispatch(t *testing.T) {
-	grant := admission.CapabilityGrant{ID: "grant", InvocationID: "invocation", Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	grant := admission.CapabilityGrant{ID: "grant", InvocationID: "invocation", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
 	engine := &fakeHostExchange{grant: grant}
 	driver := &fakeHostDriver{result: host.DispatchResult{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", ExecutionID: "execution", Outcome: host.DispatchSucceeded, Evidence: []host.DispatchEvidence{{Reference: "evidence://codex/invocation", Digest: strings.Repeat("a", 64)}}}}
 	input := `{"schema_version":"oaw.runtime/v1","kind":"CONTINUE","message_id":"m","idempotency_key":"k","run_id":"run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expected_revision":1,"continue":{"signal":"REQUEST_STAGE_GRANT"}}`
@@ -93,5 +93,24 @@ func TestRunRejectsUnsupportedHostWithoutInvokingAnything(t *testing.T) {
 	status := RunWithInput([]string{"run", "--host", "gemini", "--state-root", t.TempDir()}, strings.NewReader(`{}`), &stdout, &stderr)
 	if status != 69 || !json.Valid(stdout.Bytes()) || !strings.Contains(stderr.String(), "HOST_RUNTIME_UNSUPPORTED") {
 		t.Fatalf("unsupported Host status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+}
+
+func TestGrantDispatchDigestUsesLifecycleBundleDigest(t *testing.T) {
+	grant := admission.CapabilityGrant{BundleID: "bundle-1", RegistryDigest: strings.Repeat("a", 64), GraphDigest: strings.Repeat("b", 64)}
+	snapshot := oawruntime.RunSnapshot{Workflow: &oawruntime.WorkflowState{Bundles: []oawruntime.LifecycleBundle{{ID: "bundle-1", Digest: strings.Repeat("c", 64)}}}}
+	digest, err := grantDispatchDigest(snapshot, grant)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if digest != strings.Repeat("c", 64) {
+		t.Fatalf("dispatch digest = %q, want Lifecycle Bundle digest", digest)
+	}
+}
+
+func TestGrantDispatchDigestRejectsMissingLifecycleBundle(t *testing.T) {
+	grant := admission.CapabilityGrant{BundleID: "bundle-1", RegistryDigest: strings.Repeat("a", 64), GraphDigest: strings.Repeat("b", 64)}
+	if _, err := grantDispatchDigest(oawruntime.RunSnapshot{Workflow: &oawruntime.WorkflowState{}}, grant); err == nil {
+		t.Fatal("dispatch digest accepted a Grant without its committed Lifecycle Bundle")
 	}
 }

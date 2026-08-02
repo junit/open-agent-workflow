@@ -76,6 +76,23 @@ func TestRunWithInputRuntimeExchangeReturnsMachineDenialAndStderrDiagnostic(t *t
 	}
 }
 
+func TestParseRunCommandAcceptsBoundedProjectRootOption(t *testing.T) {
+	projectRoot := filepath.Join(string(filepath.Separator), "workspace", "project")
+	parsed, err := parseRunCommand([]string{"--host", "codex", "--state-root", filepath.Join(string(filepath.Separator), "state"), "--project-root=" + projectRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.projectRoot != projectRoot {
+		t.Fatalf("project root = %q, want %q", parsed.projectRoot, projectRoot)
+	}
+}
+
+func TestParseRunCommandRejectsUnsafeProjectRootOption(t *testing.T) {
+	if _, err := parseRunCommand([]string{"--host", "codex", "--project-root", "relative/project"}); err == nil {
+		t.Fatal("relative project root was accepted")
+	}
+}
+
 func cliDirectProposal() *classification.ClassificationProposal {
 	trueTraits := map[classification.Trait]bool{
 		classification.TraitScopeClear:               true,

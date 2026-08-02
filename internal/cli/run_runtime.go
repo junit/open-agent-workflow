@@ -28,8 +28,9 @@ type runtimeExchangeCommand struct {
 }
 
 type runCommandOptions struct {
-	hostID    string
-	stateRoot string
+	hostID      string
+	stateRoot   string
+	projectRoot string
 }
 
 type runtimeDenial struct {
@@ -76,7 +77,7 @@ func runCodex(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
-	engine, err := newCLIEngine(parsed.stateRoot, frame, parsed.hostID)
+	engine, err := newCLIEngine(parsed.stateRoot, parsed.projectRoot, frame, parsed.hostID)
 	if err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
@@ -87,16 +88,20 @@ func runCodex(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
-func newCLIEngine(stateRoot string, frame oawruntime.RunFrame, hostID string) (*oawruntime.Engine, error) {
+func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunFrame, hostID string) (*oawruntime.Engine, error) {
 	if frame.Start != nil && frame.Start.Proposal != nil {
 		decision, err := classification.Classify(frame.Start.Proposal, classification.ClassificationRules{})
 		if err == nil && decision.RequestMode == classification.RequestModeDirect {
 			return oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
 		}
 	}
-	projectRoot := ""
+	projectRoot := configuredProjectRoot
 	if frame.Start != nil {
-		projectRoot = frame.Start.Project.Root
+		frameProjectRoot := frame.Start.Project.Root
+		if projectRoot != "" && projectRoot != frameProjectRoot {
+			return nil, fmt.Errorf("RUNTIME_PROJECT_ROOT_MISMATCH: --project-root does not match START project root")
+		}
+		projectRoot = frameProjectRoot
 	}
 	userConfigRoot := defaultConfigRoot()
 	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userConfigRoot, ProjectRoot: projectRoot})
@@ -179,7 +184,7 @@ func parseRunCommand(args []string) (runCommandOptions, error) {
 	if len(args) == 0 {
 		return runCommandOptions{}, fmt.Errorf("run requires --host codex")
 	}
-	hostSeen, stateSeen := false, false
+	hostSeen, stateSeen, projectSeen := false, false, false
 	for index := 0; index < len(args); {
 		argument := args[index]
 		switch {
@@ -211,6 +216,20 @@ func parseRunCommand(args []string) (runCommandOptions, error) {
 			stateSeen = true
 			result.stateRoot = strings.TrimPrefix(argument, "--state-root=")
 			index++
+		case argument == "--project-root":
+			if projectSeen || index+1 >= len(args) {
+				return runCommandOptions{}, fmt.Errorf("--project-root requires one value")
+			}
+			projectSeen = true
+			result.projectRoot = args[index+1]
+			index += 2
+		case strings.HasPrefix(argument, "--project-root="):
+			if projectSeen {
+				return runCommandOptions{}, fmt.Errorf("--project-root may be specified only once")
+			}
+			projectSeen = true
+			result.projectRoot = strings.TrimPrefix(argument, "--project-root=")
+			index++
 		default:
 			return runCommandOptions{}, fmt.Errorf("unknown run argument %q", argument)
 		}
@@ -220,6 +239,9 @@ func parseRunCommand(args []string) (runCommandOptions, error) {
 	}
 	if result.stateRoot == "" || !filepath.IsAbs(result.stateRoot) || filepath.Clean(result.stateRoot) != result.stateRoot || strings.IndexFunc(result.stateRoot, unicode.IsControl) >= 0 {
 		return runCommandOptions{}, fmt.Errorf("state root must be a clean absolute path")
+	}
+	if result.projectRoot != "" && (!filepath.IsAbs(result.projectRoot) || filepath.Clean(result.projectRoot) != result.projectRoot || strings.IndexFunc(result.projectRoot, unicode.IsControl) >= 0) {
+		return runCommandOptions{}, fmt.Errorf("project root must be a clean absolute path")
 	}
 	return result, nil
 }
@@ -254,7 +276,11 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	if err != nil {
 		return err
 	}
-	request := host.DispatchRequest{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID, BundleDigest: grantBundleDigest(grant), Binding: grant.Binding}
+	bundleDigest, err := grantDispatchDigest(reply.Snapshot, grant)
+	if err != nil {
+		return err
+	}
+	request := host.DispatchRequest{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID, BundleDigest: bundleDigest, Binding: grant.Binding}
 	if err := driver.Prepare(request); err != nil {
 		return err
 	}
@@ -306,11 +332,25 @@ func latestGrant(grants []admission.CapabilityGrant) (admission.CapabilityGrant,
 	return admission.CloneGrant(grants[len(grants)-1]), nil
 }
 
-func grantBundleDigest(grant admission.CapabilityGrant) string {
-	if grant.BundleID != "" {
-		return grant.GraphDigest
+func grantDispatchDigest(snapshot oawruntime.RunSnapshot, grant admission.CapabilityGrant) (string, error) {
+	if grant.BundleID == "" {
+		if grant.RegistryDigest == "" {
+			return "", fmt.Errorf("RUNTIME_RUN_INVALID: Grant has no bounded dispatch digest")
+		}
+		return grant.RegistryDigest, nil
 	}
-	return grant.RegistryDigest
+	if snapshot.Workflow == nil {
+		return "", fmt.Errorf("RUNTIME_RUN_INVALID: Workflow Grant has no Workflow snapshot")
+	}
+	for _, bundle := range snapshot.Workflow.Bundles {
+		if bundle.ID == grant.BundleID {
+			if bundle.Digest == "" {
+				return "", fmt.Errorf("RUNTIME_RUN_INVALID: Lifecycle Bundle has no digest")
+			}
+			return bundle.Digest, nil
+		}
+	}
+	return "", fmt.Errorf("RUNTIME_RUN_INVALID: Grant Bundle is absent from the committed snapshot")
 }
 
 func observationFrame(original oawruntime.RunFrame, authorized oawruntime.RunReply, grant admission.CapabilityGrant, result host.DispatchResult) oawruntime.RunFrame {
