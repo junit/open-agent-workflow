@@ -605,6 +605,22 @@ func TestRollbackMutationJournalRestoresFilesAndDirectories(t *testing.T) {
 	}
 }
 
+func TestRestoreMutationDirectoryPreservesOriginalMode(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "owned")
+	action := directoryAction{
+		destination: destination, allowedRoot: root, relativeSuffix: "owned",
+		before: installPathSnapshot{kind: installPathDirectory, mode: 0o777},
+	}
+	if err := restoreMutationDirectory(action); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(destination)
+	if err != nil || info.Mode().Perm() != 0o777 {
+		t.Fatalf("restored directory mode = %v, %v", info, err)
+	}
+}
+
 func TestRollbackFailureReturnsCombinedRedactedDiagnostic(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	project := filepath.Join(fixture.root, "project")

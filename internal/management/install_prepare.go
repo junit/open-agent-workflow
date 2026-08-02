@@ -608,6 +608,9 @@ func inspectInstallPath(path string) (installPathSnapshot, error) {
 }
 
 func readBoundedInstallFile(path string, info fs.FileInfo) ([]byte, error) {
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("file is not regular")
+	}
 	if info.Size() > maximumInstallArtifactBytes {
 		return nil, fmt.Errorf("file exceeds read limit")
 	}
@@ -616,12 +619,20 @@ func readBoundedInstallFile(path string, info fs.FileInfo) ([]byte, error) {
 		return nil, err
 	}
 	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		return nil, fmt.Errorf("file changed while opening")
+	}
 	data, err := io.ReadAll(io.LimitReader(file, maximumInstallArtifactBytes+1))
 	if err != nil {
 		return nil, err
 	}
 	if len(data) > maximumInstallArtifactBytes {
 		return nil, fmt.Errorf("file exceeds read limit")
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !current.Mode().IsRegular() || !os.SameFile(opened, current) {
+		return nil, fmt.Errorf("file changed while reading")
 	}
 	return data, nil
 }

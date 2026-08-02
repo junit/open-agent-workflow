@@ -15,7 +15,7 @@ import (
 )
 
 func scopedAtomicReplaceMutation(action mutationAction) error {
-	root, err := openInstallRoot(action.allowedRoot)
+	root, err := openExistingInstallRoot(action.allowedRoot)
 	if err != nil {
 		return err
 	}
@@ -44,18 +44,24 @@ func scopedAtomicReplaceMutation(action mutationAction) error {
 			_ = directoryRoot.Remove(temporaryName)
 		}
 	}()
-	if _, err := temporary.Write(action.data); err != nil {
-		return installIOError("cannot write temporary file for " + action.destination)
+	if err := writeScopedTemporaryFile(temporary, action.data, action.mode, action.destination); err != nil {
+		return err
 	}
-	if err := temporary.Chmod(action.mode); err != nil {
-		return installIOError("cannot set destination mode for " + action.destination)
+	if err := publishScopedMutationReplacement(root, directoryRoot, install, action, temporaryName); err != nil {
+		return err
 	}
-	if err := temporary.Sync(); err != nil {
-		return installIOError("cannot sync temporary file for " + action.destination)
-	}
-	if err := temporary.Close(); err != nil {
-		return installIOError("cannot close temporary file for " + action.destination)
-	}
+	keepTemporary = false
+	syncScopedDirectory(directoryRoot, ".")
+	return nil
+}
+
+func publishScopedMutationReplacement(
+	root *os.Root,
+	directoryRoot *os.Root,
+	install installAction,
+	action mutationAction,
+	temporaryName string,
+) error {
 	if err := revalidateScopedAction(root, install); err != nil {
 		return err
 	}
@@ -74,13 +80,11 @@ func scopedAtomicReplaceMutation(action mutationAction) error {
 	if err := directoryRoot.Rename(temporaryName, destinationName); err != nil {
 		return installIOError("cannot replace destination: " + action.destination)
 	}
-	keepTemporary = false
-	syncScopedDirectory(directoryRoot, ".")
 	return nil
 }
 
 func scopedAtomicRemoveMutation(action mutationAction) error {
-	root, err := openInstallRoot(action.allowedRoot)
+	root, err := openExistingInstallRoot(action.allowedRoot)
 	if err != nil {
 		return err
 	}
@@ -138,11 +142,15 @@ func scopedRemoveMutationDirectory(action directoryAction) (bool, error) {
 	if current.kind == installPathMissing {
 		return false, nil
 	}
-	root, err := openInstallRoot(action.allowedRoot)
+	root, err := openExistingInstallRoot(action.allowedRoot)
 	if err != nil {
 		return false, err
 	}
 	defer root.Close()
+	return removeScopedMutationDirectory(root, action)
+}
+
+func removeScopedMutationDirectory(root *os.Root, action directoryAction) (bool, error) {
 	rebuilt, err := validatedDestinationPath(action.allowedRoot, action.relativeSuffix)
 	if err != nil {
 		return false, err
@@ -150,19 +158,42 @@ func scopedRemoveMutationDirectory(action directoryAction) (bool, error) {
 	if rebuilt != action.destination {
 		return false, compatibilityError("directory action destination does not match registry: " + action.destination)
 	}
-	info, err := root.Lstat(filepath.ToSlash(action.relativeSuffix))
+	install := installAction{
+		destination: action.destination, allowedRoot: action.allowedRoot,
+		relativeSuffix: action.relativeSuffix,
+	}
+	if err := revalidateScopedAction(root, install); err != nil {
+		return false, err
+	}
+	directoryRoot, err := openScopedActionDirectory(root, install)
+	if err != nil {
+		return false, err
+	}
+	defer directoryRoot.Close()
+	name := path.Base(action.relativeSuffix)
+	info, err := directoryRoot.Lstat(name)
 	if err != nil {
 		return false, compatibilityError("owned directory changed before removal: " + action.destination)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return false, compatibilityError("owned directory changed before removal: " + action.destination)
 	}
-	if err := root.Remove(filepath.ToSlash(action.relativeSuffix)); err != nil {
+	if !sameMutationFileIdentity(action.identity.destination, info) {
+		return false, compatibilityError("destination identity changed after preparation: " + action.destination)
+	}
+	if err := revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination); err != nil {
+		return false, err
+	}
+	if err := verifyScopedActionDirectory(directoryRoot, install); err != nil {
+		return false, err
+	}
+	if err := directoryRoot.Remove(name); err != nil {
 		if errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST) {
 			return false, nil
 		}
 		return false, installIOError("cannot remove owned directory: " + action.destination)
 	}
+	syncScopedDirectory(directoryRoot, ".")
 	return true, nil
 }
 
@@ -198,18 +229,23 @@ func scopedAtomicReplace(action installAction, planned, created map[string]struc
 			_ = directoryRoot.Remove(temporaryName)
 		}
 	}()
-	if _, err := temporary.Write(action.data); err != nil {
-		return installIOError("cannot write temporary file for " + action.destination)
+	if err := writeScopedTemporaryFile(temporary, action.data, action.mode, action.destination); err != nil {
+		return err
 	}
-	if err := temporary.Chmod(action.mode); err != nil {
-		return installIOError("cannot set destination mode for " + action.destination)
+	if err := publishScopedInstallReplacement(root, directoryRoot, action, temporaryName); err != nil {
+		return err
 	}
-	if err := temporary.Sync(); err != nil {
-		return installIOError("cannot sync temporary file for " + action.destination)
-	}
-	if err := temporary.Close(); err != nil {
-		return installIOError("cannot close temporary file for " + action.destination)
-	}
+	keepTemporary = false
+	syncScopedDirectory(directoryRoot, ".")
+	return nil
+}
+
+func publishScopedInstallReplacement(
+	root *os.Root,
+	directoryRoot *os.Root,
+	action installAction,
+	temporaryName string,
+) error {
 	if err := revalidateScopedAction(root, action); err != nil {
 		return err
 	}
@@ -228,8 +264,6 @@ func scopedAtomicReplace(action installAction, planned, created map[string]struc
 	if err := directoryRoot.Rename(temporaryName, destinationName); err != nil {
 		return installIOError("cannot replace destination: " + action.destination)
 	}
-	keepTemporary = false
-	syncScopedDirectory(directoryRoot, ".")
 	return nil
 }
 
@@ -272,6 +306,18 @@ func openInstallRoot(name string) (*os.Root, error) {
 	if err != nil {
 		return nil, compatibilityError("allowed root could not be inspected: " + name)
 	}
+	return openInspectedInstallRoot(name, info)
+}
+
+func openExistingInstallRoot(name string) (*os.Root, error) {
+	info, err := os.Lstat(name)
+	if err != nil {
+		return nil, compatibilityError("allowed root could not be inspected: " + name)
+	}
+	return openInspectedInstallRoot(name, info)
+}
+
+func openInspectedInstallRoot(name string, info fs.FileInfo) (*os.Root, error) {
 	if info.Mode()&os.ModeSymlink != 0 {
 		return nil, compatibilityError("allowed root is a symlink: " + name)
 	}
@@ -313,37 +359,50 @@ func ensureScopedInstallDirectory(root *os.Root, action installAction, planned, 
 		if err != nil {
 			return err
 		}
-		_, isPlanned := planned[expected]
-		_, wasCreated := created[expected]
-		info, err := root.Lstat(consumed)
-		if err == nil {
-			if info.Mode()&os.ModeSymlink != 0 {
-				return compatibilityError("destination path contains a symlink: " + expected)
-			}
-			if isPlanned && !wasCreated {
-				return compatibilityError("owned directory appeared before creation: " + expected)
-			}
-			if !info.IsDir() {
-				return compatibilityError("destination path component is not a directory: " + expected)
-			}
-			continue
+		if err := ensureScopedInstallDirectoryComponent(root, consumed, expected, planned, created); err != nil {
+			return err
 		}
-		if !errors.Is(err, fs.ErrNotExist) {
-			return compatibilityError("destination path could not be inspected: " + expected)
+	}
+	return nil
+}
+
+func ensureScopedInstallDirectoryComponent(
+	root *os.Root,
+	relative string,
+	expected string,
+	planned map[string]struct{},
+	created map[string]struct{},
+) error {
+	_, isPlanned := planned[expected]
+	_, wasCreated := created[expected]
+	info, err := root.Lstat(relative)
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return compatibilityError("destination path contains a symlink: " + expected)
 		}
-		if err := root.Mkdir(consumed, 0o755); err != nil {
-			if isPlanned {
-				return compatibilityError("owned directory appeared before creation: " + expected)
-			}
-			return &Error{Status: 73, Message: "cannot create destination directory: " + expected}
+		if isPlanned && !wasCreated {
+			return compatibilityError("owned directory appeared before creation: " + expected)
 		}
-		info, err = root.Lstat(consumed)
-		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return compatibilityError("destination directory changed during creation: " + expected)
+		if !info.IsDir() {
+			return compatibilityError("destination path component is not a directory: " + expected)
 		}
+		return nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return compatibilityError("destination path could not be inspected: " + expected)
+	}
+	if err := root.Mkdir(relative, 0o755); err != nil {
 		if isPlanned {
-			created[expected] = struct{}{}
+			return compatibilityError("owned directory appeared before creation: " + expected)
 		}
+		return &Error{Status: 73, Message: "cannot create destination directory: " + expected}
+	}
+	info, err = root.Lstat(relative)
+	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return compatibilityError("destination directory changed during creation: " + expected)
+	}
+	if isPlanned {
+		created[expected] = struct{}{}
 	}
 	return nil
 }
@@ -400,6 +459,22 @@ func createScopedTemporary(root *os.Root, directory string) (string, *os.File, e
 		}
 	}
 	return "", nil, &Error{Status: 73, Message: "cannot reserve temporary file name"}
+}
+
+func writeScopedTemporaryFile(file *os.File, data []byte, mode fs.FileMode, destination string) error {
+	if _, err := file.Write(data); err != nil {
+		return installIOError("cannot write temporary file for " + destination)
+	}
+	if err := file.Chmod(mode); err != nil {
+		return installIOError("cannot set destination mode for " + destination)
+	}
+	if err := file.Sync(); err != nil {
+		return installIOError("cannot sync temporary file for " + destination)
+	}
+	if err := file.Close(); err != nil {
+		return installIOError("cannot close temporary file for " + destination)
+	}
+	return nil
 }
 
 func syncScopedDirectory(root *os.Root, directory string) {

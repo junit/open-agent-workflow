@@ -45,6 +45,15 @@ type PreparedUninstall struct {
 	plan mutationPlan
 }
 
+type mutationPreparation struct {
+	resolved    resolvedRequest
+	coordinates coordinates
+	backupPath  string
+	policy      installPathSnapshot
+	state       installationState
+	stateExists bool
+}
+
 type directoryAction struct {
 	destination    string
 	allowedRoot    string
@@ -52,6 +61,37 @@ type directoryAction struct {
 	before         installPathSnapshot
 	namespace      bool
 	identity       mutationPathIdentity
+}
+
+func prepareMutationInputs(environment Environment, request mutationRequest) (mutationPreparation, error) {
+	resolved, err := resolve(CheckRequest{Project: request.project, Targets: request.targets})
+	if err != nil {
+		return mutationPreparation{}, err
+	}
+	coords, err := initializeCoordinates(environment, resolved)
+	if err != nil {
+		return mutationPreparation{}, err
+	}
+	backupPath := ""
+	if request.force {
+		backupPath, err = reserveMutationBackupPath(coords)
+		if err != nil {
+			return mutationPreparation{}, err
+		}
+	}
+	policy, err := inspectInstallPath(coords.policyPath)
+	if err != nil {
+		return mutationPreparation{}, err
+	}
+	state, exists, err := readInstallationState(coords.stateFile)
+	if err != nil {
+		return mutationPreparation{}, installError(err)
+	}
+	return mutationPreparation{
+		resolved: cloneResolvedRequest(resolved), coordinates: coords,
+		backupPath: backupPath, policy: cloneInstallPathSnapshot(policy),
+		state: cloneInstallationStateValue(state), stateExists: exists,
+	}, nil
 }
 
 func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest) error {

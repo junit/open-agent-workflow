@@ -1,176 +1,233 @@
 package management
 
 func PrepareUninstall(environment Environment, request UninstallRequest) (PreparedUninstall, error) {
-	resolved, err := resolve(CheckRequest{Project: request.Project, Targets: request.Targets})
+	mutationRequest := mutationRequest{
+		project: request.Project, targets: request.Targets,
+		dryRun: request.DryRun, force: request.Force,
+	}
+	preparation, err := prepareMutationInputs(environment, mutationRequest)
 	if err != nil {
 		return PreparedUninstall{}, err
 	}
-	coords, err := initializeCoordinates(environment, resolved)
-	if err != nil {
-		return PreparedUninstall{}, err
+	if !preparation.stateExists {
+		return prepareMissingStateUninstall(environment, mutationRequest, preparation)
 	}
-	backupPath := ""
-	if request.Force {
-		backupPath, err = reserveMutationBackupPath(coords)
-		if err != nil {
-			return PreparedUninstall{}, err
-		}
-	}
-	policyView, err := inspectInstallPath(coords.policyPath)
-	if err != nil {
-		return PreparedUninstall{}, err
-	}
-	state, exists, err := readInstallationState(coords.stateFile)
-	if err != nil {
-		return PreparedUninstall{}, installError(err)
-	}
-	if !exists {
-		if err := verifyUntrackedMutationMarkers(coords, resolved); err != nil {
-			return PreparedUninstall{}, err
-		}
-		plan := mutationPlan{
-			operation: mutationUninstall, environment: environment,
-			request:  mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
-			resolved: cloneResolvedRequest(resolved), coordinates: coords,
-		}
-		for _, id := range resolved.targets {
-			plan.leadingLines = append(plan.leadingLines, "oaw: unchanged: "+id)
-		}
-		plan.predicted = predictMutationResult(plan)
-		return PreparedUninstall{plan: cloneMutationPlan(plan)}, nil
-	}
-	force, err := prepareMutationForce(state, coords, resolved, policyView, request.Force)
+	force, err := prepareMutationForce(
+		preparation.state, preparation.coordinates, preparation.resolved,
+		preparation.policy, request.Force,
+	)
 	if err != nil {
 		return PreparedUninstall{}, err
 	}
 	if force.manual != nil {
 		plan, err := prepareManualRecoveryPlan(
-			mutationUninstall, Source{}, environment,
-			mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
-			resolved, coords, policyView, *force.manual, backupPath,
+			mutationUninstall, Source{}, environment, mutationRequest,
+			preparation.resolved, preparation.coordinates, preparation.policy,
+			*force.manual, preparation.backupPath,
 		)
 		if err != nil {
 			return PreparedUninstall{}, err
 		}
 		return PreparedUninstall{plan: plan}, nil
 	}
-
-	remaining, removed := filterUninstallRecords(state.targets, resolved.targets)
-	leading := make([]string, 0)
-	for _, id := range resolved.targets {
-		if _, found := findTargetRecord(state.targets, id); !found {
-			leading = append(leading, "oaw: unchanged: "+id)
-		}
+	plan, err := prepareUninstallPlan(environment, mutationRequest, preparation, force)
+	if err != nil {
+		return PreparedUninstall{}, err
 	}
-	targetActions := make([]mutationAction, 0, len(removed))
+	return PreparedUninstall{plan: plan}, nil
+}
+
+func prepareMissingStateUninstall(
+	environment Environment,
+	request mutationRequest,
+	preparation mutationPreparation,
+) (PreparedUninstall, error) {
+	if err := verifyUntrackedMutationMarkers(preparation.coordinates, preparation.resolved); err != nil {
+		return PreparedUninstall{}, err
+	}
+	plan := mutationPlan{
+		operation: mutationUninstall, environment: environment, request: request,
+		resolved: cloneResolvedRequest(preparation.resolved), coordinates: preparation.coordinates,
+	}
+	for _, id := range preparation.resolved.targets {
+		plan.leadingLines = append(plan.leadingLines, "oaw: unchanged: "+id)
+	}
+	plan.predicted = predictMutationResult(plan)
+	return PreparedUninstall{plan: cloneMutationPlan(plan)}, nil
+}
+
+func prepareUninstallPlan(
+	environment Environment,
+	request mutationRequest,
+	preparation mutationPreparation,
+	force forcePreparation,
+) (mutationPlan, error) {
+	remaining, removed := filterUninstallRecords(preparation.state.targets, preparation.resolved.targets)
+	targetActions, err := prepareUninstallTargets(preparation, force, remaining, removed)
+	if err != nil {
+		return mutationPlan{}, err
+	}
+	remainingDirectories, directoryActions, err := prepareUninstallDirectories(
+		preparation.coordinates, preparation.state, remaining,
+	)
+	if err != nil {
+		return mutationPlan{}, err
+	}
+	stateActions, err := prepareUninstallStateActions(
+		environment, preparation, force, remaining, remainingDirectories,
+	)
+	if err != nil {
+		return mutationPlan{}, err
+	}
+	policyAction, err := prepareUninstallPolicyAction(preparation, force, remaining)
+	if err != nil {
+		return mutationPlan{}, err
+	}
+	backup, err := buildMutationBackupPlan(
+		force.backupRequired, "uninstall", preparation.resolved.scope, preparation.backupPath,
+		policyAction, targetActions, stateActions,
+	)
+	if err != nil {
+		return mutationPlan{}, err
+	}
+	plan := mutationPlan{
+		operation: mutationUninstall, environment: environment, request: request,
+		resolved: cloneResolvedRequest(preparation.resolved), coordinates: preparation.coordinates,
+		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
+		stateActions: cloneMutationActions(stateActions), directoryActions: cloneDirectoryActions(directoryActions),
+		leadingLines: uninstallLeadingLines(preparation.state.targets, preparation.resolved.targets),
+		backup:       cloneBackupPlan(backup),
+	}
+	plan.predicted = predictMutationResult(plan)
+	return cloneMutationPlan(plan), nil
+}
+
+func prepareUninstallTargets(
+	preparation mutationPreparation,
+	force forcePreparation,
+	remaining []targetRecord,
+	removed []targetRecord,
+) ([]mutationAction, error) {
+	actions := make([]mutationAction, 0, len(removed))
 	for _, record := range removed {
 		if destinationReferenced(remaining, record.path) {
 			continue
 		}
-		current, err := inspectInstallPath(record.path)
+		action, err := prepareUninstallTarget(preparation, force, record)
 		if err != nil {
-			return PreparedUninstall{}, err
+			return nil, err
 		}
-		renderCurrent := current
-		if repaired, found := force.repaired[record.path]; found {
-			renderCurrent = cloneInstallPathSnapshot(repaired)
-		}
-		root, suffix, err := targetInstallCoordinates(coords, resolved, record.id)
+		actions, err = addMutationAction(actions, action)
 		if err != nil {
-			return PreparedUninstall{}, err
-		}
-		var action mutationAction
-		switch record.mode {
-		case "managed-block":
-			rendered, renderErr := renderManagedFileWithoutBlock(renderCurrent.data)
-			if renderErr != nil {
-				return PreparedUninstall{}, compatibilityError("managed markers are invalid: " + record.path)
-			}
-			if record.origin == "created-file" && len(rendered) == 0 {
-				action, err = newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
-			} else {
-				action, err = newMutationAction(mutationReplace, record.id, rendered, record.path, 0o644, root, suffix, current)
-			}
-		case "owned-file":
-			if record.origin != "created-file" {
-				return PreparedUninstall{}, compatibilityError("invalid owned target origin")
-			}
-			action, err = newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
-		default:
-			return PreparedUninstall{}, compatibilityError("unknown target ownership mode: " + record.mode)
-		}
-		if err != nil {
-			return PreparedUninstall{}, err
-		}
-		targetActions, err = addMutationAction(targetActions, action)
-		if err != nil {
-			return PreparedUninstall{}, err
+			return nil, err
 		}
 	}
+	return actions, nil
+}
 
-	remainingDirectories, directoryActions, err := prepareUninstallDirectories(coords, state, remaining)
+func prepareUninstallTarget(
+	preparation mutationPreparation,
+	force forcePreparation,
+	record targetRecord,
+) (mutationAction, error) {
+	current, err := inspectInstallPath(record.path)
 	if err != nil {
-		return PreparedUninstall{}, err
+		return mutationAction{}, err
 	}
-	stateActions := make([]mutationAction, 0, 1)
-	if len(remaining) > 0 {
-		updated := cloneInstallationStateValue(state)
-		updated.targets = remaining
-		updated.directories = remainingDirectories
-		if force.backupRequired {
-			updated.backupPath = backupPath
-		}
-		rendered, err := serializeInstallState(updated)
-		if err != nil {
-			return PreparedUninstall{}, err
-		}
-		action, err := newStateMutationAction("state", rendered, coords.stateFile, environment.StateHome)
-		if err != nil {
-			return PreparedUninstall{}, err
-		}
-		stateActions = append(stateActions, action)
-	} else {
-		action, err := newRemoveMutationAction("state", coords.stateFile, environment.StateHome)
-		if err != nil {
-			return PreparedUninstall{}, err
-		}
-		stateActions = append(stateActions, action)
+	renderCurrent := current
+	if repaired, found := force.repaired[record.path]; found {
+		renderCurrent = cloneInstallPathSnapshot(repaired)
 	}
+	root, suffix, err := targetInstallCoordinates(preparation.coordinates, preparation.resolved, record.id)
+	if err != nil {
+		return mutationAction{}, err
+	}
+	switch record.mode {
+	case "managed-block":
+		rendered, err := renderManagedFileWithoutBlock(renderCurrent.data)
+		if err != nil {
+			return mutationAction{}, compatibilityError("managed markers are invalid: " + record.path)
+		}
+		if record.origin == "created-file" && len(rendered) == 0 {
+			return newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
+		}
+		return newMutationAction(mutationReplace, record.id, rendered, record.path, 0o644, root, suffix, current)
+	case "owned-file":
+		if record.origin != "created-file" {
+			return mutationAction{}, compatibilityError("invalid owned target origin")
+		}
+		return newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
+	default:
+		return mutationAction{}, compatibilityError("unknown target ownership mode: " + record.mode)
+	}
+}
 
-	policyEffect := mutationRetain
+func prepareUninstallStateActions(
+	environment Environment,
+	preparation mutationPreparation,
+	force forcePreparation,
+	remaining []targetRecord,
+	remainingDirectories []string,
+) ([]mutationAction, error) {
 	if len(remaining) == 0 {
-		references, err := collectPolicyStateReferencesWithBaseline(coords, coords.stateFile, policyView, force.policyBaseline)
+		action, err := newRemoveMutationAction("state", preparation.coordinates.stateFile, environment.StateHome)
 		if err != nil {
-			return PreparedUninstall{}, err
+			return nil, err
+		}
+		return []mutationAction{action}, nil
+	}
+	updated := cloneInstallationStateValue(preparation.state)
+	updated.targets = cloneTargetRecords(remaining)
+	updated.directories = append([]string(nil), remainingDirectories...)
+	if force.backupRequired {
+		updated.backupPath = preparation.backupPath
+	}
+	rendered, err := serializeInstallState(updated)
+	if err != nil {
+		return nil, err
+	}
+	action, err := newStateMutationAction(
+		"state", rendered, preparation.coordinates.stateFile, environment.StateHome,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return []mutationAction{action}, nil
+}
+
+func prepareUninstallPolicyAction(
+	preparation mutationPreparation,
+	force forcePreparation,
+	remaining []targetRecord,
+) (mutationAction, error) {
+	effect := mutationRetain
+	if len(remaining) == 0 {
+		references, err := collectPolicyStateReferencesWithBaseline(
+			preparation.coordinates, preparation.coordinates.stateFile,
+			preparation.policy, force.policyBaseline,
+		)
+		if err != nil {
+			return mutationAction{}, err
 		}
 		if len(references) == 0 {
-			policyEffect = mutationRemove
+			effect = mutationRemove
 		}
 	}
-	policyAction, err := newMutationAction(
-		policyEffect, "policy", nil, coords.policyPath, 0,
-		environment.ConfigHome, "open-agent-workflow/ENGINEERING.md", policyView,
+	return newMutationAction(
+		effect, "policy", nil, preparation.coordinates.policyPath, 0,
+		preparation.coordinates.environment.ConfigHome,
+		"open-agent-workflow/ENGINEERING.md", preparation.policy,
 	)
-	if err != nil {
-		return PreparedUninstall{}, err
+}
+
+func uninstallLeadingLines(records []targetRecord, selected []string) []string {
+	lines := make([]string, 0)
+	for _, id := range selected {
+		if _, found := findTargetRecord(records, id); !found {
+			lines = append(lines, "oaw: unchanged: "+id)
+		}
 	}
-	backup, err := buildMutationBackupPlan(
-		force.backupRequired, "uninstall", resolved.scope, backupPath,
-		policyAction, targetActions, stateActions,
-	)
-	if err != nil {
-		return PreparedUninstall{}, err
-	}
-	plan := mutationPlan{
-		operation: mutationUninstall, environment: environment,
-		request:  mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
-		resolved: cloneResolvedRequest(resolved), coordinates: coords,
-		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
-		stateActions: cloneMutationActions(stateActions), directoryActions: cloneDirectoryActions(directoryActions),
-		leadingLines: append([]string(nil), leading...), backup: cloneBackupPlan(backup),
-	}
-	plan.predicted = predictMutationResult(plan)
-	return PreparedUninstall{plan: cloneMutationPlan(plan)}, nil
+	return lines
 }
 
 func filterUninstallRecords(records []targetRecord, selected []string) ([]targetRecord, []targetRecord) {

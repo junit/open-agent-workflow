@@ -105,6 +105,30 @@ func TestApplyMutationBackupRejectsChangedSourceBeforeCreatingBackup(t *testing.
 	}
 }
 
+func TestApplyMutationBackupRejectsSameContentSourceReplacement(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+	target := installed.targetActions[0].destination
+	if err := os.WriteFile(target, []byte(beginMarker+"\ndrift\n"+endMarker+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := PrepareUpdate(fixture.source, fixture.environment, UpdateRequest{Targets: "claude", Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate := backupCandidateForDestination(t, prepared.plan.backup, target)
+	if err := os.Rename(target, target+".prepared"); err != nil {
+		t.Fatal(err)
+	}
+	writePrepareFile(t, target, candidate.before.data, candidate.before.mode.Perm())
+	if _, err := applyMutationBackup(prepared.plan.backup, fixture.environment); err == nil || !strings.Contains(err.Error(), "identity changed") {
+		t.Fatalf("error = %v", err)
+	}
+	if _, err := os.Lstat(prepared.plan.backup.path); !os.IsNotExist(err) {
+		t.Fatalf("rejected backup path exists: %v", err)
+	}
+}
+
 func TestBackupPlanRejectsUnsafeAndDuplicateCandidates(t *testing.T) {
 	root := t.TempDir()
 	backupPath := filepath.Join(root, "backups", "operation")

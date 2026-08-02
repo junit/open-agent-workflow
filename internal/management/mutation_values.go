@@ -58,28 +58,8 @@ func newMutationAction(
 	if rebuilt != destination {
 		return mutationAction{}, compatibilityError("mutation action destination does not match registry: " + destination)
 	}
-	switch effect {
-	case mutationReplace:
-		if data == nil {
-			return mutationAction{}, compatibilityError("replace action has no data")
-		}
-		if mode != 0o600 && mode != 0o644 {
-			return mutationAction{}, compatibilityError("invalid prepared destination mode")
-		}
-	case mutationRemove:
-		if data != nil {
-			return mutationAction{}, compatibilityError("remove action has replacement data")
-		}
-		if mode != 0 {
-			return mutationAction{}, compatibilityError("remove action has a destination mode")
-		}
-	case mutationRetain:
-		if data != nil {
-			return mutationAction{}, compatibilityError("retain action has replacement data")
-		}
-		if mode != 0 {
-			return mutationAction{}, compatibilityError("retain action has a destination mode")
-		}
+	if err := validateMutationEffect(effect, data, mode); err != nil {
+		return mutationAction{}, err
 	}
 	identity, err := captureMutationPathIdentity(root, destination)
 	if err != nil {
@@ -90,6 +70,33 @@ func newMutationAction(
 		mode: mode, allowedRoot: root, relativeSuffix: suffix,
 		before: cloneInstallPathSnapshot(before), identity: identity,
 	}, nil
+}
+
+func validateMutationEffect(effect mutationEffect, data []byte, mode fs.FileMode) error {
+	switch effect {
+	case mutationReplace:
+		if data == nil {
+			return compatibilityError("replace action has no data")
+		}
+		if mode != 0o600 && mode != 0o644 {
+			return compatibilityError("invalid prepared destination mode")
+		}
+	case mutationRemove:
+		if data != nil {
+			return compatibilityError("remove action has replacement data")
+		}
+		if mode != 0 {
+			return compatibilityError("remove action has a destination mode")
+		}
+	case mutationRetain:
+		if data != nil {
+			return compatibilityError("retain action has replacement data")
+		}
+		if mode != 0 {
+			return compatibilityError("retain action has a destination mode")
+		}
+	}
+	return nil
 }
 
 func captureMutationPathIdentity(root, destination string) (mutationPathIdentity, error) {

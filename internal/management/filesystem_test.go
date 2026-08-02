@@ -329,6 +329,19 @@ func TestScopedFilesystemAndBoundedReadsDetectCoordinateRaces(t *testing.T) {
 	if _, err := readBoundedInstallFile(path, staleInfo); err == nil {
 		t.Fatal("bounded read accepted a file that grew after inspection")
 	}
+	replacementPath := filepath.Join(root, "same-size-replacement")
+	writePrepareFile(t, replacementPath, []byte("first\n"), 0o644)
+	replacedInfo, err := os.Lstat(replacementPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(replacementPath, replacementPath+".prepared"); err != nil {
+		t.Fatal(err)
+	}
+	writePrepareFile(t, replacementPath, []byte("other\n"), 0o644)
+	if _, err := readBoundedInstallFile(replacementPath, replacedInfo); err == nil {
+		t.Fatal("bounded read accepted a same-size inode replacement")
+	}
 	if missing, err := installPathIsMissing(filepath.Join(path, "child")); err == nil || missing {
 		t.Fatalf("non-directory coordinate missing=%t error=%v", missing, err)
 	}

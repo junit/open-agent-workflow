@@ -20,6 +20,7 @@ type backupCandidate struct {
 	backup         string
 	checksum       string
 	before         installPathSnapshot
+	identity       mutationPathIdentity
 }
 
 type backupPlan struct {
@@ -117,11 +118,16 @@ func addBackupCandidate(
 	if rebuilt != original {
 		return nil, compatibilityError("backup candidate destination does not match: " + original)
 	}
+	identity, err := captureMutationPathIdentity(root, original)
+	if err != nil {
+		return nil, err
+	}
 	index := len(candidates) + 1
 	artifact := backupPath + string(filepath.Separator) + fmt.Sprintf("%03d-%s", index, filepath.Base(original))
 	candidate := backupCandidate{
 		original: original, allowedRoot: root, relativeSuffix: suffix,
 		backup: artifact, checksum: checksumBytes(before.data), before: cloneInstallPathSnapshot(before),
+		identity: identity,
 	}
 	return append(candidates, candidate), nil
 }
@@ -196,7 +202,7 @@ func applyMutationBackup(plan backupPlan, environment Environment) (string, erro
 	if err != nil {
 		return "", err
 	}
-	root, err := openInstallRoot(environment.StateHome)
+	root, err := openExistingInstallRoot(environment.StateHome)
 	if err != nil {
 		return "", err
 	}
@@ -218,10 +224,10 @@ func applyMutationBackup(plan backupPlan, environment Environment) (string, erro
 			return "", &Error{Status: 74, Message: "backup verification failed: " + candidate.original}
 		}
 	}
-	if err := writePrivateBackupFile(operationRoot, "manifest.tsv", manifest); err != nil {
+	if err := revalidateBackupSources(plan); err != nil {
 		return "", err
 	}
-	if err := revalidateBackupSources(plan); err != nil {
+	if err := writePrivateBackupFile(operationRoot, "manifest.tsv", manifest); err != nil {
 		return "", err
 	}
 	syncScopedDirectory(operationRoot, ".")
@@ -237,6 +243,12 @@ func revalidateBackupSources(plan backupPlan) error {
 		if rebuilt != candidate.original {
 			return compatibilityError("backup candidate destination does not match: " + candidate.original)
 		}
+		if !candidate.identity.captured {
+			return compatibilityError("backup source identity is missing: " + candidate.original)
+		}
+		if err := revalidateMutationPathIdentity(candidate.identity, candidate.allowedRoot, candidate.original); err != nil {
+			return err
+		}
 		current, err := inspectInstallPath(candidate.original)
 		if err != nil {
 			return err
@@ -244,55 +256,20 @@ func revalidateBackupSources(plan backupPlan) error {
 		if current.kind != installPathRegular || checksumBytes(current.data) != candidate.checksum {
 			return compatibilityError("backup source changed before mutation: " + candidate.original)
 		}
+		if err := revalidateMutationPathIdentity(candidate.identity, candidate.allowedRoot, candidate.original); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
 func readVerifiedBackupFile(environment Environment, destination, description string) ([]byte, error) {
-	if err := verifyPrivateBackupDirectory(environment, filepath.Dir(destination)); err != nil {
-		return nil, err
-	}
-	relative, err := stateActionRelativeSuffix(environment.StateHome, destination)
-	if err != nil {
-		return nil, err
-	}
-	root, err := openInstallRoot(environment.StateHome)
+	root, file, opened, relative, err := openVerifiedBackupFile(environment, destination, description)
 	if err != nil {
 		return nil, err
 	}
 	defer root.Close()
-	action := installAction{
-		destination: destination, allowedRoot: environment.StateHome,
-		relativeSuffix: relative,
-	}
-	if err := revalidateScopedAction(root, action); err != nil {
-		return nil, err
-	}
-	info, err := root.Lstat(relative)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, compatibilityError(description + " is missing")
-	}
-	if err != nil {
-		return nil, compatibilityError(description + " could not be inspected")
-	}
-	if !info.Mode().IsRegular() {
-		return nil, compatibilityError(description + " is not a regular file")
-	}
-	if info.Mode().Perm() != 0o600 {
-		return nil, compatibilityError(description + " is not private")
-	}
-	if info.Size() > maximumInstallArtifactBytes {
-		return nil, compatibilityError(description + " exceeds read limit")
-	}
-	file, err := root.Open(relative)
-	if err != nil {
-		return nil, compatibilityError(description + " could not be read")
-	}
 	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 || !os.SameFile(info, opened) {
-		return nil, compatibilityError(description + " changed while opening")
-	}
 	data, err := io.ReadAll(io.LimitReader(file, maximumInstallArtifactBytes+1))
 	if err != nil {
 		return nil, compatibilityError(description + " could not be read")
@@ -304,10 +281,79 @@ func readVerifiedBackupFile(environment Environment, destination, description st
 	if err != nil || !current.Mode().IsRegular() || current.Mode().Perm() != 0o600 || !os.SameFile(opened, current) {
 		return nil, compatibilityError(description + " changed while reading")
 	}
+	action := installAction{
+		destination: destination, allowedRoot: environment.StateHome,
+		relativeSuffix: relative,
+	}
 	if err := revalidateScopedAction(root, action); err != nil {
 		return nil, err
 	}
 	return data, nil
+}
+
+func openVerifiedBackupFile(
+	environment Environment,
+	destination string,
+	description string,
+) (*os.Root, *os.File, fs.FileInfo, string, error) {
+	if err := verifyPrivateBackupDirectory(environment, filepath.Dir(destination)); err != nil {
+		return nil, nil, nil, "", err
+	}
+	relative, err := stateActionRelativeSuffix(environment.StateHome, destination)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	root, err := openExistingInstallRoot(environment.StateHome)
+	if err != nil {
+		return nil, nil, nil, "", err
+	}
+	action := installAction{
+		destination: destination, allowedRoot: environment.StateHome,
+		relativeSuffix: relative,
+	}
+	if err := revalidateScopedAction(root, action); err != nil {
+		root.Close()
+		return nil, nil, nil, "", err
+	}
+	info, err := root.Lstat(relative)
+	if err := validatePrivateBackupFileInfo(info, err, description); err != nil {
+		root.Close()
+		return nil, nil, nil, "", err
+	}
+	file, err := root.Open(relative)
+	if err != nil {
+		root.Close()
+		return nil, nil, nil, "", compatibilityError(description + " could not be read")
+	}
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 || !os.SameFile(info, opened) {
+		file.Close()
+		root.Close()
+		return nil, nil, nil, "", compatibilityError(description + " changed while opening")
+	}
+	return root, file, opened, relative, nil
+}
+
+func validatePrivateBackupFileInfo(info fs.FileInfo, err error, description string) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return compatibilityError(description + " is missing")
+	}
+	if err != nil {
+		return compatibilityError(description + " could not be inspected")
+	}
+	if info == nil {
+		return compatibilityError(description + " could not be inspected")
+	}
+	if !info.Mode().IsRegular() {
+		return compatibilityError(description + " is not a regular file")
+	}
+	if info.Mode().Perm() != 0o600 {
+		return compatibilityError(description + " is not private")
+	}
+	if info.Size() > maximumInstallArtifactBytes {
+		return compatibilityError(description + " exceeds read limit")
+	}
+	return nil
 }
 
 func verifyPrivateBackupDirectory(environment Environment, destination string) error {
@@ -315,7 +361,7 @@ func verifyPrivateBackupDirectory(environment Environment, destination string) e
 	if err != nil {
 		return err
 	}
-	root, err := openInstallRoot(environment.StateHome)
+	root, err := openExistingInstallRoot(environment.StateHome)
 	if err != nil {
 		return err
 	}

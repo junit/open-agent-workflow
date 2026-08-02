@@ -30,6 +30,18 @@ func RunShadowManagement(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, installerUsage())
 		return 0
 	}
+	result, managementErr := executeShadowManagement(parsed, shadowManagementEnvironment())
+	if writeErr := management.WriteResult(result, stdout); writeErr != nil {
+		fmt.Fprintf(stderr, "oaw: error: %s\n", writeErr)
+		return 1
+	}
+	if managementErr != nil {
+		return writeShadowManagementError(managementErr, stderr)
+	}
+	return 0
+}
+
+func shadowManagementEnvironment() management.Environment {
 	home := os.Getenv("HOME")
 	configHome := os.Getenv("XDG_CONFIG_HOME")
 	if configHome == "" {
@@ -39,16 +51,22 @@ func RunShadowManagement(args []string, stdout, stderr io.Writer) int {
 	if stateHome == "" {
 		stateHome = home + "/.local/state"
 	}
-	environment := management.Environment{
+	return management.Environment{
 		Home: home, ConfigHome: configHome, StateHome: stateHome, Path: os.Getenv("PATH"),
 	}
+}
+
+func executeShadowManagement(
+	parsed shadowManagementCommand,
+	environment management.Environment,
+) (management.Result, error) {
 	var result management.Result
 	var managementErr error
 	switch parsed.operation {
 	case "install", "update":
 		source, err := management.NewSource(oaw.Version(), oaw.CanonicalPolicy())
 		if err != nil {
-			return writeShadowManagementError(err, stderr)
+			return management.Result{}, err
 		}
 		if parsed.operation == "install" {
 			result, managementErr = management.Install(source, environment, management.InstallRequest{
@@ -64,14 +82,7 @@ func RunShadowManagement(args []string, stdout, stderr io.Writer) int {
 			Project: parsed.project, Targets: parsed.targets, DryRun: parsed.dryRun, Force: parsed.force,
 		})
 	}
-	if writeErr := management.WriteResult(result, stdout); writeErr != nil {
-		fmt.Fprintf(stderr, "oaw: error: %s\n", writeErr)
-		return 1
-	}
-	if managementErr != nil {
-		return writeShadowManagementError(managementErr, stderr)
-	}
-	return 0
+	return result, managementErr
 }
 
 func parseShadowManagement(args []string) (shadowManagementCommand, error) {
@@ -87,66 +98,32 @@ func parseShadowManagement(args []string) (shadowManagementCommand, error) {
 	for index := 1; index < len(args); {
 		argument := args[index]
 		switch {
-		case argument == "--target":
-			if targetSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--target may be specified only once")
+		case argument == "--target" || strings.HasPrefix(argument, "--target="):
+			value, next, err := parseShadowValueOption(args, index, "--target", &targetSeen)
+			if err != nil {
+				return shadowManagementCommand{}, err
 			}
-			if index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
-				return shadowManagementCommand{}, fmt.Errorf("--target requires a value")
+			result.targets, index = value, next
+		case argument == "--project" || strings.HasPrefix(argument, "--project="):
+			value, next, err := parseShadowValueOption(args, index, "--project", &projectSeen)
+			if err != nil {
+				return shadowManagementCommand{}, err
 			}
-			result.targets = args[index+1]
-			targetSeen = true
-			index += 2
-		case strings.HasPrefix(argument, "--target="):
-			if targetSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--target may be specified only once")
-			}
-			result.targets = strings.TrimPrefix(argument, "--target=")
-			if result.targets == "" {
-				return shadowManagementCommand{}, fmt.Errorf("--target requires a value")
-			}
-			targetSeen = true
-			index++
-		case argument == "--project":
-			if projectSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--project may be specified only once")
-			}
-			if index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
-				return shadowManagementCommand{}, fmt.Errorf("--project requires a value")
-			}
-			result.project = args[index+1]
-			projectSeen = true
-			index += 2
-		case strings.HasPrefix(argument, "--project="):
-			if projectSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--project may be specified only once")
-			}
-			result.project = strings.TrimPrefix(argument, "--project=")
-			if result.project == "" {
-				return shadowManagementCommand{}, fmt.Errorf("--project requires a value")
-			}
-			projectSeen = true
-			index++
+			result.project, index = value, next
 		case argument == "--dry-run":
-			if dryRunSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--dry-run may be specified only once")
+			if err := setShadowFlag("--dry-run", &dryRunSeen, &result.dryRun); err != nil {
+				return shadowManagementCommand{}, err
 			}
-			result.dryRun = true
-			dryRunSeen = true
 			index++
 		case argument == "--force":
-			if forceSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--force may be specified only once")
+			if err := setShadowFlag("--force", &forceSeen, &result.force); err != nil {
+				return shadowManagementCommand{}, err
 			}
-			result.force = true
-			forceSeen = true
 			index++
 		case argument == "-h" || argument == "--help":
-			if helpSeen {
-				return shadowManagementCommand{}, fmt.Errorf("--help may be specified only once")
+			if err := setShadowFlag("--help", &helpSeen, &result.help); err != nil {
+				return shadowManagementCommand{}, err
 			}
-			result.help = true
-			helpSeen = true
 			index++
 		case strings.HasPrefix(argument, "-"):
 			return shadowManagementCommand{}, fmt.Errorf("unknown option '%s'", argument)
@@ -155,6 +132,40 @@ func parseShadowManagement(args []string) (shadowManagementCommand, error) {
 		}
 	}
 	return result, nil
+}
+
+func parseShadowValueOption(
+	args []string,
+	index int,
+	name string,
+	seen *bool,
+) (string, int, error) {
+	if *seen {
+		return "", index, fmt.Errorf("%s may be specified only once", name)
+	}
+	argument := args[index]
+	if argument == name {
+		if index+1 >= len(args) || args[index+1] == "" || strings.HasPrefix(args[index+1], "-") {
+			return "", index, fmt.Errorf("%s requires a value", name)
+		}
+		*seen = true
+		return args[index+1], index + 2, nil
+	}
+	value := strings.TrimPrefix(argument, name+"=")
+	if value == "" {
+		return "", index, fmt.Errorf("%s requires a value", name)
+	}
+	*seen = true
+	return value, index + 1, nil
+}
+
+func setShadowFlag(name string, seen *bool, value *bool) error {
+	if *seen {
+		return fmt.Errorf("%s may be specified only once", name)
+	}
+	*seen = true
+	*value = true
+	return nil
 }
 
 func writeShadowManagementError(err error, stderr io.Writer) int {

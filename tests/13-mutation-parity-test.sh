@@ -98,7 +98,7 @@ setup_mutation_case() {
       ;;
     missing-update|missing-uninstall)
       ;;
-    dry-run-update|dry-run-uninstall|clean-force-update|clean-force-uninstall|later-preflight)
+    dry-run-update|dry-run-uninstall|clean-force-update|clean-force-uninstall)
       run_setup_command install --target claude,codex
       ;;
     target-drift|forced-target-drift|recoverable-begin|recoverable-end|manual-recovery|backup-root-symlink)
@@ -271,7 +271,7 @@ execute_mutation_case() {
     clean-force-uninstall)
       run_mutation_implementation "$implementation" uninstall --target claude --force
       ;;
-    target-drift|policy-drift|invalid-state|scope-drift|project-drift|directory-redirection|later-invalid-state-record|later-preflight)
+    target-drift|policy-drift|invalid-state|scope-drift|project-drift|directory-redirection|later-invalid-state-record)
       run_mutation_implementation "$implementation" update --target claude,codex
       ;;
     forced-target-drift|forced-policy-drift|recoverable-begin|recoverable-end|manual-recovery|backup-root-symlink)

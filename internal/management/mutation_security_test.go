@@ -343,6 +343,69 @@ func TestMutationSecurityIdentityAndBackupHelpersFailClosed(t *testing.T) {
 	})
 }
 
+func TestMutationSecurityReadAndRollbackDoNotCreateMissingRoots(t *testing.T) {
+	t.Run("mutation primitives", func(t *testing.T) {
+		for name, effect := range map[string]mutationEffect{
+			"replace": mutationReplace,
+			"remove":  mutationRemove,
+		} {
+			t.Run(name, func(t *testing.T) {
+				parent := t.TempDir()
+				root := filepath.Join(parent, "missing-root")
+				destination := filepath.Join(root, "artifact")
+				action := mutationAction{
+					effect: effect, label: "artifact", destination: destination,
+					allowedRoot: root, relativeSuffix: "artifact",
+					before: installPathSnapshot{kind: installPathMissing},
+				}
+				var err error
+				if effect == mutationReplace {
+					action.data = []byte("replacement\n")
+					action.mode = 0o600
+					err = scopedAtomicReplaceMutation(action)
+				} else {
+					err = scopedAtomicRemoveMutation(action)
+				}
+				if err == nil {
+					t.Fatal("mutation primitive accepted a missing root")
+				}
+				if _, statErr := os.Lstat(root); !os.IsNotExist(statErr) {
+					t.Fatalf("mutation primitive created missing root: %v", statErr)
+				}
+			})
+		}
+	})
+
+	t.Run("backup verification", func(t *testing.T) {
+		parent := t.TempDir()
+		stateHome := filepath.Join(parent, "missing-state")
+		environment := Environment{StateHome: stateHome}
+		operation := filepath.Join(stateHome, "open-agent-workflow", "backups", "operation")
+		if err := verifyPrivateBackupDirectory(environment, operation); err == nil {
+			t.Fatal("missing backup root was accepted")
+		}
+		if _, err := os.Lstat(stateHome); !os.IsNotExist(err) {
+			t.Fatalf("backup verification created missing state root: %v", err)
+		}
+	})
+
+	t.Run("directory rollback", func(t *testing.T) {
+		parent := t.TempDir()
+		root := filepath.Join(parent, "missing-root")
+		destination := filepath.Join(root, "owned")
+		action := directoryAction{
+			destination: destination, allowedRoot: root, relativeSuffix: "owned",
+			before: installPathSnapshot{kind: installPathDirectory, mode: 0o750},
+		}
+		if err := restoreMutationDirectory(action); err == nil {
+			t.Fatal("directory rollback accepted a missing root")
+		}
+		if _, err := os.Lstat(root); !os.IsNotExist(err) {
+			t.Fatalf("directory rollback created missing root: %v", err)
+		}
+	})
+}
+
 func TestMutationSecurityRejectsIdenticalPathSwapsBeforeWrites(t *testing.T) {
 	tests := []struct {
 		name   string

@@ -30,27 +30,58 @@ func prepareMutationForce(
 		}
 		return forcePreparation{repaired: make(map[string]installPathSnapshot)}, nil
 	}
-	if state.scope != resolved.scope {
-		return forcePreparation{}, compatibilityError("installed scope does not match")
-	}
-	if resolved.scope == "user" {
-		if state.project != "" {
-			return forcePreparation{}, compatibilityError("installed project root does not match")
-		}
-	} else if state.project != resolved.projectRoot {
-		return forcePreparation{}, compatibilityError("installed project root does not match")
-	}
-	if state.policyPath != coords.policyPath {
-		return forcePreparation{}, compatibilityError("installed policy path does not match")
-	}
-	if policy.kind != installPathRegular {
-		return forcePreparation{}, compatibilityError("managed policy is missing")
+	if err := validateForcedMutationState(state, coords, resolved, policy); err != nil {
+		return forcePreparation{}, err
 	}
 	result := forcePreparation{repaired: make(map[string]installPathSnapshot)}
 	if checksumBytes(policy.data) != state.policyChecksum {
 		result.backupRequired = true
 		result.policyBaseline = state.policyChecksum
 	}
+	result, err := prepareForcedTargetRecords(result, state, coords, resolved)
+	if err != nil {
+		return forcePreparation{}, err
+	}
+	if result.manual != nil {
+		return result, nil
+	}
+	if err := validateOwnedDirectories(state, coords); err != nil {
+		return forcePreparation{}, compatibilityError(err.Error())
+	}
+	return result, nil
+}
+
+func validateForcedMutationState(
+	state installationState,
+	coords coordinates,
+	resolved resolvedRequest,
+	policy installPathSnapshot,
+) error {
+	if state.scope != resolved.scope {
+		return compatibilityError("installed scope does not match")
+	}
+	if resolved.scope == "user" {
+		if state.project != "" {
+			return compatibilityError("installed project root does not match")
+		}
+	} else if state.project != resolved.projectRoot {
+		return compatibilityError("installed project root does not match")
+	}
+	if state.policyPath != coords.policyPath {
+		return compatibilityError("installed policy path does not match")
+	}
+	if policy.kind != installPathRegular {
+		return compatibilityError("managed policy is missing")
+	}
+	return nil
+}
+
+func prepareForcedTargetRecords(
+	result forcePreparation,
+	state installationState,
+	coords coordinates,
+	resolved resolvedRequest,
+) (forcePreparation, error) {
 	selectedPaths := make(map[string]struct{})
 	for _, id := range resolved.targets {
 		if record, found := findTargetRecord(state.targets, id); found {
@@ -60,13 +91,13 @@ func prepareMutationForce(
 	for _, record := range state.targets {
 		if _, selected := selectedPaths[record.path]; !selected {
 			if err := validateLiveTargetRecord(record, coords, state.scope, state.project); err != nil {
-				return forcePreparation{}, err
+				return result, err
 			}
 			continue
 		}
 		current, repaired, manual, changed, err := verifyForcedTargetRecord(record, coords, state)
 		if err != nil {
-			return forcePreparation{}, err
+			return result, err
 		}
 		if manual {
 			result.manual = &manualRecovery{record: record, current: current}
@@ -78,9 +109,6 @@ func prepareMutationForce(
 		if changed {
 			result.backupRequired = true
 		}
-	}
-	if err := validateOwnedDirectories(state, coords); err != nil {
-		return forcePreparation{}, compatibilityError(err.Error())
 	}
 	return result, nil
 }
@@ -218,44 +246,60 @@ func prepareManualRecoveryPlan(
 		terminal: terminalMutation{status: 65, message: "manual recovery required; backup: " + backupPath},
 		backup:   backupPlan{required: true, operation: operationName, scope: resolved.scope, path: backupPath},
 	}
-	targetRoot, targetSuffix, err := targetInstallCoordinates(coords, resolved, recovery.record.id)
+	backup, err := prepareManualRecoveryBackup(plan.backup, environment, resolved, coords, policy, recovery)
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	plan.backup.candidates, err = addBackupCandidate(
-		plan.backup.candidates, recovery.record.path, targetRoot, targetSuffix,
-		recovery.current, backupPath,
+	plan.backup = backup
+	plan.predicted = predictMutationResult(plan)
+	return cloneMutationPlan(plan), nil
+}
+
+func prepareManualRecoveryBackup(
+	backup backupPlan,
+	environment Environment,
+	resolved resolvedRequest,
+	coords coordinates,
+	policy installPathSnapshot,
+	recovery manualRecovery,
+) (backupPlan, error) {
+	targetRoot, targetSuffix, err := targetInstallCoordinates(coords, resolved, recovery.record.id)
+	if err != nil {
+		return backupPlan{}, err
+	}
+	backup.candidates, err = addBackupCandidate(
+		backup.candidates, recovery.record.path, targetRoot, targetSuffix,
+		recovery.current, backup.path,
 	)
 	if err != nil {
-		return mutationPlan{}, err
+		return backupPlan{}, err
 	}
 	stateView, err := inspectInstallPath(coords.stateFile)
 	if err != nil {
-		return mutationPlan{}, err
+		return backupPlan{}, err
 	}
 	stateSuffix, err := stateActionRelativeSuffix(environment.StateHome, coords.stateFile)
 	if err != nil {
-		return mutationPlan{}, err
+		return backupPlan{}, err
 	}
-	plan.backup.candidates, err = addBackupCandidate(
-		plan.backup.candidates, coords.stateFile, environment.StateHome, stateSuffix,
-		stateView, backupPath,
+	backup.candidates, err = addBackupCandidate(
+		backup.candidates, coords.stateFile, environment.StateHome, stateSuffix,
+		stateView, backup.path,
 	)
 	if err != nil {
-		return mutationPlan{}, err
+		return backupPlan{}, err
 	}
 	if policy.kind == installPathRegular {
-		plan.backup.candidates, err = addBackupCandidate(
-			plan.backup.candidates, coords.policyPath, environment.ConfigHome,
-			"open-agent-workflow/ENGINEERING.md", policy, backupPath,
+		backup.candidates, err = addBackupCandidate(
+			backup.candidates, coords.policyPath, environment.ConfigHome,
+			"open-agent-workflow/ENGINEERING.md", policy, backup.path,
 		)
 		if err != nil {
-			return mutationPlan{}, err
+			return backupPlan{}, err
 		}
 	}
-	if _, err := renderBackupManifest(plan.backup); err != nil {
-		return mutationPlan{}, err
+	if _, err := renderBackupManifest(backup); err != nil {
+		return backupPlan{}, err
 	}
-	plan.predicted = predictMutationResult(plan)
-	return cloneMutationPlan(plan), nil
+	return cloneBackupPlan(backup), nil
 }
