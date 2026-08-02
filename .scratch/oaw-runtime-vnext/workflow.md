@@ -111,7 +111,7 @@ instruction-only, and no first production Runtime Host was selected.
 Ticket 13 passed final two-axis inline review and the complete update,
 uninstall, forced-recovery, rollback, security, same-path Bash/Go parity, race,
 coverage, fuzz, cross-platform build, ShellCheck, and vulnerability matrix on
-2026-08-02 at implementation fixed point `d4f4159`. The Go management driver
+2026-08-02 at implementation fixed point `9fb61d8`. The Go management driver
 remains internal and parity-only; `install.sh` is still authoritative, public
 Go management routing is still closed, and Ticket 14 alone owns cutover.
 

@@ -356,7 +356,7 @@ Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
 
 **Date:** 2026-08-02
 
-**Fixed point:** `d4f4159`
+**Fixed point:** `9fb61d8`
 
 **Scope:** Go `update` and `uninstall` preparation/application, forced-recovery
 backups, deterministic rollback, security containment, the internal management
@@ -368,7 +368,7 @@ shadow command, same-path Bash parity, and bilingual authority boundaries
 
 ### Standards
 
-The complete `main...d4f4159` diff was checked against `CONTRIBUTING.md`, the
+The complete `main...9fb61d8` diff was checked against `CONTRIBUTING.md`, the
 repository Bash 3.2, black-box, bilingual-documentation, provider-neutrality,
 file-size, immutability, and security rules, plus the standard code-smell
 baseline. Repeated update/uninstall preflight and oversized orchestration
@@ -389,7 +389,7 @@ state, manual recovery, verified backup activation, rollback, user-byte and
 mode preservation, directory ownership, bounded reads, symlink/TOCTOU
 containment, credential leakage, and Ticket 14 scope.
 
-Seven scoped corrections were made before completion:
+Eight scoped corrections were made before completion:
 
 - Read-only active-backup verification, mutation effects, and directory
   rollback now use existing-only roots and cannot recreate a concurrently
@@ -405,10 +405,15 @@ Seven scoped corrections were made before completion:
   and restores the exact original mode with explicit chmod rather than umask.
 - The duplicated preparation/apply/CLI orchestration and dead parity branch
   were removed without changing the Bash-visible contract.
+- Canonical-equivalent paths produced from roots with repeated separators are
+  accepted only when they exactly match the safe rebuilt coordinate or its
+  complete `filepath.Clean` form; true escapes and partial lexical aliases
+  remain rejected.
 
 Deterministic RED tests reproduced missing-root creation, same-size inode
-replacement, same-content backup-source replacement, and rollback mode loss;
-all now pass. The internal driver remains test-only, `install.sh` remains
+replacement, same-content backup-source replacement, rollback mode loss, and
+forced recovery under repeated-separator HOME/XDG roots; all now pass. The
+internal driver remains test-only, `install.sh` remains
 authoritative, public `oaw install/update/uninstall` routing remains closed, and
 Ticket 14 alone owns cutover.
 

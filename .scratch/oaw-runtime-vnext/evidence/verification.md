@@ -333,7 +333,7 @@ preserved.
 
 **Result:** Passed
 
-**Implementation fixed point:** `d4f4159`
+**Implementation fixed point:** `9fb61d8`
 
 **Scope:** Go update/uninstall parity, forced recovery, verified backups,
 fault-injected rollback, security containment, Bash authority preservation,
@@ -342,17 +342,17 @@ documentation, and repository compatibility
 | Check | Result |
 | --- | --- |
 | Go formatting and `rtk git diff --check` | Exit 0 |
-| `rtk go test ./... -count=1` | Exit 0: 1417 tests passed in 21 packages |
-| `rtk go test -race ./...` | Exit 0: 1417 tests passed in 21 packages |
+| `rtk go test ./... -count=1` | Exit 0: 1419 tests passed in 21 packages |
+| `rtk go test -race ./...` | Exit 0: 1419 tests passed in 21 packages |
 | `rtk go vet ./...` | Exit 0 |
-| Repository Go statement coverage | `88.3%` (`7130/8079 = 88.253497%`), required minimum `80%` |
-| `internal/management` statement coverage | `90.0%` (`2458/2730 = 90.036630%`), required minimum `90%` |
-| Focused Go security/containment corpus | Exit 0: 48 tests passed |
+| Repository Go statement coverage | `88.3%` (`7132/8080 = 88.267327%`), required minimum `80%` |
+| `internal/management` statement coverage | `90.1%` (`2460/2731 = 90.076895%`), required minimum `90%` |
+| Focused Go security/containment corpus | Exit 0: 50 tests passed |
 | Bash syntax and ShellCheck | Exit 0 |
 | Bilingual docs contract and link checker | Exit 0: `tests/10-docs-test.sh` and `scripts/check-docs.sh` passed |
 | `rtk bash tests/run.sh` | Exit 0: complete installer, documentation, check, install-parity, and mutation-parity suite passed |
 | Same-path Bash/Go install parity | Exit 0: 45 cases passed |
-| Same-path Bash/Go update/uninstall parity | Exit 0: 50 cases passed |
+| Same-path Bash/Go update/uninstall parity | Exit 0: 51 cases passed |
 | Bash security and containment corpora | Exit 0: 17 security plus 5 containment cases passed |
 | Six mutation fuzz targets | Exit 0: each ran independently for 10 seconds |
 | Linux and Windows `cmd/oaw` builds | Exit 0; outputs directed to `/tmp` |
@@ -365,14 +365,14 @@ The six fuzz targets were `FuzzMutationAction`, `FuzzManagedRemoval`,
 `FuzzMutationStateFields`. The retained NUL corpus under
 `internal/management/testdata/fuzz/FuzzBackupManifest` also passed.
 
-The 50 mutation parity fixtures compare status, stdout, stderr, path type,
+The 51 mutation parity fixtures compare status, stdout, stderr, path type,
 mode, symlink target, exact regular-file bytes, Install State, directories, and
 normalized operation-backup trees after replay at the same physical path. They
 cover every user/project target, shared and cross-scope state, clean and dry-run
 operations, partial/final uninstall, drift refusal, forced target/policy
 recovery, missing-marker repair, manual recovery, malformed state, redirected
-directories/backups, hostile project names, changed checkouts, and later
-preflight failures.
+directories/backups, repeated-separator HOME/XDG root spelling, hostile project
+names, changed checkouts, and later preflight failures.
 
 The Go-only fault matrix covers every before/after backup, target, directory,
 Policy, state, and namespace-directory point. Rollback restores pre-existing
@@ -390,8 +390,9 @@ Ticket 14 cutover gate and is not claimed by this internal shadow/parity ticket.
 
 Implementation commits are `8e9c79b`, `0f07857`, `d9254a9`, `ef329ce`,
 `0b818c1`, `341d528`, `367b598`, review remediation `0fda0c0`, and final
-coverage/containment evidence `d4f4159`; executable planning is `43b56ce`, and
-bilingual boundary documentation is `b4c98f7`. Bash remains authoritative,
+coverage/containment evidence `d4f4159`; canonical-equivalent path remediation
+is `9fb61d8`, executable planning is `43b56ce`, and bilingual boundary
+documentation is `b4c98f7`. Bash remains authoritative,
 public Go management routing remains closed, and Ticket 14 alone owns cutover.
 All `.serena/` directories, unrelated branches, and unrelated worktrees remain
 preserved.
