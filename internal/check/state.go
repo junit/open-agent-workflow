@@ -2,6 +2,7 @@ package check
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,15 +34,30 @@ type installationState struct {
 
 func loadInstallationState(path string, coords coordinates) (installationState, bool, error) {
 	info, err := os.Stat(path)
+	if err != nil {
+		return installationState{}, false, nil
+	}
+	if !info.Mode().IsRegular() {
+		return installationState{}, false, nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return installationState{}, true, err
+	}
+	defer file.Close()
+	info, err = file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return installationState{}, false, nil
 	}
 	if info.Size() > maximumStateBytes {
 		return installationState{}, true, fmt.Errorf("state exceeds read limit")
 	}
-	data, err := os.ReadFile(path)
+	data, err := io.ReadAll(io.LimitReader(file, maximumStateBytes+1))
 	if err != nil {
 		return installationState{}, true, err
+	}
+	if len(data) > maximumStateBytes {
+		return installationState{}, true, fmt.Errorf("state exceeds read limit")
 	}
 	state, err := parseInstallationState(data)
 	if err != nil {
@@ -57,11 +73,13 @@ func parseInstallationState(data []byte) (installationState, error) {
 	var state installationState
 	counts := make(map[string]int)
 	lines := strings.Split(string(data), "\n")
-	if len(lines) != 0 && lines[len(lines)-1] == "" {
+	if len(lines) != 0 {
 		lines = lines[:len(lines)-1]
 	}
 	for _, line := range lines {
-		fields := strings.Split(line, "\t")
+		fields := strings.FieldsFunc(line, func(character rune) bool {
+			return character == '\t'
+		})
 		if len(fields) == 0 {
 			return installationState{}, fmt.Errorf("invalid state record")
 		}

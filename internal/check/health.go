@@ -12,10 +12,15 @@ type installationHealth struct {
 	coords      coordinates
 }
 
-func installationLines(environment Environment, resolved resolvedRequest) ([]string, error) {
+type installationResult struct {
+	lines    []string
+	trailing string
+}
+
+func installationLines(environment Environment, resolved resolvedRequest) (installationResult, error) {
 	coords, err := initializeCoordinates(environment, resolved)
 	if err != nil {
-		return nil, err
+		return installationResult{}, err
 	}
 	health := installationHealth{stateStatus: "not-installed", coords: coords}
 	state, exists, stateErr := loadInstallationState(coords.stateFile, coords)
@@ -34,11 +39,11 @@ func installationLines(environment Environment, resolved resolvedRequest) ([]str
 	for _, id := range resolved.targets {
 		status, err := health.targetStatus(id)
 		if err != nil {
-			return nil, err
+			return installationResult{lines: lines, trailing: fmt.Sprintf("installed %s: ", id)}, err
 		}
 		lines = append(lines, fmt.Sprintf("installed %s: %s", id, status))
 	}
-	return lines, nil
+	return installationResult{lines: lines}, nil
 }
 
 func (health installationHealth) targetStatus(id string) (string, error) {
@@ -72,8 +77,8 @@ func (health installationHealth) targetStatus(id string) (string, error) {
 	}
 	switch record.mode {
 	case "managed-block":
-		status, block := managedBlock(record.path)
-		if status != "present" || checksumBytes(block) != record.checksum {
+		status, actual := managedBlock(record.path)
+		if status != "present" || actual != record.checksum {
 			return "drift", nil
 		}
 	case "owned-file":

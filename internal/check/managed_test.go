@@ -3,6 +3,7 @@ package check
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -16,13 +17,39 @@ func TestManagedBlockStatusAndExtraction(t *testing.T) {
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	status, block := managedBlock(path)
+	status, checksum := managedBlock(path)
 	if status != "present" {
 		t.Fatalf("status = %q", status)
 	}
 	want := beginMarker + "\nbody\n" + endMarker + "\n"
-	if string(block) != want {
-		t.Fatalf("block = %q, want %q", block, want)
+	if checksum != checksumBytes([]byte(want)) {
+		t.Fatalf("checksum = %q, want checksum of %q", checksum, want)
+	}
+}
+
+func TestManagedBlockStreamsLongLines(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	longLine := strings.Repeat("x", 128*1024)
+	block := beginMarker + "\n" + longLine + "\n" + endMarker + "\n"
+	if err := os.WriteFile(path, []byte("before\n"+block+"after\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, checksum := managedBlock(path)
+	if status != "present" || checksum != checksumBytes([]byte(block)) {
+		t.Fatalf("managedBlock() = %q, %q", status, checksum)
+	}
+}
+
+func TestManagedBlockMatchesAwkForUnterminatedEndMarker(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "AGENTS.md")
+	block := beginMarker + "\nbody\n" + endMarker
+	if err := os.WriteFile(path, []byte(block), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	status, checksum := managedBlock(path)
+	want := block + "\n"
+	if status != "present" || checksum != checksumBytes([]byte(want)) {
+		t.Fatalf("managedBlock() = %q, %q; want checksum of %q", status, checksum, want)
 	}
 }
 

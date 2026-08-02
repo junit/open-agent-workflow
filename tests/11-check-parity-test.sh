@@ -143,7 +143,15 @@ done
 run_check_pair "partial Matt bundle" --target claude
 assert_parity_output_contains "provider matt: missing" "partial Matt bundle"
 
-make_parity_indicator "$OAW_HOME/.agents/skills/diagnosing-bugs/SKILL.md"
+new_parity_fixture
+make_parity_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/.hidden/skills/using-superpowers/SKILL.md"
+run_check_pair "hidden Provider version directory" --target claude
+assert_parity_output_contains "provider superpowers: missing" "hidden Provider version directory"
+
+new_parity_fixture
+for matt_skill in to-spec to-tickets tdd diagnosing-bugs; do
+  make_parity_indicator "$OAW_HOME/.agents/skills/$matt_skill/SKILL.md"
+done
 make_parity_indicator "$OAW_HOME/.agents/skills/everything-claude-code/SKILL.md"
 make_parity_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/test-build/skills/using-superpowers/SKILL.md"
 run_check_pair "complete built-in Provider diagnostics" --target claude
@@ -164,6 +172,23 @@ run_authoritative_setup install --target claude
 run_check_pair "clean user installation" --target claude
 assert_parity_output_contains "installed claude: clean" "clean user installation"
 
+user_state=$OAW_STATE/open-agent-workflow/installations/user.state
+awk -F '\t' -v OFS='\t\t' '{$1 = $1; print}' \
+  "$user_state" >"$OAW_TMP/repeated-tabs.state"
+mv "$OAW_TMP/repeated-tabs.state" "$user_state"
+run_check_pair "repeated TSV separators" --target claude
+assert_parity_output_contains "installed claude: clean" "repeated TSV separators"
+
+new_parity_fixture
+run_authoritative_setup install --target claude
+user_state=$OAW_STATE/open-agent-workflow/installations/user.state
+state_without_newline=$(cat "$user_state")
+printf '%s' "$state_without_newline" >"$user_state"
+run_check_pair "unterminated final state record" --target claude
+assert_parity_output_contains "installed claude: invalid-state" "unterminated final state record"
+
+new_parity_fixture
+run_authoritative_setup install --target claude
 printf '%s\n' 'policy drift' >>"$OAW_CONFIG/open-agent-workflow/ENGINEERING.md"
 run_check_pair "policy drift" --target claude
 assert_parity_output_contains "installed claude: drift" "policy drift"
@@ -269,5 +294,10 @@ done
 
 run_check_pair "missing project scope" --project "$OAW_SANDBOX/missing project"
 run_check_pair "user extension target rejection" --target cursor
+
+new_parity_fixture
+mkdir -p "$OAW_SANDBOX/outside"
+ln -s "$OAW_SANDBOX/outside" "$OAW_HOME/.claude"
+run_check_pair "symlinked target coordinate" --target claude
 
 pass "Go check shadow path matches every implemented Bash parity fixture"

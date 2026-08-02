@@ -1,6 +1,7 @@
 package check_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -95,6 +96,36 @@ func TestExecuteKeepsECCCompatibilityIndicatorNarrow(t *testing.T) {
 	assertLine(t, result.Lines, "provider ecc: detected")
 }
 
+func TestExecuteIgnoresHiddenSuperpowersVersionDirectories(t *testing.T) {
+	root := t.TempDir()
+	environment := testEnvironment(t, root)
+	writeFixtureFile(t, filepath.Join(environment.Home, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", ".hidden", "skills", "using-superpowers", "SKILL.md"), "indicator")
+	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	assertLine(t, result.Lines, "provider superpowers: missing")
+}
+
+func TestExecuteRecognizesSymlinkedProviderIndicatorFile(t *testing.T) {
+	root := t.TempDir()
+	environment := testEnvironment(t, root)
+	indicator := filepath.Join(root, "indicator")
+	writeFixtureFile(t, indicator, "provider")
+	link := filepath.Join(environment.Home, ".codex", "plugins", "superpowers", "skills", "using-superpowers", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(indicator, link); err != nil {
+		t.Fatal(err)
+	}
+	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	assertLine(t, result.Lines, "provider superpowers: detected")
+}
+
 func TestExecuteReportsBuiltInProvidersAndProjectReadiness(t *testing.T) {
 	root := t.TempDir()
 	environment := testEnvironment(t, root)
@@ -155,6 +186,25 @@ func TestExecuteDetectsCoreConfigurationDirectories(t *testing.T) {
 	}
 }
 
+func TestExecuteDoesNotResolveEmptyHomeRelativeToWorkingDirectory(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	if err := os.Mkdir(".claude", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	environment := check.Environment{
+		ConfigHome: filepath.Join(root, "config"),
+		StateHome:  filepath.Join(root, "state"),
+		Path:       filepath.Join(root, "bin"),
+	}
+	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
+	var checkError *check.Error
+	if err == nil || !errors.As(err, &checkError) || checkError.Status != 64 {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	assertLine(t, result.Lines, "target claude: missing (user, project)")
+}
+
 func testEnvironment(t *testing.T, root string) check.Environment {
 	t.Helper()
 	environment := check.Environment{
@@ -162,9 +212,8 @@ func testEnvironment(t *testing.T, root string) check.Environment {
 		ConfigHome: filepath.Join(root, "config"),
 		StateHome:  filepath.Join(root, "state"),
 		Path:       filepath.Join(root, "bin"),
-		TempDir:    filepath.Join(root, "tmp"),
 	}
-	for _, directory := range []string{environment.Home, environment.ConfigHome, environment.StateHome, environment.Path, environment.TempDir} {
+	for _, directory := range []string{environment.Home, environment.ConfigHome, environment.StateHome, environment.Path} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatalf("MkdirAll(%s): %v", directory, err)
 		}

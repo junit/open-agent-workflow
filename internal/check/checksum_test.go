@@ -29,3 +29,9 @@ func TestChecksumFileReportsMissingInput(t *testing.T) {
 		t.Fatal("checksumFile() accepted a missing file")
 	}
 }
+
+func TestChecksumFileRejectsNonRegularSource(t *testing.T) {
+	if _, err := checksumFile(t.TempDir()); err == nil {
+		t.Fatal("checksumFile() accepted a directory")
+	}
+}

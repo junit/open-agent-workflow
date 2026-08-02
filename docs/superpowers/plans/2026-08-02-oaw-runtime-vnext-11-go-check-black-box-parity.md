@@ -50,7 +50,7 @@ func Version() string
 
 // internal/check/check.go
 type Environment struct {
-    Home, ConfigHome, StateHome, Path, TempDir string
+    Home, ConfigHome, StateHome, Path string
 }
 
 type Request struct {
@@ -59,7 +59,8 @@ type Request struct {
 }
 
 type Result struct {
-    Lines []string
+    Lines    []string
+    Trailing string
 }
 
 type Error struct {

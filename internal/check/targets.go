@@ -34,7 +34,7 @@ type resolvedRequest struct {
 	targets     []string
 }
 
-func resolve(environment Environment, request Request) (resolvedRequest, error) {
+func resolve(request Request) (resolvedRequest, error) {
 	result := resolvedRequest{scope: "user"}
 	if request.Project != "" {
 		if hasControl(request.Project) {
@@ -66,7 +66,6 @@ func resolve(environment Environment, request Request) (resolvedRequest, error) 
 		return resolvedRequest{}, err
 	}
 	result.targets = targets
-	_ = environment
 	return result, nil
 }
 

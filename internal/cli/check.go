@@ -42,18 +42,18 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	}
 	result, err := checkcommand.Execute(value, checkcommand.Environment{
 		Home: home, ConfigHome: configHome, StateHome: stateHome,
-		Path: os.Getenv("PATH"), TempDir: os.Getenv("TMPDIR"),
+		Path: os.Getenv("PATH"),
 	}, parsed.request)
+	if writeErr := checkcommand.Write(result, stdout); writeErr != nil {
+		fmt.Fprintf(stderr, "oaw: error: %s\n", writeErr)
+		return 1
+	}
 	if err != nil {
 		var checkError *checkcommand.Error
 		if errors.As(err, &checkError) {
 			fmt.Fprintf(stderr, "oaw: error: %s\n", checkError.Message)
 			return checkError.Status
 		}
-		fmt.Fprintf(stderr, "oaw: error: %s\n", err)
-		return 1
-	}
-	if err := checkcommand.Write(result, stdout); err != nil {
 		fmt.Fprintf(stderr, "oaw: error: %s\n", err)
 		return 1
 	}

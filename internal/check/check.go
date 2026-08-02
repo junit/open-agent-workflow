@@ -14,7 +14,6 @@ type Environment struct {
 	ConfigHome string
 	StateHome  string
 	Path       string
-	TempDir    string
 }
 
 type Request struct {
@@ -23,7 +22,8 @@ type Request struct {
 }
 
 type Result struct {
-	Lines []string
+	Lines    []string
+	Trailing string
 }
 
 type Error struct {
@@ -34,7 +34,7 @@ type Error struct {
 func (err *Error) Error() string { return err.Message }
 
 func Execute(value catalog.Catalog, environment Environment, request Request) (Result, error) {
-	resolved, err := resolve(environment, request)
+	resolved, err := resolve(request)
 	if err != nil {
 		return Result{}, err
 	}
@@ -52,16 +52,22 @@ func Execute(value catalog.Catalog, environment Environment, request Request) (R
 	lines = append(lines, providers...)
 	lines = append(lines, readinessLines(environment, resolved.targets)...)
 	installed, err := installationLines(environment, resolved)
+	lines = append(lines, installed.lines...)
+	result := Result{Lines: lines, Trailing: installed.trailing}
 	if err != nil {
-		return Result{}, err
+		return result, err
 	}
-	lines = append(lines, installed...)
-	return Result{Lines: lines}, nil
+	return result, nil
 }
 
 func Write(result Result, output io.Writer) error {
 	for _, line := range result.Lines {
 		if _, err := fmt.Fprintln(output, line); err != nil {
+			return err
+		}
+	}
+	if result.Trailing != "" {
+		if _, err := fmt.Fprint(output, result.Trailing); err != nil {
 			return err
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 )
@@ -88,14 +89,27 @@ func compatibilityProbeExists(home string, probe catalog.DiscoveryProbe) bool {
 	}
 	switch probe.Kind {
 	case "path-exists":
-		return regularFile(filepath.Join(home, filepath.FromSlash(probe.Path)))
+		return regularFile(compatibilityRootedPath(home, probe.Path))
 	case "one-level-version-path-exists":
-		prefix := filepath.Join(home, filepath.FromSlash(probe.Prefix))
-		entries, err := os.ReadDir(prefix)
+		prefix := compatibilityRootedPath(home, probe.Prefix)
+		info, err := os.Stat(prefix)
+		if err != nil || !info.IsDir() {
+			return false
+		}
+		directory, err := os.Open(prefix)
 		if err != nil {
 			return false
 		}
-		for _, entry := range entries {
+		defer directory.Close()
+		for {
+			entries, readErr := directory.ReadDir(1)
+			if readErr != nil && len(entries) == 0 {
+				return false
+			}
+			entry := entries[0]
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue
+			}
 			candidate := filepath.Join(prefix, entry.Name(), filepath.FromSlash(probe.Suffix))
 			if regularFile(candidate) {
 				return true
@@ -103,6 +117,10 @@ func compatibilityProbeExists(home string, probe catalog.DiscoveryProbe) bool {
 		}
 	}
 	return false
+}
+
+func compatibilityRootedPath(root, suffix string) string {
+	return root + string(filepath.Separator) + filepath.FromSlash(suffix)
 }
 
 func regularFile(path string) bool {

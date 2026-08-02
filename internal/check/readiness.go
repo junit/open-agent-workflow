@@ -30,7 +30,7 @@ func coreTargetDetected(environment Environment, id string) bool {
 	var root string
 	switch id {
 	case "claude", "codex", "gemini":
-		root = filepath.Join(environment.Home, "."+id)
+		root = compatibilityRootedPath(environment.Home, "."+id)
 	case "opencode":
 		root = filepath.Join(environment.ConfigHome, "opencode")
 	}

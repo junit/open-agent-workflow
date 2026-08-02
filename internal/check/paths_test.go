@@ -127,10 +127,10 @@ func TestTargetDestinationRejectsUnsupportedCoordinates(t *testing.T) {
 
 func TestWriteRendersOneLinePerResultEntry(t *testing.T) {
 	var output bytes.Buffer
-	if err := Write(Result{Lines: []string{"one", "two"}}, &output); err != nil {
+	if err := Write(Result{Lines: []string{"one", "two"}, Trailing: "partial"}, &output); err != nil {
 		t.Fatal(err)
 	}
-	if output.String() != "one\ntwo\n" {
+	if output.String() != "one\ntwo\npartial" {
 		t.Fatalf("output = %q", output.String())
 	}
 }

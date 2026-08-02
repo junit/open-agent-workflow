@@ -136,10 +136,13 @@ func TestExecuteRejectsSymlinkedTargetCoordinate(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(environment.Home, ".claude")); err != nil {
 		t.Fatal(err)
 	}
-	_, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
+	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
 	var checkError *check.Error
 	if err == nil || !strings.Contains(err.Error(), "destination path contains a symlink") || !errors.As(err, &checkError) || checkError.Status != 65 {
 		t.Fatalf("Execute() error = %v", err)
+	}
+	if result.Trailing != "installed claude: " {
+		t.Fatalf("Trailing = %q", result.Trailing)
 	}
 }
 

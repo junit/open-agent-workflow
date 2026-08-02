@@ -1,6 +1,8 @@
 package check
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -29,6 +31,54 @@ func TestParseInstallationStateAcceptsCanonicalUserAndSharedProjectRecords(t *te
 	}
 	if state.scope != "project" || state.project != "/project" || len(state.targets) != 2 {
 		t.Fatalf("project state = %#v", state)
+	}
+}
+
+func TestLoadInstallationStateEnforcesReadLimit(t *testing.T) {
+	root := t.TempDir()
+	environment := Environment{Home: filepath.Join(root, "home"), ConfigHome: filepath.Join(root, "config"), StateHome: filepath.Join(root, "state")}
+	coords, err := initializeCoordinates(environment, resolvedRequest{scope: "user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(coords.stateFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(coords.stateFile, make([]byte, maximumStateBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists, err := loadInstallationState(coords.stateFile, coords); !exists || err == nil {
+		t.Fatalf("loadInstallationState() exists=%t error=%v", exists, err)
+	}
+}
+
+func TestLoadInstallationStateIgnoresNonRegularPath(t *testing.T) {
+	root := t.TempDir()
+	environment := Environment{Home: filepath.Join(root, "home"), ConfigHome: filepath.Join(root, "config"), StateHome: filepath.Join(root, "state")}
+	coords, err := initializeCoordinates(environment, resolvedRequest{scope: "user"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(coords.stateFile, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists, err := loadInstallationState(coords.stateFile, coords); exists || err != nil {
+		t.Fatalf("loadInstallationState() exists=%t error=%v", exists, err)
+	}
+}
+
+func TestParseInstallationStateMatchesBashIFSAndEOFHandling(t *testing.T) {
+	repeatedTabs := strings.ReplaceAll(canonicalUserState(), "\t", "\t\t")
+	if _, err := parseInstallationState([]byte(repeatedTabs)); err != nil {
+		t.Fatalf("repeated tab separators: %v", err)
+	}
+	trailingTabs := strings.ReplaceAll(canonicalUserState(), "\n", "\t\n")
+	if _, err := parseInstallationState([]byte(trailingTabs)); err != nil {
+		t.Fatalf("trailing tab separators: %v", err)
+	}
+	unterminated := strings.TrimSuffix(canonicalUserState(), "\n")
+	if _, err := parseInstallationState([]byte(unterminated)); err == nil {
+		t.Fatal("unterminated final target record was accepted")
 	}
 }
 
