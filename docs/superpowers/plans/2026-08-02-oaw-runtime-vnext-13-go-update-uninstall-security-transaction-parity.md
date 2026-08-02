@@ -340,7 +340,7 @@ rtk git commit -m "feat: prepare Go uninstall operations"
 - Modify: `internal/management/uninstall.go`
 - Modify: `internal/management/managed.go`
 
-- [ ] **Step 1: Write failing force-decision and pure-manifest tests.**
+- [x] **Step 1: Write failing force-decision and pure-manifest tests.**
 
 Cover policy drift, managed-block body drift, owned-file drift, shared selected
 destinations, missing begin/end marker repairs, ambiguous/duplicate/reversed
@@ -349,7 +349,7 @@ force dry-run. Assert exact backup candidate order and deduplication, manifest
 bytes, operation/scope rows, original/backup/checksum fields, basename numbering,
 state backup reference, private modes, and no credential/file-content leakage.
 
-- [ ] **Step 2: Run force/backup tests and record RED.**
+- [x] **Step 2: Run force/backup tests and record RED.**
 
 ```bash
 rtk go test ./internal/management -run 'Force|BackupPlan|BackupManifest|ManualRecovery' -count=1
@@ -357,7 +357,7 @@ rtk go test ./internal/management -run 'Force|BackupPlan|BackupManifest|ManualRe
 
 Expected: force verification and backup plan symbols are undefined.
 
-- [ ] **Step 3: Implement Bash-compatible force verification.**
+- [x] **Step 3: Implement Bash-compatible force verification.**
 
 Without `Force`, return exit 65 on any drift and create no backup. With `Force`,
 validate selected physical destinations, apply force to every record sharing a
@@ -368,7 +368,7 @@ marker ownership, produce a terminal manual-recovery plan containing target,
 state, and Policy candidates, then return exit 65 only after apply completes the
 backup (or reports `would-backup` in dry-run).
 
-- [ ] **Step 4: Implement immutable backup reservation and rendering.**
+- [x] **Step 4: Implement immutable backup reservation and rendering.**
 
 Reserve `<StateHome>/open-agent-workflow/backups/<UTC YYYYMMDDTHHMMSSZ>-<pid>`
 through an injected private clock/PID seam used only by same-package tests.
@@ -376,7 +376,7 @@ Candidate order is Policy when changed, then target actions, then state actions,
 deduplicated by original path. Collect regular files whose replace bytes differ
 or whose action removes them. Render inert TSV; never source/evaluate values.
 
-- [ ] **Step 5: Implement private verified backup apply.**
+- [x] **Step 5: Implement private verified backup apply.**
 
 For real apply, create the operation directory at 0700, artifacts and manifest
 at 0600 using root-scoped atomic writes. Revalidate source path identity and
@@ -386,7 +386,7 @@ then activate the manifest. No mutation action may start until all candidates
 are present. Dry-run creates no directory and emits only
 `oaw: would-backup: <path>`.
 
-- [ ] **Step 6: Run GREEN, Bash backup oracle, race, and commit.**
+- [x] **Step 6: Run GREEN, Bash backup oracle, race, and commit.**
 
 ```bash
 rtk gofmt -w internal/management

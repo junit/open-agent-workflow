@@ -32,6 +32,8 @@ type mutationPlan struct {
 	stateActions     []mutationAction
 	directoryActions []directoryAction
 	leadingLines     []string
+	backup           backupPlan
+	terminal         terminalMutation
 	predicted        Result
 }
 
@@ -131,7 +133,7 @@ func newStateMutationAction(label string, data []byte, destination, root string)
 
 func predictMutationResult(plan mutationPlan) Result {
 	if plan.operation == mutationUninstall {
-		return predictUninstallResult(plan)
+		return prependBackupPrediction(plan, predictUninstallResult(plan))
 	}
 	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
 	actions = append(actions, plan.targetActions...)
@@ -158,7 +160,15 @@ func predictMutationResult(plan mutationPlan) Result {
 			lines = append(lines, "oaw: "+verb+": "+action.destination)
 		}
 	}
-	return Result{Lines: lines}
+	return prependBackupPrediction(plan, Result{Lines: lines})
+}
+
+func prependBackupPrediction(plan mutationPlan, result Result) Result {
+	if !plan.backup.required {
+		return result
+	}
+	result.Lines = append([]string{"oaw: would-backup: " + plan.backup.path}, result.Lines...)
+	return result
 }
 
 func predictUninstallResult(plan mutationPlan) Result {
@@ -243,6 +253,7 @@ func cloneMutationPlan(plan mutationPlan) mutationPlan {
 	plan.stateActions = cloneMutationActions(plan.stateActions)
 	plan.directoryActions = cloneDirectoryActions(plan.directoryActions)
 	plan.leadingLines = append([]string(nil), plan.leadingLines...)
+	plan.backup = cloneBackupPlan(plan.backup)
 	plan.predicted = cloneManagementResult(plan.predicted)
 	return plan
 }

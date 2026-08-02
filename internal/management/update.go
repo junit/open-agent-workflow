@@ -15,6 +15,13 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 	if err != nil {
 		return PreparedUpdate{}, err
 	}
+	backupPath := ""
+	if request.Force {
+		backupPath, err = reserveMutationBackupPath(coords)
+		if err != nil {
+			return PreparedUpdate{}, err
+		}
+	}
 	policyView, err := inspectInstallPath(coords.policyPath)
 	if err != nil {
 		return PreparedUpdate{}, err
@@ -29,8 +36,20 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 		}
 		return PreparedUpdate{}, &Error{Status: 66, Message: "no installation state; run install first"}
 	}
-	if err := validateCleanMutationState(state, coords, resolved, policyView); err != nil {
+	force, err := prepareMutationForce(state, coords, resolved, policyView, request.Force)
+	if err != nil {
 		return PreparedUpdate{}, err
+	}
+	if force.manual != nil {
+		plan, err := prepareManualRecoveryPlan(
+			mutationUpdate, source, environment,
+			mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
+			resolved, coords, policyView, *force.manual, backupPath,
+		)
+		if err != nil {
+			return PreparedUpdate{}, err
+		}
+		return PreparedUpdate{plan: plan}, nil
 	}
 	selected, err := selectedInstalledRecords(state.targets, resolved.targets)
 	if err != nil {
@@ -45,6 +64,10 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 		if err != nil {
 			return PreparedUpdate{}, err
 		}
+		renderCurrent := current
+		if repaired, found := force.repaired[record.path]; found {
+			renderCurrent = cloneInstallPathSnapshot(repaired)
+		}
 		allowedRoot, relativeSuffix, err := targetInstallCoordinates(coords, resolved, record.id)
 		if err != nil {
 			return PreparedUpdate{}, err
@@ -57,7 +80,7 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 			if err != nil {
 				return PreparedUpdate{}, err
 			}
-			rendered, err = renderManagedFile(current.data, block)
+			rendered, err = renderManagedFile(renderCurrent.data, block)
 			if err != nil {
 				return PreparedUpdate{}, err
 			}
@@ -90,7 +113,7 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 	if err != nil {
 		return PreparedUpdate{}, err
 	}
-	references, err := collectPolicyStateReferences(coords, coords.stateFile, policyView)
+	references, err := collectPolicyStateReferencesWithBaseline(coords, coords.stateFile, policyView, force.policyBaseline)
 	if err != nil {
 		return PreparedUpdate{}, err
 	}
@@ -99,6 +122,9 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 	updatedState.version = source.version
 	updatedState.policyChecksum = newPolicyChecksum
 	updatedState.targets = finalRecords
+	if force.backupRequired {
+		updatedState.backupPath = backupPath
+	}
 	stateBytes, err := serializeInstallState(updatedState)
 	if err != nil {
 		return PreparedUpdate{}, err
@@ -112,6 +138,9 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 		updatedReference := cloneInstallationStateValue(reference.state)
 		updatedReference.version = source.version
 		updatedReference.policyChecksum = newPolicyChecksum
+		if force.backupRequired {
+			updatedReference.backupPath = backupPath
+		}
 		rendered, err := serializeInstallState(updatedReference)
 		if err != nil {
 			return PreparedUpdate{}, err
@@ -132,12 +161,19 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 	if err != nil {
 		return PreparedUpdate{}, err
 	}
+	backup, err := buildMutationBackupPlan(
+		force.backupRequired, "update", resolved.scope, backupPath,
+		policyAction, targetActions, stateActions,
+	)
+	if err != nil {
+		return PreparedUpdate{}, err
+	}
 	plan := mutationPlan{
 		operation: mutationUpdate, source: source, environment: environment,
 		request:  mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
 		resolved: cloneResolvedRequest(resolved), coordinates: coords,
 		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
-		stateActions: cloneMutationActions(stateActions),
+		stateActions: cloneMutationActions(stateActions), backup: cloneBackupPlan(backup),
 	}
 	plan.predicted = predictMutationResult(plan)
 	return PreparedUpdate{plan: cloneMutationPlan(plan)}, nil

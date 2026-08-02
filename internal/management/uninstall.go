@@ -9,6 +9,13 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 	if err != nil {
 		return PreparedUninstall{}, err
 	}
+	backupPath := ""
+	if request.Force {
+		backupPath, err = reserveMutationBackupPath(coords)
+		if err != nil {
+			return PreparedUninstall{}, err
+		}
+	}
 	policyView, err := inspectInstallPath(coords.policyPath)
 	if err != nil {
 		return PreparedUninstall{}, err
@@ -32,8 +39,20 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 		plan.predicted = predictMutationResult(plan)
 		return PreparedUninstall{plan: cloneMutationPlan(plan)}, nil
 	}
-	if err := validateCleanMutationState(state, coords, resolved, policyView); err != nil {
+	force, err := prepareMutationForce(state, coords, resolved, policyView, request.Force)
+	if err != nil {
 		return PreparedUninstall{}, err
+	}
+	if force.manual != nil {
+		plan, err := prepareManualRecoveryPlan(
+			mutationUninstall, Source{}, environment,
+			mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
+			resolved, coords, policyView, *force.manual, backupPath,
+		)
+		if err != nil {
+			return PreparedUninstall{}, err
+		}
+		return PreparedUninstall{plan: plan}, nil
 	}
 
 	remaining, removed := filterUninstallRecords(state.targets, resolved.targets)
@@ -52,6 +71,10 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 		if err != nil {
 			return PreparedUninstall{}, err
 		}
+		renderCurrent := current
+		if repaired, found := force.repaired[record.path]; found {
+			renderCurrent = cloneInstallPathSnapshot(repaired)
+		}
 		root, suffix, err := targetInstallCoordinates(coords, resolved, record.id)
 		if err != nil {
 			return PreparedUninstall{}, err
@@ -59,7 +82,7 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 		var action mutationAction
 		switch record.mode {
 		case "managed-block":
-			rendered, renderErr := renderManagedFileWithoutBlock(current.data)
+			rendered, renderErr := renderManagedFileWithoutBlock(renderCurrent.data)
 			if renderErr != nil {
 				return PreparedUninstall{}, compatibilityError("managed markers are invalid: " + record.path)
 			}
@@ -94,6 +117,9 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 		updated := cloneInstallationStateValue(state)
 		updated.targets = remaining
 		updated.directories = remainingDirectories
+		if force.backupRequired {
+			updated.backupPath = backupPath
+		}
 		rendered, err := serializeInstallState(updated)
 		if err != nil {
 			return PreparedUninstall{}, err
@@ -113,7 +139,7 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 
 	policyEffect := mutationRetain
 	if len(remaining) == 0 {
-		references, err := collectPolicyStateReferences(coords, coords.stateFile, policyView)
+		references, err := collectPolicyStateReferencesWithBaseline(coords, coords.stateFile, policyView, force.policyBaseline)
 		if err != nil {
 			return PreparedUninstall{}, err
 		}
@@ -128,13 +154,20 @@ func PrepareUninstall(environment Environment, request UninstallRequest) (Prepar
 	if err != nil {
 		return PreparedUninstall{}, err
 	}
+	backup, err := buildMutationBackupPlan(
+		force.backupRequired, "uninstall", resolved.scope, backupPath,
+		policyAction, targetActions, stateActions,
+	)
+	if err != nil {
+		return PreparedUninstall{}, err
+	}
 	plan := mutationPlan{
 		operation: mutationUninstall, environment: environment,
 		request:  mutationRequest{project: request.Project, targets: request.Targets, dryRun: request.DryRun, force: request.Force},
 		resolved: cloneResolvedRequest(resolved), coordinates: coords,
 		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
 		stateActions: cloneMutationActions(stateActions), directoryActions: cloneDirectoryActions(directoryActions),
-		leadingLines: append([]string(nil), leading...),
+		leadingLines: append([]string(nil), leading...), backup: cloneBackupPlan(backup),
 	}
 	plan.predicted = predictMutationResult(plan)
 	return PreparedUninstall{plan: cloneMutationPlan(plan)}, nil

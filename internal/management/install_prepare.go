@@ -295,39 +295,50 @@ func validateCurrentInstallState(state installationState, coords coordinates, re
 
 func validateLiveTargetRecords(records []targetRecord, coords coordinates, recordScope, project string) error {
 	for _, record := range records {
-		expected, err := targetDestination(coords, recordScope, project, record.id)
-		if err != nil {
+		if err := validateLiveTargetRecord(record, coords, recordScope, project); err != nil {
 			return err
-		}
-		if record.path != expected {
-			return compatibilityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
-		}
-		candidate, _ := findTarget(record.id)
-		if record.mode != candidate.Ownership {
-			return compatibilityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
-		}
-		current, err := inspectInstallPath(record.path)
-		if err != nil {
-			return err
-		}
-		switch record.mode {
-		case "managed-block":
-			status, checksum := managedInstallStatus(current)
-			if status != "present" || checksum != record.checksum {
-				return compatibilityError(fmt.Sprintf("managed target block has drifted: %s at %s", record.id, record.path))
-			}
-		case "owned-file":
-			if current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
-				return compatibilityError(fmt.Sprintf("owned target file has drifted: %s at %s", record.id, record.path))
-			}
-		default:
-			return compatibilityError("unknown target ownership mode: " + record.mode)
 		}
 	}
 	return nil
 }
 
+func validateLiveTargetRecord(record targetRecord, coords coordinates, recordScope, project string) error {
+	expected, err := targetDestination(coords, recordScope, project, record.id)
+	if err != nil {
+		return err
+	}
+	if record.path != expected {
+		return compatibilityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
+	}
+	candidate, _ := findTarget(record.id)
+	if record.mode != candidate.Ownership {
+		return compatibilityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
+	}
+	current, err := inspectInstallPath(record.path)
+	if err != nil {
+		return err
+	}
+	switch record.mode {
+	case "managed-block":
+		status, checksum := managedInstallStatus(current)
+		if status != "present" || checksum != record.checksum {
+			return compatibilityError(fmt.Sprintf("managed target block has drifted: %s at %s", record.id, record.path))
+		}
+	case "owned-file":
+		if current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
+			return compatibilityError(fmt.Sprintf("owned target file has drifted: %s at %s", record.id, record.path))
+		}
+	default:
+		return compatibilityError("unknown target ownership mode: " + record.mode)
+	}
+	return nil
+}
+
 func collectPolicyStateReferences(coords coordinates, excluded string, policy installPathSnapshot) ([]policyStateReference, error) {
+	return collectPolicyStateReferencesWithBaseline(coords, excluded, policy, "")
+}
+
+func collectPolicyStateReferencesWithBaseline(coords coordinates, excluded string, policy installPathSnapshot, baseline string) ([]policyStateReference, error) {
 	locations := []struct {
 		directory string
 		pattern   string
@@ -363,7 +374,7 @@ func collectPolicyStateReferences(coords coordinates, excluded string, policy in
 			if state.policyPath != coords.policyPath {
 				continue
 			}
-			if err := validatePolicyStateReference(path, state, coords, policy); err != nil {
+			if err := validatePolicyStateReference(path, state, coords, policy, baseline); err != nil {
 				return nil, err
 			}
 			result = append(result, policyStateReference{index: index, path: path, state: cloneInstallationStateValue(state)})
@@ -372,7 +383,7 @@ func collectPolicyStateReferences(coords coordinates, excluded string, policy in
 	return result, nil
 }
 
-func validatePolicyStateReference(path string, state installationState, coords coordinates, policy installPathSnapshot) error {
+func validatePolicyStateReference(path string, state installationState, coords coordinates, policy installPathSnapshot, baseline string) error {
 	var expected string
 	switch state.scope {
 	case "user":
@@ -395,7 +406,14 @@ func validatePolicyStateReference(path string, state installationState, coords c
 	if err := validateOwnedDirectories(state, coords); err != nil {
 		return compatibilityError(err.Error())
 	}
-	if policy.kind != installPathRegular || checksumBytes(policy.data) != state.policyChecksum {
+	installedChecksum := ""
+	if policy.kind == installPathRegular {
+		installedChecksum = checksumBytes(policy.data)
+	}
+	if baseline != "" {
+		installedChecksum = baseline
+	}
+	if installedChecksum == "" || installedChecksum != state.policyChecksum {
 		return compatibilityError("managed policy has drifted")
 	}
 	return nil
