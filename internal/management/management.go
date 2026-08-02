@@ -1,6 +1,7 @@
 package management
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -19,6 +20,28 @@ type Environment struct {
 type CheckRequest struct {
 	Project string
 	Targets string
+}
+
+type Source struct {
+	version string
+	policy  []byte
+}
+
+func NewSource(version string, policy []byte) (Source, error) {
+	if version == "" || !safeStateField(version) {
+		return Source{}, &Error{Status: 70, Message: "VERSION is invalid"}
+	}
+	if len(policy) == 0 || len(policy) > maximumInstallArtifactBytes {
+		return Source{}, &Error{Status: 70, Message: "canonical policy source is invalid"}
+	}
+	return Source{version: version, policy: bytes.Clone(policy)}, nil
+}
+
+type InstallRequest struct {
+	Project string
+	Targets string
+	DryRun  bool
+	Force   bool
 }
 
 type Result struct {

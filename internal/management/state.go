@@ -33,6 +33,17 @@ type installationState struct {
 }
 
 func loadInstallationState(path string, coords coordinates) (installationState, bool, error) {
+	state, exists, err := readInstallationState(path)
+	if err != nil || !exists {
+		return state, exists, err
+	}
+	if err := validateOwnedDirectories(state, coords); err != nil {
+		return installationState{}, true, err
+	}
+	return state, true, nil
+}
+
+func readInstallationState(path string) (installationState, bool, error) {
 	info, err := os.Stat(path)
 	if err != nil {
 		return installationState{}, false, nil
@@ -61,9 +72,6 @@ func loadInstallationState(path string, coords coordinates) (installationState, 
 	}
 	state, err := parseInstallationState(data)
 	if err != nil {
-		return installationState{}, true, err
-	}
-	if err := validateOwnedDirectories(state, coords); err != nil {
 		return installationState{}, true, err
 	}
 	return state, true, nil

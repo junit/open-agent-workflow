@@ -1,6 +1,7 @@
 package management
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -33,5 +34,20 @@ func TestChecksumFileReportsMissingInput(t *testing.T) {
 func TestChecksumFileRejectsNonRegularSource(t *testing.T) {
 	if _, err := checksumFile(t.TempDir()); err == nil {
 		t.Fatal("checksumFile() accepted a directory")
+	}
+}
+
+func TestChecksumFileMatchesChecksumBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "artifact")
+	data := []byte("artifact bytes\n")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := checksumFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := checksumBytes(data); got != want {
+		t.Fatalf("checksumFile() = %q, want %q", got, want)
 	}
 }

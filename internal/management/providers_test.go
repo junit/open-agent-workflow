@@ -27,3 +27,22 @@ func TestCompatibilityProbeRejectsUnsupportedAndNonDirectoryRoots(t *testing.T) 
 		t.Fatal("non-directory version root was accepted")
 	}
 }
+
+func TestCompatibilityVersionProbeFindsOnlyVisibleRegularIndicators(t *testing.T) {
+	root := t.TempDir()
+	probe := catalog.DiscoveryProbe{
+		Root: "user-home", Kind: "one-level-version-path-exists",
+		Prefix: "versions", Suffix: "skills/using-superpowers/SKILL.md",
+	}
+	if compatibilityProbeExists(root, probe) {
+		t.Fatal("missing version root was detected")
+	}
+	writePrepareFile(t, filepath.Join(root, "versions", ".hidden", probe.Suffix), []byte("hidden\n"), 0o644)
+	if compatibilityProbeExists(root, probe) {
+		t.Fatal("hidden version was detected")
+	}
+	writePrepareFile(t, filepath.Join(root, "versions", "v1", probe.Suffix), []byte("visible\n"), 0o644)
+	if !compatibilityProbeExists(root, probe) {
+		t.Fatal("visible version indicator was not detected")
+	}
+}

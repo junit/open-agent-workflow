@@ -67,14 +67,20 @@ func TestSerializeInstallStateRejectsInvalidValues(t *testing.T) {
 		name   string
 		mutate func(*installationState)
 	}{
+		{name: "invalid scope", mutate: func(value *installationState) { value.scope = "workspace" }},
+		{name: "project missing root", mutate: func(value *installationState) { value.scope = "project" }},
 		{name: "unsafe version", mutate: func(value *installationState) { value.version = "bad\nversion" }},
 		{name: "user project", mutate: func(value *installationState) { value.project = "/project" }},
 		{name: "relative project", mutate: func(value *installationState) { value.scope, value.project = "project", "project" }},
+		{name: "unsafe policy", mutate: func(value *installationState) { value.policyPath = "/config/bad\tpolicy" }},
 		{name: "relative policy", mutate: func(value *installationState) { value.policyPath = "config/policy" }},
 		{name: "invalid policy checksum", mutate: func(value *installationState) { value.policyChecksum = "sha256:bad" }},
+		{name: "unsafe backup", mutate: func(value *installationState) { value.backupPath = "/backup/bad\npath" }},
 		{name: "relative backup", mutate: func(value *installationState) { value.backupPath = "backups/prior" }},
 		{name: "duplicate directory", mutate: func(value *installationState) { value.directories = append(value.directories, value.directories[0]) }},
+		{name: "empty directory", mutate: func(value *installationState) { value.directories[0] = "" }},
 		{name: "unsafe directory", mutate: func(value *installationState) { value.directories[0] = "/home/bad\tdir" }},
+		{name: "no targets", mutate: func(value *installationState) { value.targets = nil }},
 		{name: "relative target", mutate: func(value *installationState) { value.targets[0].path = ".claude/CLAUDE.md" }},
 		{name: "invalid origin", mutate: func(value *installationState) { value.targets[0].origin = "borrowed-file" }},
 		{name: "registry order", mutate: func(value *installationState) {

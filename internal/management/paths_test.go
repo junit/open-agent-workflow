@@ -141,6 +141,12 @@ func TestWriteReturnsOutputFailure(t *testing.T) {
 	}
 }
 
+func TestWriteReturnsTrailingOutputFailure(t *testing.T) {
+	if err := WriteResult(Result{Trailing: "partial"}, failingWriter{}); err == nil {
+		t.Fatal("WriteResult() ignored trailing output failure")
+	}
+}
+
 func TestUnknownTargetHasNoRegistryPosition(t *testing.T) {
 	if targetPosition("unknown") != 0 {
 		t.Fatal("unknown target received a registry position")
