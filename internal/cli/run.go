@@ -17,16 +17,19 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) int {
 }
 
 func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
-	if len(args) != 0 && args[0] == "runtime" {
-		return runRuntimeExchange(args[1:], stdin, stdout, stderr)
+	if len(args) != 0 {
+		switch args[0] {
+		case "runtime":
+			return runRuntimeExchange(args[1:], stdin, stdout, stderr)
+		case "run":
+			return runCodex(args[1:], stdin, stdout, stderr)
+		case "check":
+			return runCheck(args[1:], stdout, stderr)
+		case "catalog":
+			return run(args, stdout, stderr, builtin.Load)
+		}
 	}
-	if len(args) != 0 && args[0] == "run" {
-		return runCodex(args[1:], stdin, stdout, stderr)
-	}
-	if len(args) != 0 && args[0] == "check" {
-		return runCheck(args[1:], stdout, stderr)
-	}
-	return run(args, stdout, stderr, builtin.Load)
+	return runManagement(args, stdout, stderr)
 }
 
 type command struct {

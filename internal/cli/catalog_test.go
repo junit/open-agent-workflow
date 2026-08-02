@@ -154,13 +154,12 @@ func TestRunCatalogJSONListsHaveExpectedKinds(t *testing.T) {
 	}
 }
 
-func TestRunRejectsInvalidArguments(t *testing.T) {
+func TestRunRejectsInvalidCatalogArguments(t *testing.T) {
 	for _, args := range [][]string{
 		{"catalog"},
 		{"catalog", "list"},
 		{"catalog", "list", "unknown"},
 		{"catalog", "list", "providers", "--format", "yaml"},
-		{"unknown"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if code := Run(args, &stdout, &stderr); code != 64 {

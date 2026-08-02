@@ -11,7 +11,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/management"
 )
 
-type shadowManagementCommand struct {
+type managementCommand struct {
 	operation string
 	targets   string
 	project   string
@@ -20,8 +20,12 @@ type shadowManagementCommand struct {
 	help      bool
 }
 
-func RunShadowManagement(args []string, stdout, stderr io.Writer) int {
-	parsed, err := parseShadowManagement(args)
+func runManagement(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 || (len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help")) {
+		fmt.Fprint(stdout, installerUsage())
+		return 0
+	}
+	parsed, err := parseManagement(args)
 	if err != nil {
 		fmt.Fprintf(stderr, "oaw: error: %s\n", err)
 		return 64
@@ -30,18 +34,18 @@ func RunShadowManagement(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, installerUsage())
 		return 0
 	}
-	result, managementErr := executeShadowManagement(parsed, shadowManagementEnvironment())
+	result, managementErr := executeManagement(parsed, managementEnvironment())
 	if writeErr := management.WriteResult(result, stdout); writeErr != nil {
 		fmt.Fprintf(stderr, "oaw: error: %s\n", writeErr)
 		return 1
 	}
 	if managementErr != nil {
-		return writeShadowManagementError(managementErr, stderr)
+		return writeManagementError(managementErr, stderr)
 	}
 	return 0
 }
 
-func shadowManagementEnvironment() management.Environment {
+func managementEnvironment() management.Environment {
 	home := os.Getenv("HOME")
 	configHome := os.Getenv("XDG_CONFIG_HOME")
 	if configHome == "" {
@@ -56,8 +60,8 @@ func shadowManagementEnvironment() management.Environment {
 	}
 }
 
-func executeShadowManagement(
-	parsed shadowManagementCommand,
+func executeManagement(
+	parsed managementCommand,
 	environment management.Environment,
 ) (management.Result, error) {
 	var result management.Result
@@ -85,56 +89,56 @@ func executeShadowManagement(
 	return result, managementErr
 }
 
-func parseShadowManagement(args []string) (shadowManagementCommand, error) {
+func parseManagement(args []string) (managementCommand, error) {
 	if len(args) == 0 {
-		return shadowManagementCommand{}, fmt.Errorf("unknown command ''")
+		return managementCommand{}, fmt.Errorf("unknown command ''")
 	}
 	if args[0] != "install" && args[0] != "update" && args[0] != "uninstall" {
-		return shadowManagementCommand{}, fmt.Errorf("unknown command '%s'", args[0])
+		return managementCommand{}, fmt.Errorf("unknown command '%s'", args[0])
 	}
-	result := shadowManagementCommand{operation: args[0]}
+	result := managementCommand{operation: args[0]}
 	targetSeen, projectSeen := false, false
 	dryRunSeen, forceSeen, helpSeen := false, false, false
 	for index := 1; index < len(args); {
 		argument := args[index]
 		switch {
 		case argument == "--target" || strings.HasPrefix(argument, "--target="):
-			value, next, err := parseShadowValueOption(args, index, "--target", &targetSeen)
+			value, next, err := parseManagementValueOption(args, index, "--target", &targetSeen)
 			if err != nil {
-				return shadowManagementCommand{}, err
+				return managementCommand{}, err
 			}
 			result.targets, index = value, next
 		case argument == "--project" || strings.HasPrefix(argument, "--project="):
-			value, next, err := parseShadowValueOption(args, index, "--project", &projectSeen)
+			value, next, err := parseManagementValueOption(args, index, "--project", &projectSeen)
 			if err != nil {
-				return shadowManagementCommand{}, err
+				return managementCommand{}, err
 			}
 			result.project, index = value, next
 		case argument == "--dry-run":
-			if err := setShadowFlag("--dry-run", &dryRunSeen, &result.dryRun); err != nil {
-				return shadowManagementCommand{}, err
+			if err := setManagementFlag("--dry-run", &dryRunSeen, &result.dryRun); err != nil {
+				return managementCommand{}, err
 			}
 			index++
 		case argument == "--force":
-			if err := setShadowFlag("--force", &forceSeen, &result.force); err != nil {
-				return shadowManagementCommand{}, err
+			if err := setManagementFlag("--force", &forceSeen, &result.force); err != nil {
+				return managementCommand{}, err
 			}
 			index++
 		case argument == "-h" || argument == "--help":
-			if err := setShadowFlag("--help", &helpSeen, &result.help); err != nil {
-				return shadowManagementCommand{}, err
+			if err := setManagementFlag("--help", &helpSeen, &result.help); err != nil {
+				return managementCommand{}, err
 			}
 			index++
 		case strings.HasPrefix(argument, "-"):
-			return shadowManagementCommand{}, fmt.Errorf("unknown option '%s'", argument)
+			return managementCommand{}, fmt.Errorf("unknown option '%s'", argument)
 		default:
-			return shadowManagementCommand{}, fmt.Errorf("unexpected argument '%s'", argument)
+			return managementCommand{}, fmt.Errorf("unexpected argument '%s'", argument)
 		}
 	}
 	return result, nil
 }
 
-func parseShadowValueOption(
+func parseManagementValueOption(
 	args []string,
 	index int,
 	name string,
@@ -159,7 +163,7 @@ func parseShadowValueOption(
 	return value, index + 1, nil
 }
 
-func setShadowFlag(name string, seen *bool, value *bool) error {
+func setManagementFlag(name string, seen *bool, value *bool) error {
 	if *seen {
 		return fmt.Errorf("%s may be specified only once", name)
 	}
@@ -168,7 +172,7 @@ func setShadowFlag(name string, seen *bool, value *bool) error {
 	return nil
 }
 
-func writeShadowManagementError(err error, stderr io.Writer) int {
+func writeManagementError(err error, stderr io.Writer) int {
 	var managementError *management.Error
 	if errors.As(err, &managementError) {
 		fmt.Fprintf(stderr, "oaw: error: %s\n", managementError.Message)
