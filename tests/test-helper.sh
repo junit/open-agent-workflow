@@ -49,7 +49,11 @@ assert_empty_dir() {
 }
 
 setup_sandbox() {
-  OAW_SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/oaw-test.XXXXXX")
+  setup_sandbox_at "$(mktemp -d "${TMPDIR:-/tmp}/oaw-test.XXXXXX")"
+}
+
+setup_sandbox_at() {
+  OAW_SANDBOX=$1
   OAW_HOME=$OAW_SANDBOX/home
   OAW_CONFIG=$OAW_SANDBOX/config
   OAW_STATE=$OAW_SANDBOX/state

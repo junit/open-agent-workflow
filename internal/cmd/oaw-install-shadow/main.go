@@ -1,0 +1,11 @@
+package main
+
+import (
+	"os"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/cli"
+)
+
+func main() {
+	os.Exit(cli.RunShadowInstall(os.Args[1:], os.Stdout, os.Stderr))
+}

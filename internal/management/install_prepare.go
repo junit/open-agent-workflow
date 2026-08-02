@@ -328,18 +328,24 @@ func validateLiveTargetRecords(records []targetRecord, coords coordinates, recor
 }
 
 func collectPolicyStateReferences(coords coordinates, excluded string, policy installPathSnapshot) ([]policyStateReference, error) {
-	patterns := []string{
-		filepath.Join(coords.installations, "*.state"),
-		filepath.Join(coords.installations, "projects", "*.state"),
+	locations := []struct {
+		directory string
+		pattern   string
+	}{
+		{directory: coords.installations, pattern: coords.installations + string(filepath.Separator) + "*.state"},
+		{directory: coords.projects, pattern: coords.projects + string(filepath.Separator) + "*.state"},
 	}
 	result := make([]policyStateReference, 0)
 	index := 0
-	for _, pattern := range patterns {
-		paths, err := filepath.Glob(pattern)
+	for _, location := range locations {
+		paths, err := filepath.Glob(location.pattern)
 		if err != nil {
 			return nil, compatibilityError("invalid installation state pattern")
 		}
-		for _, path := range paths {
+		for _, discovered := range paths {
+			// Glob cleans repeated path separators. Rebuild from the validated
+			// lexical root so state actions retain the caller's allowed root.
+			path := location.directory + string(filepath.Separator) + filepath.Base(discovered)
 			if path == excluded {
 				continue
 			}
@@ -370,10 +376,10 @@ func validatePolicyStateReference(path string, state installationState, coords c
 	var expected string
 	switch state.scope {
 	case "user":
-		expected = filepath.Join(coords.installations, "user.state")
+		expected = coords.installations + string(filepath.Separator) + "user.state"
 	case "project":
 		identity := strings.Replace(checksumBytes([]byte(state.project)), ":", "-", 1)
-		expected = filepath.Join(coords.projects, identity+".state")
+		expected = coords.projects + string(filepath.Separator) + identity + ".state"
 	default:
 		return compatibilityError("installed scope does not match")
 	}

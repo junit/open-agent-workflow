@@ -16,7 +16,8 @@ for test_script in \
   08-backup-test.sh \
   09-transaction-test.sh \
   10-docs-test.sh \
-  11-check-parity-test.sh; do
+  11-check-parity-test.sh \
+  12-install-parity-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 

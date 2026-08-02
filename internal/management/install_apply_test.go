@@ -70,6 +70,25 @@ func TestApplyInstallIsIdempotentWithoutMtimeChanges(t *testing.T) {
 	}
 }
 
+func TestApplyInstallIsIdempotentWithRedundantStateRootSeparator(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	fixture.environment.StateHome = filepath.Dir(fixture.environment.StateHome) +
+		string(filepath.Separator) + string(filepath.Separator) + filepath.Base(fixture.environment.StateHome)
+
+	if _, err := Install(fixture.source, fixture.environment, InstallRequest{Targets: "claude"}); err != nil {
+		t.Fatalf("first Install() error = %v", err)
+	}
+	result, err := Install(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
+	if err != nil {
+		t.Fatalf("repeated Install() error = %v", err)
+	}
+	if got := result.Lines; !reflect.DeepEqual(got, []string{
+		"oaw: unchanged: claude", "oaw: unchanged: policy", "oaw: unchanged: state",
+	}) {
+		t.Fatalf("repeated Install() lines = %#v", got)
+	}
+}
+
 func TestApplyInstallDryRunReturnsPredictionWithoutWrites(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	prepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Targets: "claude,codex", DryRun: true})
@@ -159,6 +178,8 @@ func TestApplyInstallRejectsStateChangeAfterPreparation(t *testing.T) {
 
 func TestApplyInstallCoordinatesSharedProjectAndCrossScopeState(t *testing.T) {
 	fixture := newPrepareFixture(t)
+	fixture.environment.StateHome = filepath.Dir(fixture.environment.StateHome) +
+		string(filepath.Separator) + string(filepath.Separator) + filepath.Base(fixture.environment.StateHome)
 	if _, err := Install(fixture.source, fixture.environment, InstallRequest{Targets: "claude"}); err != nil {
 		t.Fatal(err)
 	}
