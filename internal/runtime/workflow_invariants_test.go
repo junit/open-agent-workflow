@@ -37,6 +37,17 @@ func TestWorkflowStateValidationRejectsSemanticTampering(t *testing.T) {
 		{"selection state", states.awaiting, func(value *revisionRecord) { value.Snapshot.Workflow.ActiveNodeID = "requirements" }},
 		{"Bundle collection", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.Bundles = nil }},
 		{"Bundle content", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.Bundles[0].Digest = strings.Repeat("0", 64) }},
+		{"Bundle Host pin", states.ready, func(value *revisionRecord) {
+			value.Snapshot.Workflow.Bundles[0].HostIntegrationDigest = strings.Repeat("0", 64)
+		}},
+		{"Bundle Host record", states.ready, func(value *revisionRecord) {
+			bundle := &value.Snapshot.Workflow.Bundles[0]
+			for index := range bundle.Configuration.HostIntegrations {
+				if bundle.Configuration.HostIntegrations[index].ID == bundle.HostIntegrationID {
+					bundle.Configuration.HostIntegrations[index].Audit.Digest = strings.Repeat("0", 64)
+				}
+			}
+		}},
 		{"active Bundle", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.ActiveGeneration = 2 }},
 		{"active node", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.ActiveNodeID = "missing" }},
 		{"stable boundary", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.LastStableBoundary = "missing" }},

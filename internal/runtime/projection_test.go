@@ -131,7 +131,7 @@ func TestFilesystemWorkflowProjectionIsOneWayAndOwnerOnly(t *testing.T) {
 	assertFileMode(t, projectionRoot, 0o700)
 	assertFileMode(t, runProjectionRoot, 0o700)
 
-	malicious := []byte(`{"active_node_id":"attacker-target","profile":"ECC-FULL","grant":"credential"}`)
+	malicious := []byte(`{"active_node_id":"attacker-target","host_integration_id":"attacker/runtime","host_integration_digest":"0000000000000000000000000000000000000000000000000000000000000000","profile":"ECC-FULL","grant":"credential"}`)
 	if err := os.WriteFile(jsonPath, malicious, 0o600); err != nil {
 		t.Fatal(err)
 	}

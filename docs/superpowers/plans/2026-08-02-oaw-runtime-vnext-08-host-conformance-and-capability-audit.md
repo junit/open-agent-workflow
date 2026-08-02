@@ -449,7 +449,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
 - Modify: `internal/runtime/projection_test.go`
 - Modify: `internal/runtime/workflow_invariants_test.go`
 
-- [ ] **Step 1: Write end-to-end integration tests.**
+- [x] **Step 1: Write end-to-end integration tests.**
 
   Build a real user configuration containing a third-party Host Integration,
   run its fake Adapter through the conformance suite, reload the Configuration
@@ -458,7 +458,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   inspect the same pinned Host identities. Exercise both runner-managed and
   native-managed records without making either a production selection.
 
-- [ ] **Step 2: Add failure and tamper scenarios.**
+- [x] **Step 2: Add failure and tamper scenarios.**
 
   Cover instruction-only fallback, missing Feature, failed audit, failed/stale
   Report, per-run narrowing, wrong Binding Host/kind, changed current
@@ -466,7 +466,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   deletion/tampering, and a second Engine with stale Host configuration. Every
   denial must leave HEAD unchanged and preserve old Bundles.
 
-- [ ] **Step 3: Add security and authority scans.**
+- [x] **Step 3: Add security and authority scans.**
 
   Place credentials, raw audit text, and raw Adapter output in fixture inputs.
   Assert none enters Runtime state, projections, Conformance Reports, or errors.
@@ -474,7 +474,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   config cannot grant Host trust. Confirm Runtime never invokes the fake Adapter;
   only the explicit conformance harness may do so.
 
-- [ ] **Step 4: Run focused race and recovery tests.**
+- [x] **Step 4: Run focused race and recovery tests.**
 
   ```bash
   rtk gofmt -w internal/integration internal/runtime internal/host
@@ -482,7 +482,7 @@ the new generation, just as it may adopt a new Configuration/Registry.
   rtk go test ./... -count=1
   ```
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
 
   ```bash
   rtk git add internal/host internal/runtime internal/integration
