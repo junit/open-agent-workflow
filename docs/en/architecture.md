@@ -9,11 +9,12 @@ adapter output, and directories that it actually created.
 
 ## Components and Boundaries
 
-The repository contains five cooperating layers:
+The repository contains six cooperating layers:
 
 1. The checkout supplies `VERSION`, `policy/ENGINEERING.md`, the target
    registry, and pure renderer functions.
-2. The CLI parses a command and selects user or project scope.
+2. The public Go CLI parses management commands and selects user or project
+   scope; `install.sh` only executes the precompiled sibling binary.
 3. Path and state code derives canonical destinations and validates existing
    installation records as inert data.
 4. Transaction code prepares every change, creates any required backup, and
@@ -38,6 +39,7 @@ defaults:
 | User installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
 | Project installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state` |
 | Operation backups | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups` |
+| Runtime State | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime` |
 
 `<crc>-<bytes>` is the `cksum` result for the physical project-root path bytes.
 This gives each resolved project root an isolated state record without placing
@@ -49,13 +51,16 @@ they do not change which repository files a project installation may own.
 The mutation pipeline is:
 
 ```text
-checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> state/targets
+embedded checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> Install State/targets
 ```
 
-The arrows describe data and control flow, not a promise of operation-wide
-atomicity. A renderer receives validated values and writes prospective content
-only to a caller-provided temporary path. Because it is a **pure renderer**, it
-does not inspect or mutate the eventual destination.
+The Go binary embeds the Policy, Version, registry, and renderer behavior from
+the checkout used to build it. Release archives already contain that binary;
+a source checkout must build `./oaw` before execution. The arrows describe data
+and control flow, not simultaneous operation-wide atomicity. A renderer
+receives validated values and writes prospective content only to a
+caller-provided temporary path. Because it is a **pure renderer**, it does not
+inspect or mutate the eventual destination.
 
 ## Runtime Plane
 
@@ -63,10 +68,20 @@ The Runtime Plane is optional and does not replace the Policy Plane. The
 canonical `oaw.runtime/v1` transport is available through `oaw runtime exchange`;
 `oaw run --host codex` uses the same `runtime.Engine.Exchange` seam and adds the
 ordered `GRANT_ISSUED`, `DISPATCH_PREPARED`, `DISPATCH_AUTHORIZED`, and
-`CAPABILITY_OBSERVED` handshake around a bounded Codex process. Runtime-aware
-execution is admitted only for the pinned `runner-managed` integration
-`oaw/codex-runner`. Other built-in adapters remain Policy-only and are never
-promoted by discovery or project configuration.
+`CAPABILITY_OBSERVED` handshake around a bounded Codex process.
+
+Only the pinned Codex runner is currently Runtime-managed. Runtime-aware execution is admitted
+only for the pinned `runner-managed` integration `oaw/codex-runner`. Other
+installed adapters remain Policy-only and provide no Runtime admission,
+Capability Grant, Resource Lease, transition enforcement, or physical isolation
+guarantee. Discovery, installation, and project configuration never promote
+them.
+
+Install State and Runtime State are disjoint; no automatic migration occurs.
+Existing Policy-only tasks and profile locks remain Policy-only unless
+explicitly adopted at a Stable Boundary. Management reads and writes only the
+TSV installation namespace; Runtime reads and writes only the revisioned Run
+namespace.
 
 Host output is untrusted. The Codex driver bounds process output, keeps
 diagnostics on stderr, normalizes JSONL into closed outcomes, and returns only
@@ -88,11 +103,12 @@ in state.
 
 During the **apply phase**, paths are validated again immediately before use.
 Each file is written beside its destination as a temporary file and moved into
-place, providing **atomic replacement per destination**. OAW deliberately does
-not claim a global transaction, operation-wide rollback, or atomic replacement
-across several destinations. A later apply failure can therefore leave an
-earlier destination changed; verified backups are the recovery boundary for a
-forced operation.
+place, providing **atomic replacement per destination**. After every effect,
+the Go manager records an inverse in its mutation journal. A reported apply
+failure attempts reverse-order rollback; rollback failure is surfaced as an
+error rather than hidden. OAW does not claim simultaneous atomic replacement
+across destinations or automatic recovery from a process or machine crash.
+Verified backups remain the auditable recovery boundary for forced operations.
 
 ## Ownership Modes
 
@@ -115,8 +131,11 @@ Only empty directories that state proves OAW created are eligible for pruning.
 
 ## State Schema
 
-State files are tab-separated records. They are parsed as inert text and are
-never sourced or evaluated by the shell.
+The records below describe Install State only. They are tab-separated inert
+text and are never sourced or evaluated by the shell. Runtime State instead
+uses immutable Run revisions, `HEAD`, Grants, Resource Leases, and evidence
+references under its separate namespace; it never parses TSV Install State as
+Runtime authority.
 
 | Record | Cardinality | Meaning |
 | --- | --- | --- |

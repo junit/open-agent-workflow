@@ -3,8 +3,29 @@
 [简体中文](../zh/installer.md) | [README](../../README.md) |
 [Architecture](architecture.md)
 
-Run the installer from the checkout whose policy and renderers you intend to
-use. It has four operational commands:
+Public installation management is Go-authoritative. A release archive already
+contains a precompiled `oaw` or `oaw.exe`; after verifying its checksum, use the
+binary directly:
+
+```text
+./oaw check
+./oaw install
+./oaw update
+./oaw uninstall
+```
+
+From a source checkout, build the binary whose embedded policy and version you
+intend to use before running a command:
+
+```text
+go build -o ./oaw ./cmd/oaw
+./oaw check
+```
+
+`install.sh` is an offline sibling-binary compatibility wrapper. It executes
+only `oaw` or `oaw.exe` from its own directory; it does not search `PATH`, build
+a binary, fetch a release, or download executable code. The compatibility forms
+are:
 
 ```text
 ./install.sh check
@@ -13,14 +34,17 @@ use. It has four operational commands:
 ./install.sh uninstall
 ```
 
-Commands emit human-readable output. Machine-readable status is outside the
-v0.1 contract. Running `./install.sh`, `./install.sh help`, `./install.sh -h`,
-or `./install.sh --help` prints help and exits 0. A command-scoped help request,
-such as `./install.sh install --help`, does the same without mutation.
+Release archives contain precompiled binaries and perform no runtime executable
+download. Commands emit human-readable output. Machine-readable management
+status is outside the v0.1 contract. Running either entrypoint without arguments
+or with `help`, `-h`, or `--help` prints help and exits 0. A command-scoped help
+request, such as `./install.sh install --help`, does the same without mutation.
+If the wrapper's sibling binary is missing or not executable, it exits 70.
 
 ## Syntax and Options
 
 ```text
+./oaw <check|install|update|uninstall> [options]
 ./install.sh <check|install|update|uninstall> [options]
 
 --target <ids>       comma-separated target IDs
@@ -61,58 +85,37 @@ project-only target in user scope is rejected instead of silently skipped. The
 
 ### `check`
 
-`check` validates the checkout source, selected scope, installation state,
+`check` validates the embedded management source, selected scope, Install State,
 policy, and target ownership without writing. It reports whether installation
 is absent, clean, drifted, invalid, or otherwise unsafe. `check` exits 0 after
 reporting these human-readable statuses, including drift or invalid state. That
 status does not authorize mutation: a later mutation still validates ownership
 and exits 65 when the reported problem has not been resolved or forced safely.
 
-#### Go shadow/parity path
+#### Public Go management boundary
 
-The compiled Go CLI also exposes `oaw check`. It is a non-authoritative
-**shadow/parity** implementation of the read-only Bash command: it reports the
-same scope, normalized targets, built-in Provider compatibility diagnostics,
-target readiness, Install State health, output streams, and exit status.
-
-Bash remains authoritative for installation management. The parity gate runs
-`./install.sh check` and `oaw check` against the same isolated fixture, compares
-stdout, stderr, and exit status byte for byte, and verifies that neither command
-changes the fixture. A drift, scope, target, Provider, status, stream, or
-filesystem difference fails that gate.
-
-Passing this check parity does not cut over management authority. Users and
-automation continue to use `install.sh` for mutations. Go does not implement authoritative `install`, `update`, or `uninstall`.
-Any later cutover requires a separate explicit migration decision and
-command-level parity evidence.
+`oaw check` and the three mutation commands use the same public production binary.
+The compatibility wrapper reaches that exact implementation by `exec`;
+there is no second Bash management implementation in a release. Pre-cutover
+Bash behavior remains only as an independent test oracle in the repository.
 
 ### `install`
 
-`install` renders the policy adapters from the current checkout, prepares the
-complete operation, and creates the scope's state record after applying the
-targets. Existing foreign content at an owned-file destination or conflicting
-managed ownership is refused, including with `--force`.
-
-#### Go install shadow/parity boundary
-
-An internal Go install driver exists for parity-only validation. The parity
-harness builds that test-only command and replays Bash and Go against the same
-physical sandbox path, comparing status, stdout, stderr, file types, modes,
-symlink targets, exact bytes, Install State, and backup-tree effects.
-
-`install.sh` remains authoritative. The public `oaw install` is not enabled,
-the internal driver is not a release entrypoint, and passing parity does not
-authorize a management cutover.
+`install` renders policy adapters from the running binary's embedded source,
+prepares the complete operation, and creates the scope's state record after
+applying the targets. Existing foreign content at an owned-file destination or
+conflicting managed ownership is refused, including with `--force`.
 
 A normal `install` creates no operation backup, including when `--force` is
-present. Extending or coordinating valid Install State preserves any existing valid `backup` reference,
-while a rejected install changes neither state nor the backup tree. Ticket 13 owns Go `update`, `uninstall`, and forced-backup parity.
+present. Extending or coordinating valid Install State preserves any existing valid `backup` reference, while a rejected install changes neither state nor the backup tree.
 
 ### `update`
 
-`update` requires an existing valid installation record. Updates read policy,
-version, registry metadata, and renderer code only from the **current checkout**;
-there is no network fetch or hidden release selection. `--target` limits which
+`update` requires an existing valid installation record. The binary embeds the
+policy, version, registry metadata, and renderer behavior built from the
+**current checkout**. Rebuild `./oaw` after changing source checkout artifacts;
+a release archive already contains the release Policy and Version. There is no network
+fetch or hidden release selection. `--target` limits which
 already-installed targets are refreshed; `update` does not add or remove
 targets. Selecting a target that is not installed exits 65. Use `install` to
 add and `uninstall` to remove targets.
@@ -132,22 +135,12 @@ fragment, **drift exits 65** before normal mutation. `--force` does not erase
 that history silently: every affected artifact is placed in a verified backup
 before apply.
 
-#### Go update/uninstall shadow/parity boundary
-
-An internal Go update/uninstall shadow driver exists only for parity testing;
-it is not a release entrypoint. Its normal update and uninstall behavior matches Bash
-across status, stdout, stderr, trees, modes, symlinks, exact file bytes, Install State,
-and backup effects on the same physical fixture.
-
-`install.sh` remains authoritative. The public `oaw update` and `oaw uninstall` are not enabled,
-and parity success grants no management authority. Ticket 14 alone owns management cutover.
-
-For forced operations, the Go shadow completes a verified operation backup before the first forced mutation.
-In its deterministic fault-injection matrix, an
-injected Go failure restores every pre-existing destination that the operation
-changed, in reverse effect order, while leaving the completed backup valid. This
-is a Go-only acceptance guard: Bash does not promise whole-operation rollback,
-and its public contract remains atomic replacement per destination.
+For `update` and `uninstall`, the Go mutation journal records an inverse after
+each applied effect. An apply failure attempts to restore changed destinations
+and removed owned directories in reverse order. A rollback failure is reported
+as status 74 and requires manual recovery. Forced operations also complete a
+verified operation backup before the first mutation, so the backup remains the
+auditable recovery source even when automatic rollback cannot finish.
 
 ## Dry Run
 
@@ -167,11 +160,17 @@ stored under the XDG config root, while state and operation backups are stored
 under the XDG state root; see the [architecture guide](architecture.md) for
 exact paths and the record schema.
 
+Install State and Runtime State are disjoint; no automatic migration occurs.
+Management commands neither create Engineering Runs nor import existing
+Policy-only tasks or profile locks. Runtime adoption is an explicit operation
+at a Stable Boundary, not a side effect of `install`, `update`, or `uninstall`.
+
 A normal `install` creates no operation backup. Clean `update` and `uninstall`
 need not create one. A forced `update` or `uninstall` creates an
 operation-scoped, verified backup before any prepared destination is changed.
-The installer uses atomic replacement per destination but does not promise
-whole-operation rollback.
+Each destination uses atomic replacement. A later apply failure triggers the
+Go mutation journal's best-effort whole-operation rollback; a rollback failure
+is explicit and leaves the verified backup available for manual recovery.
 
 ## Exit Codes
 
@@ -204,7 +203,7 @@ machine-readable state schema.
 # Install two user targets; output is normalized to registry order.
 ./install.sh install --target=opencode,claude
 
-# Update an existing project installation from this checkout.
+# Update an existing project installation from the running binary.
 ./install.sh update --project=/path/to/repository
 
 # Preserve drifted artifacts in a backup before forced removal.

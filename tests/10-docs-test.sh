@@ -91,6 +91,27 @@ EOF
       './install.sh update' \
       './install.sh uninstall' >>"$fixture_root/$document_path"
   done
+  printf '%s\n' \
+    'Public installation management is Go-authoritative.' \
+    '`install.sh` is an offline sibling-binary compatibility wrapper.' \
+    'Release archives contain precompiled binaries and perform no runtime executable download.' \
+    'Install State and Runtime State are disjoint; no automatic migration occurs.' \
+    'Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.' \
+    'Only the pinned Codex runner is currently Runtime-managed.' \
+    'Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.' \
+    'An actual WSL smoke pass is required before publishing a release.' \
+    >>"$fixture_root/README.md"
+  printf '%s\n' \
+    '公开安装管理以 Go 为权威实现。' \
+    '`install.sh` 是离线的同目录二进制兼容包装器。' \
+    '发布归档包含预编译二进制，运行时不会下载可执行文件。' \
+    'Install State 与 Runtime State 相互独立，不会自动迁移。' \
+    '现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。' \
+    '目前只有固定版本的 Codex runner 是 Runtime-managed。' \
+    '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
+    '发布前必须在真实 WSL 环境通过 smoke test。' \
+    >>"$fixture_root/README-zh.md"
+  : >"$fixture_root/CHANGELOG.md"
   printf '%s\n' 'experience-based' >>"$fixture_root/docs/en/comparison.md"
   printf '%s\n' '基于经验' >>"$fixture_root/docs/zh/comparison.md"
 }
@@ -129,6 +150,21 @@ for contribution_file in CONTRIBUTING.md CONTRIBUTING-zh.md; do
   assert_contains "$contribution_file" "remote publication"
 done
 pass "bilingual contribution contracts define the delivery and adapter evidence seam"
+for contribution_contract in \
+  'public Go `oaw` binary' \
+  'precompiled sibling binary' \
+  'Install State and Runtime State' \
+  'actual WSL smoke pass is required before publishing a release'; do
+  assert_contains CONTRIBUTING.md "$contribution_contract"
+done
+for contribution_contract in \
+  '公开 Go `oaw` 二进制' \
+  '预编译的同目录二进制' \
+  'Install State 与 Runtime State' \
+  '发布前必须在真实 WSL 环境通过 smoke test'; do
+  assert_contains CONTRIBUTING-zh.md "$contribution_contract"
+done
+pass "bilingual contribution contracts distinguish Go authority, wrapper compatibility, state, and WSL release gates"
 
 for security_file in SECURITY.md SECURITY-zh.md; do
   assert_contains "$security_file" "private"
@@ -144,6 +180,23 @@ for security_file in SECURITY.md SECURITY-zh.md; do
   fi
 done
 pass "bilingual security policies use a private reporting contract without a fake address"
+for security_contract in \
+  'public Go binary' \
+  'precompiled binaries' \
+  'runtime executable download' \
+  'Install State and Runtime State' \
+  'Only the pinned Codex runner'; do
+  assert_contains SECURITY.md "$security_contract"
+done
+for security_contract in \
+  '公开 Go binary' \
+  '预编译二进制' \
+  '运行时不会下载可执行文件' \
+  'Install State 与 Runtime State' \
+  '只有固定版本的 Codex runner'; do
+  assert_contains SECURITY-zh.md "$security_contract"
+done
+pass "bilingual security policies publish binary, state, and Runtime trust boundaries"
 
 assert_contains CODE_OF_CONDUCT.md "Contributor Covenant"
 assert_contains CODE_OF_CONDUCT.md "version 2.1"
@@ -160,6 +213,10 @@ assert_contains CHANGELOG.md "not published"
 assert_contains CHANGELOG.md "canonical policy"
 assert_contains CHANGELOG.md "forced"
 assert_contains CHANGELOG.md "bilingual documentation"
+assert_contains CHANGELOG.md "Go-authoritative management CLI"
+assert_contains CHANGELOG.md "precompiled Darwin, Linux, and Windows archives"
+assert_contains CHANGELOG.md "actual Microsoft WSL kernel"
+assert_contains CHANGELOG.md "Install State and revisioned Runtime State remain disjoint"
 pass "changelog describes the local unreleased 0.1.0 candidate"
 
 assert_executable scripts/check-docs.sh
@@ -169,6 +226,10 @@ assert_contains scripts/check-docs.sh "docs/en/extending-adapters.md|docs/zh/ext
 assert_contains scripts/check-docs.sh "for command in check install update uninstall"
 assert_contains scripts/check-docs.sh "experience-based"
 assert_contains scripts/check-docs.sh "基于经验"
+assert_contains scripts/check-docs.sh "Public installation management is Go-authoritative."
+assert_contains scripts/check-docs.sh "公开安装管理以 Go 为权威实现。"
+assert_contains scripts/check-docs.sh "Bash remains authoritative"
+assert_contains scripts/check-docs.sh "Bash 仍是权威"
 if grep -E '(^|[;&|[:space:]])(curl|wget)([[:space:]]|$)' \
   "$REPOSITORY/scripts/check-docs.sh" >/dev/null; then
   fail "documentation checker contains a network client command"
@@ -266,6 +327,44 @@ for readme_file in README.md README-zh.md; do
 done
 pass "both README entrypoints preserve commands, profiles, targets, scores, and document pairs"
 
+for release_boundary in \
+  'Public installation management is Go-authoritative.' \
+  '`install.sh` is an offline sibling-binary compatibility wrapper.' \
+  'Release archives contain precompiled binaries and perform no runtime executable download.' \
+  'Install State and Runtime State are disjoint; no automatic migration occurs.' \
+  'Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.' \
+  'Only the pinned Codex runner is currently Runtime-managed.' \
+  'Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.' \
+  'An actual WSL smoke pass is required before publishing a release.'; do
+  assert_contains README.md "$release_boundary"
+done
+for release_boundary in \
+  '公开安装管理以 Go 为权威实现。' \
+  '`install.sh` 是离线的同目录二进制兼容包装器。' \
+  '发布归档包含预编译二进制，运行时不会下载可执行文件。' \
+  'Install State 与 Runtime State 相互独立，不会自动迁移。' \
+  '现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。' \
+  '目前只有固定版本的 Codex runner 是 Runtime-managed。' \
+  '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
+  '发布前必须在真实 WSL 环境通过 smoke test。'; do
+  assert_contains README-zh.md "$release_boundary"
+done
+pass "bilingual README entrypoints publish the Go cutover and Runtime boundaries"
+
+for current_document in \
+  README.md README-zh.md CHANGELOG.md CONTRIBUTING.md CONTRIBUTING-zh.md \
+  SECURITY.md SECURITY-zh.md docs/en/installer.md docs/zh/installer.md \
+  docs/en/architecture.md docs/zh/architecture.md \
+  docs/en/troubleshooting.md docs/zh/troubleshooting.md \
+  docs/en/extending-adapters.md docs/zh/extending-adapters.md; do
+  assert_not_contains "$current_document" 'Bash remains authoritative'
+  assert_not_contains "$current_document" 'Bash 仍是权威'
+  assert_not_contains "$current_document" 'public `oaw install` is not enabled'
+  assert_not_contains "$current_document" 'public `oaw install` 尚未启用'
+  assert_not_contains "$current_document" 'zero-dependency Bash installer'
+done
+pass "current user-facing documents reject stale pre-cutover authority claims"
+
 for english_heading in \
   '## Why OAW' \
   '## Problems It Solves' \
@@ -288,12 +387,13 @@ assert_contains README.md "[简体中文](README-zh.md)"
 assert_contains README.md "arbitrates independently installed workflow providers across agent tools"
 assert_contains README.md "There is no timeout or silent default."
 assert_contains README.md "OAW does not install Superpowers, Matt Pocock skills, or ECC."
-assert_contains README.md "Updates read artifacts only from the current checkout."
+assert_contains README.md "Updates use the Policy, Version, registry, and rendering behavior embedded"
+assert_contains README.md 'Rebuild `./oaw` after changing a source checkout'
 assert_contains README.md "Drift fails closed before mutation."
 assert_contains README.md '`--force` backs up every affected artifact before mutation.'
 assert_contains README.md "experience-based design inputs"
-assert_contains README.md "Machine-readable status is reserved for a post-v0.1 extension."
-assert_contains README.md "v0.1 output is human-readable only."
+assert_contains README.md "Machine-readable management status"
+assert_contains README.md "v0.1 management output is human-readable"
 pass "English README covers the complete entrypoint and safety contract"
 
 for chinese_heading in \
@@ -318,12 +418,14 @@ assert_contains README-zh.md "[English](README.md)"
 assert_contains README-zh.md "协调多个 agent 工具中独立安装的 workflow provider"
 assert_contains README-zh.md "没有超时自动选择，也没有静默默认项。"
 assert_contains README-zh.md "OAW 不安装 Superpowers、Matt Pocock skills 或 ECC。"
-assert_contains README-zh.md "更新只从当前 checkout 读取构件。"
+assert_contains README-zh.md "更新使用运行中 binary 嵌入的 Policy、Version、registry 与 rendering behavior。"
+assert_contains README-zh.md 'checkout 后必须重新构建 `./oaw`'
 assert_contains README-zh.md "检测到 drift 时，会在变更前关闭失败。"
 assert_contains README-zh.md '`--force` 会在变更前先备份所有受影响构件。'
 assert_contains README-zh.md "基于经验的设计输入"
-assert_contains README-zh.md "machine-readable status 保留为 post-v0.1 扩展。"
-assert_contains README-zh.md "v0.1 只输出 human-readable 状态。"
+assert_contains README-zh.md "machine-readable management status 保留为 post-v0.1 扩展"
+assert_contains README-zh.md "v0.1 management 只输出"
+assert_contains README-zh.md "human-readable 状态"
 pass "Chinese README covers the equivalent entrypoint and safety contract"
 
 for rationale_document in \
@@ -494,7 +596,7 @@ for architecture_file in docs/en/architecture.md docs/zh/architecture.md; do
     '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state' \
     '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state' \
     '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups' \
-    'checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> state/targets' \
+    'embedded checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> Install State/targets' \
     'pure renderer' \
     'prepare phase' \
     'apply phase' \
@@ -515,10 +617,36 @@ for architecture_file in docs/en/architecture.md docs/zh/architecture.md; do
 done
 assert_contains docs/en/architecture.md 'Marker comments do not establish model precedence'
 assert_contains docs/zh/architecture.md 'marker 注释不建立模型优先级'
-pass "architecture documents match storage, rendering, transaction, ownership, and state contracts"
+for runtime_boundary in \
+  '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime' \
+  'Only the pinned Codex runner is currently Runtime-managed' \
+  'Install State and Runtime State are disjoint; no automatic migration occurs' \
+  'Existing Policy-only tasks and profile locks remain Policy-only unless' \
+  'Capability Grant' \
+  'Resource Lease' \
+  'mutation journal' \
+  'automatic recovery from a process or machine crash'; do
+  assert_contains docs/en/architecture.md "$runtime_boundary"
+done
+for runtime_boundary in \
+  '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime' \
+  '目前只有固定版本的 Codex runner 是 Runtime-managed' \
+  'Install State 与 Runtime State 相互独立，不会自动迁移' \
+  '现有 Policy-only task 和 profile' \
+  'Capability Grant' \
+  'Resource Lease' \
+  'mutation journal' \
+  'process 或 machine crash'; do
+  assert_contains docs/zh/architecture.md "$runtime_boundary"
+done
+pass "architecture documents match management, Runtime, rendering, transaction, ownership, and state contracts"
 
 for installer_file in docs/en/installer.md docs/zh/installer.md; do
   for command_contract in \
+    './oaw check' \
+    './oaw install' \
+    './oaw update' \
+    './oaw uninstall' \
     './install.sh check' \
     './install.sh install' \
     './install.sh update' \
@@ -560,68 +688,37 @@ for installer_contract in \
   '`66` | 没有安装 state 时请求 `update`'; do
   assert_contains docs/zh/installer.md "$installer_contract"
 done
-for shadow_contract in \
-  'oaw check' \
-  'shadow/parity' \
-  'same isolated fixture'; do
-  assert_contains docs/en/installer.md "$shadow_contract"
-  assert_contains docs/zh/installer.md "$shadow_contract"
-done
-for shadow_contract in \
-  'Bash remains authoritative' \
-  'does not cut over' \
-  'Go does not implement authoritative `install`, `update`, or `uninstall`'; do
-  assert_contains docs/en/installer.md "$shadow_contract"
-done
-for shadow_contract in \
-  'Bash 仍是权威' \
-  '不会切换' \
-  'Go 不提供权威的 `install`、`update` 或 `uninstall`'; do
-  assert_contains docs/zh/installer.md "$shadow_contract"
-done
-for install_shadow_contract in \
-  'internal Go install driver' \
-  'parity-only' \
-  '`install.sh` remains authoritative' \
-  'public `oaw install` is not enabled' \
+for management_contract in \
+  'Public installation management is Go-authoritative' \
+  '`install.sh` is an offline sibling-binary compatibility wrapper' \
+  'Release archives contain precompiled binaries' \
+  'go build -o ./oaw ./cmd/oaw' \
+  'same public production binary' \
+  'independent test oracle' \
   'A normal `install` creates no operation backup' \
   'preserves any existing valid `backup` reference' \
-  'Ticket 13 owns Go `update`, `uninstall`, and forced-backup parity'; do
-  assert_contains docs/en/installer.md "$install_shadow_contract"
+  'mutation journal' \
+  'rollback failure' \
+  'Install State and Runtime State are disjoint; no automatic migration occurs' \
+  'Stable Boundary'; do
+  assert_contains docs/en/installer.md "$management_contract"
 done
-for install_shadow_contract in \
-  '内部 Go install driver' \
-  '仅用于 parity' \
-  '`install.sh` 仍是权威' \
-  'public `oaw install` 尚未启用' \
+for management_contract in \
+  '公开安装管理以 Go 为权威实现' \
+  '`install.sh` 是离线的同目录二进制兼容包装器' \
+  '发布归档包含预编译二进制' \
+  'go build -o ./oaw ./cmd/oaw' \
+  '同一个公开 production binary' \
+  '独立测试 oracle' \
   '普通 `install` 不创建 operation backup' \
   '保留已有且有效的 `backup` 引用' \
-  'Ticket 13 负责 Go `update`、`uninstall` 与 forced-backup parity'; do
-  assert_contains docs/zh/installer.md "$install_shadow_contract"
+  'mutation journal' \
+  'Rollback failure' \
+  'Install State 与 Runtime State 相互独立，不会自动迁移' \
+  'Stable Boundary'; do
+  assert_contains docs/zh/installer.md "$management_contract"
 done
-for mutation_shadow_contract in \
-  'internal Go update/uninstall shadow driver' \
-  'normal update and uninstall behavior matches Bash' \
-  '`install.sh` remains authoritative' \
-  'public `oaw update` and `oaw uninstall` are not enabled' \
-  'verified operation backup before the first forced mutation' \
-  'injected Go failure restores every pre-existing destination' \
-  'Bash does not promise whole-operation rollback' \
-  'Ticket 14 alone owns management cutover'; do
-  assert_contains docs/en/installer.md "$mutation_shadow_contract"
-done
-for mutation_shadow_contract in \
-  '内部 Go update/uninstall shadow driver' \
-  '普通 update/uninstall 行为与 Bash 匹配' \
-  '`install.sh` 仍是权威入口' \
-  'public `oaw update` 与 `oaw uninstall` 尚未启用' \
-  '第一次 forced mutation 之前完成经过验证的 operation backup' \
-  '注入的 Go failure 会恢复每个预先存在的 destination' \
-  'Bash 不承诺整个操作 rollback' \
-  '只有 Ticket 14 负责 management cutover'; do
-  assert_contains docs/zh/installer.md "$mutation_shadow_contract"
-done
-pass "installer documents cover commands, options, defaults, isolation, drift, dry-run, uninstall, and exits"
+pass "installer documents cover public Go management, wrapper, source/release, state, rollback, commands, and exits"
 
 DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home
 DOCS_RUNTIME_CONFIG=$DOCS_TEST_TEMP/runtime/config
@@ -819,6 +916,24 @@ for extension_file in docs/en/extending-adapters.md docs/zh/extending-adapters.m
     assert_contains "$extension_file" "$extension_contract"
   done
 done
+for extension_contract in \
+  'public `oaw` CLI' \
+  'Runtime admission' \
+  'Capability Grant' \
+  'Resource Lease' \
+  'physical isolation' \
+  'Only the pinned Codex runner is currently Runtime-managed'; do
+  assert_contains docs/en/extending-adapters.md "$extension_contract"
+done
+for extension_contract in \
+  'public `oaw` CLI' \
+  'Runtime admission' \
+  'Capability Grant' \
+  'Resource Lease' \
+  'physical' \
+  '目前只有固定版本的 Codex runner 是 Runtime-managed'; do
+  assert_contains docs/zh/extending-adapters.md "$extension_contract"
+done
 pass "extension documents define evidence, metadata, rendering, collision, fixtures, security, and graduation"
 
 for security_file in docs/en/security.md docs/zh/security.md; do
@@ -859,7 +974,10 @@ for troubleshooting_file in docs/en/troubleshooting.md docs/zh/troubleshooting.m
     'restart the target agent' \
     'restore backups manually' \
     'uninstall refusal' \
-    'no operation-wide rollback'; do
+    'rollback failed' \
+    'Install State' \
+    'Runtime State' \
+    'precompiled sibling binary is missing or not executable'; do
     assert_contains "$troubleshooting_file" "$troubleshooting_contract"
   done
 done

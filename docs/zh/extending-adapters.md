@@ -8,6 +8,17 @@ entrypoint。新增 adapter 是实现与证据变更，不是新的 workflow 设
 **must not change lifecycle semantics**，也 **must not vendor a provider**。目标工具和
 每个 workflow provider 都保持独立安装。
 
+## Runtime Integration 是独立边界
+
+Installation adapter 只暴露 Policy Plane。其他已安装 adapter 仍为 Policy-only，不提供
+Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical
+isolation 保证。目前只有固定版本的 Codex runner 是 Runtime-managed。Discovery evidence、
+Provider configuration、target registration 与成功 installation 都不会自动晋级 adapter。
+
+Runtime-managed 支持需要独立的 pinned Host Binding、conformance audit、normalized
+observation contract、isolation evidence 与显式 release decision；这不属于下方 adapter
+graduation level。
+
 ## 从 Evidence Packet 开始
 
 修改 registry 前先记录：
@@ -25,22 +36,22 @@ entrypoint。新增 adapter 是实现与证据变更，不是新的 workflow 设
 
 ## Registry Metadata
 
-[lib/targets.sh](../../lib/targets.sh) 中的 registry 是可执行 metadata。已注册 adapter
-必须一致地定义所有适用项：
+[internal/management/targets.go](../../internal/management/targets.go) 中的
+`targetRegistry` 是权威 management registry。已注册 adapter 必须一致地定义所有适用项：
 
-| 函数 | 契约 |
+| 字段或 helper | 契约 |
 | --- | --- |
-| `target_ids` | 在一个稳定 registry position 添加唯一 target ID。 |
-| `target_is_known` 与 `target_registry_position` | 识别同一 ID，并保持确定性的 normalization。 |
-| `target_supports_user` / `target_supports_project` | 声明 scope support，不静默跳过 unsupported scope。 |
-| `target_ownership` | 精确选择一种 ownership mode：`managed-block` 或 `owned-file`。 |
-| `target_project_relative_path` | 支持 project scope 时返回一个安全的相对 project destination。 |
-| `default_targets` | 只有 approved support level 要求成为默认项后才加入。 |
+| `ID` 与 registry position | 添加唯一 target ID，并保持确定性的 normalization。 |
+| `User` | 声明 user scope support，不静默跳过 unsupported scope。 |
+| `UserSuffix` / `ProjectSuffix` | 为每个 supported scope 提供安全相对 destination。 |
+| `Ownership` | 精确选择一种 ownership mode：`managed-block` 或 `owned-file`。 |
+| `normalizeTargets` / `findTarget` | 从同一个 registry 解析默认值与显式 selection。 |
 
-User-scope adapter 还需要在 [lib/paths.sh](../../lib/paths.sh) 中设置 user allowed root 和
-relative suffix。路径必须从已验证 root 向下推导；不能把未检查 CLI input 拼接到
-destination。Target ID、scope declaration、path mapping、ownership、renderer dispatch 与
-测试必须完全一致。残缺的 registry entry 是 internal contract failure，不是 fallback 机会。
+User-scope adapter 还需要在
+[internal/management/paths.go](../../internal/management/paths.go) 中设置 allowed root
+mapping。路径必须从已验证 root 向下推导；不能把未检查 CLI input 拼接到 destination。
+Target ID、scope declaration、path mapping、ownership、renderer dispatch 与测试必须完全
+一致。残缺的 registry entry 是 internal contract failure，不是 fallback 机会。
 
 ## 有意识地选择 Ownership
 
@@ -57,10 +68,10 @@ marker comment 定义 mechanical ownership，不定义 model precedence。
 
 ## 保持 Rendering 纯净
 
-在 [lib/render.sh](../../lib/render.sh) 添加 **pure renderer**，并通过
-`render_target_content` 路由新的 scope/target 组合。它只能使用已验证 input，并把
-prospective byte 写到标准输出或调用方提供的临时文件。它不得读取、创建、chmod、rename
-或删除最终 destination；这些 effect 归 transaction code 所有。
+在 [internal/management/render.go](../../internal/management/render.go) 添加 **pure renderer**，
+并通过 `renderTarget` 路由新的 scope/target 组合。它只能使用已验证 input，
+并返回 prospective byte。它不得读取、创建、chmod、rename 或删除最终 destination；这些
+effect 归 transaction code 所有。
 
 对 output byte 做精确断言，包括 frontmatter、import syntax、quoting、final newline 与
 canonical policy 绝对路径。只有 provider 定义 import 时才使用 documented import；否则
@@ -78,9 +89,10 @@ fragment 时，才能指向同一个 **shared destination**。Codex 与 OpenCode
 
 ## Black-Box Fixture
 
-测试应通过 `install.sh`，不要直接调用 renderer 或 state helper。每个 fixture 都使用
-isolated `HOME`、`XDG_CONFIG_HOME`、`XDG_STATE_HOME` 与 project root。支持的组合至少覆盖以下
-observable flow：
+测试应通过 public `oaw` CLI，不要直接调用 renderer 或 state helper。另行证明
+`install.sh` 会把相同 argument 与 status 转发给同目录 binary，并且没有 `PATH`、build 或
+download fallback。每个 fixture 都使用 **isolated `HOME`**、`XDG_CONFIG_HOME`、
+`XDG_STATE_HOME` 与 project root。支持的组合至少覆盖以下 observable flow：
 
 - `check`、首次 install、重复 install、copied-checkout update、dry-run、selected
   uninstall 与 final uninstall；
@@ -108,9 +120,9 @@ schema、containment、symlink 或 ambiguous-ownership 检查。
 ## 文档与复核
 
 在两种语言的 adapter matrix 中更新精确路径、support level、ownership、官方 URL、
-retrieval date、loading behavior、precedence 与 reload caveat。使用 Bash 3.2 运行离线文档
-检查与完整 shell suite。最终 diff 要检查 unrelated file、hardcoded credential、unsafe
-expansion 与中英文 semantic drift。
+retrieval date、loading behavior、precedence 与 reload caveat。运行离线文档检查、完整
+Go 与 black-box suite，并保持包装器检查兼容 Bash 3.2。最终 diff 要检查 unrelated file、
+hardcoded credential、unsafe expansion 与中英文 semantic drift。
 
 ## Graduation Level
 

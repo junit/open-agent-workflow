@@ -6,8 +6,11 @@ before implementation. Keep one change responsible for one observable outcome.
 
 ## Development Contract
 
-- Maintain Bash 3.2 compatibility and require no Node.js, Python, jq, or
-  package-manager runtime.
+- Treat the public Go `oaw` binary as the authoritative implementation of
+  `check`, `install`, `update`, and `uninstall`.
+- Maintain Bash 3.2 compatibility for the minimal `install.sh` wrapper. It must
+  execute only a precompiled sibling binary and must not search `PATH`, build,
+  download, or add a package-manager runtime.
 - Do not vendor, install, update, or patch any workflow provider.
 - Exercise behavior through the real CLI black-box seam. Tests must use an
   isolated HOME, XDG_CONFIG_HOME, XDG_STATE_HOME, and project root.
@@ -17,6 +20,9 @@ before implementation. Keep one change responsible for one observable outcome.
   safety guidance, support levels, or commands change.
 - Treat remote publication, pushing, releases, credentials, and third-party
   resource changes as owner-approved operations outside installer code.
+- Keep Install State and Runtime State disjoint. Management changes must not
+  import existing Policy-only tasks or profile locks, and adapter installation
+  must not imply Runtime admission.
 
 ## Adapter Evidence
 
@@ -36,11 +42,21 @@ the evidence and fixtures support graduation.
 
 Run these commands:
 
-    bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
-    shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
+    go test ./... -count=1
+    go test -race ./... -count=1
+    go vet ./...
+    bash -n install.sh tests/*.sh scripts/*.sh
+    shellcheck -S warning -x install.sh tests/*.sh scripts/*.sh
     bash tests/run.sh
+    bash scripts/check-docs.sh
+
+For a release candidate, build the six offline archives with
+`scripts/build-release.sh` and verify their checksums and exact contents. An
+actual WSL smoke pass is required before publishing a release; status 77 from
+`scripts/smoke-wsl.sh` is a skip, never a pass.
 
 Review the diff for secrets, unrelated generated files, unsafe path expansion,
 and missing English/Chinese parity. Use a conventional commit message and
 describe the test evidence. Do not perform remote publication from a local
-contribution workflow.
+contribution workflow. Release archives contain precompiled binaries and
+perform no runtime executable download.

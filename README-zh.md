@@ -5,8 +5,8 @@
 Open Agent Workflow（OAW）负责协调多个 agent 工具中独立安装的 workflow provider。它为一个工程交付物指定一个明确的生命周期所有者，或一份无冲突的阶段
 映射，然后把同一套治理策略安装到受支持 coding agent 的指令入口中。
 
-OAW 是 provider-neutral 的策略、适配器层和零依赖 Bash 安装器。它不重新分发
-workflow family，也不取代 agent 工具自身的配置。
+OAW 是 provider-neutral 的策略、适配器层和 Go runtime。它不重新分发 workflow
+family，也不取代 agent 工具自身的配置。
 
 ## 为什么需要 OAW
 
@@ -29,8 +29,9 @@ policy，并围绕它渲染轻量的 target-native 入口。
 
 ## 核心能力
 
-- 在 family-specific 生命周期启动前，将顶层工程任务分类为普通或复杂任务。
-- 展示全部五种 lifecycle profile，并等待用户显式选择。
+- 在 family-specific 生命周期启动前，将顶层工程请求分类为 `DIRECT`、`BOUNDED` 或
+  `WORKFLOW`。
+- 在 Workflow Mode 中展示所有可用的内置与用户自定义 Profile，并等待用户显式选择。
 - 让选定 bundle 跨后续请求、上下文压缩、ticket 和委派 agent 保持锁定。
 - 支持完整 family profile、预定义 Matt-Superpowers hybrid、有限 specialist add-on，
   以及用户自定义的无冲突阶段映射。
@@ -43,8 +44,19 @@ policy，并围绕它渲染轻量的 target-native 入口。
 
 ## 快速开始
 
-请从已经复核的本地 checkout 运行，要求 Bash 3.2 或更新版本。不需要 Node.js、
-Python、`jq`、包管理器、账户、token 或网络获取。
+发布归档包含对应平台的预编译 `oaw` 或 `oaw.exe`。验证 `SHA256SUMS` 并解压后，
+直接调用二进制：
+
+```bash
+./oaw check
+./oaw install
+./oaw install --project /path/to/repository
+./oaw update --dry-run
+./oaw uninstall
+```
+
+归档中的 `install.sh` 是兼容旧入口脚本的 Bash 3.2 包装器，以下命令会执行同目录
+二进制：
 
 ```bash
 ./install.sh check
@@ -54,10 +66,36 @@ Python、`jq`、包管理器、账户、token 或网络获取。
 ./install.sh uninstall
 ```
 
+从源码 checkout 使用时，必须先构建二进制，再调用任一入口：
+
+```bash
+go build -o ./oaw ./cmd/oaw
+./oaw check
+```
+
 `check` 只报告 provider 检测、目标就绪情况和安装健康状态，不做变更。直接运行
 `install` 时使用用户作用域和四个 core target；`--project` 选择一个已存在的仓库，
 并默认使用全部九个 target。可以使用 `--target claude,codex`（或其他逗号分隔的
-ID 集合）缩小命令范围。运行 `./install.sh --help` 可查看完整的本地 CLI。
+ID 集合）缩小命令范围。运行 `./oaw --help` 或 `./install.sh --help` 可查看 management
+CLI。
+
+### Cutover 与 Runtime 边界
+
+公开安装管理以 Go 为权威实现。
+
+`install.sh` 是离线的同目录二进制兼容包装器。
+
+发布归档包含预编译二进制，运行时不会下载可执行文件。
+
+Install State 与 Runtime State 相互独立，不会自动迁移。
+
+现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。
+
+目前只有固定版本的 Codex runner 是 Runtime-managed。
+
+其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。
+
+发布前必须在真实 WSL 环境通过 smoke test。
 
 ## 任务门禁
 
@@ -131,7 +169,8 @@ target readiness 都只是诊断信息，不会选择 lifecycle profile。
 
 - OAW 不安装 Superpowers、Matt Pocock skills 或 ECC。Provider 的许可、安装、配置和
   更新始终保持独立。
-- 选定的本地 checkout 是可执行代码，必须经过复核并可信。OAW 不获取或执行远程代码。
+- 选定的本地 checkout 或已解压 release binary 都是可执行代码，必须经过复核并可信。
+  Management 在运行时不会下载可执行文件。
 - 第一次 managed write 前会准备并验证全部目标路径。
 - 已有指令文件只加入一个带校验和的 OAW block；extension 的 owned file 单独管理。
   marker comment 是机械所有权边界，不是模型优先级控制。
@@ -148,8 +187,10 @@ target readiness 都只是诊断信息，不会选择 lifecycle profile。
 
 ## 更新与卸载
 
-更新只从当前 checkout 读取构件。v0.1 不包含 self-update、远程主分支获取、包管理器
-更新或 provider 更新。输入相同的重复安装或更新是幂等操作。
+更新使用运行中 binary 嵌入的 Policy、Version、registry 与 rendering behavior。修改源码
+checkout 后必须重新构建 `./oaw`；release archive 已包含预期 binary。v0.1 不包含
+self-update、远程主分支获取、包管理器更新或 provider 更新。输入相同的重复安装或更新
+是幂等操作。
 
 默认情况下，OAW managed content 的变化会被报告为 drift，并在任何写入前阻止整个
 操作。先检查诊断并运行 dry run。只有明确希望替换或删除 drift 时才使用 `--force`；
@@ -200,6 +241,8 @@ OAW 使用 [Apache License 2.0](LICENSE)。Workflow provider 和 agent 工具仍
 
 ## 项目状态
 
-此仓库是尚未发布、仅限本地的 v0.1 candidate。它不声称已有公开远程仓库、package、
-release、domain 或全局保留名称。machine-readable status 保留为 post-v0.1 扩展。
-v0.1 只输出 human-readable 状态。任何远程发布都需要所有者另行批准。
+此仓库是尚未发布、仅限本地的 v0.1 candidate。可以在本地构建跨平台归档，但在 Linux
+归档于真实 Microsoft WSL kernel 中通过 `scripts/smoke-wsl.sh` 前，仍不具备 release
+readiness。它不声称已有公开远程仓库、package、release、domain 或全局保留名称。
+machine-readable management status 保留为 post-v0.1 扩展；v0.1 management 只输出
+human-readable 状态。任何远程发布都需要所有者另行批准。

@@ -19,15 +19,28 @@ or embargo timeline.
 
 ## Installer Trust Boundary
 
-The installer trust boundary includes the current local checkout, command-line
-arguments, HOME, XDG_CONFIG_HOME, XDG_STATE_HOME, an optional project root,
-existing adapter files, and OAW state and backup data. Treat the selected local
-checkout as executable code. OAW does not fetch or execute remote code.
+The installer trust boundary includes the public Go binary, an optional source
+checkout used to build it, command-line arguments, HOME, XDG_CONFIG_HOME,
+XDG_STATE_HOME, an optional project root, existing adapter files, and OAW state
+and backup data. Treat a selected checkout and extracted binary as executable
+code. Release archives contain precompiled binaries and management performs no
+runtime executable download.
+
+`install.sh` is a minimal offline compatibility wrapper. It executes only the
+`oaw` or `oaw.exe` sibling beside it, never a `PATH` candidate, downloaded
+artifact, or runtime build. Verify the archive checksum and review the release
+source before execution.
 
 OAW validates registry-owned destinations, rejects symlink redirection, parses
 state without evaluation, prepares operations before apply, and backs up forced
 drift before mutation. These controls do not make an untrusted checkout safe
 and do not protect files outside the selected roots from unrelated software.
+
+Install State and Runtime State use separate namespaces and authority models;
+there is no automatic migration. Installing a Policy-only adapter grants no
+Runtime admission, Capability Grant, Resource Lease, transition enforcement,
+or physical isolation. Only the pinned Codex runner currently has a
+Runtime-managed integration.
 
 ## Handling Reports
 

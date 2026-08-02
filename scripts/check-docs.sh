@@ -17,6 +17,23 @@ fail() {
   exit 1
 }
 
+require_literal() {
+  document=$1
+  expected=$2
+
+  grep -F -- "$expected" "$REPOSITORY/$document" >/dev/null ||
+    fail "$document omits required release boundary: $expected"
+}
+
+reject_literal() {
+  document=$1
+  forbidden=$2
+
+  if grep -F -- "$forbidden" "$REPOSITORY/$document" >/dev/null; then
+    fail "$document contains stale release boundary: $forbidden"
+  fi
+}
+
 trap cleanup EXIT HUP INT TERM
 
 CHECK_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-docs.XXXXXX") ||
@@ -57,6 +74,58 @@ grep -F "experience-based" "$REPOSITORY/docs/en/comparison.md" >/dev/null ||
   fail "English comparison omits its experience-based caveat"
 grep -F "基于经验" "$REPOSITORY/docs/zh/comparison.md" >/dev/null ||
   fail "Chinese comparison omits its experience-based caveat"
+
+cat >"$CHECK_TEMP/release-boundaries" <<'EOF'
+README.md|Public installation management is Go-authoritative.
+README.md|`install.sh` is an offline sibling-binary compatibility wrapper.
+README.md|Release archives contain precompiled binaries and perform no runtime executable download.
+README.md|Install State and Runtime State are disjoint; no automatic migration occurs.
+README.md|Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.
+README.md|Only the pinned Codex runner is currently Runtime-managed.
+README.md|Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.
+README.md|An actual WSL smoke pass is required before publishing a release.
+README-zh.md|公开安装管理以 Go 为权威实现。
+README-zh.md|`install.sh` 是离线的同目录二进制兼容包装器。
+README-zh.md|发布归档包含预编译二进制，运行时不会下载可执行文件。
+README-zh.md|Install State 与 Runtime State 相互独立，不会自动迁移。
+README-zh.md|现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。
+README-zh.md|目前只有固定版本的 Codex runner 是 Runtime-managed。
+README-zh.md|其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。
+README-zh.md|发布前必须在真实 WSL 环境通过 smoke test。
+EOF
+while IFS='|' read -r boundary_document boundary_text; do
+  require_literal "$boundary_document" "$boundary_text"
+done <"$CHECK_TEMP/release-boundaries"
+
+cat >"$CHECK_TEMP/current-user-documents" <<'EOF'
+README.md
+README-zh.md
+CHANGELOG.md
+CONTRIBUTING.md
+CONTRIBUTING-zh.md
+SECURITY.md
+SECURITY-zh.md
+docs/en/installer.md
+docs/zh/installer.md
+docs/en/architecture.md
+docs/zh/architecture.md
+docs/en/troubleshooting.md
+docs/zh/troubleshooting.md
+docs/en/extending-adapters.md
+docs/zh/extending-adapters.md
+EOF
+cat >"$CHECK_TEMP/stale-release-boundaries" <<'EOF'
+Bash remains authoritative
+Bash 仍是权威
+public `oaw install` is not enabled
+public `oaw install` 尚未启用
+zero-dependency Bash installer
+EOF
+while IFS= read -r current_document; do
+  while IFS= read -r stale_boundary; do
+    reject_literal "$current_document" "$stale_boundary"
+  done <"$CHECK_TEMP/stale-release-boundaries"
+done <"$CHECK_TEMP/current-user-documents"
 
 find "$REPOSITORY" -type f -name '*.md' \
   ! -path "$REPOSITORY/.git/*" \

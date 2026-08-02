@@ -3,7 +3,26 @@
 [English](../en/installer.md) | [README 中文](../../README-zh.md) |
 [架构](architecture.md)
 
-请从提供预期 policy 与 renderer 的 checkout 中运行安装器。它有四个命令：
+公开安装管理以 Go 为权威实现。发布归档已经包含预编译 `oaw` 或 `oaw.exe`；验证
+checksum 后直接调用二进制：
+
+```text
+./oaw check
+./oaw install
+./oaw update
+./oaw uninstall
+```
+
+从源码 checkout 使用时，先构建嵌入预期 policy 与 version 的二进制：
+
+```text
+go build -o ./oaw ./cmd/oaw
+./oaw check
+```
+
+`install.sh` 是离线的同目录二进制兼容包装器。它只执行自身目录中的 `oaw` 或
+`oaw.exe`，不搜索 `PATH`、不构建二进制、不获取 release，也不下载可执行代码。
+兼容命令为：
 
 ```text
 ./install.sh check
@@ -12,14 +31,16 @@
 ./install.sh uninstall
 ```
 
-命令输出 human-readable 信息；machine-readable status 不属于 v0.1 契约。运行
-`./install.sh`、`./install.sh help`、`./install.sh -h` 或 `./install.sh --help` 会显示 help
-并以 0 退出。`./install.sh install --help` 这样的 command-scoped help 也会以 0 退出，
-且不执行 mutation。
+发布归档包含预编译二进制，运行时不会下载可执行文件。命令输出 human-readable 信息；
+machine-readable management status 不属于 v0.1 契约。任一入口不带参数运行，或使用
+`help`、`-h`、`--help`，都会显示 help 并以 0 退出。`./install.sh install --help` 这样的
+command-scoped help 也会以 0 退出且不执行 mutation。同目录二进制缺失或不可执行时，
+包装器以 70 退出。
 
 ## 语法与选项
 
 ```text
+./oaw <check|install|update|uninstall> [options]
 ./install.sh <check|install|update|uninstall> [options]
 
 --target <ids>       逗号分隔的 target ID
@@ -59,50 +80,33 @@ destination 与 ownership mode。
 
 ### `check`
 
-`check` 验证 checkout source、选定 scope、安装 state、policy 和 target ownership，
+`check` 验证 embedded management source、选定 scope、Install State、policy 和 target ownership，
 但不写入。它报告安装是否 absent、clean、drifted、invalid 或存在其他不安全状态。
 `check` 报告这些 human-readable status 后以 0 退出，包括 drift 或 invalid state。该 status
 不会授权 mutation；后续 mutation 仍会验证 ownership，问题未解决或不能安全 force 时以
 65 退出。
 
-#### Go shadow/parity 路径
+#### 公开 Go management 边界
 
-编译后的 Go CLI 也提供 `oaw check`。它是只读 Bash 命令的非权威
-**shadow/parity** 实现：报告相同的 scope、规范化 target、内置 Provider 兼容诊断、
-target readiness、Install State health、输出流与退出状态。
-
-Bash 仍是权威的安装管理入口。Parity gate 会让 `./install.sh check` 与 `oaw check`
-读取 same isolated fixture，逐字节比较 stdout、stderr 与退出状态，并验证两条命令都未
-改变 fixture。drift、scope、target、Provider、状态、输出流或文件系统只要存在差异，
-该 gate 就会失败。
-
-通过 check parity 不会切换管理权威。用户与自动化仍使用 `install.sh` 执行 mutation。
-Go 不提供权威的 `install`、`update` 或 `uninstall`。未来若要 cutover，必须另行作出明确
-迁移决策，并提供 command-level parity 证据。
+`oaw check` 与三个 mutation command 使用同一个公开 production binary。兼容包装器通过
+`exec` 到达这一实现；release 中不存在第二套 Bash management 实现。Cutover 前的 Bash
+行为只作为仓库中的独立测试 oracle 保留。
 
 ### `install`
 
-`install` 从当前 checkout 渲染 policy adapter，准备完整操作，并在应用 target 后创建该
-scope 的 state record。Owned-file destination 中已有的 foreign content 或冲突的 managed
-ownership 即使使用 `--force` 也会被拒绝。
+`install` 从运行中 binary 的 embedded source 渲染 policy adapter，准备完整操作，并在
+应用 target 后创建该 scope 的 state record。Owned-file destination 中已有的 foreign
+content 或冲突的 managed ownership 即使使用 `--force` 也会被拒绝。
 
-#### Go install shadow/parity 边界
-
-内部 Go install driver 仅用于 parity 验证。Parity harness 会构建这个 test-only command，
-让 Bash 与 Go 在同一个物理 sandbox 路径上重放，并比较 status、stdout、stderr、file type、
-mode、symlink target、精确 bytes、Install State 与 backup-tree effect。
-
-`install.sh` 仍是权威入口。public `oaw install` 尚未启用，内部 driver 不是 release
-entrypoint，通过 parity 也不会授权 management cutover。
-
-普通 `install` 不创建 operation backup，即使提供 `--force` 也是如此。扩展或协调有效
-Install State 时会保留已有且有效的 `backup` 引用；被拒绝的 install 不会改变 state 或
-backup tree。Ticket 13 负责 Go `update`、`uninstall` 与 forced-backup parity。
+普通 `install` 不创建 operation backup，即使提供 `--force` 也是如此。
+扩展或协调有效 Install State 时会保留已有且有效的 `backup` 引用；被拒绝的 install 不会改变 state 或 backup tree。
 
 ### `update`
 
-`update` 要求现有且有效的安装记录。更新只从 **current checkout** 读取 policy、version、
-registry metadata 与 renderer code；不会执行网络获取或隐藏的 release selection。
+`update` 要求现有且有效的安装记录。二进制嵌入从 **current checkout** 构建的 policy、
+version、registry metadata 与 renderer behavior；修改源码 checkout 后必须重新构建
+`./oaw`，而 release archive 已经包含 release Policy 与 Version。不会执行网络获取或隐藏
+的 release selection。
 `--target` 只限制刷新哪些已安装 target；`update` 不添加或删除 target。选择尚未安装的
 target 会以 65 退出。请用 `install` 添加、用 `uninstall` 删除。
 
@@ -118,20 +122,11 @@ managed-block destination 不含 untracked OAW marker，然后作为成功 no-op
 正常 mutation 不会开始。`--force` 也不会静默抹掉历史：apply 前，每个受影响构件都会进入
 经过验证的 backup。
 
-#### Go update/uninstall shadow/parity 边界
-
-内部 Go update/uninstall shadow driver 仅用于 parity 测试，不是 release entrypoint。
-普通 update/uninstall 行为与 Bash 匹配：在同一物理 fixture 上比较 status、stdout、stderr、
-tree、mode、symlink、精确文件 bytes、Install State 与 backup effect。
-
-`install.sh` 仍是权威入口。public `oaw update` 与 `oaw uninstall` 尚未启用。
-parity 通过不会授予 management authority。只有 Ticket 14 负责 management cutover。
-
-对于 forced operation，Go shadow 会在第一次 forced mutation 之前完成经过验证的 operation backup。
-在确定性的 fault-injection matrix 中，注入的 Go failure 会恢复每个预先存在的 destination，
-但只处理本次操作实际改变的对象，并按 effect 逆序执行，同时保持已完成 backup 有效。
-这只是 Go shadow 的 acceptance guard：Bash 不承诺整个操作 rollback；它的公开契约仍是每个
-destination 的 atomic replacement。
+对于 `update` 与 `uninstall`，Go mutation journal 会在每个 effect 应用后记录 inverse。
+apply failure 会尝试按逆序恢复已改变 destination 和已删除的 owned directory。Rollback
+failure 以状态 74 报告，并要求 manual recovery。Forced operation 还会在第一次 mutation
+之前完成 verified operation backup，因此即使 automatic rollback 无法完成，backup 仍是
+可审计的恢复来源。
 
 ## Dry Run
 
@@ -147,10 +142,15 @@ User 与 project installation 绝不共用 state file。不同物理 project roo
 state file。已安装 policy 位于 XDG config root，state 与 operation backup 位于 XDG state
 root；精确路径与 record schema 见[架构指南](architecture.md)。
 
+Install State 与 Runtime State 相互独立，不会自动迁移。Management command 不会创建
+Engineering Run，也不会导入现有 Policy-only task 或 profile lock。Runtime 接管必须在
+Stable Boundary 显式执行，不是 `install`、`update` 或 `uninstall` 的副作用。
+
 普通 `install` 不创建 operation backup。Clean `update` 与 `uninstall` 不一定创建 backup；
 forced `update` 或 `uninstall` 会在任何 prepared destination 改变前创建经过验证的
-operation-scoped backup。安装器提供 atomic replacement per destination，但不承诺整个
-操作 rollback。
+operation-scoped backup。每个 destination 使用 atomic replacement；后续 apply failure
+会触发 Go mutation journal 的 best-effort whole-operation rollback。Rollback failure 会
+明确报告，并保留 verified backup 供 manual recovery。
 
 ## 退出码
 
@@ -182,7 +182,7 @@ class，不是 machine-readable state schema。
 # 安装两个 user target；输出会按 registry order 规范化。
 ./install.sh install --target=opencode,claude
 
-# 从当前 checkout 更新现有 project installation。
+# 从运行中的 binary 更新现有 project installation。
 ./install.sh update --project=/path/to/repository
 
 # 强制删除前把 drifted artifact 保存到 backup。

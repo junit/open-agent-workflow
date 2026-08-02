@@ -8,11 +8,12 @@ adapter 输出，以及确实由它创建的目录。
 
 ## 组件与边界
 
-仓库包含五个协作层次：
+仓库包含六个协作层次：
 
 1. 当前 checkout 提供 `VERSION`、`policy/ENGINEERING.md`、target registry 和 pure
    renderer 函数。
-2. CLI 解析命令并选择 user 或 project scope。
+2. 公开 Go CLI 解析 management command 并选择 user 或 project scope；`install.sh` 只执行
+   预编译的同目录二进制。
 3. 路径与 state 代码推导 canonical destination，并把现有安装记录作为 inert data 验证。
 4. Transaction 代码准备每项变更、创建所有必需 backup，再应用已准备文件。
 5. Adapter target 通过各工具自己的指令机制让已安装 policy 可见。
@@ -32,6 +33,7 @@ OAW 遵循 XDG base-directory 约定，并明确保留默认值：
 | User 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
 | Project 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state` |
 | 操作 backup | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups` |
+| Runtime State | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime` |
 
 `<crc>-<bytes>` 是物理 project root 路径字节的 `cksum` 结果。这样每个已解析 project
 root 都有隔离的 state record，同时不会把安装器元数据放进仓库。State 路径只是元数据
@@ -42,12 +44,14 @@ root 都有隔离的 state record，同时不会把安装器元数据放进仓�
 变更 pipeline 是：
 
 ```text
-checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> state/targets
+embedded checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> Install State/targets
 ```
 
-这些箭头表达数据与控制流，不承诺整个操作具有全局原子性。Renderer 接收已验证的值，
-只把 prospective content 写入调用方提供的临时路径。作为 **pure renderer**，它不会检查
-或变更最终 destination。
+Go binary 嵌入用于构建它的 checkout 中的 Policy、Version、registry 与 renderer behavior。
+Release archive 已包含该二进制；源码 checkout 必须先构建 `./oaw`。这些箭头表达数据与
+控制流，不表示所有 destination 同时具备全局原子性。Renderer 接收已验证的值，只把
+prospective content 写入调用方提供的临时路径。作为 **pure renderer**，它不会检查或变更
+最终 destination。
 
 ## Runtime Plane
 
@@ -55,9 +59,15 @@ Runtime Plane 是可选层，不会替代 Policy Plane。Canonical `oaw.runtime/
 通过 `oaw runtime exchange` 提供；`oaw run --host codex` 使用同一个
 `runtime.Engine.Exchange` seam，并在有界 Codex process 外围驱动有序的
 `GRANT_ISSUED`、`DISPATCH_PREPARED`、`DISPATCH_AUTHORIZED` 与
-`CAPABILITY_OBSERVED` handshake。只有 pin 的 `runner-managed` integration
-`oaw/codex-runner` 可以通过 Runtime admission。其他内置 adapter 仍是 Policy-only，
-不会被 discovery 或 project configuration 晋级。
+`CAPABILITY_OBSERVED` handshake。目前只有固定版本的 Codex runner 是 Runtime-managed。
+只有 pin 的 `runner-managed` integration `oaw/codex-runner` 可以通过 Runtime admission。
+其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、
+Resource Lease、transition enforcement 或 physical isolation 保证。Discovery、
+installation 与 project configuration 都不会将其晋级。
+
+Install State 与 Runtime State 相互独立，不会自动迁移。现有 Policy-only task 和 profile
+lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。Management 只读写 TSV
+installation namespace；Runtime 只读写 revisioned Run namespace。
 
 Host output 不可信。Codex driver 限制 process output，把 diagnostics 保持在 stderr，
 把 JSONL 归一化为封闭的 outcome，并且只向 Runtime state 返回 digest-pinned evidence
@@ -74,10 +84,11 @@ Codex 与 OpenCode 共用一个 project `AGENTS.md` managed block，不会竞争
 reference 可以写入 state。
 
 在 **apply phase**，路径会在使用前再次验证。每个文件先在 destination 旁写为临时文件，
-再通过移动替换，因此提供 **atomic replacement per destination**。OAW 不承诺全局
-transaction、整个操作自动 rollback，或跨多个 destination 的原子替换。后续 apply 失败
-时，较早的 destination 可能已经改变；对 forced operation 而言，已验证 backup 才是恢复
-边界。
+再通过移动替换，因此提供 **atomic replacement per destination**。每个 effect 完成后，
+Go manager 都会在 mutation journal 中记录 inverse。发生已报告的 apply failure 时，会尝试
+逆序 rollback；rollback failure 会显式返回错误。OAW 不承诺跨 destination 的同步原子替换，
+也不承诺从 process 或 machine crash 自动恢复。对于 forced operation，已验证 backup 仍是
+可审计的恢复边界。
 
 ## 所有权模式
 
@@ -98,8 +109,10 @@ Drift 表示已记录的 OAW ownership 不再匹配当前文件。没有 `--forc
 
 ## State Schema
 
-State file 由 tab-separated record 构成。它们始终按 inert text 解析，绝不会被 shell
-source 或 evaluate。
+下表只描述 Install State。它由 tab-separated inert text 构成，绝不会被 shell source 或
+evaluate。Runtime State 在独立 namespace 中使用 immutable Run revision、`HEAD`、Grant、
+Resource Lease 与 evidence reference；它绝不会把 TSV Install State 解析成 Runtime
+authority。
 
 | Record | 数量 | 含义 |
 | --- | --- | --- |

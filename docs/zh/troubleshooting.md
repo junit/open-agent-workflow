@@ -3,20 +3,26 @@
 [English](../en/troubleshooting.md) | [安装器参考](installer.md) |
 [安全模型](security.md)
 
-整个诊断过程要使用同一个 checkout、scope 与 target selection。OAW 不获取 release，也不
-修复 workflow provider；v0.1 输出是 human-readable。求助时保留完整命令与 stderr。
+整个诊断过程要使用同一个 binary、scope 与 target selection。Release archive 已包含
+`oaw`；源码 checkout 必须先运行 `go build -o ./oaw ./cmd/oaw`。OAW 不获取 release，也不
+修复 workflow provider；v0.1 management 输出是 human-readable。求助时保留完整命令与
+stderr。
 
 ## 安全诊断顺序
 
 从只读命令开始：
 
 ```bash
+./oaw check
+# 兼容包装器：
 ./install.sh check
 ```
 
 Project scope 要重复准备 mutation 的精确 scope：
 
 ```bash
+./oaw check --project /absolute/path --target claude
+# 兼容包装器：
 ./install.sh check --project /absolute/path --target claude
 ```
 
@@ -26,6 +32,9 @@ Project scope 要重复准备 mutation 的精确 scope：
 然后预览现有 installation update：
 
 ```bash
+./oaw update --dry-run
+./oaw update --project /absolute/path --target claude --dry-run
+# 兼容包装器：
 ./install.sh update --dry-run
 ./install.sh update --project /absolute/path --target claude --dry-run
 ```
@@ -38,6 +47,8 @@ preparation，但不写 managed content、state、backup 或目录。没有 inst
 符合条件且有记录的 drift 使用一个显式 scoped command：
 
 ```bash
+./oaw update --project /absolute/path --target claude --force
+# 兼容包装器：
 ./install.sh update --project /absolute/path --target claude --force
 ```
 
@@ -57,6 +68,14 @@ preparation，但不写 managed content、state、backup 或目录。没有 inst
 
 **missing provider** 不一定阻止 adapter file 安装，但选定 workflow capability 仍不可用。
 Provider detection 不能选择 lifecycle profile，也不能替换另一个 family。
+
+## Management State 不是 Runtime State
+
+Install State 与 Runtime State 相互独立，不会自动迁移。Adapter 安装成功并报告 `clean`，
+仍可能正确地保持 Policy-only。现有 task 与 profile lock 不会被导入，management command
+也不会创建 Engineering Run。目前只有固定版本的 Codex runner 是 Runtime-managed；其他
+已安装 adapter 都不提供 Runtime admission、Grant、lease、transition enforcement 或
+physical isolation 保证。符合条件的 Policy-only task 只能在 Stable Boundary 显式接管。
 
 ## 文件 Clean 但 Agent 行为陈旧
 
@@ -104,19 +123,23 @@ artifact<TAB>original-absolute-path<TAB>backup-path<TAB>checksum
 从列出的 backup path 向 original path **restore backups manually**。保留 mode，之后重新运行
 `check`。
 
-系统承诺 **no operation-wide rollback**。Replacement 只对单个 destination 原子化，因此
-后续 apply 失败时较早的 destination 可能已经更新。用 manifest 与命令输出识别要手工恢复
-的 artifact；不要把整个 backup directory 覆盖到 `HOME`、XDG root 或 project。
+Go manager 会在已报告的 apply operation 失败时尝试逆序 rollback。Replacement 仍只对
+单个 destination 原子化，并非跨所有 destination 同时原子；process 或 machine crash 也不在
+该 automatic rollback path 内。stderr 以状态 74 报告 `rollback failed` 时，用 manifest 与
+命令输出识别需要 manual restore 的 artifact；不要把整个 backup directory 覆盖到 `HOME`、
+XDG root 或 project。
 
 ## Update 问题
 
 - `no installation state; run install first`：update exits 66。先运行 scoped install dry-run，
   再 install target。
 - `selected target is not installed`：update 不能新增 target，请使用 install。
-- `installed content differs from this checkout`：install 发现不同 source version 或 policy。
-  从准备信任的 checkout 运行 update。
-- `VERSION` 或 policy 触发 exit 70：当前 checkout 不完整、不可读或无效。OAW 只从该
-  checkout 更新，绝不获取替代项。
+- `installed content differs from this checkout`：运行中的 binary 嵌入了不同 source
+  version 或 policy。源码使用场景应从准备信任的 checkout 重新构建 `./oaw`；release 用户
+  应使用已验证 archive 中的 binary。
+- `VERSION`、policy 或 `precompiled sibling binary is missing or not executable` 触发
+  exit 70：重新构建源码 binary，或从已验证 release archive 恢复 binary。包装器绝不搜索
+  `PATH`、构建或获取替代项。
 - Path、containment、control-character 或 symlink diagnostic：修正 root 或 filesystem
   layout；`--force` 不能覆盖。
 

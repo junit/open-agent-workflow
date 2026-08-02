@@ -5,7 +5,9 @@ Open Agent Workflow（OAW）接受按 issue 划分的纵向改动，每个改动
 
 ## 开发契约
 
-- 保持 Bash 3.2 兼容，不增加 Node.js、Python、jq 或包管理器运行时依赖。
+- 把公开 Go `oaw` 二进制作为 `check`、`install`、`update` 与 `uninstall` 的权威实现。
+- 保持最小 `install.sh` 包装器兼容 Bash 3.2。它只能执行预编译的同目录二进制，不得搜索
+  `PATH`、构建、下载或增加包管理器运行时。
 - 不 vendor、安装、更新或修改任何 workflow provider。
 - 通过真实 CLI 的 black-box seam 验证行为；测试必须使用隔离的 HOME、
   XDG_CONFIG_HOME、XDG_STATE_HOME 和项目根目录。
@@ -15,6 +17,8 @@ Open Agent Workflow（OAW）接受按 issue 划分的纵向改动，每个改动
   文档语义一致。
 - remote publication、push、release、凭据以及第三方资源修改必须由所有者另行
   批准，安装器代码不得执行这些操作。
+- 保持 Install State 与 Runtime State 相互独立。Management 变更不得导入现有
+  Policy-only task 或 profile lock，安装 adapter 也不代表获得 Runtime admission。
 
 ## Adapter Evidence
 
@@ -33,10 +37,19 @@ Open Agent Workflow（OAW）接受按 issue 划分的纵向改动，每个改动
 
 运行：
 
-    bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
-    shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
+    go test ./... -count=1
+    go test -race ./... -count=1
+    go vet ./...
+    bash -n install.sh tests/*.sh scripts/*.sh
+    shellcheck -S warning -x install.sh tests/*.sh scripts/*.sh
     bash tests/run.sh
+    bash scripts/check-docs.sh
+
+Release candidate 必须通过 `scripts/build-release.sh` 构建六个离线归档，并验证 checksum
+与精确内容。发布前必须在真实 WSL 环境通过 smoke test；`scripts/smoke-wsl.sh` 返回 77
+表示 skip，绝不能记作 pass。
 
 检查 diff 中是否存在秘密、无关生成文件、不安全路径展开或缺失的
 English/Chinese 对等内容。使用 conventional commit，并说明测试证据。不要在本地
-贡献流程中执行 remote publication。
+贡献流程中执行 remote publication。发布归档包含预编译二进制，运行时不会下载可执行
+文件。

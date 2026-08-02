@@ -16,14 +16,23 @@
 
 ## Installer Trust Boundary
 
-installer trust boundary 包括当前本地 checkout、命令行参数、HOME、
-XDG_CONFIG_HOME、XDG_STATE_HOME、可选项目根目录、已有适配器文件，以及 OAW
-状态和备份数据。选定的本地 checkout 应被视为可执行代码。OAW 不获取或执行远程
-代码。
+installer trust boundary 包括公开 Go binary、用于构建它的可选源码 checkout、命令行
+参数、HOME、XDG_CONFIG_HOME、XDG_STATE_HOME、可选项目根目录、已有适配器文件，
+以及 OAW 状态和备份数据。选定的 checkout 与解压后的 binary 都应被视为可执行代码。
+发布归档包含预编译二进制，management 在运行时不会下载可执行文件。
+
+`install.sh` 是最小离线兼容包装器。它只执行旁边的 `oaw` 或 `oaw.exe`，绝不使用
+`PATH` candidate、下载 artifact 或 runtime build。执行前应验证 archive checksum 并复核
+release source。
 
 OAW 校验注册表拥有的目标、拒绝 symlink 重定向、以不求值方式解析状态、在 apply
 前完成准备，并在强制处理 drift 前备份。这些控制不能让不可信 checkout 变得安全，
 也不负责保护所选根目录之外的文件免受其他软件影响。
+
+Install State 与 Runtime State 使用独立 namespace 和 authority model，不会自动迁移。
+安装 Policy-only adapter 不会授予 Runtime admission、Capability Grant、Resource Lease、
+transition enforcement 或 physical isolation。目前只有固定版本的 Codex runner 具备
+Runtime-managed integration。
 
 ## 报告处理
 

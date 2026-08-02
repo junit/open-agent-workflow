@@ -7,9 +7,9 @@ lifecycle owner or one conflict-free stage map, then installs the same
 governance policy into the instruction surfaces used by supported coding
 agents.
 
-OAW is a provider-neutral policy, adapter layer, and zero-dependency Bash
-installer. It does not redistribute workflow families or replace the native
-configuration of an agent tool.
+OAW is a provider-neutral policy, adapter layer, and Go runtime. It does not
+redistribute workflow families or replace the native configuration of an agent
+tool.
 
 ## Why OAW
 
@@ -37,10 +37,10 @@ canonical policy and renders thin target-native entrypoints around it.
 
 ## Capabilities
 
-- Classifies a top-level engineering task as ordinary or complex before a
-  family-specific lifecycle starts.
-- Presents all five lifecycle profiles and waits for the user's explicit
-  choice.
+- Classifies a top-level engineering request as `DIRECT`, `BOUNDED`, or
+  `WORKFLOW` before a family-specific lifecycle starts.
+- Presents every eligible built-in and user-defined lifecycle Profile for
+  Workflow Mode and waits for the user's explicit choice.
 - Locks the selected bundle across follow-ups, context compaction, tickets, and
   delegated agents.
 - Supports full-family profiles, a predefined Matt-Superpowers hybrid, bounded
@@ -54,8 +54,20 @@ canonical policy and renders thin target-native entrypoints around it.
 
 ## Quick Start
 
-Run from a reviewed local checkout with Bash 3.2 or newer. No Node.js, Python,
-`jq`, package manager, account, token, or network fetch is required.
+Release archives contain the correct precompiled `oaw` or `oaw.exe` binary.
+After verifying `SHA256SUMS`, extract the archive for your platform and invoke
+the binary directly:
+
+```bash
+./oaw check
+./oaw install
+./oaw install --project /path/to/repository
+./oaw update --dry-run
+./oaw uninstall
+```
+
+The bundled `install.sh` is a Bash 3.2-compatible wrapper for scripts that use
+the earlier entrypoint. These compatibility forms execute the sibling binary:
 
 ```bash
 ./install.sh check
@@ -65,11 +77,37 @@ Run from a reviewed local checkout with Bash 3.2 or newer. No Node.js, Python,
 ./install.sh uninstall
 ```
 
+From a source checkout, build the binary before using either entrypoint:
+
+```bash
+go build -o ./oaw ./cmd/oaw
+./oaw check
+```
+
 `check` reports provider detection, target readiness, and installation health
 without mutation. A plain `install` uses user scope and the four core targets.
 `--project` selects one existing repository and defaults to all nine targets.
 Use `--target claude,codex` (or another comma-separated set of IDs) to narrow a
-command. Run `./install.sh --help` for the complete local CLI surface.
+command. Run `./oaw --help` or `./install.sh --help` for the management CLI
+surface.
+
+### Cutover and Runtime Boundaries
+
+Public installation management is Go-authoritative.
+
+`install.sh` is an offline sibling-binary compatibility wrapper.
+
+Release archives contain precompiled binaries and perform no runtime executable download.
+
+Install State and Runtime State are disjoint; no automatic migration occurs.
+
+Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.
+
+Only the pinned Codex runner is currently Runtime-managed.
+
+Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.
+
+An actual WSL smoke pass is required before publishing a release.
 
 ## Task Gate
 
@@ -153,8 +191,9 @@ diagnostics; neither chooses a lifecycle profile.
 
 - OAW does not install Superpowers, Matt Pocock skills, or ECC. Providers stay
   independently licensed, installed, configured, and updated.
-- The selected local checkout is executable code and must be reviewed and
-  trusted. OAW does not fetch or execute remote code.
+- A selected local checkout or extracted release binary is executable code and
+  must be reviewed and trusted. Management never downloads an executable at
+  runtime.
 - All destinations are prepared and validated before the first managed write.
 - Existing instruction files receive one checksummed OAW block; owned extension
   files are kept separate. Marker comments are ownership boundaries, not model
@@ -172,9 +211,11 @@ reporting contract and installer trust boundary.
 
 ## Update and Uninstall
 
-Updates read artifacts only from the current checkout. There is no v0.1
-self-update, remote main-branch fetch, package-manager update, or provider
-update. A clean repeated install or update is idempotent.
+Updates use the Policy, Version, registry, and rendering behavior embedded in
+the running binary. Rebuild `./oaw` after changing a source checkout; a release
+archive already contains the intended binary. There is no v0.1 self-update,
+remote main-branch fetch, package-manager update, or provider update. A clean
+repeated install or update is idempotent.
 
 By default, changed OAW-managed content is reported as drift and blocks the
 entire operation before a write. Inspect the diagnostic and use a dry run. Use
@@ -231,8 +272,10 @@ agent tools remain governed by their own licenses.
 
 ## Project Status
 
-This repository is an unreleased, local-only v0.1 candidate. It does not claim
-a published remote repository, package, release, domain, or globally reserved
-name. Machine-readable status is reserved for a post-v0.1 extension.
-v0.1 output is human-readable only. Remote publication requires separate owner
-approval.
+This repository is an unreleased, local-only v0.1 candidate. Cross-platform
+archives can be built locally, but release readiness remains blocked until the
+Linux archive passes `scripts/smoke-wsl.sh` inside an actual Microsoft WSL
+kernel. The project does not claim a published remote repository, package,
+release, domain, or globally reserved name. Machine-readable management status
+is reserved for a post-v0.1 extension; v0.1 management output is human-readable
+only. Remote publication requires separate owner approval.

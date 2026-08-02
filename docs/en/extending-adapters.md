@@ -9,6 +9,19 @@ new workflow design. An adapter **must not change lifecycle semantics** and
 **must not vendor a provider**. The target tool and every workflow provider
 remain independently installed.
 
+## Runtime Integration Is Separate
+
+An installation adapter exposes the Policy Plane only. Other installed
+adapters remain Policy-only and provide no Runtime admission, Capability Grant,
+Resource Lease, transition enforcement, or physical isolation guarantee.
+Only the pinned Codex runner is currently Runtime-managed. Discovery evidence,
+Provider configuration, target registration, and successful installation never
+promote an adapter.
+
+Runtime-managed support requires a separate pinned Host Binding, conformance
+audit, normalized observation contract, isolation evidence, and explicit
+release decision. That work is not part of the adapter graduation levels below.
+
 ## Start With an Evidence Packet
 
 Before changing the registry, record:
@@ -28,24 +41,24 @@ the adapter a candidate rather than guessing a destination.
 
 ## Registry Metadata
 
-The registry in [lib/targets.sh](../../lib/targets.sh) is executable metadata.
-A registered adapter must define all applicable entries coherently:
+The authoritative management registry is the `targetRegistry` value in
+[internal/management/targets.go](../../internal/management/targets.go). A
+registered adapter must define all applicable fields coherently:
 
-| Function | Contract |
+| Field or helper | Contract |
 | --- | --- |
-| `target_ids` | Adds the unique target ID at one stable registry position. |
-| `target_is_known` and `target_registry_position` | Recognize the same ID and preserve deterministic normalization. |
-| `target_supports_user` / `target_supports_project` | Declare scope support without silently skipping an unsupported scope. |
-| `target_ownership` | Select exactly one ownership mode: `managed-block` or `owned-file`. |
-| `target_project_relative_path` | Return one safe relative project destination when project scope is supported. |
-| `default_targets` | Include the target only after its approved support level makes it a default. |
+| `ID` and registry position | Add one unique target ID and preserve deterministic normalization. |
+| `User` | Declare user scope support without silently skipping an unsupported scope. |
+| `UserSuffix` / `ProjectSuffix` | Return safe relative destinations for each supported scope. |
+| `Ownership` | Select exactly one ownership mode: `managed-block` or `owned-file`. |
+| `normalizeTargets` / `findTarget` | Resolve defaults and explicit selections from the same registry. |
 
-A user-scope adapter also needs a user allowed root and relative suffix in
-[lib/paths.sh](../../lib/paths.sh). Paths must be derived beneath a validated
-root; do not concatenate unchecked CLI input into a destination. The target ID,
-scope declarations, path mappings, ownership, renderer dispatch, and tests must
-all agree. Partial registry entries are internal contract failures, not a
-fallback opportunity.
+A user-scope adapter also needs an allowed root mapping in
+[internal/management/paths.go](../../internal/management/paths.go). Paths must
+be derived beneath a validated root; do not concatenate unchecked CLI input
+into a destination. The target ID, scope declarations, path mappings,
+ownership, renderer dispatch, and tests must all agree. Partial registry entries
+are internal contract failures, not a fallback opportunity.
 
 ## Choose Ownership Deliberately
 
@@ -64,11 +77,12 @@ whether it is user-wide or project-local.
 
 ## Keep Rendering Pure
 
-Add a **pure renderer** to [lib/render.sh](../../lib/render.sh) and route the
-new scope/target combination through `render_target_content`. It may use only
-validated inputs and must write prospective bytes to standard output or a
-caller-provided temporary file. It must not read, create, chmod, rename, or
-delete the final destination; transaction code owns those effects.
+Add a **pure renderer** to
+[internal/management/render.go](../../internal/management/render.go) and route
+the new scope/target combination through `renderTarget`. It may use only
+validated inputs and must return prospective bytes. It must not read, create,
+chmod, rename, or delete the final destination; transaction code owns those
+effects.
 
 Assert exact output bytes, including frontmatter, import syntax, quoting, final
 newline, and the absolute canonical policy path. Use a documented import only
@@ -90,8 +104,10 @@ silently overwrite another.
 
 ## Black-Box Fixtures
 
-Test through `install.sh`, not by calling renderer or state helpers directly.
-Every fixture uses an isolated `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and
+Test through the public `oaw` CLI, not by calling renderer or state helpers
+directly. Separately prove that `install.sh` forwards the same arguments and
+status to its sibling binary without `PATH`, build, or download fallback. Every
+fixture uses an **isolated `HOME`**, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, and
 project root. Cover the supported combinations through these observable flows:
 
 - `check`, first install, repeated install, copied-checkout update, dry-run,
@@ -126,8 +142,9 @@ containment, symlink, or ambiguous-ownership checks.
 Update both language versions of the adapter matrix with exact paths, support
 levels, ownership, official URLs, retrieval dates, loading behavior,
 precedence, and reload caveats. Run the documentation checker offline and the
-complete shell suite under Bash 3.2. Review the final diff for unrelated files,
-hardcoded credentials, unsafe expansion, and English/Chinese semantic drift.
+complete Go and black-box suites; keep the wrapper check compatible with Bash
+3.2. Review the final diff for unrelated files, hardcoded credentials, unsafe
+expansion, and English/Chinese semantic drift.
 
 ## Graduation Levels
 

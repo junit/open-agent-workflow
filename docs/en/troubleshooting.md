@@ -3,21 +3,27 @@
 [简体中文](../zh/troubleshooting.md) | [Installer reference](installer.md) |
 [Security model](security.md)
 
-Use the same checkout, scope, and target selection throughout diagnosis. OAW
-does not fetch releases or repair workflow providers, and v0.1 output is
-human-readable. Preserve the complete command and stderr when asking for help.
+Use the same binary, scope, and target selection throughout diagnosis. A
+release archive already contains `oaw`; a source checkout must first run
+`go build -o ./oaw ./cmd/oaw`. OAW does not fetch releases or repair workflow
+providers, and v0.1 management output is human-readable. Preserve the complete
+command and stderr when asking for help.
 
 ## Safe Diagnostic Sequence
 
 Start read-only:
 
 ```bash
+./oaw check
+# Compatibility wrapper:
 ./install.sh check
 ```
 
 For project scope, repeat the exact scope you intend to mutate:
 
 ```bash
+./oaw check --project /absolute/path --target claude
+# Compatibility wrapper:
 ./install.sh check --project /absolute/path --target claude
 ```
 
@@ -28,6 +34,9 @@ completed, not that a later mutation is authorized.
 Next preview an existing installation update:
 
 ```bash
+./oaw update --dry-run
+./oaw update --project /absolute/path --target claude --dry-run
+# Compatibility wrapper:
 ./install.sh update --dry-run
 ./install.sh update --project /absolute/path --target claude --dry-run
 ```
@@ -42,6 +51,8 @@ which bytes OAW owns, and reviewed the preview. For eligible recorded drift,
 use one explicitly scoped command:
 
 ```bash
+./oaw update --project /absolute/path --target claude --force
+# Compatibility wrapper:
 ./install.sh update --project /absolute/path --target claude --force
 ```
 
@@ -63,6 +74,16 @@ force is justified only when the recorded ownership and backup are acceptable.
 A **missing provider** does not necessarily stop adapter file installation, but
 the selected workflow capability will remain unavailable. Provider detection
 cannot choose a lifecycle profile or substitute another family.
+
+## Management State Is Not Runtime State
+
+Install State and Runtime State are disjoint; no automatic migration occurs.
+An installed adapter may correctly report `clean` while remaining Policy-only.
+Existing tasks and profile locks are not imported, and management commands do
+not create Engineering Runs. Only the pinned Codex runner is currently
+Runtime-managed; every other installed adapter has no Runtime admission, Grant,
+lease, transition-enforcement, or physical-isolation guarantee. Adoption of an
+eligible Policy-only task must be explicit at a Stable Boundary.
 
 ## Clean Files but Stale Agent Behavior
 
@@ -118,21 +139,26 @@ execute `manifest.tsv`. Stop the affected agent/tool before restoration, then
 backup path to the listed original path. Preserve modes and re-run `check`
 afterward.
 
-There is **no operation-wide rollback**. Replacement is atomic per destination,
-so a late apply failure can leave an earlier destination updated. Use the
-manifest and command output to identify which artifacts require manual restore;
-do not copy the entire backup directory over `HOME`, an XDG root, or a project.
+The Go manager attempts reverse-order rollback when a reported apply operation
+fails. Replacement remains atomic per destination, not simultaneously across
+all destinations, and process or machine crashes are outside that automatic
+rollback path. If stderr reports `rollback failed` with status 74, use the
+manifest and command output to identify which artifacts require manual restore.
+Do not copy the entire backup directory over `HOME`, an XDG root, or a project.
 
 ## Update Problems
 
 - `no installation state; run install first`: update exits 66. Run a scoped
   install dry-run and then install the target.
 - `selected target is not installed`: update cannot add targets. Use install.
-- `installed content differs from this checkout`: install found a different
-  source version or policy. Run update from the checkout you intend to trust.
-- Exit 70 for `VERSION` or policy: the current checkout is incomplete,
-  unreadable, or invalid. OAW updates only from that checkout and never fetches
-  a replacement.
+- `installed content differs from this checkout`: the running binary embeds a
+  different source version or policy. For source use, rebuild `./oaw` from the
+  checkout you intend to trust; release users should use the verified archive
+  binary.
+- Exit 70 for `VERSION`, policy, or `precompiled sibling binary is missing or not executable`:
+  rebuild the source binary or restore the binary from the
+  verified release archive. The wrapper never searches `PATH`, builds, or
+  fetches a replacement.
 - A path, containment, control-character, or symlink diagnostic: correct the
   root or filesystem layout. `--force` is not an override.
 
