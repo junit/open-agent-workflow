@@ -79,7 +79,7 @@ func prepareUninstallPlan(
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	policyAction, err := prepareUninstallPolicyAction(preparation, force, remaining)
+	policyAction, err := prepareUninstallPolicyAction(preparation, remaining)
 	if err != nil {
 		return mutationPlan{}, err
 	}
@@ -197,14 +197,12 @@ func prepareUninstallStateActions(
 
 func prepareUninstallPolicyAction(
 	preparation mutationPreparation,
-	force forcePreparation,
 	remaining []targetRecord,
 ) (mutationAction, error) {
 	effect := mutationRetain
 	if len(remaining) == 0 {
-		references, err := collectPolicyStateReferencesWithBaseline(
-			preparation.coordinates, preparation.coordinates.stateFile,
-			preparation.policy, force.policyBaseline,
+		references, err := collectPolicyStateReferencesForRetention(
+			preparation.coordinates, preparation.coordinates.stateFile, preparation.policy,
 		)
 		if err != nil {
 			return mutationAction{}, err

@@ -145,6 +145,33 @@ func TestPrepareUninstallRetainsCrossScopePolicy(t *testing.T) {
 	}
 }
 
+func TestPrepareUninstallRetainsPolicyForOlderValidCrossScopeReference(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	user := materializeInstallRequest(t, fixture, InstallRequest{Targets: "codex"})
+	project := filepath.Join(fixture.root, "project")
+	if err := os.Mkdir(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	materializeInstallRequest(t, fixture, InstallRequest{Project: project, Targets: "cursor"})
+
+	older := parsePreparedState(t, user.stateActions[0])
+	older.version = "0.0.9"
+	older.policyChecksum = checksumBytes([]byte("older canonical policy\n"))
+	olderBytes, err := serializeInstallState(older)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writePrepareFile(t, user.stateActions[0].destination, olderBytes, 0o600)
+
+	prepared, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Project: project, Targets: "cursor"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.plan.policyAction.effect != mutationRetain || prepared.plan.stateActions[0].effect != mutationRemove {
+		t.Fatalf("actions policy=%#v state=%#v", prepared.plan.policyAction, prepared.plan.stateActions)
+	}
+}
+
 func TestPrepareUninstallPlansOwnedDirectoriesDeepestFirst(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	project := filepath.Join(fixture.root, "owned project")

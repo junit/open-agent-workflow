@@ -335,10 +335,18 @@ func validateLiveTargetRecord(record targetRecord, coords coordinates, recordSco
 }
 
 func collectPolicyStateReferences(coords coordinates, excluded string, policy installPathSnapshot) ([]policyStateReference, error) {
-	return collectPolicyStateReferencesWithBaseline(coords, excluded, policy, "")
+	return collectPolicyStateReferencesWithValidation(coords, excluded, policy, "", true)
 }
 
 func collectPolicyStateReferencesWithBaseline(coords coordinates, excluded string, policy installPathSnapshot, baseline string) ([]policyStateReference, error) {
+	return collectPolicyStateReferencesWithValidation(coords, excluded, policy, baseline, true)
+}
+
+func collectPolicyStateReferencesForRetention(coords coordinates, excluded string, policy installPathSnapshot) ([]policyStateReference, error) {
+	return collectPolicyStateReferencesWithValidation(coords, excluded, policy, "", false)
+}
+
+func collectPolicyStateReferencesWithValidation(coords coordinates, excluded string, policy installPathSnapshot, baseline string, requireCurrentChecksum bool) ([]policyStateReference, error) {
 	locations := []struct {
 		directory string
 		pattern   string
@@ -374,7 +382,7 @@ func collectPolicyStateReferencesWithBaseline(coords coordinates, excluded strin
 			if state.policyPath != coords.policyPath {
 				continue
 			}
-			if err := validatePolicyStateReference(path, state, coords, policy, baseline); err != nil {
+			if err := validatePolicyStateReference(path, state, coords, policy, baseline, requireCurrentChecksum); err != nil {
 				return nil, err
 			}
 			result = append(result, policyStateReference{index: index, path: path, state: cloneInstallationStateValue(state)})
@@ -383,7 +391,7 @@ func collectPolicyStateReferencesWithBaseline(coords coordinates, excluded strin
 	return result, nil
 }
 
-func validatePolicyStateReference(path string, state installationState, coords coordinates, policy installPathSnapshot, baseline string) error {
+func validatePolicyStateReference(path string, state installationState, coords coordinates, policy installPathSnapshot, baseline string, requireCurrentChecksum bool) error {
 	var expected string
 	switch state.scope {
 	case "user":
@@ -405,6 +413,9 @@ func validatePolicyStateReference(path string, state installationState, coords c
 	}
 	if err := validateOwnedDirectories(state, coords); err != nil {
 		return compatibilityError(err.Error())
+	}
+	if !requireCurrentChecksum {
+		return nil
 	}
 	installedChecksum := ""
 	if policy.kind == installPathRegular {
