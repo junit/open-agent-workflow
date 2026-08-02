@@ -1,19 +1,25 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"unicode"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
+	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
 
@@ -62,15 +68,103 @@ func runCodex(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if err := host.RuntimeEntrypointAllowed(integrations, parsed.hostID); err != nil {
 		return writeRuntimeDenial(runtimeReasonHost(err), err, 69, stdout, stderr)
 	}
-	engine, err := oawruntime.NewEngine(oawruntime.Options{StateRoot: parsed.stateRoot})
+	raw, err := io.ReadAll(io.LimitReader(stdin, oawruntime.MaximumProtocolFrameBytes+1))
+	if err != nil {
+		return writeRuntimeDenial("RUNTIME_FRAME_READ_FAILED", err, 65, stdout, stderr)
+	}
+	frame, err := oawruntime.DecodeFrame(raw)
+	if err != nil {
+		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
+	}
+	engine, err := newCLIEngine(parsed.stateRoot, frame, parsed.hostID)
 	if err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
 	driver := codex.New(codex.Options{Diagnostics: stderr})
-	if err := runHostLoop(stdin, engine, driver, stdout); err != nil {
+	if err := runHostLoop(bytes.NewReader(raw), engine, driver, stdout); err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
 	return 0
+}
+
+func newCLIEngine(stateRoot string, frame oawruntime.RunFrame, hostID string) (*oawruntime.Engine, error) {
+	if frame.Start != nil && frame.Start.Proposal != nil {
+		decision, err := classification.Classify(frame.Start.Proposal, classification.ClassificationRules{})
+		if err == nil && decision.RequestMode == classification.RequestModeDirect {
+			return oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
+		}
+	}
+	projectRoot := ""
+	if frame.Start != nil {
+		projectRoot = frame.Start.Project.Root
+	}
+	userConfigRoot := defaultConfigRoot()
+	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userConfigRoot, ProjectRoot: projectRoot})
+	if err != nil {
+		return nil, fmt.Errorf("RUNTIME_CONFIGURATION_REQUIRED: %w", err)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("RUNTIME_DISCOVERY_REQUIRED: %w", err)
+	}
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	if err != nil {
+		return nil, fmt.Errorf("RUNTIME_DISCOVERY_REQUIRED: %w", err)
+	}
+	resolution, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: hostID, Bindings: catalogHostBindings(snapshot.Catalog(), hostID)})
+	if err != nil {
+		return nil, fmt.Errorf("RUNTIME_REGISTRY_REQUIRED: %w", err)
+	}
+	_ = resolution
+	authority := admission.AuthorityCeiling{
+		Effects:   []string{"git-local", "network-read", "read-project", "run-process", "write-project"},
+		Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
+	}
+	executors := []oawruntime.WorkflowExecutorRegistration{
+		{Registration: admission.ExecutorRegistration{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}},
+		{Registration: admission.ExecutorRegistration{ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},
+	}
+	return oawruntime.NewEngine(oawruntime.Options{
+		StateRoot: stateRoot,
+		Bounded:   oawruntime.BoundedOptions{Configuration: snapshot, Registry: effective, Authority: authority, Executors: []admission.ExecutorRegistration{{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}, {ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}}},
+		Workflow:  oawruntime.WorkflowOptions{Configuration: snapshot, Registry: effective, Authority: authority, Host: host.RuntimeFrame{IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
+	})
+}
+
+func defaultConfigRoot() string {
+	root := os.Getenv("XDG_CONFIG_HOME")
+	if root == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+		root = filepath.Join(home, ".config")
+	}
+	return filepath.Join(root, "open-agent-workflow")
+}
+
+func catalogHostBindings(value catalog.Catalog, hostID string) []catalog.HostBinding {
+	bindings := make([]catalog.HostBinding, 0)
+	seen := make(map[string]struct{})
+	for _, provider := range value.Providers() {
+		for _, capability := range provider.Capabilities {
+			for _, binding := range capability.HostBindings {
+				if binding.Host != hostID {
+					continue
+				}
+				key := binding.Host + "\x00" + binding.Kind + "\x00" + binding.Reference
+				if _, found := seen[key]; found {
+					continue
+				}
+				seen[key] = struct{}{}
+				bindings = append(bindings, binding)
+			}
+		}
+	}
+	sort.Slice(bindings, func(left, right int) bool {
+		return bindings[left].Host+"\x00"+bindings[left].Kind+"\x00"+bindings[left].Reference < bindings[right].Host+"\x00"+bindings[right].Kind+"\x00"+bindings[right].Reference
+	})
+	return bindings
 }
 
 func runtimeReasonHost(err error) string {
