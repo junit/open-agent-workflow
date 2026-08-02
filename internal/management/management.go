@@ -44,6 +44,13 @@ type InstallRequest struct {
 	Force   bool
 }
 
+type UpdateRequest struct {
+	Project string
+	Targets string
+	DryRun  bool
+	Force   bool
+}
+
 type Result struct {
 	Lines    []string
 	Trailing string

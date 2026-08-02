@@ -95,6 +95,9 @@ func TestMutationActionRejectsUnsafeValues(t *testing.T) {
 		{name: "retain with data", call: func() (mutationAction, error) {
 			return newMutationAction(mutationRetain, "target", []byte("data"), destination, 0, root, "target", installPathSnapshot{})
 		}, want: "retain action has replacement data"},
+		{name: "retain with mode", call: func() (mutationAction, error) {
+			return newMutationAction(mutationRetain, "target", nil, destination, 0o600, root, "target", installPathSnapshot{})
+		}, want: "retain action has a destination mode"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -163,5 +166,52 @@ func TestInstallActionRegressionRoundTrip(t *testing.T) {
 	converted.data[0] = 'X'
 	if bytes.Equal(converted.data, original.data) {
 		t.Fatal("conversion aliases install data")
+	}
+	remove, err := newMutationAction(mutationRemove, "target", nil, destination, 0, root, "target", before)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := installActionFromMutation(remove); err == nil || !strings.Contains(err.Error(), "must replace") {
+		t.Fatalf("remove conversion error = %v", err)
+	}
+}
+
+func TestPredictMutationResultCoversRemoveRetainAndCreate(t *testing.T) {
+	root := t.TempDir()
+	missing := filepath.Join(root, "missing")
+	existing := filepath.Join(root, "existing")
+	writePrepareFile(t, existing, []byte("existing"), 0o644)
+	existingView, err := inspectInstallPath(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingView := installPathSnapshot{kind: installPathMissing}
+	create, err := newMutationAction(mutationReplace, "create", []byte("new"), missing, 0o644, root, "missing", missingView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remove, err := newMutationAction(mutationRemove, "remove", nil, existing, 0, root, "existing", existingView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	retain, err := newMutationAction(mutationRetain, "retain", nil, existing, 0, root, "existing", existingView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	missingRemove, err := newMutationAction(mutationRemove, "missing-remove", nil, missing, 0, root, "missing", missingView)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := mutationPlan{targetActions: []mutationAction{create, remove, missingRemove}, policyAction: retain}
+	if got, want := predictMutationResult(plan).Lines, []string{"oaw: would-create: " + missing, "oaw: would-remove: " + existing}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("prediction = %v, want %v", got, want)
+	}
+}
+
+func TestNewStateMutationActionRejectsDestinationOutsideRoot(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(filepath.Dir(root), "outside.state")
+	if _, err := newStateMutationAction("state", []byte("state"), outside, root); err == nil || !strings.Contains(err.Error(), "escapes its allowed root") {
+		t.Fatalf("error = %v", err)
 	}
 }

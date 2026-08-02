@@ -213,7 +213,7 @@ rtk git commit -m "refactor: generalize management mutation actions"
 - Modify: `internal/management/management.go`
 - Modify: `internal/management/install_prepare.go`
 
-- [ ] **Step 1: Write failing zero-write update preparation tests.**
+- [x] **Step 1: Write failing zero-write update preparation tests.**
 
 Cover user/project default and selected targets, all target IDs, shared project
 `AGENTS.md`, local-checkout version/Policy changes, clean unchanged updates,
@@ -224,7 +224,7 @@ cross-scope state synchronization, and a later invalid record after a valid
 selected target. Snapshot HOME/config/state/project before and after every
 `PrepareUpdate` and require byte/mode/tree equality.
 
-- [ ] **Step 2: Run update preparation tests and record RED.**
+- [x] **Step 2: Run update preparation tests and record RED.**
 
 ```bash
 rtk go test ./internal/management -run 'PrepareUpdate|UpdateStateCoordination' -count=1
@@ -232,7 +232,7 @@ rtk go test ./internal/management -run 'PrepareUpdate|UpdateStateCoordination' -
 
 Expected: missing `UpdateRequest` and `PrepareUpdate` symbols.
 
-- [ ] **Step 3: Implement shared mutation preflight.**
+- [x] **Step 3: Implement shared mutation preflight.**
 
 Resolve the request and coordinates using Ticket 12 rules. If state is absent,
 scan selected managed destinations for untracked markers before returning 66
@@ -241,7 +241,7 @@ states, bind scope/project/policy/state paths, validate owned directories, and
 validate every installed record before producing any action. Preserve registry
 order and Bash diagnostics/statuses.
 
-- [ ] **Step 4: Render update targets and state effects.**
+- [x] **Step 4: Render update targets and state effects.**
 
 Render selected installed targets from the supplied current checkout, normalize
 all records sharing a selected destination to the new checksum, preserve
@@ -250,14 +250,14 @@ rewrite current plus every live same-Policy state reference in deterministic
 Bash glob order. Other-scope adapters are validated but not rewritten. All
 states receive the new version and Policy checksum.
 
-- [ ] **Step 5: Predict exact clean and dry-run output.**
+- [x] **Step 5: Predict exact clean and dry-run output.**
 
 Use Bash order: selected target actions, Policy, current state, state references.
 Emit `oaw: unchanged: <label>`, `oaw: would-create: <path>`, or
 `oaw: would-update: <path>` with no writes. A clean update creates no backup and
 retains any existing backup reference.
 
-- [ ] **Step 6: Run focused GREEN, coverage, and commit.**
+- [x] **Step 6: Run focused GREEN, coverage, and commit.**
 
 ```bash
 rtk gofmt -w internal/management
