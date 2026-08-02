@@ -272,19 +272,17 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	if reply.Kind != oawruntime.ReplyGrantIssued {
 		return nil
 	}
+	return dispatchGranted(frame, reply, exchanger, driver, output)
+}
+
+func dispatchGranted(frame oawruntime.RunFrame, reply oawruntime.RunReply, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
 	grant, err := latestGrant(reply.Snapshot.Grants)
 	if err != nil {
 		return err
 	}
-	current, err := exchanger.Exchange(dispatchInspectFrame(reply, grant))
-	if err != nil {
+	handled, err := inspectCommittedDispatch(exchanger, output, reply, grant)
+	if err != nil || handled {
 		return err
-	}
-	if current.RunID != reply.RunID || current.Revision < reply.Revision {
-		return fmt.Errorf("RUNTIME_RUN_INVALID: dispatch inspection returned inconsistent state")
-	}
-	if current.Revision > reply.Revision {
-		return resumeCommittedDispatch(exchanger, output, current, grant)
 	}
 	bundleDigest, err := grantDispatchDigest(reply.Snapshot, grant)
 	if err != nil {
@@ -294,6 +292,28 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	if err := driver.Prepare(request); err != nil {
 		return err
 	}
+	authorized, err := authorizeDispatch(exchanger, output, reply, grant)
+	if err != nil {
+		return err
+	}
+	return invokeAuthorizedDispatch(authorized, grant, request, exchanger, driver, output)
+}
+
+func inspectCommittedDispatch(exchanger runtimeExchanger, output io.Writer, reply oawruntime.RunReply, grant admission.CapabilityGrant) (bool, error) {
+	current, err := exchanger.Exchange(dispatchInspectFrame(reply, grant))
+	if err != nil {
+		return false, err
+	}
+	if current.RunID != reply.RunID || current.Revision < reply.Revision {
+		return false, fmt.Errorf("RUNTIME_RUN_INVALID: dispatch inspection returned inconsistent state")
+	}
+	if current.Revision == reply.Revision {
+		return false, nil
+	}
+	return true, resumeCommittedDispatch(exchanger, output, current, grant)
+}
+
+func authorizeDispatch(exchanger runtimeExchanger, output io.Writer, reply oawruntime.RunReply, grant admission.CapabilityGrant) (oawruntime.RunReply, error) {
 	preparedFrame := oawruntime.RunFrame{
 		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue,
 		MessageID: derivedRunnerID("dispatch-prepared", grant), IdempotencyKey: derivedRunnerID("dispatch-prepared", grant),
@@ -302,14 +322,18 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	}
 	authorized, err := exchanger.Exchange(preparedFrame)
 	if err != nil {
-		return err
+		return oawruntime.RunReply{}, err
 	}
 	if err := writeReplyLine(output, authorized); err != nil {
-		return err
+		return oawruntime.RunReply{}, err
 	}
 	if authorized.Kind != oawruntime.ReplyDispatchAuthorized {
-		return fmt.Errorf("RUNTIME_RUN_INVALID: Runtime did not authorize dispatch")
+		return oawruntime.RunReply{}, fmt.Errorf("RUNTIME_RUN_INVALID: Runtime did not authorize dispatch")
 	}
+	return authorized, nil
+}
+
+func invokeAuthorizedDispatch(authorized oawruntime.RunReply, grant admission.CapabilityGrant, request host.DispatchRequest, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
 	result, invokeErr := driver.Invoke(request)
 	if invokeErr != nil {
 		uncertain := oawruntime.RunFrame{
@@ -327,7 +351,7 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 		}
 		return nil
 	}
-	continueFrame := observationFrame(frame, authorized, grant, result)
+	continueFrame := observationFrame(authorized, grant, result)
 	observed, err := exchanger.Exchange(continueFrame)
 	if err != nil {
 		return err
@@ -411,7 +435,7 @@ func grantDispatchDigest(snapshot oawruntime.RunSnapshot, grant admission.Capabi
 	return "", fmt.Errorf("RUNTIME_RUN_INVALID: Grant Bundle is absent from the committed snapshot")
 }
 
-func observationFrame(original oawruntime.RunFrame, authorized oawruntime.RunReply, grant admission.CapabilityGrant, result host.DispatchResult) oawruntime.RunFrame {
+func observationFrame(authorized oawruntime.RunReply, grant admission.CapabilityGrant, result host.DispatchResult) oawruntime.RunFrame {
 	outcome := oawruntime.ObservationFailed
 	signal := "functional-failure"
 	if result.Outcome == host.DispatchSucceeded {
