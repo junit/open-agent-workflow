@@ -65,7 +65,7 @@ OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-codex-block
 
 printf '%s\n' \
   '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  "For every new top-level engineering task that may use workflow skills, first read \`$OAW_POLICY\`, run its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  "For every new top-level engineering request, first read \`$OAW_POLICY\`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work." \
   '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
 
 awk '

@@ -61,18 +61,15 @@ ID 集合）缩小命令范围。运行 `./install.sh --help` 可查看完整的
 
 ## 任务门禁
 
-新的顶层工程任务在调用 family-specific 生命周期前，OAW 只执行足以完成分类的
-只读检查：
+OAW 通过足够的只读检查，把每个顶层工程请求分类为 `DIRECT`、`BOUNDED` 或
+`WORKFLOW`。Direct Mode 由主 Agent 处理小型、明确、可恢复的变更；Bounded Mode 只为
+一个可观察交付物准入一个精确 Provider Capability。这两种模式都不选择生命周期。
 
-- **普通任务**：一个连贯交付物，需求大体明确，依赖有限，不含架构决策，只需一个
-  实施计划。
-- **复杂任务**：仍有未解决需求，需要领域探索，涉及多个子系统或 ticket、架构决策，
-  或存在较高安全、数据、运维或爆炸半径风险。不确定时按复杂任务处理并说明理由。
-
-随后，OAW 会展示全部 profile、一个推荐项和所有拟议 specialist add-on，由用户显式
-选择。没有超时自动选择，也没有静默默认项。选定 bundle 会被记录并锁定到当前交付物。
-只有用户能切换它，而且只能在已批准规格、已完成 ticket、已完成调试周期或已完成复核
-等 stable boundary 上切换。
+只有 Workflow Mode 运行 Startup Gate。OAW 随后展示全部可用的内置与用户自定义
+Profile、一个推荐项和所有拟议 bounded add-on，由用户显式选择。
+没有超时自动选择，也没有静默默认项。
+编译后的 Lifecycle Bundle 会锁定到当前交付物。只有用户能切换它，而且只能在规格批准、
+已完成 ticket、调试周期、复核或验证等 stable boundary 上切换。
 
 ## 生命周期配置
 
@@ -80,13 +77,14 @@ ID 集合）缩小命令范围。运行 `./install.sh --help` 可查看完整的
 | --- | --- |
 | `SP-FULL` | Superpowers 拥有完整生命周期。 |
 | `MATT-FULL` | Matt 拥有完整生命周期。 |
-| `ECC-FULL` | ECC 拥有完整生命周期。 |
+| `ECC-FULL` | ECC 拥有完整的 `oaw/ecc-engineering` 生命周期。 |
 | `MATT-SP-HYBRID` | Matt 和 Superpowers 按下方显式阶段分工；声明的 ECC specialist 保持为 bounded add-on。 |
-| `CUSTOM-LOCKED` | 用户提供完整映射，每项职责恰好有一个所有者。 |
+| `USER-DEFINED` | 选择配置中版本化的用户自定义 Profile Recipe；它不是第五个内置 alias。 |
 
 推荐项永远不会变成默认项。缺少所需 provider capability 时，任务门禁会停止，不会
-静默省略或替代。委派 agent 继承完全相同的 locked bundle，不重新进行 family arbitration。
-bounded add-on 只能产出声明的 specialist 交付物，不能接管生命周期。
+静默省略或替代。Superpowers、Matt、ECC 和第三方 Provider 使用同一个可扩展 Provider
+与 Capability 模型。委派 agent 继承完全相同的 locked bundle，不重新进行 family
+arbitration。bounded add-on 只能产出声明的 specialist 交付物，不能接管生命周期。
 
 ## Matt-Superpowers 混合配置
 

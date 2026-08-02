@@ -72,7 +72,7 @@ responsibility:
 ECC specialists do not become lifecycle owners under `MATT-SP-HYBRID`.
 Conversely, `ECC-FULL` remains available when the user wants ECC to own the
 complete lifecycle. The score table does not remove `SP-FULL`, `MATT-FULL`,
-`ECC-FULL`, or `CUSTOM-LOCKED` from the user's choices.
+`ECC-FULL`, or eligible user-defined Profiles from the user's choices.
 
 ## How to Use This Comparison
 

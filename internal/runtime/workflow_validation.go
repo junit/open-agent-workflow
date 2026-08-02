@@ -20,7 +20,7 @@ func validateWorkflowState(record revisionRecord) error {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow identity", nil)
 	}
 	workflow := snapshot.Workflow
-	if !validDigest(workflow.ConfigurationDigest) || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) {
+	if !validDigest(workflow.ConfigurationDigest) || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) || workflow.Input.ActiveTicket != "" && validateIdentifier(workflow.Input.ActiveTicket) != nil || workflow.ActiveTicket != workflow.Input.ActiveTicket {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow trusted inputs", nil)
 	}
 	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.Observations != nil || snapshot.GrantIDs == nil || snapshot.ResourceLeaseIDs == nil || workflow.Observations == nil || workflow.RevokedGrantIDs == nil || workflow.ResourceLeases == nil || workflow.ProjectionLag == nil || len(workflow.ProjectionLag) != 0 {

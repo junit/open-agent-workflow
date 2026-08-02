@@ -46,6 +46,7 @@ type ProjectionOptions struct {
 type WorkflowInput struct {
 	DeliverableID string `json:"deliverable_id"`
 	InputDigest   string `json:"input_digest"`
+	ActiveTicket  string `json:"active_ticket,omitempty"`
 }
 
 type ProfileSelection struct {
@@ -105,6 +106,7 @@ type WorkflowState struct {
 	Bundles             []LifecycleBundle  `json:"bundles"`
 	ActiveGeneration    uint64             `json:"active_generation"`
 	ActiveNodeID        string             `json:"active_node_id"`
+	ActiveTicket        string             `json:"active_ticket,omitempty"`
 	ActiveGrantID       string             `json:"active_grant_id,omitempty"`
 	Observations        []StageObservation `json:"observations"`
 	RevokedGrantIDs     []string           `json:"revoked_grant_ids"`

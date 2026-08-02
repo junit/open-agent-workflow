@@ -34,6 +34,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-06-bounded-admission-and-dispatch.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-07-workflow-runtime-orchestration.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md
+  - docs/superpowers/plans/2026-08-03-oaw-runtime-vnext-10-policy-vnext-and-runtime-projections.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-11-go-check-black-box-parity.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-12-go-install-rendering-state-parity.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-13-go-update-uninstall-security-transaction-parity.md
@@ -146,4 +147,7 @@ remains instruction-only. The next active dependency is Ticket 10,
 Ticket 09 completion preserved the selected `MATT-SP-HYBRID` policy ownership.
 Runtime state remains authoritative, Workflow dispatch remains isolated behind
 the Host Driver seam, and the existing Bash installer remains authoritative
-until Ticket 14.
+until Ticket 14. Ticket 10 is now in progress: the canonical Policy Plane is
+being aligned to Direct/Bounded/Workflow modes and Runtime projections are
+being extended with redacted Profile, stage, ticket, evidence-reference, and
+lag-status views.

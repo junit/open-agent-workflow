@@ -73,21 +73,18 @@ command. Run `./install.sh --help` for the complete local CLI surface.
 
 ## Task Gate
 
-Before a new top-level engineering task invokes a family-specific lifecycle,
-OAW performs only enough read-only inspection to classify it:
+OAW performs enough read-only inspection to classify each top-level engineering
+request as `DIRECT`, `BOUNDED`, or `WORKFLOW`. Direct Mode covers small, clear,
+recoverable changes executed by the Main Agent. Bounded Mode admits one exact
+Provider Capability for one observable deliverable. Neither mode selects a
+lifecycle.
 
-- **Ordinary**: one coherent deliverable, mostly known requirements, bounded
-  dependencies, no architectural decision, and one implementation plan.
-- **Complex**: unresolved requirements, domain discovery, several subsystems or
-  tickets, architectural decisions, or elevated security, data, operational,
-  or blast-radius risk. Uncertainty is classified as complex and explained.
-
-OAW then shows every profile, a recommendation, and any proposed specialist
+Only Workflow Mode runs the Startup Gate. OAW then shows every eligible
+built-in and user-defined Profile, a recommendation, and any proposed bounded
 add-ons. The user must choose explicitly. There is no timeout or silent default.
-The chosen bundle is recorded and remains locked to the deliverable.
-Only the user may switch it, and only at a stable boundary such as an approved
-specification, a completed ticket, a completed debugging cycle, or a completed
-review.
+The compiled Lifecycle Bundle remains locked to the deliverable. Only the user
+may switch it, and only at a stable boundary such as an approved specification,
+a completed ticket, debugging cycle, review, or verification.
 
 ## Lifecycle Profiles
 
@@ -95,15 +92,16 @@ review.
 | --- | --- |
 | `SP-FULL` | Superpowers owns the complete lifecycle. |
 | `MATT-FULL` | Matt owns the complete lifecycle. |
-| `ECC-FULL` | ECC owns the complete lifecycle. |
+| `ECC-FULL` | ECC owns the complete `oaw/ecc-engineering` lifecycle. |
 | `MATT-SP-HYBRID` | Matt and Superpowers own the explicit stages below; declared ECC specialists remain bounded add-ons. |
-| `CUSTOM-LOCKED` | The user provides a complete map with exactly one owner per responsibility. |
+| `USER-DEFINED` | Select a configured, versioned user-defined Profile Recipe; this is not a fifth built-in alias. |
 
 A recommendation never becomes a default. Missing provider capability stops
-the task gate; it is never silently omitted or replaced. A delegated agent
-inherits the exact locked bundle and does not reopen family arbitration. A
-bounded add-on may produce only its declared specialist deliverable and cannot
-take over the lifecycle.
+Workflow selection; it is never silently omitted or replaced. Superpowers,
+Matt, ECC, and third-party Providers use the same extensible Provider and
+Capability model. A delegated agent inherits the exact locked bundle and does
+not reopen family arbitration. A bounded add-on may produce only its declared
+specialist deliverable and cannot take over the lifecycle.
 
 ## Matt-Superpowers Hybrid
 

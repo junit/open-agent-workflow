@@ -22,7 +22,9 @@ func TestWorkflowProjectionEmitsRedactedCommittedRevisions(t *testing.T) {
 	sink := &recordingProjectionSink{stateRoot: stateRoot}
 	engine := newWorkflowEngineWithProjection(t, stateRoot, fixture, oawruntime.ProjectionOptions{Sink: sink})
 
-	started, err := engine.Exchange(workflowStartFrame(fixture, "projection-start"))
+	start := workflowStartFrame(fixture, "projection-start")
+	start.Start.Workflow.ActiveTicket = "ticket-projection-10"
+	started, err := engine.Exchange(start)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,8 +50,21 @@ func TestWorkflowProjectionEmitsRedactedCommittedRevisions(t *testing.T) {
 		assertProjectionRedacted(t, raw)
 	}
 	last := records[len(records)-1]
-	if records[0].Status != oawruntime.RunAwaitingSelection || records[0].BundleID != "" || records[1].Status != oawruntime.RunReady || records[1].BundleID == "" || last.ActiveNodeID != "requirements" || last.Generation != 2 || last.BundleID != switched.Snapshot.Workflow.Bundles[1].ID {
+	activeTicket := "ticket-projection-10"
+	if started.Snapshot.Workflow.ActiveTicket != activeTicket || started.Snapshot.Workflow.Input.DeliverableID == activeTicket {
+		t.Fatalf("active ticket is not independent from Deliverable identity: %#v", started.Snapshot.Workflow)
+	}
+	if records[0].Status != oawruntime.RunAwaitingSelection || records[0].BundleID != "" || records[0].Profile != "" || records[0].BundleGeneration != 0 || records[0].Stage != "" || records[0].ActiveTicket != activeTicket || records[0].LagStatus != "current" || len(records[0].EvidenceReferences) != 0 {
+		t.Fatalf("unselected projection = %#v", records[0])
+	}
+	if records[1].Status != oawruntime.RunReady || records[1].BundleID == "" || records[1].Profile != "MATT-SP-HYBRID" || records[1].BundleGeneration != 1 || records[1].Stage != "requirements" || records[1].ActiveTicket != activeTicket || records[1].LagStatus != "current" {
+		t.Fatalf("selected projection = %#v", records[1])
+	}
+	if last.Profile != "SP-FULL" || last.Stage != "requirements" || last.BundleGeneration != 2 || last.ActiveTicket != activeTicket || last.BundleID != switched.Snapshot.Workflow.Bundles[1].ID || last.LagStatus != "current" {
 		t.Fatalf("projection state sequence = %#v", records)
+	}
+	if len(last.EvidenceReferences) != 1 || last.EvidenceReferences[0].Reference != "evidence://projection-observed" || last.EvidenceReferences[0].Digest != strings.Repeat("4", 64) {
+		t.Fatalf("projection evidence references = %#v", last.EvidenceReferences)
 	}
 	bundle := switched.Snapshot.Workflow.Bundles[1]
 	if last.HostIntegrationID != bundle.HostIntegrationID || last.HostIntegrationDigest != bundle.HostIntegrationDigest || last.HostManifestDigest != bundle.HostManifestDigest || last.HostAuditDigest != bundle.HostAuditDigest || last.HostConformanceDigest != bundle.HostConformanceDigest {
@@ -78,7 +93,7 @@ func TestWorkflowProjectionFailureRecordsLagWithoutChangingCommittedReply(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), "PROJECTION_WRITE_FAILED") || !strings.Contains(string(raw), started.RevisionDigest) || strings.Contains(string(raw), "credential=projection-secret") {
+	if !strings.Contains(string(raw), "PROJECTION_WRITE_FAILED") || !strings.Contains(string(raw), `"status":"lagging"`) || !strings.Contains(string(raw), started.RevisionDigest) || strings.Contains(string(raw), "credential=projection-secret") {
 		t.Fatalf("projection lag marker = %s", raw)
 	}
 	assertFileMode(t, lagPath, 0o600)
@@ -126,6 +141,7 @@ func TestFilesystemWorkflowProjectionIsOneWayAndOwnerOnly(t *testing.T) {
 			t.Fatal(readErr)
 		}
 		assertProjectionRedacted(t, raw)
+		assertProjectionTemplate(t, path, raw, ready.Snapshot.Workflow.ActiveTicket)
 		assertFileMode(t, path, 0o600)
 	}
 	assertFileMode(t, projectionRoot, 0o700)
@@ -274,9 +290,30 @@ func (panickingProjectionSink) WriteProjection(oawruntime.WorkflowProjection) er
 
 func assertProjectionRedacted(t *testing.T, raw []byte) {
 	t.Helper()
-	for _, forbidden := range []string{"grant_id", "invocation_id", "executor_id", "evidence", "raw_output", "credential", "provider output"} {
+	for _, forbidden := range []string{`"grant_id"`, `"invocation_id"`, `"executor_id"`, `"grants"`, `"effects"`, `"resources"`, `"termination_condition"`, `"raw_output"`, "credential", "provider output"} {
 		if strings.Contains(strings.ToLower(string(raw)), forbidden) {
 			t.Fatalf("projection contains %q: %s", forbidden, raw)
+		}
+	}
+}
+
+func assertProjectionTemplate(t *testing.T, path string, raw []byte, activeTicket string) {
+	t.Helper()
+	required := []string{}
+	if filepath.Ext(path) == ".json" {
+		required = []string{
+			`"profile":"MATT-SP-HYBRID"`, `"bundle_generation":1`, `"stage":"requirements"`,
+			`"active_ticket":"` + activeTicket + `"`, `"evidence_references":[]`, `"lag_status":"current"`,
+		}
+	} else {
+		required = []string{
+			"- Profile: `MATT-SP-HYBRID`", "- Bundle generation: `1`", "- Stage: `requirements`",
+			"- Active ticket: `" + activeTicket + "`", "- Lag status: `current`",
+		}
+	}
+	for _, expected := range required {
+		if !strings.Contains(string(raw), expected) {
+			t.Fatalf("projection template %s is missing %q: %s", path, expected, raw)
 		}
 	}
 }

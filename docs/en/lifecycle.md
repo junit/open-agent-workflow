@@ -1,71 +1,98 @@
-# Lifecycle Selection and Locking
+# Request Modes, Profiles, and Lifecycle Locking
 
 [简体中文](../zh/lifecycle.md) | [README](../../README.md)
 
-This guide explains Open Agent Workflow (OAW) lifecycle behavior. It is not a
-second policy. The path policy/ENGINEERING.md is normative; read the
-[canonical policy](../../policy/ENGINEERING.md) there. If explanatory prose
-here differs from that file, the policy wins.
+This guide explains Open Agent Workflow (OAW) behavior. It is not a second
+policy. `policy/ENGINEERING.md is normative`; read the
+[canonical policy](../../policy/ENGINEERING.md). If this guide differs from
+that file, the policy wins.
 
-## When the Gate Runs
+## Three Request Modes
 
-The startup gate runs before every new top-level engineering task that may use
-workflow skills. It does not run for pure explanation, status reporting,
-read-only lookup, or a direct command that does not start an engineering
-lifecycle.
+OAW classifies each new top-level engineering request before choosing an
+execution model:
 
-Before selection, OAW permits only enough read-only inspection to classify the
-task. It does not start discovery, design, planning, implementation, TDD,
-debugging, delegation, Git work, review, or completion. This creates a blocking user choice
-before any family-specific owner can claim the deliverable.
+| Request Mode | Execution model | Lifecycle selection |
+| --- | --- | --- |
+| Direct Mode (`DIRECT`) | The Main Agent makes a small, clear, recoverable change and runs focused verification. | None |
+| Bounded Mode (`BOUNDED`) | One exact Provider Capability produces one observable deliverable with declared effects, resources, and termination. | None |
+| Workflow Mode (`WORKFLOW`) | A compiled Profile Recipe coordinates multiple responsibilities and stages. | Required |
 
-The gate follows this sequence:
+Direct Mode requires a known change point, clear requirements, bounded scope,
+no unresolved architecture or domain decision, no public contract or sensitive
+semantic change, and a known verification seam. It creates no Lifecycle Bundle
+and invokes no engineering Provider Capability.
 
-1. Read the canonical policy.
-2. Inspect only enough context to classify the task.
-3. State the classification and concrete evidence.
-4. Show all five profiles, mark a recommendation, and list exact proposed
-   specialist add-ons.
-5. Wait for explicit user selection. There is no timeout or silent default.
-6. Record and lock the selected bundle before lifecycle work begins.
+Bounded Mode is the Atomic Skill mode. The user or a user-trusted rule selects
+one exact Capability. It cannot claim planning, implementation ownership,
+general review, a remediation loop, Git completion, or any lifecycle stage. A
+required second Capability or broader responsibility triggers reclassification.
 
-Provider detection is diagnostic input. It can show that a required family is
-missing, but it cannot choose a profile. If a selected profile requires a
-missing capability, work stops until the user installs it or chooses another
-profile.
+Workflow Mode covers unresolved requirements or root cause, domain and
+architecture decisions, interacting engineering responsibilities, public
+contracts, schemas, dependencies, migrations, sensitive changes, multiple
+tickets, and long-lived delegation.
 
-## Ordinary and Complex Classification
+Only Workflow Mode runs the Startup Gate. Complexity and Risk Class still tune
+recommendations and verification, but they do not activate lifecycle selection
+for Direct or Bounded work.
 
-An **ordinary task** is one coherent deliverable with mostly known
-requirements, bounded dependencies, no architectural decision, and one
-implementation plan. An ordinary feature or refactor commonly receives an
-`SP-FULL` recommendation, but the user may choose any valid profile.
+## Workflow Startup Gate
 
-A **complex task** is domain-heavy, ambiguous, large, or risky. Indicators
-include unresolved requirements, domain discovery, several subsystems,
-migrations, architectural decisions, multiple delivery tickets, or elevated
-security, data, operational, and blast-radius risk. When evidence is uncertain,
-OAW classifies the task as complex and explains why. Complex work commonly
-receives a `MATT-SP-HYBRID` recommendation.
+Before Workflow lifecycle work begins, OAW:
 
-Classification controls the recommendation and planning depth. It never acts
-as automatic selection.
+1. reads the canonical policy;
+2. performs only enough read-only inspection to classify the request;
+3. states Request Mode, Complexity, Risk Class, and concrete evidence;
+4. shows every eligible built-in and user-defined Profile, marks a
+   recommendation, and lists exact proposed bounded add-ons;
+5. waits for a blocking user choice with no timeout or silent default;
+6. compiles the selected Recipe against verified Capabilities and records the
+   Lifecycle Bundle.
 
-## Lifecycle Profiles
+Provider detection is diagnostic input. It never chooses a Capability or
+Profile. Missing or ambiguous required Capabilities stop selection rather than
+being silently omitted or replaced.
 
-Every gate presents all profiles:
+## Extensible Provider and Capability Model
 
-| Profile | Ownership contract |
-| --- | --- |
-| `SP-FULL` | Superpowers owns discovery through branch completion. Matt and ECC lifecycle owners remain paused. |
-| `MATT-FULL` | Matt owns domain decisions, specification, tickets, implementation, TDD, debugging, review, commits, and completion evidence. Superpowers and ECC lifecycle owners remain paused. |
-| `ECC-FULL` | ECC owns planning, implementation, testing, build repair, review, delegation, verification, and completion. Superpowers and Matt lifecycle owners remain paused. |
-| `MATT-SP-HYBRID` | Matt and Superpowers follow the fixed stage map below. Exact ECC specialists may be selected only as bounded add-ons. |
-| `CUSTOM-LOCKED` | The user supplies a complete map with one owner for every applicable responsibility, explicit transitions, and bounded add-ons. |
+Superpowers, Matt, ECC, and third-party Providers follow the same contract.
+OAW ships inert descriptors for `oaw/superpowers`, `oaw/matt`, and `oaw/ecc`;
+it does not install their skill content. Built-in Provider discovery remains
+dynamic on the current Host.
 
-An ambiguous `CUSTOM-LOCKED` map is rejected rather than repaired by guessing.
-A recommendation is always labeled as a recommendation and never hidden as a
-default.
+Users can register trusted third-party Providers, declarative discovery
+descriptors, Profile Recipes, bindings, pins, and denials in configuration.
+Trusted project configuration may recommend or narrow those records, but it
+cannot create user trust or expand authority. Only a verified Provider Instance
+can satisfy a Recipe Capability selector.
+
+A Provider's role is Recipe-specific. One Profile may use ECC for a complete
+lifecycle; another may admit the same Provider only for build repair or a
+security review. Full-family eligibility is based on verified Capability
+coverage, using the same rule for built-in and user-registered Providers.
+
+## Built-in and User-Defined Profiles
+
+The built-in Profile aliases remain stable:
+
+| Selection | Recipe | Ownership contract |
+| --- | --- | --- |
+| `SP-FULL` | `oaw/delivery` | Superpowers owns the complete delivery lifecycle when all required Capabilities verify. |
+| `MATT-FULL` | `oaw/domain-engineering` | Matt owns the complete domain-engineering lifecycle when all required Capabilities verify. |
+| `ECC-FULL` | `oaw/ecc-engineering` | ECC owns the complete engineering lifecycle when all required Capabilities verify. |
+| `MATT-SP-HYBRID` | `oaw/reliable-feature` | Matt and Superpowers use the fixed responsibility map below; exact ECC specialists remain bounded. |
+| `USER-DEFINED` | configured Recipe ID | This is a selection action for a versioned user-defined Recipe, not a fifth built-in Profile. |
+
+`ECC-FULL` includes discovery, specification and planning, implementation,
+testing, debugging and build repair, review, delegation, verification, and
+completion. ECC is therefore not reduced to hardening. Its specialist role in
+another Recipe does not weaken the complete `oaw/ecc-engineering` option.
+
+A user-defined Recipe must compile to exactly one owner for every applicable
+responsibility, explicit transitions and terminal gates, bounded add-ons, and
+effects within trusted authority. An ambiguous Recipe is rejected rather than
+repaired by guessing.
 
 ## Matt-Superpowers Stage Map
 
@@ -81,112 +108,103 @@ default.
 | Implementation orchestration and code changes | One Superpowers executor |
 | TDD method and red-green loop | Matt `tdd` |
 | Functional and hard-bug debugging | Matt `diagnosing-bugs` |
-| Build, dependency, and type repair | Selected ECC resolver, or none |
+| Build, dependency, and type repair | Selected ECC Incident Handler, or none |
 | Spec compliance and code-quality review | Superpowers |
 | Review remediation and re-review | Superpowers |
 | Fresh verification and branch completion | Superpowers |
-| Specialist checks | Only explicitly named bounded add-ons |
+| Specialist checks | Only explicitly selected bounded add-ons |
 
-Matt's specification and tickets are canonical for requirements and delivery
-edges. A Superpowers executable plan may add paths, commands, and expected
-results, but it may not change those requirements or ticket boundaries.
+Matt specifications and tickets remain canonical for requirements and delivery
+edges. A Superpowers plan may add paths, commands, code steps, and expected
+results without changing those requirements or ticket boundaries.
 
-An expected RED test remains part of TDD. An unexpected functional failure
-transfers to Matt debugging with the intended state, command, and output. A
-strict build, dependency, or type failure goes only to the selected ECC
-resolver.
+Matt `tdd` is the only TDD procedure in this hybrid. An expected RED test stays
+inside that loop. An unexpected functional failure transfers to Matt debugging
+with the intended state, command, and output. A strict build, dependency, or
+type failure may route only to the selected ECC Incident Handler.
 
-## Lifecycle Lock and Bundle Inheritance
+## Isolation and Host Guarantees
 
-The **lifecycle lock** records the task identity, classification, selected
-profile, selection source, stage owners, exact add-ons, active stage, active
-ticket, and canonical artifact references. It persists for the entire
-deliverable across follow-ups, context compaction, and delegated work.
+On a Runtime-managed Host, Workflow Capabilities marked `isolated-required`
+run in separate Executor contexts. This bundle inheritance gives every
+Executor the exact Profile, Bundle generation, active graph node, admitted Capability,
+allowed effects and resources, termination condition, and evidence
+requirements. The Executor cannot reopen family arbitration or add a second
+owner.
 
-**Bundle inheritance** means every dispatched agent receives the exact profile,
-stage map, and add-ons. This bundle inheritance prevents the agent from reopening
-family arbitration, adding a second lifecycle owner, or replacing an unavailable
-capability. For multi-ticket
-work, **ticket inheritance** applies the same locked bundle unless the user
-changes it at an allowed boundary.
+On a Policy-only Host, the same lifecycle lock and allowed-action map are
+instruction-level coordination. OAW cannot claim Runtime admission, Grants,
+Resource Leases, transition enforcement, or physical isolation there. Host or
+agent behavior may provide additional isolation, but it is not an OAW Runtime
+guarantee.
 
-## Bounded Add-ons
+## Lifecycle Lock, Inheritance, and Add-ons
 
-A bounded add-on is an exact specialist capability selected for one declared
-deliverable. For example, `ECC(security-review)` may produce a security report,
-but it does not own implementation, general review, Git work, or completion
-under `MATT-SP-HYBRID`. Once its report is delivered, control returns to the
-recorded stage owner.
+The lifecycle lock records task and deliverable identity, classification,
+selected Profile, selection source, Bundle generation/digest, stage owners,
+exact add-ons, active stage, active ticket, allowed and blocked actions, and
+canonical artifact or evidence references.
 
-Outcome constraints such as security, coverage, style, or required checks are
-not add-ons by themselves and do not select a workflow. The active owner remains
-responsible for satisfying them.
+The lock persists across follow-ups, context compaction, and delegated work.
+Bundle inheritance applies it to every dispatched Executor. For multi-ticket
+work, ticket inheritance keeps the same Bundle until the user switches at a
+stable boundary.
+
+bounded add-ons authorize one exact specialist deliverable. For example,
+`ECC(security-review)` may return a digest-pinned report, but it does not own
+implementation, general review, Git work, or completion. Security and coverage
+requirements are constraints, not lifecycle selections.
+
+## Runtime Project Projections
+
+Runtime-managed project workflow files are human-readable downstream views of
+committed Runtime State. A projection includes the selected Profile, Bundle
+generation, stage, active ticket, digest-pinned evidence references, and lag
+status. It excludes credentials, full Grants, sensitive evidence content, and
+raw Provider output.
+
+The optional active ticket is an independent delivery-tracking reference. It
+is never inferred from or used as an alias for the Workflow Deliverable ID.
+
+Projection files are never parsed back as authority. A projection write
+failure records lag and never rolls back the committed Runtime revision.
 
 ## Stable Switching
 
-Only the user can change a lifecycle lock. The stable switching rule allows a change at an
-approved specification, between completed tickets, after a completed TDD or
-debugging cycle, after review, or after recorded verification. Switching is not
-allowed during delegated work, an unresolved merge, or an incomplete red-green
-cycle.
+Only the user can change a selected Workflow Profile. stable switching is
+allowed at an approved specification, between completed tickets, after a
+completed TDD or debugging cycle, after review, or after recorded verification.
+A stable-boundary switch is not allowed during an active Capability invocation,
+delegated work, an unresolved merge, or an incomplete red-green cycle.
 
-A switch preserves valid artifacts and records the new selection. It does not
-retroactively rewrite completed ownership or silently substitute a provider.
+A switch compiles a new Bundle generation, revokes outstanding Grants from the
+old generation, and preserves valid artifacts and evidence. It never rewrites
+completed ownership or silently substitutes a Provider.
 
-## Complete Locked-Bundle Example
+## Complete Workflow Example
 
-Assume a repository needs a multi-ticket installer with path containment,
-recoverable force, bilingual documentation, and a final security assessment.
+A repository needs a multi-ticket installer with path containment, recoverable
+force, bilingual docs, and a final security assessment. The public behavior,
+filesystem risk, several tickets, and remediation loop classify it as Workflow
+Mode. OAW recommends the hybrid and proposes one bounded add-on.
 
-### 1. Classification
-
-OAW classifies this as a **complex task** because requirements span several
-subsystems and tickets, filesystem mutation has security impact, and review
-must close across multiple stages. It recommends the hybrid and proposes one
-bounded security add-on.
-
-### 2. Blocking Choice
-
-The user is shown all five profiles and explicitly selects:
+The user makes this explicit blocking choice:
 
 ```text
 MATT-SP-HYBRID + ECC(security-review)
 ```
 
-This is the selection source. No work starts merely because the bundle was
-recommended or its providers were detected.
+The compiled Bundle assigns Matt to requirements, specification, ticketing,
+TDD, and functional debugging; Superpowers to executable plans,
+implementation, review, remediation, verification, and completion; and ECC
+only to the security report. Each Executor inherits the Bundle and active
+ticket. The ECC report returns to Superpowers remediation without taking over
+the lifecycle.
 
-### 3. Lock Record
+After one ticket is verified, the user may make a stable-boundary switch to
+another eligible built-in or user-defined Profile. Until that explicit choice,
+the original Bundle remains locked.
 
-The recorded bundle names Matt for requirements, specification, ticketing, TDD,
-and hard-bug debugging; Superpowers for per-ticket plans, implementation,
-review, remediation, verification, and completion; and ECC only for the bounded
-security-review report. The active stage and ticket point to the canonical
-specification, ticket, and executable plan.
-
-### 4. Ticket Inheritance
-
-When implementation moves from Ticket 01 to Ticket 02, ticket inheritance
-copies the exact bundle. A dispatched implementation agent follows the approved
-Superpowers plan and does not ask the user to select a family again. If a test
-exposes an unexpected functional defect, the evidence transfers to Matt
-debugging without changing the profile.
-
-### 5. Specialist Return
-
-At the declared security checkpoint, `ECC(security-review)` produces only its
-report. Confirmed findings return to the Superpowers remediation and re-review
-loop. ECC does not merge, commit, or claim general lifecycle ownership.
-
-### 6. Stable-Boundary Switch
-
-After a ticket is complete and its verification is recorded, the user may
-request a stable-boundary switch, for example from the hybrid to `SP-FULL` for
-the remaining approved tickets in the same deliverable. OAW records the new
-choice at that boundary and preserves completed specifications, tickets, tests,
-and review evidence. Until the user makes that explicit request, the original
-bundle remains locked. A new unrelated task instead clears the old lock and
-runs the startup gate again.
-
-The [background](background.md) explains why the gate exists, and the
-[comparison](comparison.md) documents the design evidence behind the hybrid.
+The [background](background.md) explains the motivation, and the
+[comparison](comparison.md) records the experience-based inputs behind the
+initial hybrid.

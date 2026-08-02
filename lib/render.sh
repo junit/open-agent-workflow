@@ -11,7 +11,7 @@ render_claude() {
 }
 
 render_codex() {
-  printf 'For every new top-level engineering task that may use workflow skills, first read `%s`, run its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n' "$1"
+  printf 'For every new top-level engineering request, first read `%s`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n' "$1"
 }
 
 render_gemini() {

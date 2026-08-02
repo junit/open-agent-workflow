@@ -14,7 +14,7 @@ func renderTarget(id targetID, operationScope scope, policyPath string) ([]byte,
 	case "user:claude", "project:claude":
 		rendered = "Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n@" + policyPath + "\n"
 	case "user:codex":
-		rendered = fmt.Sprintf("For every new top-level engineering task that may use workflow skills, first read `%s`, run its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n", policyPath)
+		rendered = fmt.Sprintf("For every new top-level engineering request, first read `%s`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n", policyPath)
 	case "user:gemini", "project:gemini":
 		rendered = "Follow the Open Agent Workflow policy before engineering lifecycle work:\n@" + policyPath + "\n"
 	case "user:opencode":

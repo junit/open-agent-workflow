@@ -261,19 +261,30 @@ func TestWorkflowProjectionValidationAndFilesystemBoundaries(t *testing.T) {
 		func(value *WorkflowProjection) { value.Status = "" },
 		func(value *WorkflowProjection) { value.Event = "" },
 		func(value *WorkflowProjection) { value.ConfigurationDigest = "bad" },
-		func(value *WorkflowProjection) { value.Generation = 0 },
+		func(value *WorkflowProjection) { value.ActiveTicket = "" },
+		func(value *WorkflowProjection) { value.LagStatus = "" },
+		func(value *WorkflowProjection) { value.Profile = "" },
+		func(value *WorkflowProjection) { value.BundleGeneration = 0 },
+		func(value *WorkflowProjection) { value.Stage = "" },
 		func(value *WorkflowProjection) { value.BundleID = "bad" },
+		func(value *WorkflowProjection) { value.EvidenceReferences[0].Reference = "bad\nreference" },
+		func(value *WorkflowProjection) { value.EvidenceReferences[0].Digest = "bad" },
+		func(value *WorkflowProjection) {
+			value.EvidenceReferences = append(value.EvidenceReferences, value.EvidenceReferences[0])
+		},
 		func(value *WorkflowProjection) { value.Digest = strings.Repeat("0", 64) },
 	} {
 		candidate := valid
+		candidate.EvidenceReferences = append([]EvidenceReference{}, valid.EvidenceReferences...)
 		mutate(&candidate)
 		if ErrorCode(validateWorkflowProjection(candidate)) != "PROJECTION_INVALID" {
 			t.Fatalf("invalid projection accepted: %#v", candidate)
 		}
 	}
 	unselected := valid
-	unselected.Generation, unselected.BundleID, unselected.BundleDigest, unselected.ActiveNodeID, unselected.GraphDigest = 0, "", "", "", ""
+	unselected.Profile, unselected.BundleGeneration, unselected.BundleID, unselected.BundleDigest, unselected.Stage, unselected.GraphDigest = "", 0, "", "", "", ""
 	unselected.HostIntegrationID, unselected.HostIntegrationDigest, unselected.HostManifestDigest, unselected.HostAuditDigest, unselected.HostConformanceDigest = "", "", "", "", ""
+	unselected.EvidenceReferences = []EvidenceReference{}
 	finalizeInternalProjection(t, &unselected)
 	if err := validateWorkflowProjection(unselected); err != nil {
 		t.Fatalf("valid unselected projection rejected: %v", err)
@@ -353,12 +364,32 @@ func TestWorkflowProjectionValidationAndFilesystemBoundaries(t *testing.T) {
 	}
 }
 
+func TestWorkflowProjectionEvidenceIsSortedDeduplicatedAndPinned(t *testing.T) {
+	observations := []StageObservation{
+		{CapabilityObservation: CapabilityObservation{EvidenceReferences: []EvidenceReference{
+			{Reference: "evidence://z", Digest: strings.Repeat("2", 64)},
+			{Reference: "evidence://a", Digest: strings.Repeat("1", 64)},
+		}}},
+		{CapabilityObservation: CapabilityObservation{EvidenceReferences: []EvidenceReference{
+			{Reference: "evidence://a", Digest: strings.Repeat("1", 64)},
+		}}},
+	}
+	got, err := workflowProjectionEvidence(observations)
+	if err != nil || len(got) != 2 || got[0].Reference != "evidence://a" || got[1].Reference != "evidence://z" {
+		t.Fatalf("workflowProjectionEvidence() = %#v, %v", got, err)
+	}
+	observations[0].EvidenceReferences[0].Digest = "bad"
+	if _, err := workflowProjectionEvidence(observations); ErrorCode(err) != "PROJECTION_INVALID" {
+		t.Fatalf("invalid projected evidence error = %v", err)
+	}
+}
+
 func TestWorkflowRecordAndProjectionHelpersFailClosed(t *testing.T) {
-	validInput := &WorkflowInput{DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64)}
+	validInput := &WorkflowInput{DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), ActiveTicket: "ticket-10"}
 	if normalized, err := normalizeWorkflowInput(validInput); err != nil || normalized != *validInput {
 		t.Fatalf("valid Workflow input = %#v, %v", normalized, err)
 	}
-	for _, value := range []*WorkflowInput{nil, {DeliverableID: "bad\ndeliverable", InputDigest: strings.Repeat("1", 64)}, {DeliverableID: "deliverable", InputDigest: "bad"}} {
+	for _, value := range []*WorkflowInput{nil, {DeliverableID: "bad\ndeliverable", InputDigest: strings.Repeat("1", 64)}, {DeliverableID: "deliverable", InputDigest: "bad"}, {DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), ActiveTicket: "bad\nticket"}} {
 		if _, err := normalizeWorkflowInput(value); ErrorCode(err) != "WORKFLOW_REQUEST_INVALID" {
 			t.Fatalf("normalizeWorkflowInput(%#v) error = %v", value, err)
 		}
@@ -461,10 +492,11 @@ func validInternalWorkflowProjection(t *testing.T) WorkflowProjection {
 	value := WorkflowProjection{
 		SchemaVersion: workflowProjectionSchemaV1, RunID: "run-0123456789abcdef0123456789abcdef", Revision: 2,
 		RevisionDigest: strings.Repeat("1", 64), StateDigest: strings.Repeat("2", 64), Status: RunReady,
-		Event: "WORKFLOW_BUNDLE_CREATED", ConfigurationDigest: strings.Repeat("3", 64),
+		Event: "WORKFLOW_BUNDLE_CREATED", ConfigurationDigest: strings.Repeat("3", 64), ActiveTicket: "ticket-10", LagStatus: "current",
 		BundleID: "bundle-0123456789abcdef0123456789abcdef", BundleDigest: strings.Repeat("4", 64),
-		Generation: 1, ActiveNodeID: "requirements", GraphDigest: strings.Repeat("5", 64),
-		HostIntegrationID: "acme/codex-runtime", HostIntegrationDigest: strings.Repeat("6", 64),
+		Profile: "MATT-SP-HYBRID", BundleGeneration: 1, Stage: "requirements", GraphDigest: strings.Repeat("5", 64),
+		EvidenceReferences: []EvidenceReference{{Reference: "evidence://projection", Digest: strings.Repeat("a", 64)}},
+		HostIntegrationID:  "acme/codex-runtime", HostIntegrationDigest: strings.Repeat("6", 64),
 		HostManifestDigest: strings.Repeat("7", 64), HostAuditDigest: strings.Repeat("8", 64),
 		HostConformanceDigest: strings.Repeat("9", 64),
 	}

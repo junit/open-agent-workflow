@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
@@ -14,32 +15,40 @@ const (
 	workflowProjectionSchemaV1 = "oaw.workflow-projection/v1"
 	projectionLagSchemaV1      = "oaw.projection-lag/v1"
 	projectionFailureReason    = "PROJECTION_WRITE_FAILED"
+	ProjectionLagCurrent       = ProjectionLagStatus("current")
+	ProjectionLagging          = ProjectionLagStatus("lagging")
 )
+
+type ProjectionLagStatus string
 
 type ProjectionSink interface {
 	WriteProjection(WorkflowProjection) error
 }
 
 type WorkflowProjection struct {
-	SchemaVersion         string    `json:"schema_version"`
-	RunID                 string    `json:"run_id"`
-	Revision              uint64    `json:"revision"`
-	RevisionDigest        string    `json:"revision_digest"`
-	StateDigest           string    `json:"state_digest"`
-	Status                RunStatus `json:"status"`
-	Event                 string    `json:"event"`
-	ConfigurationDigest   string    `json:"configuration_digest"`
-	BundleID              string    `json:"bundle_id,omitempty"`
-	BundleDigest          string    `json:"bundle_digest,omitempty"`
-	Generation            uint64    `json:"generation,omitempty"`
-	ActiveNodeID          string    `json:"active_node_id,omitempty"`
-	GraphDigest           string    `json:"graph_digest,omitempty"`
-	HostIntegrationID     string    `json:"host_integration_id,omitempty"`
-	HostIntegrationDigest string    `json:"host_integration_digest,omitempty"`
-	HostManifestDigest    string    `json:"host_manifest_digest,omitempty"`
-	HostAuditDigest       string    `json:"host_audit_digest,omitempty"`
-	HostConformanceDigest string    `json:"host_conformance_digest,omitempty"`
-	Digest                string    `json:"digest"`
+	SchemaVersion         string              `json:"schema_version"`
+	RunID                 string              `json:"run_id"`
+	Revision              uint64              `json:"revision"`
+	RevisionDigest        string              `json:"revision_digest"`
+	StateDigest           string              `json:"state_digest"`
+	Status                RunStatus           `json:"status"`
+	Event                 string              `json:"event"`
+	ConfigurationDigest   string              `json:"configuration_digest"`
+	ActiveTicket          string              `json:"active_ticket"`
+	LagStatus             ProjectionLagStatus `json:"lag_status"`
+	EvidenceReferences    []EvidenceReference `json:"evidence_references"`
+	Profile               string              `json:"profile,omitempty"`
+	BundleID              string              `json:"bundle_id,omitempty"`
+	BundleDigest          string              `json:"bundle_digest,omitempty"`
+	BundleGeneration      uint64              `json:"bundle_generation,omitempty"`
+	Stage                 string              `json:"stage,omitempty"`
+	GraphDigest           string              `json:"graph_digest,omitempty"`
+	HostIntegrationID     string              `json:"host_integration_id,omitempty"`
+	HostIntegrationDigest string              `json:"host_integration_digest,omitempty"`
+	HostManifestDigest    string              `json:"host_manifest_digest,omitempty"`
+	HostAuditDigest       string              `json:"host_audit_digest,omitempty"`
+	HostConformanceDigest string              `json:"host_conformance_digest,omitempty"`
+	Digest                string              `json:"digest"`
 }
 
 type FilesystemProjectionSink struct {
@@ -47,11 +56,12 @@ type FilesystemProjectionSink struct {
 }
 
 type projectionLagMarker struct {
-	SchemaVersion  string        `json:"schema_version"`
-	RunID          string        `json:"run_id"`
-	RevisionDigest string        `json:"revision_digest"`
-	Lag            ProjectionLag `json:"lag"`
-	Digest         string        `json:"digest"`
+	SchemaVersion  string              `json:"schema_version"`
+	RunID          string              `json:"run_id"`
+	RevisionDigest string              `json:"revision_digest"`
+	Status         ProjectionLagStatus `json:"status"`
+	Lag            ProjectionLag       `json:"lag"`
+	Digest         string              `json:"digest"`
 }
 
 func projectionSinkFromOptions(options ProjectionOptions) (ProjectionSink, error) {
@@ -173,11 +183,16 @@ func newWorkflowProjection(record revisionRecord) (WorkflowProjection, error) {
 		return WorkflowProjection{}, runtimeError("PROJECTION_INVALID", "committed Workflow revision is invalid", nil)
 	}
 	workflow := record.Snapshot.Workflow
+	evidence, err := workflowProjectionEvidence(workflow.Observations)
+	if err != nil {
+		return WorkflowProjection{}, err
+	}
 	value := WorkflowProjection{
 		SchemaVersion: workflowProjectionSchemaV1, RunID: record.RunID, Revision: record.Revision,
 		RevisionDigest: record.Digest, StateDigest: record.StateDigest, Status: record.Snapshot.Status,
 		Event: record.Event, ConfigurationDigest: workflow.ConfigurationDigest,
-		Generation: workflow.ActiveGeneration, ActiveNodeID: workflow.ActiveNodeID,
+		ActiveTicket: workflow.ActiveTicket, LagStatus: ProjectionLagCurrent,
+		EvidenceReferences: evidence,
 	}
 	if workflow.ActiveGeneration > 0 {
 		bundle, err := workflowActiveBundle(record.Snapshot)
@@ -186,6 +201,9 @@ func newWorkflowProjection(record revisionRecord) (WorkflowProjection, error) {
 		}
 		value.BundleID = bundle.ID
 		value.BundleDigest = bundle.Digest
+		value.Profile = bundle.Selection.Profile
+		value.BundleGeneration = bundle.Generation
+		value.Stage = workflow.ActiveNodeID
 		value.GraphDigest = bundle.GraphDigest
 		value.HostIntegrationID = bundle.HostIntegrationID
 		value.HostIntegrationDigest = bundle.HostIntegrationDigest
@@ -203,15 +221,45 @@ func newWorkflowProjection(record revisionRecord) (WorkflowProjection, error) {
 	return value, nil
 }
 
+func workflowProjectionEvidence(observations []StageObservation) ([]EvidenceReference, error) {
+	evidence := make([]EvidenceReference, 0)
+	for _, observation := range observations {
+		for _, reference := range observation.EvidenceReferences {
+			if validateIdentifier(reference.Reference) != nil || !validDigest(reference.Digest) {
+				return nil, runtimeError("PROJECTION_INVALID", "Workflow evidence reference is invalid", nil)
+			}
+			evidence = append(evidence, reference)
+		}
+	}
+	sort.Slice(evidence, func(left, right int) bool {
+		if evidence[left].Reference == evidence[right].Reference {
+			return evidence[left].Digest < evidence[right].Digest
+		}
+		return evidence[left].Reference < evidence[right].Reference
+	})
+	result := make([]EvidenceReference, 0, len(evidence))
+	for _, reference := range evidence {
+		if len(result) == 0 || result[len(result)-1] != reference {
+			result = append(result, reference)
+		}
+	}
+	return result, nil
+}
+
 func validateWorkflowProjection(value WorkflowProjection) error {
-	if value.SchemaVersion != workflowProjectionSchemaV1 || !runIDPattern.MatchString(value.RunID) || value.Revision == 0 || !validDigest(value.RevisionDigest) || !validDigest(value.StateDigest) || !validDigest(value.ConfigurationDigest) || !validDigest(value.Digest) || value.Status == "" || value.Event == "" {
+	if value.SchemaVersion != workflowProjectionSchemaV1 || !runIDPattern.MatchString(value.RunID) || value.Revision == 0 || !validDigest(value.RevisionDigest) || !validDigest(value.StateDigest) || !validDigest(value.ConfigurationDigest) || !validDigest(value.Digest) || value.Status == "" || value.Event == "" || value.ActiveTicket != "" && validateIdentifier(value.ActiveTicket) != nil || value.LagStatus != ProjectionLagCurrent || value.EvidenceReferences == nil {
 		return runtimeError("PROJECTION_INVALID", "invalid Workflow projection identity", nil)
 	}
-	if value.Generation == 0 {
-		if value.BundleID != "" || value.BundleDigest != "" || value.ActiveNodeID != "" || value.GraphDigest != "" || value.HostIntegrationID != "" || value.HostIntegrationDigest != "" || value.HostManifestDigest != "" || value.HostAuditDigest != "" || value.HostConformanceDigest != "" {
+	for index, reference := range value.EvidenceReferences {
+		if validateIdentifier(reference.Reference) != nil || !validDigest(reference.Digest) || index > 0 && !projectionEvidenceLess(value.EvidenceReferences[index-1], reference) {
+			return runtimeError("PROJECTION_INVALID", "invalid Workflow projection evidence", nil)
+		}
+	}
+	if value.BundleGeneration == 0 {
+		if value.Profile != "" || value.BundleID != "" || value.BundleDigest != "" || value.Stage != "" || value.GraphDigest != "" || value.HostIntegrationID != "" || value.HostIntegrationDigest != "" || value.HostManifestDigest != "" || value.HostAuditDigest != "" || value.HostConformanceDigest != "" || len(value.EvidenceReferences) != 0 {
 			return runtimeError("PROJECTION_INVALID", "unselected Workflow projection contains Bundle state", nil)
 		}
-	} else if !bundleIDPattern.MatchString(value.BundleID) || !validDigest(value.BundleDigest) || value.ActiveNodeID == "" || !validDigest(value.GraphDigest) || validateIdentifier(value.HostIntegrationID) != nil || !validDigest(value.HostIntegrationDigest) || !validDigest(value.HostManifestDigest) || !validDigest(value.HostAuditDigest) || !validDigest(value.HostConformanceDigest) {
+	} else if validateIdentifier(value.Profile) != nil || !bundleIDPattern.MatchString(value.BundleID) || !validDigest(value.BundleDigest) || validateIdentifier(value.Stage) != nil || !validDigest(value.GraphDigest) || validateIdentifier(value.HostIntegrationID) != nil || !validDigest(value.HostIntegrationDigest) || !validDigest(value.HostManifestDigest) || !validDigest(value.HostAuditDigest) || !validDigest(value.HostConformanceDigest) {
 		return runtimeError("PROJECTION_INVALID", "selected Workflow projection is incomplete", nil)
 	}
 	stored := value.Digest
@@ -223,6 +271,13 @@ func validateWorkflowProjection(value WorkflowProjection) error {
 	return nil
 }
 
+func projectionEvidenceLess(left, right EvidenceReference) bool {
+	if left.Reference == right.Reference {
+		return left.Digest < right.Digest
+	}
+	return left.Reference < right.Reference
+}
+
 func renderWorkflowProjectionMarkdown(value WorkflowProjection) []byte {
 	var output strings.Builder
 	output.WriteString("# OAW Workflow Projection\n\n")
@@ -232,17 +287,26 @@ func renderWorkflowProjectionMarkdown(value WorkflowProjection) []byte {
 	fmt.Fprintf(&output, "- State digest: `%s`\n", value.StateDigest)
 	fmt.Fprintf(&output, "- Status: `%s`\n", value.Status)
 	fmt.Fprintf(&output, "- Event: `%s`\n", value.Event)
+	fmt.Fprintf(&output, "- Active ticket: `%s`\n", value.ActiveTicket)
+	fmt.Fprintf(&output, "- Lag status: `%s`\n", value.LagStatus)
 	if value.BundleID != "" {
+		fmt.Fprintf(&output, "- Profile: `%s`\n", value.Profile)
 		fmt.Fprintf(&output, "- Bundle: `%s`\n", value.BundleID)
 		fmt.Fprintf(&output, "- Bundle digest: `%s`\n", value.BundleDigest)
-		fmt.Fprintf(&output, "- Generation: `%d`\n", value.Generation)
-		fmt.Fprintf(&output, "- Active node: `%s`\n", value.ActiveNodeID)
+		fmt.Fprintf(&output, "- Bundle generation: `%d`\n", value.BundleGeneration)
+		fmt.Fprintf(&output, "- Stage: `%s`\n", value.Stage)
 		fmt.Fprintf(&output, "- Graph digest: `%s`\n", value.GraphDigest)
 		fmt.Fprintf(&output, "- Host Integration: `%s`\n", value.HostIntegrationID)
 		fmt.Fprintf(&output, "- Host Integration digest: `%s`\n", value.HostIntegrationDigest)
 		fmt.Fprintf(&output, "- Host Manifest digest: `%s`\n", value.HostManifestDigest)
 		fmt.Fprintf(&output, "- Host audit digest: `%s`\n", value.HostAuditDigest)
 		fmt.Fprintf(&output, "- Host conformance digest: `%s`\n", value.HostConformanceDigest)
+	}
+	if len(value.EvidenceReferences) > 0 {
+		output.WriteString("\n## Evidence References\n\n")
+		for _, reference := range value.EvidenceReferences {
+			fmt.Fprintf(&output, "- `%s` (`%s`)\n", reference.Reference, reference.Digest)
+		}
 	}
 	return []byte(output.String())
 }
@@ -272,7 +336,8 @@ func writeProjectionSafely(sink ProjectionSink, value WorkflowProjection) (err e
 func (value *journal) recordProjectionLag(record revisionRecord) error {
 	marker := projectionLagMarker{
 		SchemaVersion: projectionLagSchemaV1, RunID: record.RunID, RevisionDigest: record.Digest,
-		Lag: ProjectionLag{Revision: record.Revision, Digest: record.Digest, Reason: projectionFailureReason},
+		Status: ProjectionLagging,
+		Lag:    ProjectionLag{Revision: record.Revision, Digest: record.Digest, Reason: projectionFailureReason},
 	}
 	digestValue := marker
 	digestValue.Digest = ""

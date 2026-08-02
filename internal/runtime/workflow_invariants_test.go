@@ -27,6 +27,9 @@ func TestWorkflowStateValidationRejectsSemanticTampering(t *testing.T) {
 		{"status", states.ready, func(value *revisionRecord) { value.Snapshot.Status = "TAMPERED" }},
 		{"identity", states.ready, func(value *revisionRecord) { value.Snapshot.RequestID = "bad\nrequest" }},
 		{"trusted inputs", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.RegistryDigest = "bad" }},
+		{"active ticket alias", states.ready, func(value *revisionRecord) {
+			value.Snapshot.Workflow.ActiveTicket = value.Snapshot.Workflow.Input.DeliverableID
+		}},
 		{"authority collections", states.ready, func(value *revisionRecord) { value.Snapshot.ProcessedMessages = nil }},
 		{"projection authority leakage", states.ready, func(value *revisionRecord) {
 			value.Snapshot.Workflow.ProjectionLag = []ProjectionLag{{Revision: 2, Digest: strings.Repeat("1", 64), Reason: projectionFailureReason}}

@@ -16,7 +16,7 @@ func TestRenderTargetMatchesBashBytes(t *testing.T) {
 		want  string
 	}{
 		{name: "user claude", scope: "user", id: "claude", want: "Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n@" + policyPath + "\n"},
-		{name: "user codex", scope: "user", id: "codex", want: "For every new top-level engineering task that may use workflow skills, first read `" + policyPath + "`, run its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n"},
+		{name: "user codex", scope: "user", id: "codex", want: "For every new top-level engineering request, first read `" + policyPath + "`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n"},
 		{name: "user gemini", scope: "user", id: "gemini", want: "Follow the Open Agent Workflow policy before engineering lifecycle work:\n@" + policyPath + "\n"},
 		{name: "user opencode", scope: "user", id: "opencode", want: "Before engineering lifecycle work, use the Read tool to read `" + policyPath + "`, then follow its blocking selection gate and lifecycle lock.\n"},
 		{name: "project claude", scope: "project", id: "claude", want: "Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n@" + policyPath + "\n"},
@@ -49,7 +49,7 @@ func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := "<!-- BEGIN OPEN AGENT WORKFLOW -->\n" +
-		"For every new top-level engineering task that may use workflow skills, first read `/config/ENGINEERING.md`, run its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n" +
+		"For every new top-level engineering request, first read `/config/ENGINEERING.md`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n" +
 		"<!-- END OPEN AGENT WORKFLOW -->\n"
 	if !bytes.Equal(got, []byte(want)) {
 		t.Fatalf("renderManagedBlock() = %q, want %q", got, want)

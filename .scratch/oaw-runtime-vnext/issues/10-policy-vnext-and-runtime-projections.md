@@ -9,7 +9,7 @@ with the canonical glossary.
 
 **Blocked by:** 03 — Deterministic Request Classifier; 04 — Profile Recipe Compiler; 07 — Workflow Runtime Orchestration; 09 — First Runtime Host and oaw run
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 - [ ] Policy explains Direct, Bounded, and Workflow modes with Workflow-only
   Startup Gate activation.

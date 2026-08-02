@@ -16,6 +16,12 @@ One coherent engineering outcome with explicit completion conditions. It is the
 scope of lifecycle selection and locking.
 _Avoid_: Ticket, task
 
+**Active Ticket**:
+An optional delivery-tracking reference for the currently projected portion of
+a Workflow Deliverable. It is stored independently from Deliverable identity
+and may be absent when the workflow uses no ticket system.
+_Avoid_: Deliverable, active graph node, Grant identity
+
 **Request Mode**:
 The execution topology selected for an Engineering Request: `DIRECT`,
 `BOUNDED`, or `WORKFLOW`. It is independent of complexity and risk.

@@ -59,7 +59,7 @@ Code（ECC）提供的 workflow 流程，不比较模型质量或 agent 工具�
 
 在 `MATT-SP-HYBRID` 下，ECC specialist 不会成为生命周期 owner。反过来，如果用户希望
 ECC 拥有完整生命周期，仍可选择 `ECC-FULL`。评分表不会从用户选项中移除 `SP-FULL`、
-`MATT-FULL`、`ECC-FULL` 或 `CUSTOM-LOCKED`。
+`MATT-FULL`、`ECC-FULL` 或符合条件的用户自定义 Profile。
 
 ## 怎样使用这份对比
 

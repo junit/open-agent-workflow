@@ -45,6 +45,15 @@ assert_contains() {
     fail "$relative_path is missing required text: $expected_text"
 }
 
+assert_not_contains() {
+  local relative_path=$1
+  local forbidden_text=$2
+
+  if grep -F -- "$forbidden_text" "$REPOSITORY/$relative_path" >/dev/null; then
+    fail "$relative_path contains forbidden stale text: $forbidden_text"
+  fi
+}
+
 make_checker_fixture() {
   local fixture_root=$1
   local english_file
@@ -216,9 +225,10 @@ for readme_file in README.md README-zh.md; do
     MATT-FULL \
     ECC-FULL \
     MATT-SP-HYBRID \
-    CUSTOM-LOCKED; do
+    USER-DEFINED; do
     assert_contains "$readme_file" "$profile_id"
   done
+  assert_not_contains "$readme_file" 'CUSTOM-LOCKED'
   for target_id in \
     claude \
     codex \
@@ -402,14 +412,20 @@ for lifecycle_file in docs/en/lifecycle.md docs/zh/lifecycle.md; do
     MATT-FULL \
     ECC-FULL \
     MATT-SP-HYBRID \
-    CUSTOM-LOCKED; do
+    USER-DEFINED; do
     assert_contains "$lifecycle_file" "$profile_id"
   done
+  assert_contains "$lifecycle_file" 'oaw/ecc-engineering'
   assert_contains "$lifecycle_file" 'MATT-SP-HYBRID + ECC(security-review)'
+  assert_not_contains "$lifecycle_file" 'CUSTOM-LOCKED'
 done
 for lifecycle_contract in \
-  'ordinary task' \
-  'complex task' \
+  'Direct Mode' \
+  'Bounded Mode' \
+  'Workflow Mode' \
+  'Only Workflow Mode runs the Startup Gate' \
+  'Provider and Capability' \
+  'third-party Providers' \
   'blocking user choice' \
   'lifecycle lock' \
   'bundle inheritance' \
@@ -422,8 +438,12 @@ for lifecycle_contract in \
 done
 assert_contains docs/en/lifecycle.md '[简体中文](../zh/lifecycle.md)'
 for lifecycle_contract in \
-  '普通任务' \
-  '复杂任务' \
+  'Direct Mode' \
+  'Bounded Mode' \
+  'Workflow Mode' \
+  '只有 Workflow Mode 运行 Startup Gate' \
+  'Provider 与 Capability' \
+  '第三方 Provider' \
   '阻塞式用户选择' \
   '生命周期锁' \
   'bundle 继承' \
@@ -435,7 +455,28 @@ for lifecycle_contract in \
   assert_contains docs/zh/lifecycle.md "$lifecycle_contract"
 done
 assert_contains docs/zh/lifecycle.md '[English](../en/lifecycle.md)'
-pass "lifecycle documents explain classification, locking, inheritance, add-ons, and switching"
+pass "lifecycle documents explain Runtime vNext modes, extensible Profiles, locking, inheritance, add-ons, and switching"
+
+for policy_contract in \
+  'DIRECT' \
+  'BOUNDED' \
+  'WORKFLOW' \
+  'Only Workflow Mode runs the Startup Gate' \
+  'oaw/superpowers' \
+  'oaw/matt' \
+  'oaw/ecc' \
+  'third-party Providers' \
+  'oaw/ecc-engineering' \
+  'USER-DEFINED' \
+  'Runtime admission' \
+  'Resource Leases' \
+  'physical isolation'; do
+  assert_contains policy/ENGINEERING.md "$policy_contract"
+done
+assert_not_contains policy/ENGINEERING.md 'CUSTOM-LOCKED'
+assert_not_contains docs/en/comparison.md 'CUSTOM-LOCKED'
+assert_not_contains docs/zh/comparison.md 'CUSTOM-LOCKED'
+pass "canonical policy distinguishes Request Modes, extensible Providers, user-defined Profiles, and Policy-only Host limits"
 
 for operating_document in \
   docs/en/architecture.md \

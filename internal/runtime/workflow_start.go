@@ -26,7 +26,7 @@ func cloneWorkflowInput(value *WorkflowInput) *WorkflowInput {
 }
 
 func normalizeWorkflowInput(value *WorkflowInput) (WorkflowInput, error) {
-	if value == nil || validateIdentifier(value.DeliverableID) != nil || !validDigest(value.InputDigest) {
+	if value == nil || validateIdentifier(value.DeliverableID) != nil || !validDigest(value.InputDigest) || value.ActiveTicket != "" && validateIdentifier(value.ActiveTicket) != nil {
 		return WorkflowInput{}, runtimeError("WORKFLOW_REQUEST_INVALID", "invalid Workflow identity", nil)
 	}
 	return *value, nil
@@ -39,7 +39,7 @@ func workflowConfigurationReady(project ProjectIdentity, options WorkflowOptions
 func workflowAwaitingState(input WorkflowInput, options WorkflowOptions) *WorkflowState {
 	return &WorkflowState{
 		Input: input, ConfigurationDigest: options.Configuration.Digest(), RegistryDigest: options.Registry.Digest(),
-		Bundles: []LifecycleBundle{}, ActiveGeneration: 0, ActiveNodeID: "", ActiveGrantID: "",
+		Bundles: []LifecycleBundle{}, ActiveGeneration: 0, ActiveNodeID: "", ActiveTicket: input.ActiveTicket, ActiveGrantID: "",
 		Observations: []StageObservation{}, RevokedGrantIDs: []string{}, ResourceLeases: []ResourceLease{}, ProjectionLag: []ProjectionLag{},
 	}
 }
