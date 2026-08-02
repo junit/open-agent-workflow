@@ -165,7 +165,7 @@ File ownership is fixed as follows:
 - Modify: `internal/management/install_values.go`
 - Modify: `internal/management/management.go`
 
-- [ ] **Step 1: Add failing action-contract and install-regression tests.**
+- [x] **Step 1: Add failing action-contract and install-regression tests.**
 
 Test construction and defensive copying for replace/remove/retain actions;
 reject empty/control-character fields, absolute or traversing suffixes,
@@ -174,7 +174,7 @@ destinations with conflicting effects, and mutation of caller-owned byte
 slices. Assert conversion of Ticket 12 install actions preserves every existing
 `PreparedInstall` result and action order.
 
-- [ ] **Step 2: Run focused tests and record RED.**
+- [x] **Step 2: Run focused tests and record RED.**
 
 ```bash
 rtk go test ./internal/management -run 'MutationAction|InstallActionRegression' -count=1
@@ -183,7 +183,7 @@ rtk go test ./internal/management -run 'MutationAction|InstallActionRegression' 
 Expected: compile failure because mutation action types and constructors do not
 exist. No implementation changes precede this RED run.
 
-- [ ] **Step 3: Implement the closed action domain and install adapters.**
+- [x] **Step 3: Implement the closed action domain and install adapters.**
 
 Add validated constructors and clone helpers. Replace duplicated install-only
 validation with shared immutable primitives while retaining `installAction` as
@@ -192,7 +192,7 @@ an internal compatibility adapter where it keeps Ticket 12 changes smaller.
 `replace` permits only 0600/0644 and copied data. Every effect retains the exact
 preparation snapshot for TOCTOU checks and rollback.
 
-- [ ] **Step 4: Run install regression, race, and commit.**
+- [x] **Step 4: Run install regression, race, and commit.**
 
 ```bash
 rtk gofmt -w internal/management
