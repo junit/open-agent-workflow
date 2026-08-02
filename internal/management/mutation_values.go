@@ -3,6 +3,8 @@ package management
 import (
 	"bytes"
 	"io/fs"
+	"os"
+	"path/filepath"
 	"sort"
 )
 
@@ -23,6 +25,14 @@ type mutationAction struct {
 	allowedRoot    string
 	relativeSuffix string
 	before         installPathSnapshot
+	identity       mutationPathIdentity
+}
+
+type mutationPathIdentity struct {
+	captured    bool
+	root        fs.FileInfo
+	parent      fs.FileInfo
+	destination fs.FileInfo
 }
 
 func newMutationAction(
@@ -71,16 +81,72 @@ func newMutationAction(
 			return mutationAction{}, compatibilityError("retain action has a destination mode")
 		}
 	}
+	identity, err := captureMutationPathIdentity(root, destination)
+	if err != nil {
+		return mutationAction{}, err
+	}
 	return mutationAction{
 		effect: effect, label: label, data: bytes.Clone(data), destination: destination,
 		mode: mode, allowedRoot: root, relativeSuffix: suffix,
-		before: cloneInstallPathSnapshot(before),
+		before: cloneInstallPathSnapshot(before), identity: identity,
 	}, nil
+}
+
+func captureMutationPathIdentity(root, destination string) (mutationPathIdentity, error) {
+	rootInfo, err := os.Lstat(root)
+	if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+		return mutationPathIdentity{}, compatibilityError("mutation root identity could not be captured: " + root)
+	}
+	inspect := func(path string, directory bool) (fs.FileInfo, error) {
+		info, err := os.Lstat(path)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		if err != nil {
+			return nil, compatibilityError("mutation path identity could not be captured: " + path)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || (directory && !info.IsDir()) {
+			return nil, compatibilityError("mutation path identity is unsafe: " + path)
+		}
+		return info, nil
+	}
+	parent, err := inspect(filepath.Dir(destination), true)
+	if err != nil {
+		return mutationPathIdentity{}, err
+	}
+	final, err := inspect(destination, false)
+	if err != nil {
+		return mutationPathIdentity{}, err
+	}
+	return mutationPathIdentity{captured: true, root: rootInfo, parent: parent, destination: final}, nil
+}
+
+func revalidateMutationPathIdentity(expected mutationPathIdentity, root, destination string) error {
+	if !expected.captured {
+		return nil
+	}
+	current, err := captureMutationPathIdentity(root, destination)
+	if err != nil {
+		return err
+	}
+	if !sameMutationFileIdentity(expected.root, current.root) ||
+		!sameMutationFileIdentity(expected.parent, current.parent) ||
+		!sameMutationFileIdentity(expected.destination, current.destination) {
+		return compatibilityError("destination identity changed after preparation: " + destination)
+	}
+	return nil
+}
+
+func sameMutationFileIdentity(left, right fs.FileInfo) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return os.SameFile(left, right)
 }
 
 func addMutationAction(actions []mutationAction, action mutationAction) ([]mutationAction, error) {
 	for _, existing := range actions {
-		if existing.destination != action.destination {
+		if filepath.Clean(existing.destination) != filepath.Clean(action.destination) {
 			continue
 		}
 		if !equivalentMutationAction(existing, action) {
@@ -150,9 +216,13 @@ func newDirectoryAction(destination, root, suffix string, namespace bool) (direc
 	if before.kind != installPathMissing && before.kind != installPathDirectory {
 		return directoryAction{}, compatibilityError("owned directory changed before removal: " + destination)
 	}
+	identity, err := captureMutationPathIdentity(root, destination)
+	if err != nil {
+		return directoryAction{}, err
+	}
 	return directoryAction{
 		destination: destination, allowedRoot: root, relativeSuffix: suffix,
-		before: cloneInstallPathSnapshot(before), namespace: namespace,
+		before: cloneInstallPathSnapshot(before), namespace: namespace, identity: identity,
 	}, nil
 }
 

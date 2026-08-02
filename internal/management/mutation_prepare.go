@@ -51,6 +51,7 @@ type directoryAction struct {
 	relativeSuffix string
 	before         installPathSnapshot
 	namespace      bool
+	identity       mutationPathIdentity
 }
 
 func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest) error {

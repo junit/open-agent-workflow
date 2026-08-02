@@ -384,6 +384,10 @@ func TestScopedMutationReplaceAndRemoveRoundTrip(t *testing.T) {
 		t.Fatalf("removed destination exists: %v", err)
 	}
 	remove.before = installPathSnapshot{kind: installPathMissing}
+	remove.identity, err = captureMutationPathIdentity(root, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := scopedAtomicRemoveMutation(remove); err != nil {
 		t.Fatalf("removing absent destination: %v", err)
 	}

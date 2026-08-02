@@ -3,7 +3,6 @@ package management
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"path/filepath"
 	"reflect"
 )
@@ -210,24 +209,38 @@ func validateMutationPlan(plan mutationPlan) error {
 	actions = append(actions, plan.stateActions...)
 	seen := make(map[string]struct{}, len(actions))
 	for _, action := range actions {
-		if _, err := newMutationAction(action.effect, action.label, action.data, action.destination, action.mode, action.allowedRoot, action.relativeSuffix, action.before); err != nil {
+		rebuilt, err := newMutationAction(action.effect, action.label, action.data, action.destination, action.mode, action.allowedRoot, action.relativeSuffix, action.before)
+		if err != nil {
 			return err
 		}
-		if _, exists := seen[action.destination]; exists {
+		if err := compareMutationPathIdentity(action.identity, rebuilt.identity, action.destination); err != nil {
+			return err
+		}
+		destinationKey := filepath.Clean(action.destination)
+		if _, exists := seen[destinationKey]; exists {
 			return compatibilityError("duplicate prepared mutation destination: " + action.destination)
 		}
-		seen[action.destination] = struct{}{}
+		seen[destinationKey] = struct{}{}
 		if err := revalidateMutationActionSnapshot(action); err != nil {
 			return err
 		}
 	}
+	seenDirectories := make(map[string]struct{}, len(plan.directoryActions))
 	for _, action := range plan.directoryActions {
+		destinationKey := filepath.Clean(action.destination)
+		if _, exists := seenDirectories[destinationKey]; exists {
+			return compatibilityError("duplicate prepared directory destination: " + action.destination)
+		}
+		seenDirectories[destinationKey] = struct{}{}
 		rebuilt, err := newDirectoryAction(action.destination, action.allowedRoot, action.relativeSuffix, action.namespace)
 		if err != nil {
 			return err
 		}
 		if !reflect.DeepEqual(rebuilt.before, action.before) {
 			return compatibilityError("owned directory changed after preparation: " + action.destination)
+		}
+		if err := compareMutationPathIdentity(action.identity, rebuilt.identity, action.destination); err != nil {
+			return err
 		}
 	}
 	if plan.backup.required {
@@ -249,6 +262,18 @@ func revalidateMutationActionSnapshot(action mutationAction) error {
 	if !reflect.DeepEqual(current, action.before) {
 		return compatibilityError("destination changed after preparation: " + action.destination)
 	}
+	return revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination)
+}
+
+func compareMutationPathIdentity(expected, current mutationPathIdentity, destination string) error {
+	if !expected.captured || !current.captured {
+		return compatibilityError("prepared mutation identity is missing: " + destination)
+	}
+	if !sameMutationFileIdentity(expected.root, current.root) ||
+		!sameMutationFileIdentity(expected.parent, current.parent) ||
+		!sameMutationFileIdentity(expected.destination, current.destination) {
+		return compatibilityError("destination identity changed after preparation: " + destination)
+	}
 	return nil
 }
 
@@ -262,6 +287,9 @@ func applyMutationAction(plan mutationPlan, action mutationAction) (string, bool
 	}
 	if !reflect.DeepEqual(current, action.before) {
 		return "", false, compatibilityError("destination changed after preparation: " + action.destination)
+	}
+	if err := revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination); err != nil {
+		return "", false, err
 	}
 	switch action.effect {
 	case mutationReplace:
@@ -299,9 +327,9 @@ func verifyActiveMutationBackup(plan mutationPlan, action mutationAction) error 
 	if !plan.backup.required || !mutationActionNeedsBackup(action) {
 		return nil
 	}
-	manifest, err := os.ReadFile(filepath.Join(plan.backup.path, "manifest.tsv"))
+	manifest, err := readVerifiedBackupFile(plan.environment, filepath.Join(plan.backup.path, "manifest.tsv"), "active backup manifest")
 	if err != nil {
-		return compatibilityError("active backup manifest is missing")
+		return err
 	}
 	expected, err := renderBackupManifest(plan.backup)
 	if err != nil || !bytes.Equal(manifest, expected) {
@@ -311,7 +339,7 @@ func verifyActiveMutationBackup(plan mutationPlan, action mutationAction) error 
 		if candidate.original != action.destination {
 			continue
 		}
-		backupBytes, err := os.ReadFile(candidate.backup)
+		backupBytes, err := readVerifiedBackupFile(plan.environment, candidate.backup, "backup artifact")
 		if err != nil || checksumBytes(backupBytes) != candidate.checksum {
 			return compatibilityError("backup verification failed: " + action.destination)
 		}
@@ -355,6 +383,10 @@ func restoreMutationAction(applied mutationAction) error {
 	if err := revalidateAppliedMutationForRollback(applied, current); err != nil {
 		return err
 	}
+	currentIdentity, err := captureMutationPathIdentity(applied.allowedRoot, applied.destination)
+	if err != nil {
+		return err
+	}
 	switch applied.before.kind {
 	case installPathMissing:
 		remove := cloneMutationAction(applied)
@@ -362,6 +394,7 @@ func restoreMutationAction(applied mutationAction) error {
 		remove.data = nil
 		remove.mode = 0
 		remove.before = current
+		remove.identity = currentIdentity
 		return scopedAtomicRemoveMutation(remove)
 	case installPathRegular:
 		restore := cloneMutationAction(applied)
@@ -369,6 +402,7 @@ func restoreMutationAction(applied mutationAction) error {
 		restore.data = bytes.Clone(applied.before.data)
 		restore.mode = applied.before.mode.Perm()
 		restore.before = current
+		restore.identity = currentIdentity
 		return scopedAtomicReplaceMutation(restore)
 	}
 	return nil

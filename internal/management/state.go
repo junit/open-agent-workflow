@@ -268,7 +268,7 @@ func targetPosition(id string) int {
 }
 
 func safeStateField(value string) bool {
-	return !strings.ContainsAny(value, "\t\r\n")
+	return !hasControl(value)
 }
 
 func validChecksum(value string) bool {

@@ -132,6 +132,9 @@ func scopedRemoveMutationDirectory(action directoryAction) (bool, error) {
 	if !reflect.DeepEqual(current, action.before) {
 		return false, compatibilityError("owned directory changed after preparation: " + action.destination)
 	}
+	if err := revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination); err != nil {
+		return false, err
+	}
 	if current.kind == installPathMissing {
 		return false, nil
 	}

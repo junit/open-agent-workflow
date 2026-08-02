@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -99,7 +100,7 @@ func addBackupCandidate(
 	backupPath string,
 ) ([]backupCandidate, error) {
 	for _, candidate := range candidates {
-		if candidate.original == original {
+		if filepath.Clean(candidate.original) == filepath.Clean(original) {
 			return candidates, nil
 		}
 	}
@@ -158,14 +159,16 @@ func renderBackupManifest(plan backupPlan) ([]byte, error) {
 		if candidate.backup != expectedArtifact || filepath.Dir(filepath.Clean(candidate.backup)) != filepath.Clean(plan.path) {
 			return nil, compatibilityError("backup artifact escapes operation directory")
 		}
-		if _, exists := seenOriginals[candidate.original]; exists {
+		originalKey := filepath.Clean(candidate.original)
+		backupKey := filepath.Clean(candidate.backup)
+		if _, exists := seenOriginals[originalKey]; exists {
 			return nil, compatibilityError("duplicate backup original")
 		}
-		if _, exists := seenBackups[candidate.backup]; exists {
+		if _, exists := seenBackups[backupKey]; exists {
 			return nil, compatibilityError("duplicate backup artifact")
 		}
-		seenOriginals[candidate.original] = struct{}{}
-		seenBackups[candidate.backup] = struct{}{}
+		seenOriginals[originalKey] = struct{}{}
+		seenBackups[backupKey] = struct{}{}
 		fmt.Fprintf(&result, "artifact\t%s\t%s\t%s\n", candidate.original, candidate.backup, candidate.checksum)
 	}
 	return result.Bytes(), nil
@@ -241,6 +244,104 @@ func revalidateBackupSources(plan backupPlan) error {
 		if current.kind != installPathRegular || checksumBytes(current.data) != candidate.checksum {
 			return compatibilityError("backup source changed before mutation: " + candidate.original)
 		}
+	}
+	return nil
+}
+
+func readVerifiedBackupFile(environment Environment, destination, description string) ([]byte, error) {
+	if err := verifyPrivateBackupDirectory(environment, filepath.Dir(destination)); err != nil {
+		return nil, err
+	}
+	relative, err := stateActionRelativeSuffix(environment.StateHome, destination)
+	if err != nil {
+		return nil, err
+	}
+	root, err := openInstallRoot(environment.StateHome)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	action := installAction{
+		destination: destination, allowedRoot: environment.StateHome,
+		relativeSuffix: relative,
+	}
+	if err := revalidateScopedAction(root, action); err != nil {
+		return nil, err
+	}
+	info, err := root.Lstat(relative)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, compatibilityError(description + " is missing")
+	}
+	if err != nil {
+		return nil, compatibilityError(description + " could not be inspected")
+	}
+	if !info.Mode().IsRegular() {
+		return nil, compatibilityError(description + " is not a regular file")
+	}
+	if info.Mode().Perm() != 0o600 {
+		return nil, compatibilityError(description + " is not private")
+	}
+	if info.Size() > maximumInstallArtifactBytes {
+		return nil, compatibilityError(description + " exceeds read limit")
+	}
+	file, err := root.Open(relative)
+	if err != nil {
+		return nil, compatibilityError(description + " could not be read")
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 || !os.SameFile(info, opened) {
+		return nil, compatibilityError(description + " changed while opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maximumInstallArtifactBytes+1))
+	if err != nil {
+		return nil, compatibilityError(description + " could not be read")
+	}
+	if len(data) > maximumInstallArtifactBytes {
+		return nil, compatibilityError(description + " exceeds read limit")
+	}
+	current, err := root.Lstat(relative)
+	if err != nil || !current.Mode().IsRegular() || current.Mode().Perm() != 0o600 || !os.SameFile(opened, current) {
+		return nil, compatibilityError(description + " changed while reading")
+	}
+	if err := revalidateScopedAction(root, action); err != nil {
+		return nil, err
+	}
+	return data, nil
+}
+
+func verifyPrivateBackupDirectory(environment Environment, destination string) error {
+	relative, err := stateActionRelativeSuffix(environment.StateHome, destination)
+	if err != nil {
+		return err
+	}
+	root, err := openInstallRoot(environment.StateHome)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	action := installAction{
+		destination: destination, allowedRoot: environment.StateHome,
+		relativeSuffix: relative,
+	}
+	if err := revalidateScopedAction(root, action); err != nil {
+		return err
+	}
+	info, err := root.Lstat(relative)
+	if err != nil || !info.IsDir() {
+		return compatibilityError("active backup directory is missing")
+	}
+	if info.Mode().Perm() != 0o700 {
+		return compatibilityError("active backup directory is not private")
+	}
+	opened, err := root.OpenRoot(relative)
+	if err != nil {
+		return compatibilityError("active backup directory could not be opened")
+	}
+	defer opened.Close()
+	current, err := opened.Stat(".")
+	if err != nil || !current.IsDir() || current.Mode().Perm() != 0o700 || !os.SameFile(info, current) {
+		return compatibilityError("active backup directory changed while opening")
 	}
 	return nil
 }

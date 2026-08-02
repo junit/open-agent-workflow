@@ -27,11 +27,24 @@ func TestInitializeCoordinatesRejectsUnsafeRootsAndComponents(t *testing.T) {
 		message     string
 	}{
 		{name: "relative home", environment: Environment{Home: "relative", ConfigHome: base.ConfigHome, StateHome: base.StateHome}, message: "root must be an absolute path"},
+		{name: "relative config", environment: Environment{Home: base.Home, ConfigHome: "relative", StateHome: base.StateHome}, message: "root must be an absolute path"},
+		{name: "relative state", environment: Environment{Home: base.Home, ConfigHome: base.ConfigHome, StateHome: "relative"}, message: "root must be an absolute path"},
+		{name: "control home", environment: Environment{Home: base.Home + "\nbad", ConfigHome: base.ConfigHome, StateHome: base.StateHome}, message: "contains control characters"},
 		{name: "control config", environment: Environment{Home: base.Home, ConfigHome: base.ConfigHome + "\nbad", StateHome: base.StateHome}, message: "contains control characters"},
+		{name: "control state", environment: Environment{Home: base.Home, ConfigHome: base.ConfigHome, StateHome: base.StateHome + "\nbad"}, message: "contains control characters"},
 		{name: "config symlink", environment: base, setup: func(t *testing.T) {
-			if err := os.Symlink(t.TempDir(), filepath.Join(base.ConfigHome, "open-agent-workflow")); err != nil {
+			link := filepath.Join(base.ConfigHome, "open-agent-workflow")
+			if err := os.Symlink(t.TempDir(), link); err != nil {
 				t.Fatal(err)
 			}
+			t.Cleanup(func() { _ = os.Remove(link) })
+		}, message: "destination path contains a symlink"},
+		{name: "state symlink", environment: base, setup: func(t *testing.T) {
+			link := filepath.Join(base.StateHome, "open-agent-workflow")
+			if err := os.Symlink(t.TempDir(), link); err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = os.Remove(link) })
 		}, message: "destination path contains a symlink"},
 	}
 	for _, tt := range tests {
@@ -57,7 +70,11 @@ func TestValidatedDestinationPathRejectsUnsafeSuffixAndNonDirectory(t *testing.T
 	}{
 		{suffix: "", message: "destination suffix"},
 		{suffix: "/absolute", message: "destination suffix"},
+		{suffix: "a//b", message: "unsafe component"},
+		{suffix: "a/./b", message: "unsafe component"},
 		{suffix: "a/../b", message: "unsafe component"},
+		{suffix: "../b", message: "unsafe component"},
+		{suffix: "a/\nb", message: "control characters"},
 		{suffix: "file/child", message: "not a directory"},
 	} {
 		if _, err := validatedDestinationPath(root, test.suffix); err == nil || !strings.Contains(err.Error(), test.message) {
