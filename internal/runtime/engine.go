@@ -597,6 +597,11 @@ func validateCommonFrame(frame RunFrame) error {
 	if frame.SchemaVersion != RuntimeSchemaV1 {
 		return runtimeError("RUNTIME_SCHEMA_UNSUPPORTED", fmt.Sprintf("unsupported schema %q", frame.SchemaVersion), nil)
 	}
+	switch frame.Kind {
+	case FrameStart, FrameContinue, FrameInspect:
+	default:
+		return runtimeError("RUNTIME_FRAME_INVALID", fmt.Sprintf("unsupported frame kind %q", frame.Kind), nil)
+	}
 	if err := validateIdentifier(frame.MessageID); err != nil {
 		return runtimeError("RUNTIME_FRAME_INVALID", "invalid message ID", err)
 	}

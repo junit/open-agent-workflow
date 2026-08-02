@@ -30,7 +30,14 @@ type Runner struct {
 	mu       sync.Mutex
 	prepared map[string]host.DispatchRequest
 	results  map[string]host.DispatchResult
+	attempts map[string]*invocationAttempt
 	active   map[string]context.CancelFunc
+}
+
+type invocationAttempt struct {
+	done   chan struct{}
+	result host.DispatchResult
+	err    error
 }
 
 func New(options Options) *Runner {
@@ -53,7 +60,7 @@ func New(options Options) *Runner {
 	return &Runner{
 		command: command, sandbox: sandbox, maxOutputBytes: maxOutputBytes, maxEvents: maxEvents,
 		diagnostics: options.Diagnostics, run: runCommand,
-		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc),
+		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), attempts: make(map[string]*invocationAttempt), active: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -90,19 +97,24 @@ func (runner *Runner) Invoke(request host.DispatchRequest) (host.DispatchResult,
 		runner.mu.Unlock()
 		return cloneResult(existing), nil
 	}
+	if attempt, found := runner.attempts[request.InvocationID]; found {
+		done := attempt.done
+		runner.mu.Unlock()
+		<-done
+		return cloneResult(attempt.result), attempt.err
+	}
 	prepared, found := runner.prepared[request.InvocationID]
 	if !found || prepared != request {
 		runner.mu.Unlock()
 		return host.DispatchResult{}, errors.New("CODEX_INVOCATION_NOT_PREPARED: Prepare is required before Invoke")
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	if runner.attempts == nil {
+		runner.attempts = make(map[string]*invocationAttempt)
+	}
+	runner.attempts[request.InvocationID] = &invocationAttempt{done: make(chan struct{})}
 	runner.active[request.InvocationID] = cancel
 	runner.mu.Unlock()
-	defer func() {
-		runner.mu.Lock()
-		delete(runner.active, request.InvocationID)
-		runner.mu.Unlock()
-	}()
 	sandbox := runner.sandbox
 	if sandbox == "" {
 		sandbox = defaultSandbox
@@ -121,7 +133,7 @@ func (runner *Runner) Invoke(request host.DispatchRequest) (host.DispatchResult,
 		_, _ = runner.diagnostics.Write(stderr)
 	}
 	if err != nil {
-		return host.DispatchResult{}, fmt.Errorf("CODEX_PROCESS_FAILED: %w", err)
+		return runner.finishInvocation(request.InvocationID, host.DispatchResult{}, fmt.Errorf("CODEX_PROCESS_FAILED: %w", err))
 	}
 	maxEvents := runner.maxEvents
 	if maxEvents <= 0 {
@@ -129,12 +141,25 @@ func (runner *Runner) Invoke(request host.DispatchRequest) (host.DispatchResult,
 	}
 	result, err := normalizeJSONL(request, stdout, maxEvents)
 	if err != nil {
-		return host.DispatchResult{}, err
+		return runner.finishInvocation(request.InvocationID, host.DispatchResult{}, err)
 	}
+	return runner.finishInvocation(request.InvocationID, result, nil)
+}
+
+func (runner *Runner) finishInvocation(invocationID string, result host.DispatchResult, err error) (host.DispatchResult, error) {
 	runner.mu.Lock()
-	runner.results[request.InvocationID] = cloneResult(result)
-	runner.mu.Unlock()
-	return result, nil
+	defer runner.mu.Unlock()
+	attempt := runner.attempts[invocationID]
+	if err == nil {
+		runner.results[invocationID] = cloneResult(result)
+	}
+	if attempt != nil {
+		attempt.result = cloneResult(result)
+		attempt.err = err
+		close(attempt.done)
+	}
+	delete(runner.active, invocationID)
+	return cloneResult(result), err
 }
 
 func (runner *Runner) Cancel(invocationID string) error {

@@ -19,6 +19,7 @@ func TestDecodeFrameRejectsUnknownTrailingDuplicateAndOversizedJSON(t *testing.T
 		{name: "unknown field", raw: strings.Replace(valid, "}", ",\"unknown\":true}", 1)},
 		{name: "trailing value", raw: valid + " {}"},
 		{name: "duplicate field", raw: strings.Replace(valid, `"kind":"INSPECT"`, `"kind":"INSPECT","kind":"START"`, 1)},
+		{name: "unknown kind", raw: strings.Replace(valid, `"kind":"INSPECT"`, `"kind":"UNKNOWN"`, 1)},
 		{name: "invalid utf8", raw: string([]byte{'{', '"', 'x', '"', ':', '"', 0xff, '"', '}'})},
 		{name: "oversized", raw: `{"schema_version":"oaw.runtime/v1","kind":"INSPECT","message_id":"m","idempotency_key":"k","run_id":"run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","padding":"` + strings.Repeat("x", 1<<20) + `"}`},
 	} {

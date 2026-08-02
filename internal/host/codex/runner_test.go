@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
@@ -52,6 +53,51 @@ func TestRunnerRejectsInvocationWithoutPreparation(t *testing.T) {
 	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
 	if _, err := runner.Invoke(request); err == nil {
 		t.Fatal("Invoke accepted an unprepared request")
+	}
+}
+
+func TestRunnerDeduplicatesConcurrentInvocation(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var calls atomic.Int32
+	runner := &Runner{
+		command: "codex", maxOutputBytes: 1024, maxEvents: 4,
+		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc),
+		run: func(_ context.Context, _ string, _ []string, _ int64) ([]byte, []byte, error) {
+			calls.Add(1)
+			select {
+			case started <- struct{}{}:
+			default:
+			}
+			<-release
+			return []byte(`{"type":"turn.completed","id":"turn-1"}` + "\n"), nil, nil
+		},
+	}
+	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	if err := runner.Prepare(request); err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan host.DispatchResult, 2)
+	errors := make(chan error, 2)
+	for range 2 {
+		go func() {
+			result, err := runner.Invoke(request)
+			results <- result
+			errors <- err
+		}()
+	}
+	<-started
+	close(release)
+	for range 2 {
+		if err := <-errors; err != nil {
+			t.Fatal(err)
+		}
+		if result := <-results; result.Outcome != host.DispatchSucceeded {
+			t.Fatalf("result = %#v", result)
+		}
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("Codex process calls = %d, want 1", calls.Load())
 	}
 }
 
