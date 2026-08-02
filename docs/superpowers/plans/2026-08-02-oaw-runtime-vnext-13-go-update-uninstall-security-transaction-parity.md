@@ -480,14 +480,14 @@ Expected: `internal/management` statement coverage remains at least 90 percent.
 - Create: `tests/13-mutation-parity-test.sh`
 - Modify: `tests/run.sh`
 
-- [ ] **Step 1: Add failing shadow parser and public-authority tests.**
+- [x] **Step 1: Add failing shadow parser and public-authority tests.**
 
 Require `install`, `update`, and `uninstall` to accept the exact shared Bash
 options, duplicate/missing-value errors, help bytes, stdout/stderr routing, and
 management statuses. Assert `cli.Run` still rejects all three management verbs
 without changing HOME/config/state/project.
 
-- [ ] **Step 2: Run CLI tests and record RED.**
+- [x] **Step 2: Run CLI tests and record RED.**
 
 ```bash
 rtk go test ./internal/cli -run 'ShadowManagement|PublicRunDoesNotRouteManagement' -count=1
@@ -495,7 +495,7 @@ rtk go test ./internal/cli -run 'ShadowManagement|PublicRunDoesNotRouteManagemen
 
 Expected: update/uninstall are rejected by the install-only parser.
 
-- [ ] **Step 3: Generalize the internal driver and keep public routing closed.**
+- [x] **Step 3: Generalize the internal driver and keep public routing closed.**
 
 Rename parser/command values to management-neutral names, dispatch the three
 private verbs to `management.Install`, `management.Update`, or
@@ -503,7 +503,7 @@ private verbs to `management.Install`, `management.Update`, or
 internal command under `internal/cmd`; do not add it to release packaging or the
 public command switch.
 
-- [ ] **Step 4: Add same-physical-path mutation parity replay.**
+- [x] **Step 4: Add same-physical-path mutation parity replay.**
 
 Build the internal shadow binary once. For each case, create an identical Bash
 install fixture, save it, run Bash mutation, restore the byte/mode/symlink tree,
@@ -518,7 +518,7 @@ dry-run, invalid state/scope/project/policy/target/directory drift, clean force,
 recoverable/ambiguous markers, forced target/policy drift, manual recovery,
 backup source races, hostile names, and later preflight failures.
 
-- [ ] **Step 5: Run exact parity and commit.**
+- [x] **Step 5: Run exact parity and commit.**
 
 ```bash
 rtk gofmt -w internal/cli internal/cmd/oaw-management-shadow

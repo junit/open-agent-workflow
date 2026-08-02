@@ -167,22 +167,44 @@ func parseInstallationState(data []byte) (installationState, error) {
 func validateTargetRecords(state installationState) error {
 	seen := make(map[string]bool)
 	position := 0
-	shared := make(map[string]targetRecord)
 	for _, record := range state.targets {
+		if !safeStateField(record.id) || !safeStateField(record.path) ||
+			!safeStateField(record.mode) || !safeStateField(record.checksum) ||
+			!safeStateField(record.origin) {
+			return fmt.Errorf("target record cannot be serialized")
+		}
 		candidate, found := findTarget(record.id)
-		if !found || (state.scope == "user" && !candidate.User) || seen[record.id] {
+		if !found || (state.scope == "user" && !candidate.User) {
 			return fmt.Errorf("invalid target state")
 		}
-		currentPosition := targetPosition(record.id)
-		if currentPosition <= position || !filepath.IsAbs(record.path) || !safeStateField(record.path) || record.mode != candidate.Ownership || !validChecksum(record.checksum) || (record.origin != "created-file" && record.origin != "existing-file") {
-			return fmt.Errorf("invalid target record")
+		if record.path == "" || !filepath.IsAbs(record.path) {
+			return fmt.Errorf("invalid target path")
 		}
+		if record.mode != candidate.Ownership {
+			return fmt.Errorf("invalid target ownership")
+		}
+		if !validChecksum(record.checksum) {
+			return fmt.Errorf("invalid target checksum")
+		}
+		if record.origin != "created-file" && record.origin != "existing-file" {
+			return fmt.Errorf("invalid target ownership")
+		}
+		if seen[record.id] {
+			return fmt.Errorf("duplicate target state: %s", record.id)
+		}
+		currentPosition := targetPosition(record.id)
+		if currentPosition <= position {
+			return fmt.Errorf("target state is not in registry order")
+		}
+		seen[record.id] = true
+		position = currentPosition
+	}
+	shared := make(map[string]targetRecord)
+	for _, record := range state.targets {
 		if previous, exists := shared[record.path]; exists && (previous.mode != record.mode || previous.checksum != record.checksum || previous.origin != record.origin) {
 			return fmt.Errorf("invalid shared destination state")
 		}
 		shared[record.path] = record
-		seen[record.id] = true
-		position = currentPosition
 	}
 	return nil
 }

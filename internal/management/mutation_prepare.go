@@ -219,7 +219,7 @@ func predictDirectoryRemovalClass(plan mutationPlan, namespace bool) []string {
 	actions = append(actions, plan.stateActions...)
 	for _, action := range actions {
 		if action.effect == mutationRemove {
-			planned[action.destination] = struct{}{}
+			planned[filepath.Clean(action.destination)] = struct{}{}
 		}
 	}
 	lines := make([]string, 0)
@@ -233,14 +233,14 @@ func predictDirectoryRemovalClass(plan mutationPlan, namespace bool) []string {
 		}
 		empty := true
 		for _, entry := range entries {
-			if _, removed := planned[filepath.Join(action.destination, entry.Name())]; !removed {
+			if _, removed := planned[filepath.Clean(filepath.Join(action.destination, entry.Name()))]; !removed {
 				empty = false
 				break
 			}
 		}
 		if empty {
 			lines = append(lines, "oaw: would-remove-directory: "+action.destination)
-			planned[action.destination] = struct{}{}
+			planned[filepath.Clean(action.destination)] = struct{}{}
 		} else {
 			lines = append(lines, "oaw: unchanged-directory: "+action.destination)
 		}

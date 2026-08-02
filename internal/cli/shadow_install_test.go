@@ -9,33 +9,37 @@ import (
 	"testing"
 )
 
-func TestParseShadowInstallAcceptsBashInstallOptions(t *testing.T) {
+func TestParseShadowManagementAcceptsBashOptions(t *testing.T) {
 	project := t.TempDir()
-	tests := []struct {
-		name string
-		args []string
-		want shadowInstallCommand
-	}{
-		{name: "empty install", args: []string{"install"}, want: shadowInstallCommand{}},
-		{name: "separate values", args: []string{"install", "--target", "codex,claude", "--project", project, "--dry-run", "--force"}, want: shadowInstallCommand{targets: "codex,claude", project: project, dryRun: true, force: true}},
-		{name: "equals values", args: []string{"install", "--target=claude", "--project=" + project}, want: shadowInstallCommand{targets: "claude", project: project}},
-		{name: "short help", args: []string{"install", "-h"}, want: shadowInstallCommand{help: true}},
-		{name: "long help", args: []string{"install", "--help"}, want: shadowInstallCommand{help: true}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseShadowInstall(tt.args)
-			if err != nil {
-				t.Fatal(err)
+	for _, operation := range []string{"install", "update", "uninstall"} {
+		t.Run(operation, func(t *testing.T) {
+			tests := []struct {
+				name string
+				args []string
+				want shadowManagementCommand
+			}{
+				{name: "empty", args: []string{operation}, want: shadowManagementCommand{operation: operation}},
+				{name: "separate values", args: []string{operation, "--target", "codex,claude", "--project", project, "--dry-run", "--force"}, want: shadowManagementCommand{operation: operation, targets: "codex,claude", project: project, dryRun: true, force: true}},
+				{name: "equals values", args: []string{operation, "--target=claude", "--project=" + project}, want: shadowManagementCommand{operation: operation, targets: "claude", project: project}},
+				{name: "short help", args: []string{operation, "-h"}, want: shadowManagementCommand{operation: operation, help: true}},
+				{name: "long help", args: []string{operation, "--help"}, want: shadowManagementCommand{operation: operation, help: true}},
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Fatalf("parseShadowInstall() = %#v, want %#v", got, tt.want)
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					got, err := parseShadowManagement(tt.args)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !reflect.DeepEqual(got, tt.want) {
+						t.Fatalf("parseShadowManagement() = %#v, want %#v", got, tt.want)
+					}
+				})
 			}
 		})
 	}
 }
 
-func TestRunShadowInstallMatchesBashArgumentErrors(t *testing.T) {
+func TestRunShadowManagementMatchesBashArgumentErrors(t *testing.T) {
 	tests := []struct {
 		name    string
 		args    []string
@@ -59,8 +63,8 @@ func TestRunShadowInstallMatchesBashArgumentErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
-			if status := RunShadowInstall(tt.args, &stdout, &stderr); status != 64 {
-				t.Fatalf("RunShadowInstall() = %d, stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+			if status := RunShadowManagement(tt.args, &stdout, &stderr); status != 64 {
+				t.Fatalf("RunShadowManagement() = %d, stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 			}
 			if stdout.Len() != 0 || stderr.String() != "oaw: error: "+tt.message+"\n" {
 				t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
@@ -69,13 +73,17 @@ func TestRunShadowInstallMatchesBashArgumentErrors(t *testing.T) {
 	}
 }
 
-func TestRunShadowInstallHelpAndDryRun(t *testing.T) {
+func TestRunShadowManagementHelpAndLifecycle(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	if status := RunShadowInstall([]string{"install", "--help"}, &stdout, &stderr); status != 0 {
-		t.Fatalf("help status=%d stderr=%q", status, stderr.String())
-	}
-	if stderr.Len() != 0 || stdout.String() != installerUsage() {
-		t.Fatalf("help stdout=%q stderr=%q", stdout.String(), stderr.String())
+	for _, operation := range []string{"install", "update", "uninstall"} {
+		stdout.Reset()
+		stderr.Reset()
+		if status := RunShadowManagement([]string{operation, "--help"}, &stdout, &stderr); status != 0 {
+			t.Fatalf("%s help status=%d stderr=%q", operation, status, stderr.String())
+		}
+		if stderr.Len() != 0 || stdout.String() != installerUsage() {
+			t.Fatalf("%s help stdout=%q stderr=%q", operation, stdout.String(), stderr.String())
+		}
 	}
 
 	root := t.TempDir()
@@ -92,7 +100,7 @@ func TestRunShadowInstallHelpAndDryRun(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", state)
 	stdout.Reset()
 	stderr.Reset()
-	if status := RunShadowInstall([]string{"install", "--target", "claude", "--dry-run"}, &stdout, &stderr); status != 0 {
+	if status := RunShadowManagement([]string{"install", "--target", "claude", "--dry-run"}, &stdout, &stderr); status != 0 {
 		t.Fatalf("dry-run status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 	if stderr.Len() != 0 || !strings.Contains(stdout.String(), "oaw: would-create: "+filepath.Join(home, ".claude", "CLAUDE.md")+"\n") {
@@ -104,9 +112,40 @@ func TestRunShadowInstallHelpAndDryRun(t *testing.T) {
 			t.Fatalf("dry-run changed %s: entries=%v error=%v", directory, entries, err)
 		}
 	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if status := RunShadowManagement([]string{"update", "--target", "claude"}, &stdout, &stderr); status != 66 {
+		t.Fatalf("missing-state update status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	if stdout.Len() != 0 || stderr.String() != "oaw: error: no installation state; run install first\n" {
+		t.Fatalf("missing-state update stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if status := RunShadowManagement([]string{"install", "--target", "claude"}, &stdout, &stderr); status != 0 {
+		t.Fatalf("install status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := RunShadowManagement([]string{"update", "--target", "claude"}, &stdout, &stderr); status != 0 {
+		t.Fatalf("update status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "oaw: unchanged: claude\n") || stderr.Len() != 0 {
+		t.Fatalf("update stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if status := RunShadowManagement([]string{"uninstall", "--target", "claude"}, &stdout, &stderr); status != 0 {
+		t.Fatalf("uninstall status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "oaw: remove: ") || stderr.Len() != 0 {
+		t.Fatalf("uninstall stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
 }
 
-func TestPublicRunDoesNotRouteInstallToManagement(t *testing.T) {
+func TestPublicRunDoesNotRouteManagement(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	config := filepath.Join(root, "config")
@@ -119,12 +158,14 @@ func TestPublicRunDoesNotRouteInstallToManagement(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", config)
 	t.Setenv("XDG_STATE_HOME", state)
-	var stdout, stderr bytes.Buffer
-	if status := Run([]string{"install"}, &stdout, &stderr); status != 64 {
-		t.Fatalf("Run(install)=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-	}
-	if stdout.Len() != 0 || !strings.HasPrefix(stderr.String(), "oaw: INVALID_ARGUMENT: expected catalog command\n") {
-		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
+	for _, operation := range []string{"install", "update", "uninstall"} {
+		var stdout, stderr bytes.Buffer
+		if status := Run([]string{operation}, &stdout, &stderr); status != 64 {
+			t.Fatalf("Run(%s)=%d stdout=%q stderr=%q", operation, status, stdout.String(), stderr.String())
+		}
+		if stdout.Len() != 0 || !strings.HasPrefix(stderr.String(), "oaw: INVALID_ARGUMENT: expected catalog command\n") {
+			t.Fatalf("%s stdout=%q stderr=%q", operation, stdout.String(), stderr.String())
+		}
 	}
 	for _, directory := range []string{home, config, state} {
 		entries, err := os.ReadDir(directory)

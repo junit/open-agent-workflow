@@ -84,6 +84,31 @@ func TestApplyMutationDryRunIsWriteFree(t *testing.T) {
 	}
 }
 
+func TestPrepareForcedMutationAcceptsLexicalStateRootAlias(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	fixture.environment.StateHome = filepath.Dir(fixture.environment.StateHome) + string(filepath.Separator) + string(filepath.Separator) + filepath.Base(fixture.environment.StateHome)
+	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+	if err := os.WriteFile(installed.targetActions[0].destination, []byte(beginMarker+"\ndrift\n"+endMarker+"\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	prepared, err := PrepareUpdate(fixture.source, fixture.environment, UpdateRequest{Targets: "claude", Force: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !prepared.plan.backup.required || len(prepared.plan.backup.candidates) == 0 {
+		t.Fatalf("backup = %#v", prepared.plan.backup)
+	}
+	for _, candidate := range prepared.plan.backup.candidates {
+		want := prepared.plan.backup.path + string(filepath.Separator) + filepath.Base(candidate.backup)
+		if candidate.backup != want {
+			t.Fatalf("backup artifact = %q, want %q", candidate.backup, want)
+		}
+	}
+	if _, err := renderBackupManifest(prepared.plan.backup); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestApplyManualRecoveryOnlyCreatesBackup(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})

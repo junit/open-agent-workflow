@@ -120,6 +120,30 @@ func TestParseInstallationStateRejectsMalformedRecords(t *testing.T) {
 	}
 }
 
+func TestParseInstallationStateMatchesBashTargetDiagnostics(t *testing.T) {
+	base := canonicalUserState()
+	tests := []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{name: "relative path", raw: strings.Replace(base, "/home/.claude/CLAUDE.md", ".claude/CLAUDE.md", 1), want: "invalid target path"},
+		{name: "ownership", raw: strings.Replace(base, "managed-block", "owned-file", 1), want: "invalid target ownership"},
+		{name: "checksum", raw: strings.Replace(base, "2:2", "invalid", 1), want: "invalid target checksum"},
+		{name: "origin", raw: strings.Replace(base, "existing-file", "borrowed-file", 1), want: "invalid target ownership"},
+		{name: "duplicate", raw: base + "target\tclaude\t/home/.claude/CLAUDE.md\tmanaged-block\t2:2\texisting-file\n", want: "duplicate target state: claude"},
+		{name: "registry order", raw: strings.Replace(base, "target\tclaude", "target\tcodex", 1) + "target\tclaude\t/home/.claude/CLAUDE.md\tmanaged-block\t2:2\texisting-file\n", want: "target state is not in registry order"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := parseInstallationState([]byte(test.raw))
+			if err == nil || err.Error() != test.want {
+				t.Fatalf("error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}
+
 func canonicalUserState() string {
 	return strings.Join([]string{
 		"format\t1",

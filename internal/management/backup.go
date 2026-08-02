@@ -117,7 +117,7 @@ func addBackupCandidate(
 		return nil, compatibilityError("backup candidate destination does not match: " + original)
 	}
 	index := len(candidates) + 1
-	artifact := filepath.Join(backupPath, fmt.Sprintf("%03d-%s", index, filepath.Base(original)))
+	artifact := backupPath + string(filepath.Separator) + fmt.Sprintf("%03d-%s", index, filepath.Base(original))
 	candidate := backupCandidate{
 		original: original, allowedRoot: root, relativeSuffix: suffix,
 		backup: artifact, checksum: checksumBytes(before.data), before: cloneInstallPathSnapshot(before),
@@ -153,8 +153,9 @@ func renderBackupManifest(plan backupPlan) ([]byte, error) {
 			!validChecksum(candidate.checksum) {
 			return nil, compatibilityError("backup candidate cannot be serialized")
 		}
-		prefix := plan.path + string(filepath.Separator)
-		if !strings.HasPrefix(candidate.backup, prefix) || filepath.Dir(candidate.backup) != plan.path {
+		artifactName := filepath.Base(candidate.backup)
+		expectedArtifact := plan.path + string(filepath.Separator) + artifactName
+		if candidate.backup != expectedArtifact || filepath.Dir(filepath.Clean(candidate.backup)) != filepath.Clean(plan.path) {
 			return nil, compatibilityError("backup artifact escapes operation directory")
 		}
 		if _, exists := seenOriginals[candidate.original]; exists {

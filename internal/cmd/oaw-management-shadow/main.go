@@ -7,5 +7,5 @@ import (
 )
 
 func main() {
-	os.Exit(cli.RunShadowInstall(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(cli.RunShadowManagement(os.Args[1:], os.Stdout, os.Stderr))
 }

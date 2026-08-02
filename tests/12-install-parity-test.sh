@@ -23,7 +23,7 @@ cleanup_install_parity() {
 
 trap cleanup_install_parity EXIT HUP INT TERM
 
-go build -o "$OAW_GO_INSTALL" "$OAW_REPOSITORY/internal/cmd/oaw-install-shadow"
+go build -o "$OAW_GO_INSTALL" "$OAW_REPOSITORY/internal/cmd/oaw-management-shadow"
 
 reset_install_fixture() {
   rm -rf "$OAW_FIXED_SANDBOX"

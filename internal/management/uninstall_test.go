@@ -172,6 +172,44 @@ func TestPrepareUninstallPlansOwnedDirectoriesDeepestFirst(t *testing.T) {
 	}
 }
 
+func TestPrepareUninstallDryRunPredictsRemovalWithLexicalRootAlias(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	fixture.environment.Home = filepath.Dir(fixture.environment.Home) + string(filepath.Separator) + string(filepath.Separator) + filepath.Base(fixture.environment.Home)
+	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+	prepared, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Targets: "claude", DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prepared.plan.targetActions) != 1 || prepared.plan.targetActions[0].effect != mutationRemove {
+		t.Fatalf("target actions = %#v", prepared.plan.targetActions)
+	}
+	targetDirectory := filepath.Dir(installed.targetActions[0].destination)
+	entries, err := os.ReadDir(targetDirectory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name() != filepath.Base(installed.targetActions[0].destination) {
+		t.Fatalf("target directory entries = %#v", entries)
+	}
+	predictedDirectory := ""
+	for _, action := range prepared.plan.directoryActions {
+		if filepath.Clean(action.destination) == filepath.Clean(targetDirectory) {
+			predictedDirectory = action.destination
+			break
+		}
+	}
+	if predictedDirectory == "" {
+		t.Fatalf("directory actions = %#v, missing %q", prepared.plan.directoryActions, targetDirectory)
+	}
+	want := "oaw: would-remove-directory: " + predictedDirectory
+	for _, line := range prepared.plan.predicted.Lines {
+		if line == want {
+			return
+		}
+	}
+	t.Fatalf("predicted = %v, missing %q", prepared.plan.predicted.Lines, want)
+}
+
 func TestPrepareUninstallRejectsDriftWithoutWrites(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
