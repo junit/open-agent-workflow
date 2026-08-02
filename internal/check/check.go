@@ -33,7 +33,7 @@ type Error struct {
 
 func (err *Error) Error() string { return err.Message }
 
-func Execute(_ catalog.Catalog, environment Environment, request Request) (Result, error) {
+func Execute(value catalog.Catalog, environment Environment, request Request) (Result, error) {
 	resolved, err := resolve(environment, request)
 	if err != nil {
 		return Result{}, err
@@ -45,6 +45,15 @@ func Execute(_ catalog.Catalog, environment Environment, request Request) (Resul
 		lines = append(lines, "scope: user")
 	}
 	lines = append(lines, "targets: "+strings.Join(resolved.targets, ","))
+	providers, err := providerLines(value, environment.Home)
+	if err != nil {
+		return Result{}, err
+	}
+	lines = append(lines, providers...)
+	lines = append(lines, readinessLines(environment, resolved.targets)...)
+	for _, targetID := range resolved.targets {
+		lines = append(lines, "installed "+targetID+": not-installed")
+	}
 	return Result{Lines: lines}, nil
 }
 

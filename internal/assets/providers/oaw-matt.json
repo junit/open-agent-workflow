@@ -5,7 +5,9 @@
   "display_name": "Matt",
   "discovery": [
     {"id":"matt-to-spec","kind":"path-exists","root":"user-home","path":".agents/skills/to-spec/SKILL.md"},
-    {"id":"matt-to-tickets","kind":"path-exists","root":"user-home","path":".agents/skills/to-tickets/SKILL.md"}
+    {"id":"matt-to-tickets","kind":"path-exists","root":"user-home","path":".agents/skills/to-tickets/SKILL.md"},
+    {"id":"matt-tdd","kind":"path-exists","root":"user-home","path":".agents/skills/tdd/SKILL.md"},
+    {"id":"matt-diagnosing-bugs","kind":"path-exists","root":"user-home","path":".agents/skills/diagnosing-bugs/SKILL.md"}
   ],
   "capabilities": [
     {"id":"specification","input_schema":"oaw.capability-input/v1","outcome_schema":"oaw.capability-outcome/v1","maximum_effects":["read-project","write-project"],"resources":["project-worktree"],"request_modes":["WORKFLOW"],"responsibilities":["requirements","domain-modeling","specification"],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"to-spec"}]},
