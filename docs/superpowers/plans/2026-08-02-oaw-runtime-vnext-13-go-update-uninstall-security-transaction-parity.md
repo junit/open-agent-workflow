@@ -538,7 +538,7 @@ rtk git commit -m "test: prove Go mutation parity"
 - Modify: `internal/management/filesystem_test.go`
 - Modify: `tests/13-mutation-parity-test.sh`
 
-- [ ] **Step 1: Add hostile boundary and leakage tests.**
+- [x] **Step 1: Add hostile boundary and leakage tests.**
 
 Cover relative/control-character HOME/XDG roots, unsafe suffix components,
 project control characters/nonexistence/file/symlink/physical alias and root
@@ -550,7 +550,7 @@ injected I/O errors; assert they never appear in Result, Error, stdout, stderr,
 manifest metadata beyond exact allowed paths, or test snapshots intended as
 diagnostics.
 
-- [ ] **Step 2: Add fuzz invariants.**
+- [x] **Step 2: Add fuzz invariants.**
 
 Fuzz managed block removal/repair, mutation action constructors, backup manifest
 rendering, rollback journal order, path suffix validation, and hostile state
@@ -558,21 +558,26 @@ fields. Require no panic, no path escape, deterministic output, copied input
 ownership, valid UTF-8 independence, and round-trip preservation of all bytes
 outside an exactly owned block.
 
-- [ ] **Step 3: Run security, fuzz, race, and static gates.**
+- [x] **Step 3: Run security, fuzz, race, and static gates.**
 
 ```bash
 rtk gofmt -w internal/management
 rtk go test ./internal/management -run 'Security|Containment|Credential|Path|Symlink|ProjectRoot' -count=1
 rtk go test -race ./internal/management ./internal/cli
-rtk go test ./internal/management -run '^$' -fuzz 'FuzzMutation|FuzzManagedRemoval|FuzzBackupManifest' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationAction$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzManagedRemoval$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzBackupManifest$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationRollbackOrder$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationPathSuffix$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationStateFields$' -fuzztime=10s
 rtk bash tests/06-security-test.sh
 rtk bash tests/07-containment-test.sh
 rtk go vet ./...
-rtk govulncheck ./...
+rtk go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 rtk git diff --check
 ```
 
-- [ ] **Step 4: Commit security evidence tests.**
+- [x] **Step 4: Commit security evidence tests.**
 
 ```bash
 rtk git add internal/management tests/13-mutation-parity-test.sh
@@ -591,7 +596,7 @@ rtk git commit -m "test: harden Go management transactions"
 - Modify: `.scratch/oaw-runtime-vnext/evidence/verification.md`
 - Modify: this plan
 
-- [ ] **Step 1: Add failing bilingual boundary assertions.**
+- [x] **Step 1: Add failing bilingual boundary assertions.**
 
 Require both installer guides to state that internal Go update/uninstall are
 parity-only, Bash `install.sh` remains authoritative, public Go management is
@@ -600,7 +605,7 @@ backup before writes, injected Go failures restore pre-existing content, and
 Ticket 14 alone owns cutover. Preserve the existing truthful statement that
 Bash does not promise operation-wide rollback.
 
-- [ ] **Step 2: Document and run docs tests.**
+- [x] **Step 2: Document and run docs tests.**
 
 ```bash
 rtk bash tests/10-docs-test.sh
@@ -608,7 +613,7 @@ rtk git add docs tests/10-docs-test.sh
 rtk git commit -m "docs: define Go mutation parity boundary"
 ```
 
-- [ ] **Step 3: Perform an inline correctness/security/spec review.**
+- [x] **Step 3: Perform an inline correctness/security/spec review.**
 
 Review the complete Ticket branch against the issue, this plan, Runtime vNext
 migration sections 17-18, and the Bash oracle. Check authority leakage, mutable
@@ -619,7 +624,7 @@ symlink/TOCTOU escape, unbounded reads, temp leaks, credential leakage, output
 order, platform assumptions, and Ticket 14 scope creep. Fix every Critical,
 High, Important, Standards, or Spec finding and rerun focused tests.
 
-- [ ] **Step 4: Run the complete verification matrix.**
+- [x] **Step 4: Run the complete verification matrix.**
 
 ```bash
 rtk gofmt -w .
@@ -634,11 +639,17 @@ rtk go tool cover -func=/tmp/oaw-ticket13-management.cover
 rtk bash tests/run.sh
 rtk bash tests/12-install-parity-test.sh
 rtk bash tests/13-mutation-parity-test.sh
-rtk go test ./internal/management -run '^$' -fuzz 'FuzzMutation|FuzzManagedRemoval|FuzzBackupManifest' -fuzztime=10s
-rtk env GOOS=linux GOARCH=amd64 go build ./cmd/oaw
-rtk env GOOS=windows GOARCH=amd64 go build ./cmd/oaw
-rtk shellcheck install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
-rtk govulncheck ./...
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationAction$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzManagedRemoval$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzBackupManifest$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationRollbackOrder$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationPathSuffix$' -fuzztime=10s
+rtk go test ./internal/management -run '^$' -fuzz '^FuzzMutationStateFields$' -fuzztime=10s
+rtk env GOOS=linux GOARCH=amd64 go build -o /tmp/oaw-ticket13-linux ./cmd/oaw
+rtk env GOOS=windows GOARCH=amd64 go build -o /tmp/oaw-ticket13-windows.exe ./cmd/oaw
+rtk bash -n install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
+rtk shellcheck -S warning -x install.sh lib/*.sh lib/commands/*.sh tests/*.sh scripts/*.sh
+rtk go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 ```
 
 Required: all tests/race/vet/security/platform checks pass; repository Go
@@ -646,7 +657,7 @@ statement coverage remains at least 80 percent; `internal/management` remains at
 least 90 percent; all Bash management tests remain green; public management is
 still not routed.
 
-- [ ] **Step 5: Close the ticket and evidence at the fixed point.**
+- [x] **Step 5: Close the ticket and evidence at the fixed point.**
 
 Mark all five Ticket 13 acceptance items complete; set issue status to
 `completed`; append exact test counts, coverage, parity-case counts, fuzz,
@@ -659,7 +670,7 @@ rtk git add .scratch docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-13-go-u
 rtk git commit -m "docs: close runtime vnext ticket 13"
 ```
 
-- [ ] **Step 6: Verify branch completion and fast-forward merge.**
+- [x] **Step 6: Verify branch completion and fast-forward merge.**
 
 From the Ticket worktree, record the clean fixed point and rerun the focused
 parity gate. From the primary worktree, require `main` at the Ticket 12 fixed

@@ -14,7 +14,7 @@ bundle: MATT-SP-HYBRID
 vnext_recipe: oaw/reliable-feature
 add_ons: []
 current_stage: completed
-active_ticket: 12-go-install-rendering-and-state-parity
+active_ticket: 13-go-update-uninstall-and-security-transaction-parity
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
 architecture_decisions:
@@ -31,6 +31,7 @@ implementation_plans:
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-08-host-conformance-and-capability-audit.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-11-go-check-black-box-parity.md
   - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-12-go-install-rendering-state-parity.md
+  - docs/superpowers/plans/2026-08-02-oaw-runtime-vnext-13-go-update-uninstall-security-transaction-parity.md
 review_evidence: .scratch/oaw-runtime-vnext/evidence/review.md
 verification_evidence: .scratch/oaw-runtime-vnext/evidence/verification.md
 requirements_owner: matt
@@ -107,8 +108,16 @@ fixed point `6f15694`. Its internal Go install driver remains parity-only;
 public `oaw install` is not enabled. Built-in Host records remain
 instruction-only, and no first production Runtime Host was selected.
 
+Ticket 13 passed final two-axis inline review and the complete update,
+uninstall, forced-recovery, rollback, security, same-path Bash/Go parity, race,
+coverage, fuzz, cross-platform build, ShellCheck, and vulnerability matrix on
+2026-08-02 at implementation fixed point `d4f4159`. The Go management driver
+remains internal and parity-only; `install.sh` is still authoritative, public
+Go management routing is still closed, and Ticket 14 alone owns cutover.
+
 Every unfinished published ticket carries Matt's `ready-for-agent` triage
 status, which means the ticket is specified for agent execution; completed
 tickets are marked `completed`. Scheduling still honors `Blocked by` edges;
-completion of Ticket 12 unblocks Ticket 13 without changing its independent
-scheduling or selection gates.
+completion of Ticket 13 satisfies its Ticket 14 dependency, but Ticket 14
+remains blocked by Tickets 09 and 10. Ticket 09 still requires the user's
+explicit first production Runtime Host selection; no Host is assumed here.

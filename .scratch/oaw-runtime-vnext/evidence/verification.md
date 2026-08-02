@@ -326,3 +326,72 @@ remediation is `6f15694`. Bash remains authoritative, the internal Go install
 driver remains parity-only, and no Go management cutover occurred. All
 `.serena/` directories, unrelated branches, and unrelated worktrees remain
 preserved.
+
+## Ticket 13 Fresh Verification
+
+**Date:** 2026-08-02
+
+**Result:** Passed
+
+**Implementation fixed point:** `d4f4159`
+
+**Scope:** Go update/uninstall parity, forced recovery, verified backups,
+fault-injected rollback, security containment, Bash authority preservation,
+documentation, and repository compatibility
+
+| Check | Result |
+| --- | --- |
+| Go formatting and `rtk git diff --check` | Exit 0 |
+| `rtk go test ./... -count=1` | Exit 0: 1417 tests passed in 21 packages |
+| `rtk go test -race ./...` | Exit 0: 1417 tests passed in 21 packages |
+| `rtk go vet ./...` | Exit 0 |
+| Repository Go statement coverage | `88.3%` (`7130/8079 = 88.253497%`), required minimum `80%` |
+| `internal/management` statement coverage | `90.0%` (`2458/2730 = 90.036630%`), required minimum `90%` |
+| Focused Go security/containment corpus | Exit 0: 48 tests passed |
+| Bash syntax and ShellCheck | Exit 0 |
+| Bilingual docs contract and link checker | Exit 0: `tests/10-docs-test.sh` and `scripts/check-docs.sh` passed |
+| `rtk bash tests/run.sh` | Exit 0: complete installer, documentation, check, install-parity, and mutation-parity suite passed |
+| Same-path Bash/Go install parity | Exit 0: 45 cases passed |
+| Same-path Bash/Go update/uninstall parity | Exit 0: 50 cases passed |
+| Bash security and containment corpora | Exit 0: 17 security plus 5 containment cases passed |
+| Six mutation fuzz targets | Exit 0: each ran independently for 10 seconds |
+| Linux and Windows `cmd/oaw` builds | Exit 0; outputs directed to `/tmp` |
+| Versioned official `govulncheck` | Exit 0: 0 reachable and 0 imported-package vulnerabilities; 2 unreachable required-module findings |
+| Bash/public authority diff | Exit 0: `install.sh`, `lib`, `internal/cli/run.go`, and `cmd/oaw` unchanged from `main` |
+| Ticket diff secret-pattern scan | Exit 0: no credential or private-key patterns found |
+
+The six fuzz targets were `FuzzMutationAction`, `FuzzManagedRemoval`,
+`FuzzBackupManifest`, `FuzzMutationRollbackOrder`, `FuzzMutationPathSuffix`, and
+`FuzzMutationStateFields`. The retained NUL corpus under
+`internal/management/testdata/fuzz/FuzzBackupManifest` also passed.
+
+The 50 mutation parity fixtures compare status, stdout, stderr, path type,
+mode, symlink target, exact regular-file bytes, Install State, directories, and
+normalized operation-backup trees after replay at the same physical path. They
+cover every user/project target, shared and cross-scope state, clean and dry-run
+operations, partial/final uninstall, drift refusal, forced target/policy
+recovery, missing-marker repair, manual recovery, malformed state, redirected
+directories/backups, hostile project names, changed checkouts, and later
+preflight failures.
+
+The Go-only fault matrix covers every before/after backup, target, directory,
+Policy, state, and namespace-directory point. Rollback restores pre-existing
+bytes and exact modes, refuses concurrent changes, removes operation-created
+artifacts, preserves a completed verified backup, and reports rollback failure
+without file-content leakage. Review remediation additionally proves
+existing-only roots, same-inode bounded reads, backup-source identity, final
+source revalidation before manifest activation, and parent/final identity for
+directory removal.
+
+`govulncheck` reported no vulnerable symbol or imported package. It noted two
+findings only in required modules whose affected code is not called; no
+dependency was changed solely for the scanner. WSL release smoke remains a
+Ticket 14 cutover gate and is not claimed by this internal shadow/parity ticket.
+
+Implementation commits are `8e9c79b`, `0f07857`, `d9254a9`, `ef329ce`,
+`0b818c1`, `341d528`, `367b598`, review remediation `0fda0c0`, and final
+coverage/containment evidence `d4f4159`; executable planning is `43b56ce`, and
+bilingual boundary documentation is `b4c98f7`. Bash remains authoritative,
+public Go management routing remains closed, and Ticket 14 alone owns cutover.
+All `.serena/` directories, unrelated branches, and unrelated worktrees remain
+preserved.

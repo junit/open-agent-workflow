@@ -351,3 +351,66 @@ recovery, and cutover remain in Tickets 13 and 14.
 
 No unresolved Critical, High, Important, Standards, or Spec finding remains.
 Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
+
+## Ticket 13 Implementation Review
+
+**Date:** 2026-08-02
+
+**Fixed point:** `d4f4159`
+
+**Scope:** Go `update` and `uninstall` preparation/application, forced-recovery
+backups, deterministic rollback, security containment, the internal management
+shadow command, same-path Bash parity, and bilingual authority boundaries
+
+**Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
+
+**Result:** Passed after scoped remediation
+
+### Standards
+
+The complete `main...d4f4159` diff was checked against `CONTRIBUTING.md`, the
+repository Bash 3.2, black-box, bilingual-documentation, provider-neutrality,
+file-size, immutability, and security rules, plus the standard code-smell
+baseline. Repeated update/uninstall preflight and oversized orchestration
+functions were split into focused preparation, target, state, policy, apply
+stage, backup-read, filesystem, and CLI parsing helpers. Changed production
+functions are at most 50 lines, changed files remain below 800 lines, plan and
+result slices are defensively copied, and the unused `later-preflight` parity
+branch was removed. No unrelated generated file, secret, Provider mutation, or
+unresolved documented-standard violation remains.
+
+### Spec
+
+The diff was checked separately against Ticket 13, the executable plan, Runtime
+vNext migration and verification sections 17-18, ADR 0004, and the Bash oracle.
+The review covered public authority, zero-write preparation/dry-run, immutable
+plans, status/diagnostic/output ordering, shared destinations, cross-scope
+state, manual recovery, verified backup activation, rollback, user-byte and
+mode preservation, directory ownership, bounded reads, symlink/TOCTOU
+containment, credential leakage, and Ticket 14 scope.
+
+Seven scoped corrections were made before completion:
+
+- Read-only active-backup verification, mutation effects, and directory
+  rollback now use existing-only roots and cannot recreate a concurrently
+  removed HOME/XDG root.
+- Bounded preparation reads verify the same regular-file identity across
+  inspect, open, read, and final path inspection.
+- Backup candidates retain root/parent/final identity and revalidate it before
+  backup creation and again before manifest activation.
+- `manifest.tsv` is published only after the final source revalidation.
+- Owned-directory removal pins and revalidates the parent handle and final inode
+  immediately before removal, then syncs the parent.
+- Directory rollback rejects unsafe coordinates and changed roots/directories,
+  and restores the exact original mode with explicit chmod rather than umask.
+- The duplicated preparation/apply/CLI orchestration and dead parity branch
+  were removed without changing the Bash-visible contract.
+
+Deterministic RED tests reproduced missing-root creation, same-size inode
+replacement, same-content backup-source replacement, and rollback mode loss;
+all now pass. The internal driver remains test-only, `install.sh` remains
+authoritative, public `oaw install/update/uninstall` routing remains closed, and
+Ticket 14 alone owns cutover.
+
+No unresolved Critical, High, Important, Standards, or Spec finding remains.
+Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
