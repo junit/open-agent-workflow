@@ -252,6 +252,51 @@ run_release_contract() {
   pass "release archives are offline, cross-platform, checksummed, and executable"
 }
 
+run_docker_contract() {
+  release_output=$CUTOVER_TEMP/docker-release-output
+  bash "$REPOSITORY/scripts/build-release.sh" "$release_output" \
+    >"$CUTOVER_TEMP/docker-release.stdout" \
+    2>"$CUTOVER_TEMP/docker-release.stderr" ||
+    fail "Docker release build failed: $(cat "$CUTOVER_TEMP/docker-release.stderr")"
+
+  version=$(cat "$REPOSITORY/VERSION")
+  set +e
+  docker_arch=$(docker version --format '{{.Server.Arch}}' 2>/dev/null)
+  docker_arch_status=$?
+  set -e
+  if [ "$docker_arch_status" -ne 0 ]; then
+    docker_arch=$(go env GOARCH)
+  fi
+  case "$docker_arch" in
+    amd64|arm64) ;;
+    *)
+      printf 'SKIP: Docker Linux release smoke has no archive for architecture: %s\n' \
+        "$docker_arch" >&2
+      return 0
+      ;;
+  esac
+
+  linux_archive=$release_output/open-agent-workflow_${version}_linux_${docker_arch}.tar.gz
+  set +e
+  bash "$REPOSITORY/scripts/smoke-docker.sh" "$linux_archive" \
+    >"$CUTOVER_TEMP/docker.stdout" 2>"$CUTOVER_TEMP/docker.stderr"
+  docker_status=$?
+  set -e
+  case "$docker_status" in
+    0)
+      grep -F 'PASS: Docker Linux release' "$CUTOVER_TEMP/docker.stdout" >/dev/null ||
+        fail "Docker smoke returned no PASS evidence"
+      pass "Docker Linux release smoke passed"
+      ;;
+    77)
+      grep -F 'SKIP:' "$CUTOVER_TEMP/docker.stderr" >/dev/null ||
+        fail "unavailable Docker smoke returned no SKIP evidence"
+      printf '%s\n' "$(cat "$CUTOVER_TEMP/docker.stderr")" >&2
+      ;;
+    *) fail "Docker smoke failed with status $docker_status: $(cat "$CUTOVER_TEMP/docker.stderr")" ;;
+  esac
+}
+
 trap cleanup EXIT HUP INT TERM
 CUTOVER_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-cutover.XXXXXX") ||
   fail "cannot create cutover test directory"
@@ -260,8 +305,10 @@ case "${1:-all}" in
   all)
     run_wrapper_contract
     run_release_contract
+    run_docker_contract
     ;;
   wrapper) run_wrapper_contract ;;
   release) run_release_contract ;;
+  docker) run_docker_contract ;;
   *) fail "unknown cutover test mode: $1" ;;
 esac
