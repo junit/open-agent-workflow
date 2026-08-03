@@ -93,20 +93,29 @@ func normalizeBoundedSelector(value *classification.CapabilitySelector) (*classi
 	return &selector, nil
 }
 
-func resolveBoundedSelector(value *classification.CapabilitySelector, trustedRuleID string, options BoundedOptions) (*classification.CapabilitySelector, string, error) {
+type boundedSelectionDiagnostic struct {
+	Code    string
+	Message string
+}
+
+func newBoundedSelectionDiagnostic(code string) boundedSelectionDiagnostic {
+	return boundedSelectionDiagnostic{Code: code, Message: fmt.Sprintf("Bounded Capability selection is not admissible: %s.", code)}
+}
+
+func resolveBoundedSelector(value *classification.CapabilitySelector, trustedRuleID string, options BoundedOptions) (*classification.CapabilitySelector, boundedSelectionDiagnostic, error) {
 	selector, err := normalizeBoundedSelector(value)
 	if err != nil {
-		return nil, "", err
+		return nil, boundedSelectionDiagnostic{}, err
 	}
 	trustedRuleID = strings.TrimSpace(trustedRuleID)
 	if selector == nil && trustedRuleID == "" {
-		return nil, "CAPABILITY_SELECTION_REQUIRED", nil
+		return nil, newBoundedSelectionDiagnostic("CAPABILITY_SELECTION_REQUIRED"), nil
 	}
 	if selector != nil && selector.Source == classification.SelectorUserIntent && trustedRuleID != "" {
-		return nil, "", runtimeError("BOUNDED_REQUEST_INVALID", "user-intent selector cannot carry a trusted rule ID", nil)
+		return nil, boundedSelectionDiagnostic{}, runtimeError("BOUNDED_REQUEST_INVALID", "user-intent selector cannot carry a trusted rule ID", nil)
 	}
 	if selector != nil && selector.Source == classification.SelectorTrustedRule && trustedRuleID == "" {
-		return nil, "", runtimeError("BOUNDED_REQUEST_INVALID", "trusted-rule selector requires a trusted rule ID", nil)
+		return nil, boundedSelectionDiagnostic{}, runtimeError("BOUNDED_REQUEST_INVALID", "trusted-rule selector requires a trusted rule ID", nil)
 	}
 	if trustedRuleID != "" {
 		trusted := false
@@ -116,26 +125,31 @@ func resolveBoundedSelector(value *classification.CapabilitySelector, trustedRul
 				if selector == nil {
 					selector = &classification.CapabilitySelector{ProviderID: rule.ProviderID, CapabilityID: rule.CapabilityID, Source: classification.SelectorTrustedRule}
 				} else if selector.ProviderID != rule.ProviderID || selector.CapabilityID != rule.CapabilityID || selector.Source != classification.SelectorTrustedRule {
-					return nil, "CAPABILITY_NOT_VERIFIED", nil
+					return nil, newBoundedSelectionDiagnostic("CAPABILITY_NOT_VERIFIED"), nil
 				}
 				break
 			}
 		}
 		if !trusted {
-			return nil, "CAPABILITY_NOT_VERIFIED", nil
+			return nil, newBoundedSelectionDiagnostic("CAPABILITY_NOT_VERIFIED"), nil
 		}
 	}
 	if selector == nil {
-		return nil, "CAPABILITY_SELECTION_REQUIRED", nil
+		return nil, newBoundedSelectionDiagnostic("CAPABILITY_SELECTION_REQUIRED"), nil
 	}
 	if err := admission.VerifyBoundedCapability(*selector, options.Configuration.Catalog(), options.Registry); err != nil {
 		code := admission.ErrorCode(err)
 		if code == "" {
 			code = "CAPABILITY_NOT_VERIFIED"
 		}
-		return nil, code, nil
+		if code == "CAPABILITY_NOT_VERIFIED" {
+			if diagnostic, found := providerResolutionDiagnostic(options.Resolutions, selector.ProviderID); found {
+				return nil, boundedSelectionDiagnostic(diagnostic), nil
+			}
+		}
+		return nil, newBoundedSelectionDiagnostic(code), nil
 	}
-	return selector, "", nil
+	return selector, boundedSelectionDiagnostic{}, nil
 }
 
 func boundedConfigurationReady(project ProjectIdentity, options BoundedOptions) bool {
@@ -290,12 +304,12 @@ func boundedState(input BoundedInput, selector *classification.CapabilitySelecto
 	return state
 }
 
-func boundedReply(snapshot RunSnapshot, diagnosticCode string) RunReply {
+func boundedReply(snapshot RunSnapshot, diagnostic boundedSelectionDiagnostic) RunReply {
 	diagnostics := []Diagnostic{}
 	kind := ReplyModeDecided
 	if snapshot.Status == RunAwaitingCapability {
 		kind = ReplyCapabilitySelectionRequired
-		diagnostics = append(diagnostics, Diagnostic{Code: diagnosticCode, Message: fmt.Sprintf("Bounded Capability selection is not admissible: %s.", diagnosticCode)})
+		diagnostics = append(diagnostics, Diagnostic{Code: diagnostic.Code, Message: diagnostic.Message})
 	}
 	return RunReply{
 		SchemaVersion:   RuntimeSchemaV1,

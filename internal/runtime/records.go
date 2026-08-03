@@ -88,6 +88,7 @@ type Options struct {
 
 type BoundedOptions struct {
 	Configuration config.Snapshot
+	Resolutions   registry.ResolutionReport
 	Registry      registry.Registry
 	Authority     admission.AuthorityCeiling
 	Executors     []admission.ExecutorRegistration

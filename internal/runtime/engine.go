@@ -128,7 +128,7 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 	event := "DIRECT_RELEASED"
 	var bounded *BoundedState
 	var workflow *WorkflowState
-	selectionDiagnostic := ""
+	selectionDiagnostic := boundedSelectionDiagnostic{}
 	switch decision.RequestMode {
 	case classification.RequestModeDirect:
 		if boundedInput != nil || workflowInput != nil {
@@ -420,7 +420,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 				return resolveErr
 			}
 			if selector == nil {
-				return runtimeError(diagnostic, "Capability selection is not admissible", nil)
+				return runtimeError(diagnostic.Code, diagnostic.Message, nil)
 			}
 			nextRevision := current.Revision + 1
 			snapshot := cloneSnapshot(current.Snapshot)
@@ -446,7 +446,7 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 				MessageDigest:     messageDigest,
 				Event:             "BOUNDED_CAPABILITY_SELECTED",
 				Snapshot:          snapshot,
-				Reply:             boundedReply(snapshot, ""),
+				Reply:             boundedReply(snapshot, boundedSelectionDiagnostic{}),
 			})
 			if commitErr != nil {
 				return commitErr

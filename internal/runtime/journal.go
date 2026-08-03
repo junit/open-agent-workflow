@@ -665,7 +665,7 @@ func validBoundedEscalationEvent(value string) bool {
 }
 
 func validSelectionDiagnostic(value string) bool {
-	return value == "CAPABILITY_SELECTION_REQUIRED" || value == "CAPABILITY_NOT_VERIFIED" || value == "CAPABILITY_MODE_NOT_ALLOWED"
+	return value == "CAPABILITY_SELECTION_REQUIRED" || value == "CAPABILITY_NOT_VERIFIED" || value == "CAPABILITY_MODE_NOT_ALLOWED" || validProviderResolutionReason(value)
 }
 
 func equalStrings(left, right []string) bool {

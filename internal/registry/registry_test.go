@@ -136,6 +136,45 @@ version = "1.2.3"
 	}
 }
 
+func TestResolveDoesNotSelectByVersionOrHostAffinity(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, home, ".claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/using-superpowers/SKILL.md", "claude-6.0.3")
+	writeFile(t, home, ".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md", "claude-6.1.1")
+	writeFile(t, home, ".codex/plugins/cache/openai-api-curated/superpowers/11c74d6b/skills/using-superpowers/SKILL.md", "codex-11c74d6b")
+
+	snapshot, err := config.Load(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{
+		Host: "codex",
+		Bindings: []catalog.HostBinding{{
+			Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution := requireResolution(t, report, "oaw/superpowers")
+	if resolution.State != registry.Ambiguous || resolution.Reason != "PROVIDER_CANDIDATE_AMBIGUOUS" {
+		t.Fatalf("resolution = %#v", resolution)
+	}
+	versions := make([]string, len(resolution.Candidates))
+	for index, candidate := range resolution.Candidates {
+		versions[index] = candidate.Version
+	}
+	if got := fmt.Sprint(versions); got != "[6.0.3 6.1.1 11c74d6b]" {
+		t.Fatalf("candidate versions = %s", got)
+	}
+	if _, found := effective.Provider("oaw/superpowers"); found {
+		t.Fatal("ambiguous Provider entered the Effective Registry")
+	}
+}
+
 func TestResolveAppliesPreferencesLimitsAndPartialCapabilities(t *testing.T) {
 	snapshot := customSnapshot(t, true, true)
 	home := t.TempDir()

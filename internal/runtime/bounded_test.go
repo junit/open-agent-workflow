@@ -550,6 +550,7 @@ func TestRequestDispatchFailsClosedWithoutMutation(t *testing.T) {
 type boundedRuntimeFixture struct {
 	projectRoot string
 	snapshot    config.Snapshot
+	resolutions registry.ResolutionReport
 	registry    registry.Registry
 }
 
@@ -587,11 +588,51 @@ capability_id = "review"
 		{Host: "codex", Kind: "agent", Reference: "code-reviewer"},
 		{Host: "codex", Kind: "agent", Reference: "security-reviewer"},
 	}}
-	_, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	resolutions, effective, err := registry.Resolve(snapshot, evidence, inventory)
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
-	return boundedRuntimeFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective}
+	return boundedRuntimeFixture{projectRoot: projectRoot, snapshot: snapshot, resolutions: resolutions, registry: effective}
+}
+
+func newAmbiguousBoundedRuntimeFixture(t *testing.T) (boundedRuntimeFixture, string) {
+	t.Helper()
+	projectRoot := t.TempDir()
+	userRoot := t.TempDir()
+	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: projectRoot})
+	if err != nil {
+		t.Fatalf("config.Load() error = %v", err)
+	}
+	home := t.TempDir()
+	for _, relative := range []string{
+		".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md",
+		".codex/plugins/cache/openai-api-curated/superpowers/11c74d6b/skills/using-superpowers/SKILL.md",
+	} {
+		path := filepath.Join(home, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(path), err)
+		}
+		writeTestFile(t, path, []byte("ambiguous superpowers"))
+	}
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	if err != nil {
+		t.Fatalf("discovery.Discover() error = %v", err)
+	}
+	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{
+		Host: "codex",
+		Bindings: []catalog.HostBinding{{
+			Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("registry.Resolve() error = %v", err)
+	}
+	return boundedRuntimeFixture{
+		projectRoot: projectRoot,
+		snapshot:    snapshot,
+		resolutions: resolutions,
+		registry:    effective,
+	}, home
 }
 
 func newBoundedEngine(t *testing.T, stateRoot string, fixture boundedRuntimeFixture) *runtime.Engine {
@@ -608,6 +649,7 @@ func boundedOptions(stateRoot string, fixture boundedRuntimeFixture) runtime.Opt
 		StateRoot: stateRoot,
 		Bounded: runtime.BoundedOptions{
 			Configuration: fixture.snapshot,
+			Resolutions:   fixture.resolutions,
 			Registry:      fixture.registry,
 			Authority: admission.AuthorityCeiling{
 				Effects: []string{"read-project"}, Resources: []string{"project"},
@@ -616,6 +658,151 @@ func boundedOptions(stateRoot string, fixture boundedRuntimeFixture) runtime.Opt
 		},
 	}
 }
+
+func TestStartBoundedReportsAmbiguousProviderResolution(t *testing.T) {
+	fixture, home := newAmbiguousBoundedRuntimeFixture(t)
+	selector := &classification.CapabilitySelector{
+		ProviderID: "oaw/superpowers", CapabilityID: "review", Source: classification.SelectorUserIntent,
+	}
+	engine := newBoundedEngine(t, filepath.Join(t.TempDir(), "state"), fixture)
+	reply, err := engine.Exchange(boundedStartFrame(fixture, selector, "", "ambiguous-provider"))
+	if err != nil {
+		t.Fatalf("Exchange(START) error = %v", err)
+	}
+	if reply.Kind != runtime.ReplyCapabilitySelectionRequired || reply.Snapshot.Status != runtime.RunAwaitingCapability {
+		t.Fatalf("reply = %#v", reply)
+	}
+	if len(reply.Diagnostics) != 1 || reply.Diagnostics[0].Code != "PROVIDER_CANDIDATE_AMBIGUOUS" {
+		t.Fatalf("diagnostics = %#v", reply.Diagnostics)
+	}
+	if strings.Contains(reply.Diagnostics[0].Message, home) || strings.Contains(reply.Diagnostics[0].Message, "SKILL.md") {
+		t.Fatalf("Runtime diagnostic leaked discovery paths: %q", reply.Diagnostics[0].Message)
+	}
+}
+
+func TestStartBoundedReportsConcreteProviderStates(t *testing.T) {
+	reviewBinding := catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review"}
+	tests := []struct {
+		name       string
+		userConfig string
+		versions   []string
+		inventory  *registry.BindingInventory
+		want       string
+	}{
+		{name: "not found", inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_NOT_FOUND"},
+		{name: "discovered unverified", versions: []string{"6.1.1"}, want: "PROVIDER_DISCOVERED_UNVERIFIED"},
+		{name: "pin incompatible", userConfig: "schema_version = \"oaw.user-config/v1\"\n[[provider_pins]]\nid = \"oaw/superpowers\"\nversion = \"9.9.9\"\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_PIN_INCOMPATIBLE"},
+		{name: "binding unavailable", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}}, want: "PROVIDER_BINDING_UNAVAILABLE"},
+		{name: "disabled", userConfig: "schema_version = \"oaw.user-config/v1\"\ndenied_providers = [\"oaw/superpowers\"]\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_DISABLED_BY_USER"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newSuperpowersBoundedStateFixture(t, test.userConfig, test.versions, test.inventory)
+			selector := &classification.CapabilitySelector{ProviderID: "oaw/superpowers", CapabilityID: "review", Source: classification.SelectorUserIntent}
+			engine := newBoundedEngine(t, filepath.Join(t.TempDir(), "state"), fixture)
+			reply, err := engine.Exchange(boundedStartFrame(fixture, selector, "", "provider-state-"+strings.ReplaceAll(test.name, " ", "-")))
+			if err != nil {
+				t.Fatalf("Exchange(START) error = %v", err)
+			}
+			assertDiagnosticCodes(t, reply.Diagnostics, test.want)
+		})
+	}
+
+	t.Run("untrusted", func(t *testing.T) {
+		fixture := newUntrustedBoundedStateFixture(t)
+		selector := &classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "review", Source: classification.SelectorUserIntent}
+		engine := newBoundedEngine(t, filepath.Join(t.TempDir(), "state"), fixture)
+		reply, err := engine.Exchange(boundedStartFrame(fixture, selector, "", "provider-state-untrusted"))
+		if err != nil {
+			t.Fatalf("Exchange(START) error = %v", err)
+		}
+		assertDiagnosticCodes(t, reply.Diagnostics, "PROVIDER_PROJECT_CONTENT_UNTRUSTED")
+	})
+}
+
+func newSuperpowersBoundedStateFixture(t *testing.T, userConfig string, versions []string, inventory *registry.BindingInventory) boundedRuntimeFixture {
+	t.Helper()
+	projectRoot := t.TempDir()
+	userRoot := t.TempDir()
+	if userConfig != "" {
+		writeTestFile(t, filepath.Join(userRoot, "config.toml"), []byte(userConfig))
+	}
+	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: projectRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	for _, version := range versions {
+		path := filepath.Join(home, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", version, "skills", "using-superpowers", "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		writeTestFile(t, path, []byte(version))
+	}
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolutions, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return boundedRuntimeFixture{projectRoot: projectRoot, snapshot: snapshot, resolutions: resolutions, registry: effective}
+}
+
+func newUntrustedBoundedStateFixture(t *testing.T) boundedRuntimeFixture {
+	t.Helper()
+	projectRoot := t.TempDir()
+	providerPath := filepath.Join(projectRoot, ".oaw", "providers", "acme.toml")
+	if err := os.MkdirAll(filepath.Dir(providerPath), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, providerPath, []byte(testUntrustedProviderTOML))
+	writeTestFile(t, filepath.Join(projectRoot, ".oaw", "config.toml"), []byte("schema_version = \"oaw.project-config/v1\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.toml\"\n"))
+	userRoot := t.TempDir()
+	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: projectRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return boundedRuntimeFixture{projectRoot: projectRoot, snapshot: snapshot, resolutions: resolutions, registry: effective}
+}
+
+const testUntrustedProviderTOML = `
+schema_version = "oaw.provider-descriptor/v1"
+descriptor_version = "1.0.0"
+id = "acme/suite"
+display_name = "Acme Suite"
+
+[[discovery]]
+id = "acme"
+kind = "path-exists"
+root = "user-home"
+path = ".agents/acme/SKILL.md"
+
+[[capabilities]]
+id = "review"
+input_schema = "oaw.capability-input/v1"
+outcome_schema = "oaw.capability-outcome/v1"
+maximum_effects = ["read-project"]
+resources = ["project"]
+request_modes = ["BOUNDED"]
+responsibilities = ["review"]
+executor_topology = "isolated-required"
+delegation_allow_list = []
+
+[[capabilities.host_bindings]]
+host = "codex"
+kind = "skill"
+reference = "acme:review"
+`
 
 func boundedStartFrame(fixture boundedRuntimeFixture, selector *classification.CapabilitySelector, ruleID, key string) runtime.RunFrame {
 	proposal := directProposal()
