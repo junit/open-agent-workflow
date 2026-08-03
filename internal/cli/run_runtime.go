@@ -15,11 +15,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
-	"github.com/wifibaby4u/open-agent-workflow/internal/config"
-	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
-	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
 
@@ -103,24 +100,10 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 			return oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
 		}
 	}
-	userConfigRoot := defaultConfigRoot()
-	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userConfigRoot, ProjectRoot: projectRoot})
+	inputs, err := loadProviderInputs(providerInputOptions{HostID: hostID, ProjectRoot: projectRoot, UserConfigRoot: defaultConfigRoot()})
 	if err != nil {
-		return nil, fmt.Errorf("RUNTIME_CONFIGURATION_REQUIRED: %w", err)
+		return nil, fmt.Errorf("RUNTIME_PROVIDER_INPUTS_REQUIRED: %w", err)
 	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil, fmt.Errorf("RUNTIME_DISCOVERY_REQUIRED: %w", err)
-	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
-	if err != nil {
-		return nil, fmt.Errorf("RUNTIME_DISCOVERY_REQUIRED: %w", err)
-	}
-	resolution, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: hostID, Bindings: catalogHostBindings(snapshot.Catalog(), hostID)})
-	if err != nil {
-		return nil, fmt.Errorf("RUNTIME_REGISTRY_REQUIRED: %w", err)
-	}
-	_ = resolution
 	authority := admission.AuthorityCeiling{
 		Effects:   []string{"git-local", "network-read", "read-project", "run-process", "write-project"},
 		Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
@@ -131,8 +114,8 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 	}
 	return oawruntime.NewEngine(oawruntime.Options{
 		StateRoot: stateRoot,
-		Bounded:   oawruntime.BoundedOptions{Configuration: snapshot, Registry: effective, Authority: authority, Executors: []admission.ExecutorRegistration{{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}, {ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}}},
-		Workflow:  oawruntime.WorkflowOptions{Configuration: snapshot, Registry: effective, Authority: authority, Host: host.RuntimeFrame{IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
+		Bounded:   oawruntime.BoundedOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Executors: []admission.ExecutorRegistration{{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}, {ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}}},
+		Workflow:  oawruntime.WorkflowOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Host: host.RuntimeFrame{IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
 	})
 }
 

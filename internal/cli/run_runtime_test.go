@@ -183,6 +183,78 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	}
 }
 
+func TestRunCodexReportsAmbiguousProviderWithoutDispatch(t *testing.T) {
+	userHome := t.TempDir()
+	configBase := t.TempDir()
+	projectRoot := t.TempDir()
+	stateRoot := filepath.Join(t.TempDir(), "runtime")
+	counterPath := filepath.Join(t.TempDir(), "codex-count")
+	t.Setenv("HOME", userHome)
+	t.Setenv("XDG_CONFIG_HOME", configBase)
+	t.Setenv("OAW_CODEX_FIXTURE_COUNT", counterPath)
+	t.Setenv("PATH", t.TempDir())
+
+	for _, version := range []string{"6.0.3", "6.1.1"} {
+		indicator := filepath.Join(userHome, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", version, "skills", "using-superpowers", "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(indicator), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(indicator, []byte(version), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	configRoot := filepath.Join(configBase, "open-agent-workflow")
+	if err := os.MkdirAll(configRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: configRoot, ProjectRoot: projectRoot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	proposal := cliDirectProposal()
+	for index := range proposal.Traits {
+		if proposal.Traits[index].Trait == classification.TraitBoundedCapabilityRequest {
+			proposal.Traits[index].Value = classification.TraitTrue
+		}
+	}
+	proposal.CapabilitySelector = &classification.CapabilitySelector{ProviderID: "oaw/superpowers", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	frame := oawruntime.RunFrame{
+		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameStart,
+		MessageID: "ambiguous-start", IdempotencyKey: "ambiguous-start",
+		Start: &oawruntime.StartInput{
+			RequestID: "ambiguous-request", Project: oawruntime.ProjectIdentity{Root: projectRoot, ConfigurationDigest: snapshot.Digest()}, Proposal: proposal,
+			Bounded: &oawruntime.BoundedInput{DeliverableID: "ambiguous-review", InputDigest: strings.Repeat("f", 64), RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"}, TerminationCondition: "one review", ExecutorID: "oaw-codex-write"},
+		},
+	}
+	raw, err := canonicaljson.Marshal(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	status := RunWithInput([]string{"run", "--host", "codex", "--state-root", stateRoot}, bytes.NewReader(raw), &stdout, &stderr)
+	if status != 0 || stderr.Len() != 0 {
+		t.Fatalf("run status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	var reply oawruntime.RunReply
+	if err := json.Unmarshal(stdout.Bytes(), &reply); err != nil {
+		t.Fatalf("stdout = %q: %v", stdout.String(), err)
+	}
+	if reply.Kind != oawruntime.ReplyCapabilitySelectionRequired || reply.Snapshot.Status != oawruntime.RunAwaitingCapability || len(reply.Diagnostics) != 1 || reply.Diagnostics[0].Code != "PROVIDER_CANDIDATE_AMBIGUOUS" {
+		t.Fatalf("reply = %#v", reply)
+	}
+	encoded, err := oawruntime.EncodeReply(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(bytes.TrimSpace(stdout.Bytes()), encoded) {
+		t.Fatalf("stdout is not canonical Runtime JSON: %q", stdout.String())
+	}
+	if _, err := os.Stat(counterPath); !os.IsNotExist(err) {
+		t.Fatalf("Codex dispatch occurred: %v", err)
+	}
+}
+
 func runCodexFrame(t *testing.T, args []string, frame oawruntime.RunFrame) []oawruntime.RunReply {
 	t.Helper()
 	input, err := canonicaljson.Marshal(frame)
