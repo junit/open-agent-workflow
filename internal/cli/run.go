@@ -23,6 +23,8 @@ func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 			return runRuntimeExchange(args[1:], stdin, stdout, stderr)
 		case "run":
 			return runCodex(args[1:], stdin, stdout, stderr)
+		case "providers":
+			return runProviders(args[1:], stdout, stderr)
 		case "check":
 			return runCheck(args[1:], stdout, stderr)
 		case "catalog":
@@ -122,5 +124,5 @@ func parse(args []string) (command, error) {
 }
 
 func usage() string {
-	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw runtime exchange [--state-root path]\n       oaw run --host codex [--state-root path] [--project-root path]\n"
+	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw providers inspect --host host [--project-root path] [--format text|json]\n       oaw runtime exchange [--state-root path]\n       oaw run --host codex [--state-root path] [--project-root path]\n"
 }
