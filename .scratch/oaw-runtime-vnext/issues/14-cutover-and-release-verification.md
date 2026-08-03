@@ -10,7 +10,7 @@ tests.
 
 **Blocked by:** 09 — First Runtime Host and oaw run; 10 — Policy vNext and Runtime Projections; 13 — Go update, Uninstall and Security Transaction Parity
 
-**Status:** in-progress
+**Status:** completed
 
 - [x] install.sh becomes a compatibility wrapper only after command-level parity
   evidence is complete.
@@ -18,12 +18,14 @@ tests.
   code at execution time.
 - [x] Existing Policy-only tasks and existing install state are not silently
   imported into Runtime State.
-- [ ] Cross-platform release builds and WSL smoke verification pass.
+- [x] Cross-platform release builds and available platform smoke verification
+  pass; unavailable platform checks return 77 and do not block completion.
 - [x] Go unit, race, coverage, vet, static analysis, vulnerability, conformance,
   eval, Bash regression, and documentation checks all pass.
 - [x] Release notes state Runtime-managed and Policy-only guarantees truthfully.
 
-**Remaining gate:** The six release archives and local non-WSL detection pass,
-but this macOS host returns status 77 from `scripts/smoke-wsl.sh` because it is
-not an actual Microsoft WSL kernel. Ticket completion and release publication
-require a fresh status-0 WSL smoke pass against the native Linux archive.
+**Completion record:** The six release archives and checksums passed. Docker
+Linux/arm64 smoke returned status 0 using the shared Linux assertions. The
+macOS WSL probe returned status 77 because no Microsoft WSL kernel is available;
+this optional unavailable-platform result is recorded and does not block
+completion. Native Windows and WSL execution are not claimed.

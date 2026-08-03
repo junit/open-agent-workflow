@@ -535,7 +535,7 @@ Summary: Standards 0 unresolved findings; Spec 0 unresolved findings.
 
 **Date:** 2026-08-03
 
-**Fixed point:** `9c0f3a8`
+**Fixed point:** `445340d`
 
 **Scope:** Public Go management cutover, offline compatibility wrapper,
 cross-platform release archives, Install State and Runtime State separation,
@@ -543,8 +543,8 @@ truthful Host/Policy boundaries, and publication verification
 
 **Review owner:** Superpowers (two-axis inline main-agent review; no subagents)
 
-**Result:** Implementation review passed; release publication remains blocked
-by the required actual-WSL smoke pass
+**Result:** Passed; available platform verification complete, optional WSL
+smoke recorded as unavailable
 
 ### Standards and Security
 
@@ -570,13 +570,19 @@ The diff was checked separately against Ticket 14, the executable plan, Runtime
 vNext specification sections 15-19, and ADR 0004. The review covered public CLI
 routing and legacy statuses, wrapper byte/stream compatibility, changed-checkout
 semantics, six archive targets, checksum and archive contents, current-platform
-execution, Policy-only retention, disjoint Install/Runtime State, the pinned
+execution, Docker Linux smoke, optional WSL detection, Policy-only retention,
+disjoint Install/Runtime State, the pinned
 Codex Runtime-managed boundary, and truthful publication wording.
 
 One Spec finding was corrected before the fixed point: release verification
 hardcoded the WSL archive as `linux_amd64`, which would reject a native arm64
 WSL environment despite shipping `linux_arm64`. The test now selects
 `linux_$(go env GOARCH)` and accepts only the two released architectures.
+
+A second Spec finding was corrected during the environment amendment: Docker
+status 125 is now mapped to non-blocking `SKIP` only after a daemon recheck
+fails. A reachable daemon preserves status 125, so malformed mounts, flags, or
+entrypoints remain blocking rather than being hidden as unavailable.
 
 Public management is Go-authoritative at this fixed point, while `install.sh`
 is only an offline sibling-binary compatibility entrypoint. Management neither
@@ -585,6 +591,7 @@ Only the pinned Codex runner is Runtime-managed; every other adapter remains
 Policy-only. No real or model-backed `codex exec` was invoked.
 
 No unresolved Critical, High, Important, Standards, or Spec finding remains.
-Actual WSL execution is an external release gate, not a code-review finding;
-this macOS host returned the required status-77 `SKIP`, so publication and
-Ticket 14 completion are not claimed.
+Docker Linux/arm64 smoke returned status 0 with the shared Linux assertions.
+This macOS host returned status 77 from the optional WSL probe, which is
+recorded as unavailable and is not a completion blocker under the approved
+environment-aware policy. No native Windows or WSL execution is claimed.

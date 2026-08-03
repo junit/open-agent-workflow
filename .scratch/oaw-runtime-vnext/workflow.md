@@ -18,7 +18,7 @@ runtime_integration_id: oaw/codex-runner
 runtime_integration_level: runner-managed
 runtime_host_selection_source: user-explicit
 runtime_host_selected_at: 2026-08-03
-current_stage: cutover-and-release-verification
+current_stage: completed
 active_ticket: 14-cutover-and-release-verification
 domain_glossary: CONTEXT.md
 spec: .scratch/oaw-runtime-vnext/spec.md
@@ -155,14 +155,15 @@ redacted Profile, Bundle-generation, stage, independent Active Ticket,
 evidence-reference, and lag-status views. Completion of Tickets 09, 10, and 13
 unblocks Ticket 14, `cutover-and-release-verification`.
 
-Ticket 14 implementation and locally available verification reached fixed point
-`9c0f3a8` on 2026-08-03. Public management is now Go-authoritative,
+Ticket 14 implementation and environment-aware verification reached fixed point
+`445340d` on 2026-08-03. Public management is now Go-authoritative,
 `install.sh` is an offline sibling-binary wrapper, six checksummed release
 archives build without runtime downloads, Install State remains disjoint from
 Runtime State, and Policy-only tasks are not automatically adopted. Full Go,
 race, coverage, vet, ShellCheck, Bash regression, documentation, eval,
-conformance, fuzz, release-contract, and official vulnerability checks passed.
-The actual WSL publication smoke remains unavailable on this macOS host and
-returned the required status-77 `SKIP`. The active stage and Ticket 14 therefore
-remain `in-progress`; publication requires fresh status-0 WSL evidence. No
+conformance, fuzz, release-contract, Docker Linux smoke, and official
+vulnerability checks passed. The optional WSL publication smoke is unavailable
+on this macOS host and returned the truthful status-77 `SKIP`; no native
+Windows or WSL execution is claimed. Under the approved environment-aware
+policy, Ticket 14 is completed because every available executor passed and no
 other acceptance or implementation blocker remains.

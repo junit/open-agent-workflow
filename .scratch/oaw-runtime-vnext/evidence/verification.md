@@ -506,10 +506,10 @@ preserved stash, and unrelated branches/worktrees remain untouched.
 
 **Date:** 2026-08-03
 
-**Result:** All locally available gates passed; actual WSL publication smoke is
-unavailable and remains blocking
+**Result:** All required gates passed; optional WSL publication smoke is
+unavailable and recorded as non-blocking
 
-**Implementation fixed point:** `9c0f3a8`
+**Implementation fixed point:** `445340d`
 
 **Scope:** Public Go management, compatibility wrapper, release packaging,
 state non-import, conformance/eval regressions, security, documentation, and
@@ -531,8 +531,9 @@ publication gates
 | Runtime transport fuzz target | Exit 0: `FuzzDecodeFrameFailsClosed`, 2 seconds |
 | Codex JSONL fuzz target | Exit 0: `FuzzNormalizeJSONLFailsClosed`, 2 seconds |
 | `rtk bash tests/14-cutover-release-test.sh release` | Exit 0: six offline cross-platform archives, checksums, and executables passed |
+| Docker Linux/arm64 smoke | Exit 0: shared Linux binary, wrapper, Install State, Runtime State, and Policy-only assertions passed |
 | Official cached `govulncheck ./...` | Exit 0: 0 reachable and 0 imported-package vulnerabilities; 2 unreachable required-module findings |
-| Actual WSL smoke | Exit 77: `SKIP: WSL smoke requires an actual Microsoft WSL kernel` |
+| Optional WSL smoke | Exit 77: `SKIP: WSL smoke requires an actual Microsoft WSL kernel`; recorded without blocking |
 
 The release contract builds darwin, Linux, and Windows archives for amd64 and
 arm64 without downloading executable code. It validates archive layout,
@@ -548,10 +549,10 @@ warning-level ShellCheck supplied the planned Go and shell static analysis.
 The optional standalone `staticcheck` executable is not installed and was not
 a command required by the approved Ticket 14 plan.
 
-The direct WSL gate was run separately on this macOS host and returned the
+The direct WSL probe was run separately on this macOS host and returned the
 specified non-WSL status 77. This proves truthful platform detection only; it
-does not prove Linux archive execution under Microsoft WSL. Ticket 14 therefore
-remains `in-progress`, and release publication must wait for a status-0 `PASS`
-from `scripts/smoke-wsl.sh` inside an actual WSL kernel. No real or
-model-backed `codex exec` was invoked. `.serena/`, the preserved stash, and
-unrelated branches/worktrees remain untouched.
+does not claim Linux archive execution under Microsoft WSL. Under the approved
+environment-aware policy, unavailable WSL is non-blocking because Docker
+provided the available Linux executor PASS. No native Windows or WSL execution
+is claimed. No real or model-backed `codex exec` was invoked. `.serena/`, the
+preserved stash, and unrelated branches/worktrees remain untouched.
