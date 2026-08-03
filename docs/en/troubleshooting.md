@@ -75,6 +75,25 @@ A **missing provider** does not necessarily stop adapter file installation, but
 the selected workflow capability will remain unavailable. Provider detection
 cannot choose a lifecycle profile or substitute another family.
 
+### Provider candidate ambiguity
+
+Run `oaw providers inspect --host codex --format text`. A completed inspection
+may report `PROVIDER_NOT_FOUND`, `PROVIDER_DISCOVERED_UNVERIFIED`,
+`PROVIDER_CANDIDATE_AMBIGUOUS`, `PROVIDER_PIN_INCOMPATIBLE`,
+`PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_DISABLED_BY_USER`, or
+`PROVIDER_PROJECT_CONTENT_UNTRUSTED`.
+
+For `PROVIDER_CANDIDATE_AMBIGUOUS`:
+
+1. Inspect with the same `--project-root`, if the Run used one.
+2. Select one candidate explicitly.
+3. Add its exact `id`, `location`, and `version` suggestion under
+   `[[provider_pins]]` in the user-owned configuration.
+4. Begin a new Run. An existing Run cannot absorb the new Configuration
+   Snapshot.
+
+OAW does not choose a candidate and does not write the pin.
+
 ## Management State Is Not Runtime State
 
 Install State and Runtime State are disjoint; no automatic migration occurs.

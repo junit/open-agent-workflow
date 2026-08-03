@@ -69,6 +69,24 @@ preparation，但不写 managed content、state、backup 或目录。没有 inst
 **missing provider** 不一定阻止 adapter file 安装，但选定 workflow capability 仍不可用。
 Provider detection 不能选择 lifecycle profile，也不能替换另一个 family。
 
+### Provider candidate 歧义
+
+运行 `oaw providers inspect --host codex --format text`。检查成功完成时可能报告
+`PROVIDER_NOT_FOUND`、`PROVIDER_DISCOVERED_UNVERIFIED`、
+`PROVIDER_CANDIDATE_AMBIGUOUS`、`PROVIDER_PIN_INCOMPATIBLE`、
+`PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_DISABLED_BY_USER` 或
+`PROVIDER_PROJECT_CONTENT_UNTRUSTED`。
+
+处理 `PROVIDER_CANDIDATE_AMBIGUOUS`：
+
+1. 如果原 Run 使用了 `--project-root`，使用相同路径执行检查。
+2. 明确选择一个 candidate。
+3. 将建议中的精确 `id`、`location` 和 `version` 作为 `[[provider_pins]]`
+   写入用户自己管理的配置。
+4. 启动新的 Run；现有 Run 不能吸收新的 Configuration Snapshot。
+
+OAW 不会替用户选择 candidate，也不会写入 pin。
+
 ## Management State 不是 Runtime State
 
 Install State 与 Runtime State 相互独立，不会自动迁移。Adapter 安装成功并报告 `clean`，

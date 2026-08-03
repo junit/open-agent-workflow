@@ -242,6 +242,14 @@ when its required indicators are incomplete. It does not download, vendor,
 patch, update, remove, license, or silently substitute provider content. Agent
 tools themselves are also installed separately.
 
+`oaw catalog list providers` lists declared descriptors. To inspect installed
+Provider candidates and Host verification without changing configuration, run
+`oaw providers inspect --host codex --format text`. An ambiguous result lists
+every candidate and an exact location-and-version `[[provider_pins]]` fragment;
+OAW never selects or writes that pin. After adding a pin, start a new Run so it
+captures the new Configuration Snapshot. See the [lifecycle guide](docs/en/lifecycle.md)
+and [troubleshooting guide](docs/en/troubleshooting.md) for the recovery sequence.
+
 ## Documentation
 
 Each detailed guide has equivalent English and Chinese entrypoints. These

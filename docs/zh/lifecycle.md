@@ -59,6 +59,19 @@ Provider 的角色由 Recipe 决定。同一个 ECC Provider 在一个 Profile �
 周期，在另一个 Profile 中可能只负责 build repair 或 security review。Full-family
 eligibility 只取决于已验证的 Capability 覆盖，对内置和用户注册 Provider 使用同一规则。
 
+### 检查 Provider 解析结果
+
+`oaw catalog list providers` 展示声明的 Provider descriptor，不代表已经安装并
+验证的 Provider Instance。使用以下只读命令检查指定 Host 的动态发现与验证结果：
+
+```bash
+oaw providers inspect --host codex --format text
+```
+
+当 Provider 存在歧义时，命令会列出全部 candidate 以及精确的 location-and-version
+pin。OAW 不会替用户选择 candidate，也不会写入 pin。用户配置变化后必须启动新的
+Run，使其捕获新的 Configuration Snapshot。
+
 ## 内置与用户自定义 Profile
 
 以下内置 Profile alias 保持稳定：

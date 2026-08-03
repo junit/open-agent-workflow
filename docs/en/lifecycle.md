@@ -72,6 +72,21 @@ lifecycle; another may admit the same Provider only for build repair or a
 security review. Full-family eligibility is based on verified Capability
 coverage, using the same rule for built-in and user-registered Providers.
 
+### Inspecting Provider resolution
+
+`oaw catalog list providers` shows declared Provider descriptors. It does not
+show installed Provider Instances. Inspect dynamic discovery and verification
+for the selected Host with:
+
+```bash
+oaw providers inspect --host codex --format text
+```
+
+The command is read-only. For an ambiguous Provider it lists every candidate
+and an exact location-and-version pin. OAW never chooses a candidate or writes
+the pin. After changing user configuration, begin a new Run so it captures the
+new Configuration Snapshot.
+
 ## Built-in and User-Defined Profiles
 
 The built-in Profile aliases remain stable:

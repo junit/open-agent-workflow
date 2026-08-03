@@ -214,6 +214,13 @@ self-update、远程主分支获取、包管理器更新或 provider 更新。�
 vendor、patch、更新、删除、许可或静默替换 provider 内容。Agent 工具本身也需要单独
 安装。
 
+`oaw catalog list providers` 只列出声明的 descriptor。要在不修改配置的情况下检查已安装
+的 Provider candidate 与 Host 验证结果，请运行
+`oaw providers inspect --host codex --format text`。歧义结果会列出全部 candidate 以及精确
+的 location-and-version `[[provider_pins]]` 片段；OAW 不会选择 candidate，也不会写入 pin。
+写入 pin 后必须启动新的 Run，使其捕获新的 Configuration Snapshot。恢复步骤见[生命周期指南](docs/zh/lifecycle.md)
+和[故障排查指南](docs/zh/troubleshooting.md)。
+
 ## 文档
 
 每份详细指南都有语义对等的英文和中文入口。这些指南正在本地 v0.1 文档 ticket 中完成：
