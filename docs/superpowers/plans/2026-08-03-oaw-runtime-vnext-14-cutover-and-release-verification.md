@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Cut installation management over to the public Go CLI, reduce `install.sh` to an offline compatibility wrapper, and produce verified cross-platform release archives without importing Policy-only or Install State into Runtime State.
+**Goal:** Cut installation management over to the public Go CLI, reduce `install.sh` to an offline compatibility wrapper, and produce environment-aware verified cross-platform release archives without importing Policy-only or Install State into Runtime State.
 
-**Architecture:** The public `oaw` command becomes the single management implementation for `check`, `install`, `update`, and `uninstall`; the compatibility script may only locate and execute the binary shipped beside it. A local release builder cross-compiles self-contained binaries and packages each with the wrapper and governance documents. Existing Install State remains under `open-agent-workflow/installations`, while Runtime State remains under `open-agent-workflow/runtime`; release and CLI black-box tests prove that neither Policy-only artifacts nor TSV state cross that boundary.
+**Architecture:** The public `oaw` command becomes the single management implementation for `check`, `install`, `update`, and `uninstall`; the compatibility script may only locate and execute the binary shipped beside it. A local release builder cross-compiles self-contained binaries and packages each with the wrapper and governance documents. Existing Install State remains under `open-agent-workflow/installations`, while Runtime State remains under `open-agent-workflow/runtime`; release and CLI black-box tests prove that neither Policy-only artifacts nor TSV state cross that boundary. A shared Linux archive smoke runs through Docker when available and through WSL when present; unavailable platform executors return status 77 and are recorded without blocking completion.
 
 **Tech Stack:** Go 1.26 standard library and cross-compilation, Bash 3.2 compatibility wrapper and black-box tests, `tar`, SHA-256 tooling, ShellCheck, Go race/coverage/vet/fuzz tooling, and the existing OAW conformance/eval corpus.
 
@@ -399,9 +399,243 @@ rtk git add .scratch/oaw-runtime-vnext
 rtk git commit -m "docs: record ticket 14 cutover verification"
 ```
 
+## Approved Environment-Aware Platform Amendment (2026-08-03)
+
+This amendment supersedes Task 3 Step 5, Task 4's mandatory-WSL wording, and
+Task 5's actual-WSL completion condition. The user approved Docker as the only
+non-macOS execution mechanism available during development and explicitly made
+unavailable platform checks non-blocking. A recorded status-77 `SKIP` is not a
+pass, but it no longer prevents Ticket 14 completion.
+
+### Task 6: Share Linux Smoke and Add the Docker Executor
+
+**Files:**
+- Create: `scripts/smoke-linux.sh`
+- Create: `scripts/smoke-docker.sh`
+- Modify: `scripts/smoke-wsl.sh`
+- Modify: `tests/14-cutover-release-test.sh`
+
+- [ ] **Step 1: Add the failing Docker platform contract**
+
+Add a `run_docker_contract` mode to `tests/14-cutover-release-test.sh`. It must
+build all release archives into the existing private test directory, resolve
+the Docker server architecture as `amd64` or `arm64`, and invoke:
+
+```bash
+bash "$REPOSITORY/scripts/smoke-docker.sh" \
+  "$release_output/open-agent-workflow_${version}_linux_${docker_arch}.tar.gz"
+```
+
+Accept status 0 only with `PASS: Docker Linux release` output. Accept status 77
+only with `SKIP:` output. Any other status fails the contract. Extend `all` to
+run this contract after wrapper and archive verification, and add `docker` as
+an explicit mode.
+
+- [ ] **Step 2: Run the Docker contract and verify RED**
+
+Run:
+
+```bash
+rtk bash tests/14-cutover-release-test.sh docker
+```
+
+Expected: FAIL because `scripts/smoke-docker.sh` does not exist.
+
+- [ ] **Step 3: Extract the common Linux release smoke**
+
+Move every assertion after WSL detection from `scripts/smoke-wsl.sh` into
+`scripts/smoke-linux.sh <absolute-linux-release-archive>`. Keep the exact
+archive path validation, safe extraction, executable checks, binary/wrapper
+help parity, `catalog validate`, isolated install/uninstall, Install State
+creation, Runtime State absence, and Policy-only checksum preservation. End
+only after all assertions pass:
+
+```bash
+printf 'PASS: Linux release binary, wrapper, Install State, and Policy-only boundaries verified\n'
+```
+
+The common script performs no platform detection and no network operation.
+
+- [ ] **Step 4: Reduce WSL smoke to detection plus delegation**
+
+Keep the Microsoft-kernel check in `scripts/smoke-wsl.sh`, then resolve its own
+physical script directory and delegate without changing the archive argument:
+
+```bash
+SCRIPT_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
+exec bash "$SCRIPT_DIR/smoke-linux.sh" "$@"
+```
+
+Outside WSL it must still emit the existing `SKIP` diagnostic and return 77.
+
+- [ ] **Step 5: Implement the Docker smoke executor**
+
+Create `scripts/smoke-docker.sh <absolute-linux-release-archive>` with these
+fixed behaviors:
+
+```text
+amd64 image: bash@sha256:534a5f1d11652aadaa9f08838f6637ac11a46a8b4b736a4cbf09c5945e38516f
+arm64 image: bash@sha256:26b3d1c3d49066239fc1c44002f316c1893ca83f714c9fd9636e100d3e11224d
+available server architectures: amd64, arm64
+unavailable CLI/daemon/architecture/image: SKIP on stderr, status 77
+common smoke assertion failure: status 1
+successful common smoke: Docker-prefixed PASS, status 0
+```
+
+Validate the absolute regular archive before Docker use. Reuse a local image;
+if absent, attempt one explicit image pull and convert pull unavailability to
+status 77. Run the selected native Linux architecture with the archive and
+common script mounted read-only, network disabled, all capabilities dropped,
+`no-new-privileges`, a read-only root filesystem, and an executable private
+`/tmp` tmpfs:
+
+```bash
+docker run --rm --network none --read-only \
+  --tmpfs /tmp:rw,exec,nosuid,nodev \
+  --cap-drop ALL --security-opt no-new-privileges \
+  --platform "linux/$docker_arch" \
+  --mount "type=bind,src=$ARCHIVE,dst=/input/release.tar.gz,readonly" \
+  --mount "type=bind,src=$SCRIPT_DIR/smoke-linux.sh,dst=/input/smoke-linux.sh,readonly" \
+  "$SMOKE_IMAGE" bash /input/smoke-linux.sh /input/release.tar.gz
+```
+
+Docker status 125 means the executor became unavailable and maps to 77. Status
+1 from the common smoke remains a blocking failure and must not be relabeled.
+
+- [ ] **Step 6: Run focused GREEN verification**
+
+Run:
+
+```bash
+rtk bash -n scripts/smoke-linux.sh scripts/smoke-docker.sh scripts/smoke-wsl.sh tests/14-cutover-release-test.sh
+rtk shellcheck -S warning -x scripts/smoke-linux.sh scripts/smoke-docker.sh scripts/smoke-wsl.sh tests/14-cutover-release-test.sh
+rtk bash tests/14-cutover-release-test.sh release
+rtk bash tests/14-cutover-release-test.sh docker
+```
+
+Expected: release PASS; Docker PASS on the current available Docker Desktop
+Linux/arm64 server. A genuinely unavailable Docker executor may instead return
+the tested non-blocking status-77 `SKIP`.
+
+- [ ] **Step 7: Commit the platform smoke slice**
+
+```bash
+rtk git add scripts/smoke-linux.sh scripts/smoke-docker.sh scripts/smoke-wsl.sh tests/14-cutover-release-test.sh
+rtk git commit -m "test: verify linux releases through docker"
+```
+
+### Task 7: Publish Environment-Aware Release Verification
+
+**Files:**
+- Modify: `README.md`
+- Modify: `README-zh.md`
+- Modify: `CONTRIBUTING.md`
+- Modify: `CONTRIBUTING-zh.md`
+- Modify: `CHANGELOG.md`
+- Modify: `scripts/check-docs.sh`
+- Modify: `tests/10-docs-test.sh`
+
+- [ ] **Step 1: Write failing bilingual documentation contracts**
+
+Replace the mandatory-WSL literals with these exact release boundaries in both
+documentation test surfaces:
+
+```text
+Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.
+可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。
+```
+
+Reject the stale literals `actual WSL smoke pass is required before publishing
+a release`, `release readiness remains blocked until`, and their Chinese
+equivalents from current user-facing release documents.
+
+- [ ] **Step 2: Run documentation tests and verify RED**
+
+Run:
+
+```bash
+rtk bash tests/10-docs-test.sh
+rtk bash scripts/check-docs.sh
+```
+
+Expected: FAIL because README and contribution contracts still require WSL.
+
+- [ ] **Step 3: Update bilingual guidance and release notes**
+
+Document the Docker command, status-0 PASS, status-77 non-blocking SKIP, and the
+rule that a skip is never reported as a pass. State that native archive
+execution remains required on the current host, Linux execution uses Docker
+when available, Windows/WSL execution may be skipped when unavailable, and all
+six cross-builds/checksums remain mandatory. Describe Docker image preparation
+as verification infrastructure, not release runtime behavior.
+
+- [ ] **Step 4: Run documentation tests for GREEN**
+
+Run:
+
+```bash
+rtk bash tests/10-docs-test.sh
+rtk bash scripts/check-docs.sh
+```
+
+Expected: PASS with bilingual and link contracts intact.
+
+- [ ] **Step 5: Commit documentation**
+
+```bash
+rtk git add README.md README-zh.md CONTRIBUTING.md CONTRIBUTING-zh.md CHANGELOG.md scripts/check-docs.sh tests/10-docs-test.sh
+rtk git commit -m "docs: make unavailable platform smoke non-blocking"
+```
+
+### Task 8: Reverify and Close Ticket 14
+
+**Files:**
+- Modify: `.scratch/oaw-runtime-vnext/issues/14-cutover-and-release-verification.md`
+- Modify: `.scratch/oaw-runtime-vnext/workflow.md`
+- Modify: `.scratch/oaw-runtime-vnext/evidence/review.md`
+- Modify: `.scratch/oaw-runtime-vnext/evidence/verification.md`
+
+- [ ] **Step 1: Run inline two-axis amendment review**
+
+Review the amendment for repository/security standards and separately against
+specification sections 18-19. Confirm Docker input validation, image pinning,
+no-network execution, least privilege, exact status mapping, common assertion
+ownership, truthful skip reporting, bilingual consistency, and preservation of
+offline release behavior. Remediate every Critical, High, Important,
+Standards, or Spec finding before completion.
+
+- [ ] **Step 2: Run fresh fixed-point verification**
+
+Run the complete Task 5 verification matrix, then additionally run:
+
+```bash
+rtk bash tests/14-cutover-release-test.sh docker
+rtk bash scripts/smoke-wsl.sh "$PWD/dist/open-agent-workflow_0.1.0_linux_$(go env GOARCH).tar.gz"
+```
+
+Docker must return status 0 on the currently available Docker Desktop server.
+The macOS WSL probe may return status 77 and remains truthful, non-blocking
+evidence. Rebuild `dist/` only in a fresh output directory because the release
+builder refuses overwrite.
+
+- [ ] **Step 3: Record completion evidence**
+
+Update Ticket 14 acceptance language to require cross-platform builds plus
+environment-aware smoke. Check every acceptance item backed by fresh evidence,
+set the issue status to `completed`, set the workflow stage to completed, and
+record Docker PASS plus WSL SKIP separately. Do not claim native Windows or WSL
+execution.
+
+- [ ] **Step 4: Commit completion evidence**
+
+```bash
+rtk git add .scratch/oaw-runtime-vnext
+rtk git commit -m "docs: complete ticket 14 environment verification"
+```
+
 ## Plan Self-Review
 
-- Spec coverage: Tasks 1-4 cover migration step 8, state non-import, CLI authority, archives, cross-platform builds, WSL, all verification classes, and truthful release boundaries; Task 5 closes evidence.
+- Spec coverage: Tasks 1-4 cover migration step 8, state non-import, CLI authority, archives, and the original release boundaries; Tasks 6-8 implement the approved environment-aware Docker/optional-platform amendment and close evidence.
 - Placeholder scan: no TBD, TODO, deferred implementation instruction, or unnamed test remains.
 - Type consistency: production identifiers consistently use `managementCommand`, `runManagement`, `parseManagement`, `managementEnvironment`, and `executeManagement`; Install State and Runtime State remain distinct names and paths.
 - Ownership consistency: Matt `tdd` owns every RED/GREEN loop; Superpowers owns this plan, implementation orchestration, review, verification, and completion. Superpowers TDD remains paused and no subagent is dispatched.
