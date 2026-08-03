@@ -61,6 +61,11 @@ set -e
 
 case "$DOCKER_STATUS" in
   0) printf 'PASS: Docker Linux release smoke verified on linux/%s\n' "$DOCKER_ARCH" ;;
-  125) skip "Docker executor became unavailable" ;;
+  125)
+    if ! docker version >/dev/null 2>&1; then
+      skip "Docker executor became unavailable"
+    fi
+    exit 125
+    ;;
   *) exit "$DOCKER_STATUS" ;;
 esac

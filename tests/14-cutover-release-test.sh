@@ -295,6 +295,29 @@ run_docker_contract() {
       ;;
     *) fail "Docker smoke failed with status $docker_status: $(cat "$CUTOVER_TEMP/docker.stderr")" ;;
   esac
+
+  available_bin=$CUTOVER_TEMP/docker-available-bin
+  mkdir -p "$available_bin"
+  cat >"$available_bin/docker" <<'EOF'
+#!/bin/sh
+case "$1" in
+  version) printf 'arm64\n' ;;
+  image) exit 0 ;;
+  run) exit 125 ;;
+  *) exit 2 ;;
+esac
+EOF
+  chmod 755 "$available_bin/docker"
+  arm64_archive=$release_output/open-agent-workflow_${version}_linux_arm64.tar.gz
+  set +e
+  PATH="$available_bin:/usr/bin:/bin" /bin/bash \
+    "$REPOSITORY/scripts/smoke-docker.sh" "$arm64_archive" \
+    >"$CUTOVER_TEMP/docker-available.stdout" \
+    2>"$CUTOVER_TEMP/docker-available.stderr"
+  available_status=$?
+  set -e
+  [ "$available_status" -eq 125 ] ||
+    fail "available Docker run failure mapped to $available_status instead of 125"
 }
 
 trap cleanup EXIT HUP INT TERM

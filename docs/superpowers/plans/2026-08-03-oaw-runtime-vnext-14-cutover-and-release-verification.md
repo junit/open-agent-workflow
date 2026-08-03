@@ -499,8 +499,10 @@ docker run --rm --network none --read-only \
   "$SMOKE_IMAGE" bash /input/smoke-linux.sh /input/release.tar.gz
 ```
 
-Docker status 125 means the executor became unavailable and maps to 77. Status
-1 from the common smoke remains a blocking failure and must not be relabeled.
+After Docker status 125, recheck daemon availability. Map to 77 only when that
+recheck fails; if the daemon remains reachable, preserve status 125 so invalid
+arguments, mounts, or entrypoints remain blocking. Status 1 from the common
+smoke also remains a blocking failure and must not be relabeled.
 
 - [ ] **Step 6: Run focused GREEN verification**
 
