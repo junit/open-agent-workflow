@@ -527,7 +527,22 @@ gates fall back to Workflow classification.
 
 Required verification includes Go unit and race tests, coverage, vet,
 static analysis, vulnerability scanning, existing Bash black-box tests,
-cross-platform release builds, and a WSL smoke test.
+cross-platform release builds, and best-effort native/container platform smoke
+tests. The current development host is authoritative for its native execution
+surface. Linux release behavior is exercised through Docker when Docker is
+available; WSL-specific smoke is an optional additional check. A platform that
+cannot be executed in the current environment returns a recorded `SKIP` (exit
+77) and does not block the deliverable. A smoke failure on an available,
+selected executor remains a blocking verification failure. Release execution
+itself remains offline and does not download executables; Docker image setup is
+verification infrastructure, not release behavior.
+
+The common Linux release smoke validates the extracted static binary, colocated
+wrapper, catalog validation, isolated management behavior, Install State versus
+Runtime State separation, and Policy-only task preservation. `smoke-docker.sh`
+provides the macOS/Linux container entrypoint, while `smoke-wsl.sh` first checks
+for a Microsoft WSL kernel and then invokes the same common smoke. The two
+entrypoints must not diverge in assertions or acceptance semantics.
 
 ## 19. Acceptance Criteria
 
@@ -548,6 +563,9 @@ cross-platform release builds, and a WSL smoke test.
 - Runtime transitions survive crash injection as either the prior or complete
   next Revision.
 - External execution uncertainty never triggers blind replay.
+- Cross-platform execution is environment-aware: available native or Docker
+  smoke must pass, unavailable platforms are recorded as `SKIP` without
+  blocking completion, and no skipped platform may be reported as passed.
 - Concurrent Runtime-admitted write-capable Capability invocations cannot own
   the same Worktree resource; Direct work is explicitly outside this guarantee.
 - Project projections never become control input.
