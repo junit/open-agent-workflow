@@ -226,6 +226,33 @@ func TestWorkflowRevisionEdgesRejectHistoryRewrites(t *testing.T) {
 	}
 }
 
+func TestWorkflowSwitchReportsSelectedProviderResolution(t *testing.T) {
+	engine, fixture := newInternalWorkflowEngineWithAmbiguousSuperpowers(t)
+	started := startInternalWorkflow(t, engine, fixture, "provider-switch")
+	ready := selectInternalWorkflowProfile(t, engine, started, "provider-switch-select", ProfileSelection{Profile: "MATT-FULL"})
+	granted := grantInternalWorkflow(t, engine, ready, "provider-switch-grant")
+	inflight := prepareInternalWorkflow(t, engine, granted, "provider-switch-dispatch")
+	observed := observeInternalWorkflow(t, engine, inflight, "provider-switch-observe", ObservationSucceeded, workflowSignalSucceeded, "specification-approved")
+
+	_, err := engine.Exchange(RunFrame{
+		SchemaVersion: RuntimeSchemaV1, Kind: FrameContinue,
+		MessageID: "provider-switch-profile", IdempotencyKey: "provider-switch-profile",
+		RunID: observed.RunID, ExpectedRevision: observed.Revision,
+		Continue: &ContinueInput{Signal: SignalSwitchProfile, StableBoundarySwitch: &StableBoundarySwitch{
+			Boundary:  "specification-approved",
+			Selection: ProfileSelection{Profile: "SP-FULL"},
+		}},
+	})
+	assertInternalErrorCode(t, err, "PROVIDER_CANDIDATE_AMBIGUOUS")
+	committed, loadErr := engine.journal.loadCommitted(observed.RunID)
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if committed.Revision != observed.Revision {
+		t.Fatalf("failed Profile switch committed revision %d, want %d", committed.Revision, observed.Revision)
+	}
+}
+
 type internalWorkflowRecords struct {
 	awaiting       revisionRecord
 	ready          revisionRecord
@@ -290,10 +317,19 @@ func internalWorkflowLifecycleRecords(t *testing.T) internalWorkflowRecords {
 type internalWorkflowFixture struct {
 	projectRoot string
 	snapshot    config.Snapshot
+	resolutions registry.ResolutionReport
 	registry    registry.Registry
 }
 
 func newInternalWorkflowEngine(t *testing.T) (*Engine, internalWorkflowFixture) {
+	return newInternalWorkflowEngineWithCandidates(t, false)
+}
+
+func newInternalWorkflowEngineWithAmbiguousSuperpowers(t *testing.T) (*Engine, internalWorkflowFixture) {
+	return newInternalWorkflowEngineWithCandidates(t, true)
+}
+
+func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers bool) (*Engine, internalWorkflowFixture) {
 	t.Helper()
 	projectRoot := t.TempDir()
 	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
@@ -311,6 +347,15 @@ func newInternalWorkflowEngine(t *testing.T) (*Engine, internalWorkflowFixture) 
 			t.Fatal(err)
 		}
 	}
+	if ambiguousSuperpowers {
+		path := filepath.Join(home, filepath.FromSlash(".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md"))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("workflow invariant ambiguous fixture"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
 	if err != nil {
 		t.Fatal(err)
@@ -324,15 +369,15 @@ func newInternalWorkflowEngine(t *testing.T) (*Engine, internalWorkflowFixture) 
 			bindings = append(bindings, capability.HostBindings...)
 		}
 	}
-	_, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: bindings})
+	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: bindings})
 	if err != nil {
 		t.Fatal(err)
 	}
-	fixture := internalWorkflowFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective}
+	fixture := internalWorkflowFixture{projectRoot: projectRoot, snapshot: snapshot, resolutions: resolutions, registry: effective}
 	engine, err := NewEngine(Options{
 		StateRoot: filepath.Join(t.TempDir(), "state"),
 		Workflow: WorkflowOptions{
-			Configuration: snapshot, Registry: effective,
+			Configuration: snapshot, Resolutions: resolutions, Registry: effective,
 			Authority: admission.AuthorityCeiling{Effects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true},
 			Host:      host.RuntimeFrame{IntegrationID: hostIntegration.ID},
 			Executors: []WorkflowExecutorRegistration{
@@ -363,10 +408,14 @@ func startInternalWorkflow(t *testing.T, engine *Engine, fixture internalWorkflo
 }
 
 func selectInternalWorkflow(t *testing.T, engine *Engine, current RunReply, key string) RunReply {
+	return selectInternalWorkflowProfile(t, engine, current, key, ProfileSelection{Profile: "MATT-SP-HYBRID"})
+}
+
+func selectInternalWorkflowProfile(t *testing.T, engine *Engine, current RunReply, key string, selection ProfileSelection) RunReply {
 	t.Helper()
 	reply, err := engine.Exchange(RunFrame{
 		SchemaVersion: RuntimeSchemaV1, Kind: FrameContinue, MessageID: key, IdempotencyKey: key,
-		RunID: current.RunID, ExpectedRevision: current.Revision, Continue: &ContinueInput{Signal: SignalProfileSelected, ProfileSelection: &ProfileSelection{Profile: "MATT-SP-HYBRID"}},
+		RunID: current.RunID, ExpectedRevision: current.Revision, Continue: &ContinueInput{Signal: SignalProfileSelected, ProfileSelection: &selection},
 	})
 	if err != nil {
 		t.Fatal(err)

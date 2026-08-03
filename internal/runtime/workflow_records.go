@@ -25,6 +25,7 @@ var bundleIDPattern = regexp.MustCompile(`^bundle-[0-9a-f]{32}$`)
 
 type WorkflowOptions struct {
 	Configuration config.Snapshot
+	Resolutions   registry.ResolutionReport
 	Registry      registry.Registry
 	Authority     admission.AuthorityCeiling
 	Host          host.RuntimeFrame

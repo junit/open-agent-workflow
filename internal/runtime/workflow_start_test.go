@@ -104,25 +104,121 @@ func TestWorkflowProfileSelectionRejectsUnavailableHostFeature(t *testing.T) {
 	assertRevisionCount(t, stateRoot, started.RunID, 1)
 }
 
+func TestWorkflowStartIgnoresUnrelatedAmbiguousProvider(t *testing.T) {
+	fixture := newWorkflowRuntimeFixtureWithAmbiguousSuperpowers(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngine(t, stateRoot, fixture, true)
+
+	started, err := engine.Exchange(workflowStartFrame(fixture, "workflow-unrelated-provider-start"))
+	if err != nil {
+		t.Fatalf("Exchange(START) error = %v", err)
+	}
+	if started.Kind != runtime.ReplySelectionRequired || started.Snapshot.Status != runtime.RunAwaitingSelection || started.Revision != 1 {
+		t.Fatalf("Workflow START reply = %#v", started)
+	}
+
+	selected, err := exchangeWorkflowSelection(engine, started, "workflow-unrelated-provider-select", runtime.ProfileSelection{Profile: "MATT-FULL"})
+	if err != nil {
+		t.Fatalf("Exchange(PROFILE_SELECTED) error = %v", err)
+	}
+	if selected.Kind != runtime.ReplyModeDecided || selected.Snapshot.Status != runtime.RunReady || selected.Revision != 2 {
+		t.Fatalf("selected reply = %#v", selected)
+	}
+}
+
+func TestWorkflowProfileSelectionReportsProviderResolution(t *testing.T) {
+	fixture := newWorkflowRuntimeFixtureWithAmbiguousSuperpowers(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngine(t, stateRoot, fixture, true)
+	started, err := engine.Exchange(workflowStartFrame(fixture, "workflow-provider-resolution-start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = exchangeWorkflowSelection(engine, started, "workflow-provider-resolution-select", runtime.ProfileSelection{Profile: "SP-FULL"})
+	assertErrorCode(t, err, "PROVIDER_CANDIDATE_AMBIGUOUS")
+	if strings.Contains(err.Error(), fixture.home) || strings.Contains(err.Error(), "SKILL.md") {
+		t.Fatalf("Runtime diagnostic leaked discovery paths: %q", err)
+	}
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
+}
+
+func TestWorkflowProfileSelectionReportsBoundProviderResolution(t *testing.T) {
+	fixture := newWorkflowRuntimeFixtureWithAmbiguousSuperpowers(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngine(t, stateRoot, fixture, true)
+	started, err := engine.Exchange(workflowStartFrame(fixture, "workflow-bound-provider-start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = exchangeWorkflowSelection(engine, started, "workflow-bound-provider-select", runtime.ProfileSelection{
+		Profile: "MATT-FULL",
+		Bindings: []profile.ProfileBinding{{
+			Selector:            catalog.CapabilitySelector{ProviderID: "oaw/matt", CapabilityID: "implementation"},
+			PreferredProviderID: "oaw/superpowers",
+		}},
+	})
+	assertErrorCode(t, err, "PROVIDER_CANDIDATE_AMBIGUOUS")
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
+}
+
+func TestWorkflowProfileSelectionPreservesVerifiedContractError(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngine(t, stateRoot, fixture, true)
+	started, err := engine.Exchange(workflowStartFrame(fixture, "workflow-contract-error-start"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = exchangeWorkflowSelection(engine, started, "workflow-contract-error-select", runtime.ProfileSelection{
+		Profile: "MATT-FULL",
+		Bindings: []profile.ProfileBinding{{
+			Selector:            catalog.CapabilitySelector{ProviderID: "oaw/matt", CapabilityID: "implementation"},
+			PreferredProviderID: "oaw/superpowers",
+		}},
+	})
+	assertErrorCode(t, err, "PROFILE_SELECTION_INVALID")
+	var compileErr *profile.CompileError
+	if !errors.As(err, &compileErr) || compileErr.ProviderID != "" || compileErr.CapabilityID != "" {
+		t.Fatalf("contract error = %#v", compileErr)
+	}
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
+}
+
 type workflowRuntimeFixture struct {
 	projectRoot     string
 	home            string
 	snapshot        config.Snapshot
+	resolutions     registry.ResolutionReport
 	registry        registry.Registry
 	bindings        []catalog.HostBinding
 	hostIntegration host.IntegrationRecord
 }
 
 func newWorkflowRuntimeFixture(t *testing.T) workflowRuntimeFixture {
+	return newWorkflowRuntimeFixtureWithCandidates(t, false)
+}
+
+func newWorkflowRuntimeFixtureWithAmbiguousSuperpowers(t *testing.T) workflowRuntimeFixture {
+	return newWorkflowRuntimeFixtureWithCandidates(t, true)
+}
+
+func newWorkflowRuntimeFixtureWithCandidates(t *testing.T, ambiguousSuperpowers bool) workflowRuntimeFixture {
 	t.Helper()
 	projectRoot := t.TempDir()
 	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
-	for path, content := range map[string]string{
+	providers := map[string]string{
 		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "superpowers",
 		".agents/skills/to-spec/SKILL.md":                              "matt-spec",
 		".agents/skills/to-tickets/SKILL.md":                           "matt-tickets",
-	} {
+	}
+	if ambiguousSuperpowers {
+		providers[".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md"] = "superpowers-6.1.1"
+	}
+	for path, content := range providers {
 		fullPath := filepath.Join(home, path)
 		if err := os.MkdirAll(filepath.Dir(fullPath), 0o700); err != nil {
 			t.Fatalf("MkdirAll(%s) error = %v", filepath.Dir(fullPath), err)
@@ -142,11 +238,11 @@ func newWorkflowRuntimeFixture(t *testing.T) workflowRuntimeFixture {
 			bindings = append(bindings, capability.HostBindings...)
 		}
 	}
-	_, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: bindings})
+	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: bindings})
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
-	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, registry: effective, bindings: append([]catalog.HostBinding{}, bindings...), hostIntegration: hostIntegration}
+	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, resolutions: resolutions, registry: effective, bindings: append([]catalog.HostBinding{}, bindings...), hostIntegration: hostIntegration}
 }
 
 func newWorkflowEngine(t *testing.T, stateRoot string, fixture workflowRuntimeFixture, isolated bool) *runtime.Engine {
@@ -163,7 +259,7 @@ func newWorkflowEngineWithHostFrame(t *testing.T, stateRoot string, fixture work
 	engine, err := runtime.NewEngine(runtime.Options{
 		StateRoot: stateRoot,
 		Workflow: runtime.WorkflowOptions{
-			Configuration: fixture.snapshot, Registry: fixture.registry,
+			Configuration: fixture.snapshot, Resolutions: fixture.resolutions, Registry: fixture.registry,
 			Authority: admission.AuthorityCeiling{
 				Effects:   []string{"git-local", "read-project", "run-process", "write-project"},
 				Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
@@ -179,6 +275,15 @@ func newWorkflowEngineWithHostFrame(t *testing.T, stateRoot string, fixture work
 		t.Fatalf("runtime.NewEngine() error = %v", err)
 	}
 	return engine
+}
+
+func exchangeWorkflowSelection(engine *runtime.Engine, current runtime.RunReply, key string, selection runtime.ProfileSelection) (runtime.RunReply, error) {
+	return engine.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: key, IdempotencyKey: key,
+		RunID: current.RunID, ExpectedRevision: current.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalProfileSelected, ProfileSelection: &selection},
+	})
 }
 
 func workflowStartFrame(fixture workflowRuntimeFixture, key string) runtime.RunFrame {

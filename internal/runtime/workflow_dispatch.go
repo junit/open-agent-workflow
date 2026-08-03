@@ -298,6 +298,9 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	}
 	graph, err := profile.CompileProfile(engine.workflow.Configuration.Catalog(), engine.workflow.Registry, profile.CompileRequest{Profile: request.Selection.Profile, Bindings: request.Selection.Bindings})
 	if err != nil {
+		if diagnostic, found := workflowCompileDiagnostic(engine.workflow.Resolutions, err); found {
+			return RunReply{}, runtimeError(diagnostic.Code, diagnostic.Message, err)
+		}
 		return RunReply{}, runtimeError("PROFILE_SELECTION_INVALID", "selected Profile is not available", err)
 	}
 	hostAdmission, err := admitWorkflowHost(engine.workflow, graph.Record())

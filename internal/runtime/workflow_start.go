@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"errors"
 	"sort"
 	"strings"
 
@@ -8,6 +9,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
+	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
 func cloneWorkflowOptions(value WorkflowOptions) WorkflowOptions {
@@ -55,6 +57,9 @@ func (engine *Engine) selectWorkflowProfile(current revisionRecord, frame RunFra
 		Profile: input.ProfileSelection.Profile, Bindings: input.ProfileSelection.Bindings,
 	})
 	if err != nil {
+		if diagnostic, found := workflowCompileDiagnostic(engine.workflow.Resolutions, err); found {
+			return RunReply{}, runtimeError(diagnostic.Code, diagnostic.Message, err)
+		}
 		return RunReply{}, runtimeError("PROFILE_SELECTION_INVALID", "selected Profile is not available", err)
 	}
 	hostAdmission, err := admitWorkflowHost(engine.workflow, graph.Record())
@@ -94,6 +99,14 @@ func (engine *Engine) selectWorkflowProfile(current revisionRecord, frame RunFra
 	}
 	engine.projectCommittedWorkflow(committed)
 	return cloneReply(committed.Reply), nil
+}
+
+func workflowCompileDiagnostic(report registry.ResolutionReport, err error) (Diagnostic, bool) {
+	var compileErr *profile.CompileError
+	if !errors.As(err, &compileErr) || compileErr.ProviderID == "" || compileErr.CapabilityID == "" {
+		return Diagnostic{}, false
+	}
+	return providerResolutionDiagnostic(report, compileErr.ProviderID)
 }
 
 func workflowSelectionReply(snapshot RunSnapshot) RunReply {
