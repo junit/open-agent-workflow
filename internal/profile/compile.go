@@ -56,7 +56,7 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 				omitted[node.ID] = true
 				continue
 			}
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "%s/%s is not verified", providerID, node.Selector.CapabilityID)
+			return ExecutionGraph{}, compileCapabilityError(providerID, node.Selector.CapabilityID, "%s/%s is not verified", providerID, node.Selector.CapabilityID)
 		}
 		if instance.ProviderID != providerID {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified provider identity %s does not match %s", instance.ProviderID, providerID)
@@ -67,7 +67,7 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 				omitted[node.ID] = true
 				continue
 			}
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "%s/%s is not verified", providerID, node.Selector.CapabilityID)
+			return ExecutionGraph{}, compileCapabilityError(providerID, node.Selector.CapabilityID, "%s/%s is not verified", providerID, node.Selector.CapabilityID)
 		}
 		if verifiedCapability.ID != node.Selector.CapabilityID {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified capability identity %s does not match %s", verifiedCapability.ID, node.Selector.CapabilityID)

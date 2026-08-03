@@ -159,8 +159,10 @@ func (graph ExecutionGraph) StableBoundaries() []string {
 }
 
 type CompileError struct {
-	Code   string
-	Detail string
+	Code         string
+	Detail       string
+	ProviderID   string
+	CapabilityID string
 }
 
 func (err *CompileError) Error() string {
@@ -172,6 +174,15 @@ func (err *CompileError) Error() string {
 
 func compileError(code, format string, values ...any) error {
 	return &CompileError{Code: code, Detail: fmt.Sprintf(format, values...)}
+}
+
+func compileCapabilityError(providerID, capabilityID, format string, values ...any) error {
+	return &CompileError{
+		Code:         "PROFILE_CAPABILITY_MISSING",
+		Detail:       fmt.Sprintf(format, values...),
+		ProviderID:   providerID,
+		CapabilityID: capabilityID,
+	}
 }
 
 func cloneBindings(values []ProfileBinding) []ProfileBinding {

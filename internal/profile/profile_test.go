@@ -170,9 +170,31 @@ func TestCompileRecipeRejectsUnverifiedBindingAndMissingDescriptor(t *testing.T)
 	verified.capabilities["acme/suite\x00implementation"] = registry.VerifiedCapability{ID: "implementation", Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "not-declared"}}
 	_, err := profile.CompileRecipe(available, verified, recipe, nil)
 	requireCompileCode(t, err, "PROFILE_CAPABILITY_MISSING")
+	var compileErr *profile.CompileError
+	if !errors.As(err, &compileErr) || compileErr.ProviderID != "" || compileErr.CapabilityID != "" {
+		t.Fatalf("binding contract error exposed Provider resolution metadata: %#v", compileErr)
+	}
 
 	_, err = profile.CompileRecipe(catalogSource{providers: []catalog.ProviderDescriptorRecord{}, recipes: available.Recipes(), aliases: available.Aliases()}, verified, recipe, nil)
 	requireCompileCode(t, err, "PROFILE_CAPABILITY_MISSING")
+}
+
+func TestCompileMissingCapabilityCarriesResolvedSelector(t *testing.T) {
+	available, verified, recipe := compilerFixture(t)
+	delete(verified.providers, "vendor/suite")
+	delete(verified.capabilities, "vendor/suite\x00implementation")
+
+	_, err := profile.CompileRecipe(available, verified, recipe, []profile.ProfileBinding{{
+		Selector:            catalog.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "implementation"},
+		PreferredProviderID: "vendor/suite",
+	}})
+	var compileErr *profile.CompileError
+	if !errors.As(err, &compileErr) {
+		t.Fatalf("CompileRecipe() error = %v", err)
+	}
+	if compileErr.Code != "PROFILE_CAPABILITY_MISSING" || compileErr.ProviderID != "vendor/suite" || compileErr.CapabilityID != "implementation" {
+		t.Fatalf("CompileError = %#v", compileErr)
+	}
 }
 
 func TestCompileRecipeNormalizesMultipleTransitionsAndIncidentRoutes(t *testing.T) {
