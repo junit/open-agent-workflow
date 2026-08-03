@@ -99,7 +99,7 @@ EOF
     'Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.' \
     'Only the pinned Codex runner is currently Runtime-managed.' \
     'Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.' \
-    'An actual WSL smoke pass is required before publishing a release.' \
+    'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.' \
     >>"$fixture_root/README.md"
   printf '%s\n' \
     '公开安装管理以 Go 为权威实现。' \
@@ -109,7 +109,7 @@ EOF
     '现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。' \
     '目前只有固定版本的 Codex runner 是 Runtime-managed。' \
     '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
-    '发布前必须在真实 WSL 环境通过 smoke test。' \
+    '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
     >>"$fixture_root/README-zh.md"
   : >"$fixture_root/CHANGELOG.md"
   printf '%s\n' 'experience-based' >>"$fixture_root/docs/en/comparison.md"
@@ -154,17 +154,17 @@ for contribution_contract in \
   'public Go `oaw` binary' \
   'precompiled sibling binary' \
   'Install State and Runtime State' \
-  'actual WSL smoke pass is required before publishing a release'; do
+  'Available native and Docker smoke tests must pass'; do
   assert_contains CONTRIBUTING.md "$contribution_contract"
 done
 for contribution_contract in \
   '公开 Go `oaw` 二进制' \
   '预编译的同目录二进制' \
   'Install State 与 Runtime State' \
-  '发布前必须在真实 WSL 环境通过 smoke test'; do
+  '可用的原生和 Docker smoke test 必须通过'; do
   assert_contains CONTRIBUTING-zh.md "$contribution_contract"
 done
-pass "bilingual contribution contracts distinguish Go authority, wrapper compatibility, state, and WSL release gates"
+pass "bilingual contribution contracts distinguish Go authority, wrapper compatibility, state, and environment-aware release gates"
 
 for security_file in SECURITY.md SECURITY-zh.md; do
   assert_contains "$security_file" "private"
@@ -215,7 +215,7 @@ assert_contains CHANGELOG.md "forced"
 assert_contains CHANGELOG.md "bilingual documentation"
 assert_contains CHANGELOG.md "Go-authoritative management CLI"
 assert_contains CHANGELOG.md "precompiled Darwin, Linux, and Windows archives"
-assert_contains CHANGELOG.md "actual Microsoft WSL kernel"
+assert_contains CHANGELOG.md "Docker or optional WSL execution"
 assert_contains CHANGELOG.md "Install State and revisioned Runtime State remain disjoint"
 pass "changelog describes the local unreleased 0.1.0 candidate"
 
@@ -335,7 +335,7 @@ for release_boundary in \
   'Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.' \
   'Only the pinned Codex runner is currently Runtime-managed.' \
   'Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.' \
-  'An actual WSL smoke pass is required before publishing a release.'; do
+  'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.'; do
   assert_contains README.md "$release_boundary"
 done
 for release_boundary in \
@@ -346,7 +346,7 @@ for release_boundary in \
   '现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。' \
   '目前只有固定版本的 Codex runner 是 Runtime-managed。' \
   '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
-  '发布前必须在真实 WSL 环境通过 smoke test。'; do
+  '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。'; do
   assert_contains README-zh.md "$release_boundary"
 done
 pass "bilingual README entrypoints publish the Go cutover and Runtime boundaries"
@@ -362,6 +362,10 @@ for current_document in \
   assert_not_contains "$current_document" 'public `oaw install` is not enabled'
   assert_not_contains "$current_document" 'public `oaw install` 尚未启用'
   assert_not_contains "$current_document" 'zero-dependency Bash installer'
+  assert_not_contains "$current_document" 'actual WSL smoke pass is required before publishing a release'
+  assert_not_contains "$current_document" 'release readiness remains blocked until'
+  assert_not_contains "$current_document" '发布前必须在真实 WSL 环境通过 smoke test'
+  assert_not_contains "$current_document" '仍不具备 release readiness'
 done
 pass "current user-facing documents reject stale pre-cutover authority claims"
 

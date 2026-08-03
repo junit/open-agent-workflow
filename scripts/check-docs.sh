@@ -83,7 +83,7 @@ README.md|Install State and Runtime State are disjoint; no automatic migration o
 README.md|Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.
 README.md|Only the pinned Codex runner is currently Runtime-managed.
 README.md|Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.
-README.md|An actual WSL smoke pass is required before publishing a release.
+README.md|Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.
 README-zh.md|公开安装管理以 Go 为权威实现。
 README-zh.md|`install.sh` 是离线的同目录二进制兼容包装器。
 README-zh.md|发布归档包含预编译二进制，运行时不会下载可执行文件。
@@ -91,7 +91,7 @@ README-zh.md|Install State 与 Runtime State 相互独立，不会自动迁移�
 README-zh.md|现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。
 README-zh.md|目前只有固定版本的 Codex runner 是 Runtime-managed。
 README-zh.md|其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。
-README-zh.md|发布前必须在真实 WSL 环境通过 smoke test。
+README-zh.md|可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。
 EOF
 while IFS='|' read -r boundary_document boundary_text; do
   require_literal "$boundary_document" "$boundary_text"
@@ -120,6 +120,10 @@ Bash 仍是权威
 public `oaw install` is not enabled
 public `oaw install` 尚未启用
 zero-dependency Bash installer
+actual WSL smoke pass is required before publishing a release
+release readiness remains blocked until
+发布前必须在真实 WSL 环境通过 smoke test
+仍不具备 release readiness
 EOF
 while IFS= read -r current_document; do
   while IFS= read -r stale_boundary; do

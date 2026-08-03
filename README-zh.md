@@ -95,7 +95,13 @@ Install State 与 Runtime State 相互独立，不会自动迁移。
 
 其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。
 
-发布前必须在真实 WSL 环境通过 smoke test。
+可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。在 macOS 上，如果 Docker Desktop 可用，应使用 `scripts/smoke-docker.sh` 验证 Linux 归档。WSL-specific 检查是可选项，`SKIP` 必须记录，绝不能报告为 pass。
+
+```bash
+docker_arch=$(docker version --format '{{.Server.Arch}}')
+bash scripts/smoke-docker.sh \
+  "$PWD/dist/open-agent-workflow_0.1.0_linux_${docker_arch}.tar.gz"
+```
 
 ## 任务门禁
 
@@ -241,8 +247,7 @@ OAW 使用 [Apache License 2.0](LICENSE)。Workflow provider 和 agent 工具仍
 
 ## 项目状态
 
-此仓库是尚未发布、仅限本地的 v0.1 candidate。可以在本地构建跨平台归档，但在 Linux
-归档于真实 Microsoft WSL kernel 中通过 `scripts/smoke-wsl.sh` 前，仍不具备 release
-readiness。它不声称已有公开远程仓库、package、release、domain 或全局保留名称。
+此仓库是尚未发布、仅限本地的 v0.1 candidate。可以在本地构建跨平台归档，release
+readiness 按当前可用的原生/Docker 验证矩阵判定。它不声称已有公开远程仓库、package、release、domain 或全局保留名称。
 machine-readable management status 保留为 post-v0.1 扩展；v0.1 management 只输出
 human-readable 状态。任何远程发布都需要所有者另行批准。

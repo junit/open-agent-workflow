@@ -21,7 +21,8 @@ This local candidate is not published and has no remote release.
   `uninstall`, with `install.sh` retained only as an offline sibling-binary
   compatibility wrapper.
 - Offline release tooling for precompiled Darwin, Linux, and Windows archives
-  on amd64 and arm64, plus sorted `SHA256SUMS` and an actual-WSL smoke gate.
+  on amd64 and arm64, plus sorted `SHA256SUMS` and shared Linux smoke through
+  Docker or optional WSL execution.
 - Inert state, fail-closed drift checks, symlink containment, prepared actions,
   operation-scoped backups, backup-before-mutation enforcement, and reverse
   mutation rollback on reported apply failures.
@@ -37,9 +38,9 @@ This local candidate is not published and has no remote release.
 - Only the pinned `oaw/codex-runner` integration is Runtime-managed. All other
   installed adapters remain Policy-only without Runtime admission, Grants,
   leases, transition enforcement, or physical isolation guarantees.
-- This remains a local candidate, not a published release. Publication requires
-  a successful smoke run inside an actual Microsoft WSL kernel and separate
-  owner approval.
+- This remains a local candidate, not a published release. Available native and
+  Docker smoke must pass; unavailable platform checks return 77 and do not block
+  release readiness. Remote publication still requires separate owner approval.
 
 #### Security
 

@@ -51,9 +51,12 @@ Run these commands:
     bash scripts/check-docs.sh
 
 For a release candidate, build the six offline archives with
-`scripts/build-release.sh` and verify their checksums and exact contents. An
-actual WSL smoke pass is required before publishing a release; status 77 from
-`scripts/smoke-wsl.sh` is a skip, never a pass.
+`scripts/build-release.sh` and verify their checksums and exact contents.
+Available native and Docker smoke tests must pass; unavailable platform checks
+return 77 and do not block release readiness. On macOS, run
+`scripts/smoke-docker.sh` against the matching Linux archive when Docker
+Desktop is available. `scripts/smoke-wsl.sh` remains an optional WSL-specific
+check; status 77 is a skip, never a pass.
 
 Review the diff for secrets, unrelated generated files, unsafe path expansion,
 and missing English/Chinese parity. Use a conventional commit message and

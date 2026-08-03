@@ -46,8 +46,10 @@ Open Agent Workflow（OAW）接受按 issue 划分的纵向改动，每个改动
     bash scripts/check-docs.sh
 
 Release candidate 必须通过 `scripts/build-release.sh` 构建六个离线归档，并验证 checksum
-与精确内容。发布前必须在真实 WSL 环境通过 smoke test；`scripts/smoke-wsl.sh` 返回 77
-表示 skip，绝不能记作 pass。
+与精确内容。可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不
+阻塞 release readiness。在 macOS 上，如果 Docker Desktop 可用，应对匹配的 Linux 归档
+运行 `scripts/smoke-docker.sh`。`scripts/smoke-wsl.sh` 保留为可选的 WSL-specific 检查；
+返回 77 表示 skip，绝不能记作 pass。
 
 检查 diff 中是否存在秘密、无关生成文件、不安全路径展开或缺失的
 English/Chinese 对等内容。使用 conventional commit，并说明测试证据。不要在本地

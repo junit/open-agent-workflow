@@ -107,7 +107,13 @@ Only the pinned Codex runner is currently Runtime-managed.
 
 Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.
 
-An actual WSL smoke pass is required before publishing a release.
+Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness. On macOS, use `scripts/smoke-docker.sh` for the native Linux archive when Docker Desktop is available. WSL-specific checks are optional and a `SKIP` is recorded, never reported as a pass.
+
+```bash
+docker_arch=$(docker version --format '{{.Server.Arch}}')
+bash scripts/smoke-docker.sh \
+  "$PWD/dist/open-agent-workflow_0.1.0_linux_${docker_arch}.tar.gz"
+```
 
 ## Task Gate
 
@@ -273,9 +279,8 @@ agent tools remain governed by their own licenses.
 ## Project Status
 
 This repository is an unreleased, local-only v0.1 candidate. Cross-platform
-archives can be built locally, but release readiness remains blocked until the
-Linux archive passes `scripts/smoke-wsl.sh` inside an actual Microsoft WSL
-kernel. The project does not claim a published remote repository, package,
+archives can be built locally and release readiness follows the available
+native/Docker verification matrix. The project does not claim a published remote repository, package,
 release, domain, or globally reserved name. Machine-readable management status
 is reserved for a post-v0.1 extension; v0.1 management output is human-readable
 only. Remote publication requires separate owner approval.
