@@ -81,11 +81,15 @@ func runCodexContext(ctx context.Context, args []string, stdin io.Reader, stdout
 	if err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
-	engine, err := newCLIEngine(parsed.stateRoot, parsed.projectRoot, frame, parsed.hostID)
+	engine, inputs, err := newCLIEngineContext(parsed.stateRoot, parsed.projectRoot, frame, parsed.hostID)
 	if err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
-	driver := codex.New(codex.Options{Diagnostics: stderr})
+	executionProjectRoot := parsed.projectRoot
+	if frame.Start != nil {
+		executionProjectRoot = frame.Start.Project.Root
+	}
+	driver := codex.New(codex.Options{Diagnostics: stderr, ExecutionRoot: parsed.stateRoot, ProjectRoot: executionProjectRoot, BindingResolver: codexBindingResolver(inputs)})
 	if err := runHostLoop(ctx, bytes.NewReader(raw), engine, driver, stdout); err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
@@ -93,23 +97,29 @@ func runCodexContext(ctx context.Context, args []string, stdin io.Reader, stdout
 }
 
 func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunFrame, hostID string) (*oawruntime.Engine, error) {
+	engine, _, err := newCLIEngineContext(stateRoot, configuredProjectRoot, frame, hostID)
+	return engine, err
+}
+
+func newCLIEngineContext(stateRoot, configuredProjectRoot string, frame oawruntime.RunFrame, hostID string) (*oawruntime.Engine, *providerInputs, error) {
 	projectRoot := configuredProjectRoot
 	if frame.Start != nil {
 		frameProjectRoot := frame.Start.Project.Root
 		if projectRoot != "" && projectRoot != frameProjectRoot {
-			return nil, fmt.Errorf("RUNTIME_PROJECT_ROOT_MISMATCH: --project-root does not match START project root")
+			return nil, nil, fmt.Errorf("RUNTIME_PROJECT_ROOT_MISMATCH: --project-root does not match START project root")
 		}
 		projectRoot = frameProjectRoot
 	}
 	if frame.Start != nil && frame.Start.Proposal != nil {
 		decision, err := classification.Classify(frame.Start.Proposal, classification.ClassificationRules{})
 		if err == nil && decision.RequestMode == classification.RequestModeDirect {
-			return oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
+			engine, engineErr := oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot})
+			return engine, nil, engineErr
 		}
 	}
 	inputs, err := loadProviderInputs(providerInputOptions{HostID: hostID, ProjectRoot: projectRoot, UserConfigRoot: defaultConfigRoot()})
 	if err != nil {
-		return nil, runtimeProviderInputsError(hostID, err)
+		return nil, nil, runtimeProviderInputsError(hostID, err)
 	}
 	authority := admission.AuthorityCeiling{
 		Effects:   []string{"git-local", "network-read", "read-project", "run-process", "write-project"},
@@ -119,11 +129,37 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 		{Registration: admission.ExecutorRegistration{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}},
 		{Registration: admission.ExecutorRegistration{ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},
 	}
-	return oawruntime.NewEngine(oawruntime.Options{
+	engine, engineErr := oawruntime.NewEngine(oawruntime.Options{
 		StateRoot: stateRoot,
 		Bounded:   oawruntime.BoundedOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, HostID: hostID, Authority: authority, Executors: []admission.ExecutorRegistration{{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}, {ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}}},
 		Workflow:  oawruntime.WorkflowOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Host: host.RuntimeFrame{HostID: hostID, IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
 	})
+	return engine, &inputs, engineErr
+}
+
+func codexBindingResolver(inputs *providerInputs) codex.BindingResolver {
+	if inputs == nil || inputs.Inventory == nil {
+		return nil
+	}
+	return func(request host.DispatchRequest) (host.BindingObservation, error) {
+		if inputs.HostID != "codex" || inputs.Registry.HostID() != inputs.HostID || inputs.Inventory.HostID != inputs.HostID || request.Binding.Host != inputs.HostID {
+			return host.BindingObservation{}, fmt.Errorf("CODEX_BINDING_EVIDENCE_REQUIRED: Host authority is not the verified Codex inventory")
+		}
+		instance, found := inputs.Registry.Provider(request.ProviderID)
+		if !found || instance.HostID != inputs.HostID || instance.Digest != request.ProviderInstanceDigest || instance.BindingInventoryDigest != inputs.Inventory.Digest {
+			return host.BindingObservation{}, fmt.Errorf("CODEX_BINDING_EVIDENCE_REQUIRED: Provider Instance is not the verified dispatch instance")
+		}
+		capability, found := inputs.Registry.Capability(request.ProviderID, request.CapabilityID)
+		if !found || capability.Binding != request.Binding {
+			return host.BindingObservation{}, fmt.Errorf("CODEX_BINDING_EVIDENCE_REQUIRED: Capability Binding is not verified")
+		}
+		for _, observation := range inputs.Inventory.Observations {
+			if observation.HostID == instance.HostID && observation.InstallationKey == instance.InstallationKey && observation.Binding == request.Binding && observation.Digest == capability.BindingEvidenceDigest {
+				return observation, nil
+			}
+		}
+		return host.BindingObservation{}, fmt.Errorf("CODEX_BINDING_EVIDENCE_REQUIRED: exact Host Binding evidence is absent")
+	}
 }
 
 func runtimeProviderInputsError(hostID string, inputErr error) error {
@@ -258,7 +294,7 @@ func dispatchGranted(ctx context.Context, frame oawruntime.RunFrame, reply oawru
 	if err != nil {
 		return err
 	}
-	request := host.DispatchRequest{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID, BundleDigest: bundleDigest, Binding: grant.Binding, Effects: append([]string{}, grant.Effects...), Resources: append([]string{}, grant.Resources...)}
+	request := host.DispatchRequest{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID, BundleDigest: bundleDigest, ProviderID: grant.ProviderID, CapabilityID: grant.CapabilityID, ProviderInstanceDigest: grant.ProviderInstanceDigest, Binding: grant.Binding, Effects: append([]string{}, grant.Effects...), Resources: append([]string{}, grant.Resources...)}
 	if err := driver.Prepare(ctx, request); err != nil {
 		return err
 	}
@@ -517,7 +553,14 @@ func runtimeReason(err error) string {
 		return reason
 	}
 	message := err.Error()
-	for _, reason := range []string{"CODEX_MCP_INVENTORY_FAILED", "CODEX_MCP_ISOLATION_FAILED"} {
+	for _, reason := range []string{
+		"CODEX_BINDING_EVIDENCE_REQUIRED",
+		"CODEX_BINDING_EVIDENCE_CHANGED",
+		"CODEX_BINDING_KIND_UNSUPPORTED",
+		"CODEX_EXECUTION_PROFILE_INVALID",
+		"CODEX_MCP_INVENTORY_FAILED",
+		"CODEX_MCP_ISOLATION_FAILED",
+	} {
 		if message == reason || strings.HasPrefix(message, reason+":") {
 			return reason
 		}

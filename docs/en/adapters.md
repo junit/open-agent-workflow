@@ -49,15 +49,21 @@ Every Codex dispatch receives the committed Grant effects and resources. A
 Grant without `write-project` or `git-local` is forced into Codex
 `--sandbox read-only`; a Grant containing either write effect uses
 `--sandbox workspace-write`. The runner never selects `danger-full-access`.
-Codex sandbox mode alone does not constrain MCP subprocesses. Before a
-read-only dispatch is authorized, the runner inventories enabled MCP servers,
-adds invocation-local disable overrides, and verifies through a second
-inventory that none remains enabled. Inventory failure returns
-`CODEX_MCP_INVENTORY_FAILED`; an override that is unsupported or leaves any
-server enabled returns `CODEX_MCP_ISOLATION_FAILED`. Both fail before the model
-process starts and do not modify user configuration. The same effective
-inventory is checked again immediately before `codex exec` to close
-configuration drift between preparation and invocation.
+Codex sandbox mode alone does not constrain MCP subprocesses, so `oaw run`
+separates Host discovery from execution. Discovery reads the selected real
+Codex installation and builds the Host-scoped Registry and Binding Inventory.
+During `Prepare`, the runner revalidates the granted Provider Instance,
+Capability, Host Installation, exact Binding, inventory digest, and physical
+evidence digest. Each invocation then receives a private `0700` HOME and
+neutral workspace under the Runtime state root. Only the verified skill is
+mapped into that HOME; user configuration, project rules, hooks, unrelated
+plugins, and MCP servers are not loaded. `codex exec` uses
+`--ignore-user-config`, `--ignore-rules`, and `--disable hooks`; the original
+`CODEX_HOME` is retained only for authentication, and the physical project is
+exposed with `--add-dir`. Changed evidence fails before the model starts.
+Agent and tool Bindings currently fail closed as
+`CODEX_BINDING_KIND_UNSUPPORTED` because the isolated profile cannot yet map
+their Host registration semantics exactly.
 
 On an interrupt or termination signal, `oaw` asks the Host to cancel and then
 commits `EXECUTION_UNCERTAIN` / `PAUSED` with `RECONCILE_INVOCATION` recovery.

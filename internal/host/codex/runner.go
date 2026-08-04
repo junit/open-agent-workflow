@@ -26,11 +26,16 @@ const (
 )
 
 type Runner struct {
-	command        string
-	maxOutputBytes int64
-	maxEvents      int
-	diagnostics    io.Writer
-	run            func(context.Context, string, []string, int64) ([]byte, []byte, error)
+	command         string
+	maxOutputBytes  int64
+	maxEvents       int
+	diagnostics     io.Writer
+	run             func(context.Context, string, []string, int64) ([]byte, []byte, error)
+	runProfile      func(context.Context, string, []string, *executionProfile, int64) ([]byte, []byte, error)
+	executionRoot   string
+	projectRoot     string
+	codexHome       string
+	bindingResolver BindingResolver
 
 	mu           sync.Mutex
 	prepared     map[string]host.DispatchRequest
@@ -38,6 +43,7 @@ type Runner struct {
 	attempts     map[string]*invocationAttempt
 	active       map[string]context.CancelFunc
 	mcpServers   map[string][]string
+	profiles     map[string]*executionProfile
 	mcpInventory func(context.Context, string, int64) ([]string, error)
 	mcpIsolation func(context.Context, string, []string, int64) error
 }
@@ -63,17 +69,22 @@ func New(options Options) *Runner {
 	}
 	return &Runner{
 		command: command, maxOutputBytes: maxOutputBytes, maxEvents: maxEvents,
-		diagnostics: options.Diagnostics, run: runCommand,
+		diagnostics: options.Diagnostics, run: runCommand, runProfile: runCommandProfile,
+		executionRoot: options.ExecutionRoot, projectRoot: options.ProjectRoot, codexHome: resolveCodexHome(options.CodexHome), bindingResolver: options.BindingResolver,
 		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), attempts: make(map[string]*invocationAttempt), active: make(map[string]context.CancelFunc),
-		mcpServers: make(map[string][]string), mcpInventory: listMCPServers, mcpIsolation: verifyMCPIsolation,
+		mcpServers: make(map[string][]string), profiles: make(map[string]*executionProfile), mcpInventory: listMCPServers, mcpIsolation: verifyMCPIsolation,
 	}
 }
 
 type Options struct {
-	Command        string
-	MaxOutputBytes int64
-	MaxEvents      int
-	Diagnostics    io.Writer
+	Command         string
+	MaxOutputBytes  int64
+	MaxEvents       int
+	Diagnostics     io.Writer
+	ExecutionRoot   string
+	ProjectRoot     string
+	CodexHome       string
+	BindingResolver BindingResolver
 }
 
 func (runner *Runner) Prepare(ctx context.Context, request host.DispatchRequest) error {
@@ -90,8 +101,16 @@ func (runner *Runner) Prepare(ctx context.Context, request host.DispatchRequest)
 	if request.Binding.Host != "codex" {
 		return errors.New("CODEX_BINDING_UNSUPPORTED: Binding Host is not codex")
 	}
+	var profile *executionProfile
+	var profileErr error
+	if runner.executionRoot != "" {
+		profile, profileErr = runner.prepareExecutionProfile(request)
+		if profileErr != nil {
+			return profileErr
+		}
+	}
 	var mcpServers []string
-	if isReadOnly(request) {
+	if isReadOnly(request) && profile == nil {
 		if runner.mcpInventory == nil {
 			return errors.New("CODEX_MCP_INVENTORY_FAILED: read-only dispatch requires MCP inventory")
 		}
@@ -122,6 +141,12 @@ func (runner *Runner) Prepare(ctx context.Context, request host.DispatchRequest)
 		return errors.New("CODEX_INVOCATION_CONFLICT: Invocation ID was reused")
 	}
 	runner.prepared[request.InvocationID] = host.CloneDispatchRequest(request)
+	if runner.profiles == nil {
+		runner.profiles = make(map[string]*executionProfile)
+	}
+	if profile != nil {
+		runner.profiles[request.InvocationID] = profile
+	}
 	if isReadOnly(request) {
 		runner.mcpServers[request.InvocationID] = append([]string{}, mcpServers...)
 	}
@@ -157,6 +182,7 @@ func (runner *Runner) Invoke(ctx context.Context, request host.DispatchRequest) 
 		return host.DispatchResult{}, errors.New("CODEX_INVOCATION_NOT_PREPARED: Prepare is required before Invoke")
 	}
 	mcpServers := append([]string{}, runner.mcpServers[request.InvocationID]...)
+	profile := runner.profiles[request.InvocationID]
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	if runner.attempts == nil {
@@ -173,7 +199,7 @@ func (runner *Runner) Invoke(ctx context.Context, request host.DispatchRequest) 
 	if maximum <= 0 {
 		maximum = defaultOutputBytes
 	}
-	if isReadOnly(request) {
+	if isReadOnly(request) && profile == nil {
 		if runner.mcpIsolation == nil {
 			return runner.finishInvocation(request.InvocationID, host.DispatchResult{}, errors.New("CODEX_MCP_ISOLATION_FAILED: pre-exec verification is unavailable"))
 		}
@@ -181,12 +207,22 @@ func (runner *Runner) Invoke(ctx context.Context, request host.DispatchRequest) 
 			return runner.finishInvocation(request.InvocationID, host.DispatchResult{}, fmt.Errorf("CODEX_MCP_ISOLATION_FAILED: pre-exec verification: %w", err))
 		}
 	}
-	args := BuildArgs(sandbox, request, mcpServers)
+	args := BuildArgs(sandbox, request, profile, mcpServers)
 	run := runner.run
 	if run == nil {
 		run = runCommand
 	}
-	stdout, stderr, err := run(ctx, runner.command, args, maximum)
+	var stdout, stderr []byte
+	var err error
+	if profile != nil {
+		profileRun := runner.runProfile
+		if profileRun == nil {
+			profileRun = runCommandProfile
+		}
+		stdout, stderr, err = profileRun(ctx, runner.command, args, profile, maximum)
+	} else {
+		stdout, stderr, err = run(ctx, runner.command, args, maximum)
+	}
 	if runner.diagnostics != nil && len(stderr) != 0 {
 		_, _ = runner.diagnostics.Write(stderr)
 	}
@@ -245,14 +281,21 @@ func isReadOnly(request host.DispatchRequest) bool {
 	return !slices.Contains(request.Effects, "write-project") && !slices.Contains(request.Effects, "git-local")
 }
 
-func BuildArgs(sandbox string, request host.DispatchRequest, disabledMCP []string) []string {
+func BuildArgs(sandbox string, request host.DispatchRequest, profile *executionProfile, disabledMCP []string) []string {
 	args := []string{"exec", "--json", "--ephemeral"}
+	if profile != nil {
+		args = append(args, "--ignore-user-config", "--ignore-rules", "--disable", "hooks", "-C", profile.workspace, "--skip-git-repo-check")
+		if profile.projectRoot != "" {
+			args = append(args, "--add-dir", profile.projectRoot)
+		}
+	}
 	args = append(args, mcpOverrideArgs(disabledMCP)...)
 	args = append(args, "--sandbox", sandbox, "--",
 		"OAW Runtime invocation "+request.InvocationID+"\n"+
 			"Binding: "+request.Binding.Host+"/"+request.Binding.Kind+"/"+request.Binding.Reference+"\n"+
 			"Grant: "+request.GrantID+"\n"+
 			"Bundle: "+request.BundleDigest+"\n"+
+			bindingProfilePrompt(profile)+
 			"Effects: "+strings.Join(request.Effects, ",")+"\n"+
 			"Resources: "+strings.Join(request.Resources, ","))
 	return args

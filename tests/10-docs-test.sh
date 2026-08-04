@@ -929,8 +929,10 @@ for runtime_containment_contract in \
   '--sandbox read-only' \
   '--sandbox workspace-write' \
   'danger-full-access' \
-  'CODEX_MCP_INVENTORY_FAILED' \
-  'CODEX_MCP_ISOLATION_FAILED' \
+  '--ignore-user-config' \
+  '--ignore-rules' \
+  '--disable hooks' \
+  'CODEX_BINDING_KIND_UNSUPPORTED' \
   'EXECUTION_UNCERTAIN' \
   'RECONCILE_INVOCATION' \
   'SIGKILL'; do

@@ -13,6 +13,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
 
@@ -20,6 +21,68 @@ func TestRuntimeReasonPreservesCodexHostFailure(t *testing.T) {
 	err := errors.New("CODEX_MCP_ISOLATION_FAILED: one or more MCP servers remain enabled")
 	if reason := runtimeReason(err); reason != "CODEX_MCP_ISOLATION_FAILED" {
 		t.Fatalf("runtimeReason() = %q, want CODEX_MCP_ISOLATION_FAILED", reason)
+	}
+	for _, code := range []string{"CODEX_BINDING_EVIDENCE_REQUIRED", "CODEX_BINDING_EVIDENCE_CHANGED", "CODEX_BINDING_KIND_UNSUPPORTED", "CODEX_EXECUTION_PROFILE_INVALID"} {
+		if reason := runtimeReason(errors.New(code + ": detail")); reason != code {
+			t.Fatalf("runtimeReason(%q) = %q, want %q", code, reason, code)
+		}
+	}
+}
+
+func TestCodexBindingResolverRequiresExactVerifiedChain(t *testing.T) {
+	userHome := t.TempDir()
+	writeProviderInputMarker(t, userHome, ".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", "---\nname: using-superpowers\n---\n")
+	writeProviderInputMarker(t, userHome, ".codex/plugins/superpowers/skills/requesting-code-review/SKILL.md", "---\nname: requesting-code-review\n---\n")
+	inputs, err := loadProviderInputs(providerInputOptions{
+		HostID: "codex", ProjectRoot: t.TempDir(), UserConfigRoot: filepath.Join(t.TempDir(), "config"), UserHome: userHome,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, found := inputs.Registry.Provider("oaw/superpowers")
+	if !found {
+		t.Fatal("verified Superpowers Provider Instance is absent")
+	}
+	capability, found := inputs.Registry.Capability(instance.ProviderID, "review")
+	if !found {
+		t.Fatal("verified review capability is absent")
+	}
+	request := host.DispatchRequest{
+		ProviderID: instance.ProviderID, CapabilityID: capability.ID, ProviderInstanceDigest: instance.Digest, Binding: capability.Binding,
+	}
+	observation, err := codexBindingResolver(&inputs)(request)
+	if err != nil || observation.InstallationKey != instance.InstallationKey || observation.Digest != capability.BindingEvidenceDigest {
+		t.Fatalf("resolver observation = %#v, error = %v", observation, err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*providerInputs, *host.DispatchRequest)
+	}{
+		{name: "Provider Instance digest", mutate: func(_ *providerInputs, value *host.DispatchRequest) {
+			value.ProviderInstanceDigest = strings.Repeat("0", 64)
+		}},
+		{name: "Capability", mutate: func(_ *providerInputs, value *host.DispatchRequest) { value.CapabilityID = "verification" }},
+		{name: "Binding", mutate: func(_ *providerInputs, value *host.DispatchRequest) {
+			value.Binding.Reference = "superpowers:verification-before-completion"
+		}},
+		{name: "Installation", mutate: func(value *providerInputs, _ *host.DispatchRequest) {
+			value.Inventory.Observations[0].InstallationKey += "-other"
+		}},
+		{name: "Inventory digest", mutate: func(value *providerInputs, _ *host.DispatchRequest) { value.Inventory.Digest = strings.Repeat("f", 64) }},
+		{name: "Host", mutate: func(value *providerInputs, _ *host.DispatchRequest) { value.HostID = "claude" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			mutated := inputs
+			inventory := host.CloneBindingInventory(*inputs.Inventory)
+			mutated.Inventory = &inventory
+			mutatedRequest := request
+			test.mutate(&mutated, &mutatedRequest)
+			if _, resolverErr := codexBindingResolver(&mutated)(mutatedRequest); resolverErr == nil || !strings.Contains(resolverErr.Error(), "CODEX_BINDING_EVIDENCE_REQUIRED") {
+				t.Fatalf("resolver error = %v, want Binding evidence denial", resolverErr)
+			}
+		})
 	}
 }
 
@@ -202,26 +265,8 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte("schema_version = \"oaw.user-config/v2\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	eccIndicator := filepath.Join(home, ".agents", "skills", "everything-claude-code", "SKILL.md")
-	if err := os.MkdirAll(filepath.Dir(eccIndicator), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(eccIndicator, []byte("fixture"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	eccAgent := filepath.Join(home, ".agents", "skills", "everything-claude-code", "agents", "code-reviewer.toml")
-	if err := os.MkdirAll(filepath.Dir(eccAgent), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(eccAgent, []byte("name = \"code-reviewer\"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("[agents.code-reviewer]\nconfig_file = \""+eccAgent+"\"\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	writeProviderInputMarker(t, home, ".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", "---\nname: using-superpowers\n---\n")
+	writeProviderInputMarker(t, home, ".codex/plugins/superpowers/skills/requesting-code-review/SKILL.md", "---\nname: requesting-code-review\n---\n")
 	fixture := "#!/bin/sh\nis_mcp=false\nis_probe=false\nfor arg in \"$@\"; do\nif [ \"$arg\" = mcp ]; then is_mcp=true; fi\ncase \"$arg\" in *enabled=false*) is_probe=true ;; esac\ndone\nif [ \"$is_mcp\" = true ]; then\nif [ \"$is_probe\" = true ]; then\nprintf '%s\\n' '[{\"name\":\"serena\",\"enabled\":false}]'\nelse\nprintf '%s\\n' '[{\"name\":\"serena\",\"enabled\":true}]'\nfi\nexit 0\nfi\nprintf x >> \"$OAW_CODEX_FIXTURE_COUNT\"\nprintf '%s\\n' \"$@\" > \"$OAW_CODEX_FIXTURE_ARGS\"\nprintf '%s\\n' '{\"type\":\"turn.completed\",\"id\":\"fixture-turn\"}'\n"
 	if err := os.WriteFile(filepath.Join(binRoot, "codex"), []byte(fixture), 0o700); err != nil {
 		t.Fatal(err)
@@ -236,7 +281,7 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 			proposal.Traits[index].Value = classification.TraitTrue
 		}
 	}
-	proposal.CapabilitySelector = &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	proposal.CapabilitySelector = &classification.CapabilitySelector{ProviderID: "oaw/superpowers", CapabilityID: "review", Source: classification.SelectorUserIntent}
 	start := oawruntime.RunFrame{
 		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameStart,
 		MessageID: "fixture-start", IdempotencyKey: "fixture-start",
@@ -277,17 +322,23 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	}
 	processArgs := strings.Split(strings.TrimSpace(string(argsRaw)), "\n")
 	sandboxIndex := -1
-	mcpOverride := false
+	isolatedConfig, ignoredRules, hooksDisabled := false, false, false
 	for index, value := range processArgs {
 		if value == "--sandbox" {
 			sandboxIndex = index
 		}
-		if value == "mcp_servers.serena.enabled=false" {
-			mcpOverride = true
+		if value == "--ignore-user-config" {
+			isolatedConfig = true
+		}
+		if value == "--ignore-rules" {
+			ignoredRules = true
+		}
+		if value == "--disable" && index+1 < len(processArgs) && processArgs[index+1] == "hooks" {
+			hooksDisabled = true
 		}
 	}
-	if sandboxIndex < 1 || sandboxIndex+1 >= len(processArgs) || processArgs[sandboxIndex+1] != "read-only" || !mcpOverride {
-		t.Fatalf("Codex fixture args = %#v, want read-only sandbox and Serena disabled", processArgs)
+	if sandboxIndex < 1 || sandboxIndex+1 >= len(processArgs) || processArgs[sandboxIndex+1] != "read-only" || !isolatedConfig || !ignoredRules || !hooksDisabled {
+		t.Fatalf("Codex fixture args = %#v, want isolated read-only execution profile", processArgs)
 	}
 }
 

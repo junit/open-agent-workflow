@@ -123,15 +123,19 @@ Codex Host Driver 会收到不可变的 Grant effect 与 resource set。只读 G
 Sandbox 选择是必要条件，但并不充分：Codex MCP 子进程位于 shell-tool sandbox 之外，
 否则仍可能写入 project-local metadata。
 
-对于只读 Grant，`Prepare` 会读取 `codex mcp list --json`，为每个 enabled MCP server
-生成排序且仅作用于本次 invocation 的 disable override，并探测最终 effective inventory。
-只有探测结果中 enabled server 数量为零才会继续。无效 inventory 返回
-`CODEX_MCP_INVENTORY_FAILED`；插件或配置 override 不受支持、配置错误、仍存在 enabled
-server 时返回 `CODEX_MCP_ISOLATION_FAILED`。这些错误发生在 `DISPATCH_PREPARED` 与
-`DISPATCH_AUTHORIZED` 之前，不会启动模型，也不会改写用户 Codex 配置。这是 fail-closed
-Host 前置条件，不表示 OAW 替代了操作系统 sandbox。
-Driver 会在 `codex exec` 前立即重复 isolation probe；授权后若出现配置漂移，Run 会进入
-uncertain pause，模型仍不会启动。
+因此，`oaw run --host codex` 将 discovery trust domain 与 invocation execution profile
+分开。动态发现与 Host Binding observation 仍读取真实 Codex installation；`Prepare` 随后
+交叉校验 selected Host、Binding Inventory digest、Provider Instance digest、Capability
+Binding、Host Installation、Binding Evidence reference 与当前文件 digest。任何不一致都会在
+`DISPATCH_PREPARED` 与模型启动前 fail closed。
+
+执行 profile 会在 Runtime state root 下创建私有 `0700` HOME 与中性 workspace，只映射精确
+验证的 skill Binding，并使用 `--ignore-user-config`、`--ignore-rules`、`--disable hooks`
+以及由 Grant 推导的 sandbox 启动 Codex。原始 `CODEX_HOME` 只用于认证；physical project
+root 通过 `--add-dir` 显式暴露。这样无需改写用户配置即可把交互环境中的 plugin 与 MCP
+server 排除在 invocation 之外。Agent 与 tool Binding 在精确隔离映射实现前以
+`CODEX_BINDING_KIND_UNSUPPORTED` fail closed。这是 Host 前置条件，不表示 OAW 替代了操作
+系统 sandbox。
 
 CLI 会把可优雅处理的 interrupt 与 termination cancellation 传入活动 Host invocation。
 请求 Host cancel 后，Runtime 记录 `EXECUTION_UNCERTAIN` / `PAUSED` 并要求

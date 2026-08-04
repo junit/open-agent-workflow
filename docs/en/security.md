@@ -148,17 +148,23 @@ Read-only Grants run under `--sandbox read-only`; only Grants containing
 necessary but insufficient: Codex MCP subprocesses are outside that shell-tool
 sandbox and may otherwise write project-local metadata.
 
-For a read-only Grant, `Prepare` reads `codex mcp list --json`, creates sorted
-invocation-local disable overrides for every enabled MCP server, and probes the
-resulting effective inventory. It proceeds only when the probe reports zero
-enabled servers. Invalid inventory fails as `CODEX_MCP_INVENTORY_FAILED`;
-unsupported plugin/config overlays, configuration errors, and residual enabled
-servers fail as `CODEX_MCP_ISOLATION_FAILED`. These failures happen before
-`DISPATCH_PREPARED` and `DISPATCH_AUTHORIZED`, do not run the model, and do not
-rewrite the user's Codex configuration. This is a fail-closed Host precondition,
-not a claim that OAW replaces an operating-system sandbox. The Driver repeats
-the isolation probe immediately before `codex exec`; drift after authorization
-therefore pauses the Run as uncertain without starting the model.
+`oaw run --host codex` therefore separates the discovery trust domain from the
+invocation execution profile. Dynamic discovery and Host Binding observation
+still use the real Codex installation. `Prepare` then cross-checks the selected
+Host, Binding Inventory digest, Provider Instance digest, Capability Binding,
+Host Installation, Binding Evidence reference, and current file digest. A
+mismatch fails before `DISPATCH_PREPARED` and before the model starts.
+
+The execution profile creates a private `0700` HOME and neutral workspace below
+the Runtime state root. It maps only the exact verified skill Binding and starts
+Codex with `--ignore-user-config`, `--ignore-rules`, `--disable hooks`, and a
+Grant-derived sandbox. The original `CODEX_HOME` remains available for
+authentication, while the physical project root is exposed explicitly through
+`--add-dir`. This keeps interactive user plugins and MCP servers outside the
+invocation without editing their configuration. Agent and tool Bindings fail
+closed with `CODEX_BINDING_KIND_UNSUPPORTED` until an exact isolated mapping is
+implemented. This is a fail-closed Host precondition, not a claim that OAW
+replaces an operating-system sandbox.
 
 The CLI propagates graceful interrupt and termination cancellation into the
 active Host invocation. After requesting Host cancellation, Runtime records

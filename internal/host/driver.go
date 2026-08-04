@@ -21,13 +21,16 @@ const (
 )
 
 type DispatchRequest struct {
-	GrantID      string              `json:"grant_id"`
-	InvocationID string              `json:"invocation_id"`
-	ExecutorID   string              `json:"executor_id"`
-	BundleDigest string              `json:"bundle_digest"`
-	Binding      catalog.HostBinding `json:"binding"`
-	Effects      []string            `json:"effects"`
-	Resources    []string            `json:"resources"`
+	GrantID                string              `json:"grant_id"`
+	InvocationID           string              `json:"invocation_id"`
+	ExecutorID             string              `json:"executor_id"`
+	BundleDigest           string              `json:"bundle_digest"`
+	ProviderID             string              `json:"provider_id,omitempty"`
+	CapabilityID           string              `json:"capability_id,omitempty"`
+	ProviderInstanceDigest string              `json:"provider_instance_digest,omitempty"`
+	Binding                catalog.HostBinding `json:"binding"`
+	Effects                []string            `json:"effects"`
+	Resources              []string            `json:"resources"`
 }
 
 type DispatchEvidence struct {
@@ -54,6 +57,9 @@ func ValidateDispatchRequest(value DispatchRequest) error {
 	if !safeDriverIdentifier(value.GrantID) || !safeDriverIdentifier(value.InvocationID) || !safeDriverIdentifier(value.ExecutorID) || !isDigest(value.BundleDigest) {
 		return errors.New("HOST_DISPATCH_REQUEST_INVALID: identity is invalid")
 	}
+	if (value.ProviderID == "") != (value.CapabilityID == "") || (value.ProviderID == "" && value.ProviderInstanceDigest != "") || (value.ProviderID != "" && !isDigest(value.ProviderInstanceDigest)) || (value.ProviderID != "" && !safeDriverIdentifier(value.ProviderID)) || (value.CapabilityID != "" && !safeDriverIdentifier(value.CapabilityID)) {
+		return errors.New("HOST_DISPATCH_REQUEST_INVALID: Provider identity is invalid")
+	}
 	if value.Binding.Host == "" || value.Binding.Reference == "" || (value.Binding.Kind != "agent" && value.Binding.Kind != "skill" && value.Binding.Kind != "tool") || strings.IndexFunc(value.Binding.Host, unicode.IsControl) >= 0 || strings.IndexFunc(value.Binding.Reference, unicode.IsControl) >= 0 {
 		return errors.New("HOST_DISPATCH_REQUEST_INVALID: Binding is invalid")
 	}
@@ -70,7 +76,7 @@ func CloneDispatchRequest(value DispatchRequest) DispatchRequest {
 }
 
 func EqualDispatchRequest(left, right DispatchRequest) bool {
-	return left.GrantID == right.GrantID && left.InvocationID == right.InvocationID && left.ExecutorID == right.ExecutorID && left.BundleDigest == right.BundleDigest && left.Binding == right.Binding && slices.Equal(left.Effects, right.Effects) && slices.Equal(left.Resources, right.Resources)
+	return left.GrantID == right.GrantID && left.InvocationID == right.InvocationID && left.ExecutorID == right.ExecutorID && left.BundleDigest == right.BundleDigest && left.ProviderID == right.ProviderID && left.CapabilityID == right.CapabilityID && left.ProviderInstanceDigest == right.ProviderInstanceDigest && left.Binding == right.Binding && slices.Equal(left.Effects, right.Effects) && slices.Equal(left.Resources, right.Resources)
 }
 
 func NormalizeDispatchResult(request DispatchRequest, value DispatchResult) (DispatchResult, error) {

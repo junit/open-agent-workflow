@@ -46,12 +46,17 @@ Claude、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot 仍是
 `write-project` 或 `git-local` 的 Grant 会被强制放入 Codex
 `--sandbox read-only`；包含任一写 effect 的 Grant 使用
 `--sandbox workspace-write`。Runner 永远不会选择 `danger-full-access`。Codex sandbox
-mode 本身不能约束 MCP 子进程。在只读 dispatch 获得授权前，Runner 会盘点 enabled MCP
-server，为本次 invocation 加入 disable override，并再次盘点以确认没有任何 server 仍为
-enabled。盘点失败返回 `CODEX_MCP_INVENTORY_FAILED`；override 不受支持或仍留下 enabled
-server 时返回 `CODEX_MCP_ISOLATION_FAILED`。两者都会在模型进程启动前 fail closed，且不会
-修改用户配置。Runner 会在 `codex exec` 前立即再次检查同一 effective inventory，以关闭
-prepare 与 invoke 之间的配置漂移窗口。
+mode 本身不能约束 MCP 子进程，因此 `oaw run` 将 Host discovery 与 execution 分开。
+Discovery 读取选中的真实 Codex installation，并构造 Host-scoped Registry 与 Binding
+Inventory。`Prepare` 会重新校验 Grant 中的 Provider Instance、Capability、Host
+Installation、精确 Binding、inventory digest 与 physical evidence digest。随后每次
+invocation 都在 Runtime state root 下获得私有 `0700` HOME 与中性 workspace；只有已验证的
+skill 会映射进去，user config、project rule、hook、无关 plugin 与 MCP server 都不会加载。
+`codex exec` 使用 `--ignore-user-config`、`--ignore-rules` 与 `--disable hooks`；原始
+`CODEX_HOME` 只用于认证，physical project 通过 `--add-dir` 暴露。Evidence 发生变化时会在
+模型启动前 fail closed。Agent 与 tool Binding 当前返回
+`CODEX_BINDING_KIND_UNSUPPORTED`，因为隔离 profile 尚不能精确复现它们的 Host registration
+语义。
 
 收到 interrupt
 或 termination signal 时，`oaw` 会先请求 Host cancel，再提交
