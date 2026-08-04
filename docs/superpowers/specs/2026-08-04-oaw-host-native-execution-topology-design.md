@@ -1,7 +1,7 @@
 # OAW Host-Native Execution Topology Design
 
 **Date:** 2026-08-04
-**Status:** Written design pending user review
+**Status:** Written design pending user review (amended)
 **Lifecycle:** MATT-SP-HYBRID
 **Execution:** INLINE
 **Scope:** Host control inversion, execution topology, capability inheritance,
@@ -18,12 +18,15 @@ The execution model has exactly two topologies:
 - `INLINE`: the current Host Agent executes the selected lifecycle in the
   current conversation.
 - `NATIVE_SUBAGENT`: the current Host uses its native Subagent API to create a
-  child context inside the same Host environment.
+  child context inside the same Host control plane.
 
-Both topologies use the complete capability environment of the active Host.
-`NATIVE_SUBAGENT` isolates conversational context only. It does not replace or
-filter the Host's model route, authentication, MCP servers, Hooks, Skills,
-Plugins, project configuration, sandbox, or approval policy.
+`INLINE` uses the complete environment of the active Host because it is the
+same Agent context. `NATIVE_SUBAGENT` asks the Host to create a child using the
+Host's own inheritance semantics. OAW does not replace, filter, reconstruct, or
+guarantee the child's model route, authentication, MCP servers, Hooks, Skills,
+Plugins, project configuration, sandbox, or approval policy. The Host reports
+what it provides; OAW records that report and applies the selected Profile's
+requirements.
 
 ```text
 User
@@ -99,8 +102,9 @@ The redesign is governed by these invariants:
    missing Subagent API.
 4. **Context-only isolation:** A native child receives a new conversational
    context, not a filtered capability environment.
-5. **Complete capability inheritance:** A native child sees the same
-   user-visible Host capabilities and policy baseline as its parent.
+5. **Host-owned capability inheritance:** The Host, not OAW, determines which
+   parent capabilities a native child receives. OAW never filters or emulates
+   the environment and never reports unobserved inheritance as a guarantee.
 6. **User choice:** When both topologies are eligible, OAW recommends one and
    the user selects one.
 7. **Inline continuity:** When the Host has no conforming native Subagent API,
@@ -165,7 +169,8 @@ Recommendation policy is advisory:
 
 - recommend `INLINE` for interactive, short, or context-dependent work;
 - recommend `NATIVE_SUBAGENT` for long-lived, multi-ticket, context-heavy, or
-  fresh-review work when inheritance conformance passes;
+  fresh-review work when the Host reports the selected Profile's required
+  surfaces as available;
 - never convert a recommendation into authority.
 
 ## 6. Execution Topologies
@@ -203,16 +208,19 @@ The child receives:
 - a new conversational history and working context;
 - the exact Dispatch Packet for the active Bundle node;
 - references to canonical artifacts and prior evidence required by that node;
-- the same Host capability environment as the parent.
+- whatever Host capability environment the Host's native Subagent contract
+  provides.
 
 The child does not receive unrelated parent conversation history through OAW.
 It may receive Host-level rules, project instructions, Provider installations,
-and tool configuration because those belong to the inherited Host environment,
-not to conversational state.
+and tool configuration according to the Host's native contract; OAW does not
+infer that those surfaces are present merely because the child is in the same
+Host control plane.
 
 OAW neither starts nor configures the child process. The Host returns an opaque
 native invocation handle used for pause, cancellation, follow-up, and evidence
-correlation.
+correlation. OAW may state an environment requirement in the Dispatch Packet,
+but the Host decides whether and how that requirement can be satisfied.
 
 ### 6.3 Native Executor Lifetime
 
@@ -234,37 +242,79 @@ Under native execution, the Main Agent retains user communication, selection,
 and lifecycle coordination. It receives normalized receipts and artifact
 references rather than accumulating the child's private working conversation.
 
-## 7. Capability Environment Inheritance
+## 7. Host-Owned Capability Environment
 
-Native topology is eligible only when the current Host session can attest that
-the child inherits the parent's user-visible capability environment.
+Capability inheritance is a Host contract, not an OAW control surface. OAW
+controls the workflow request and its authority; the Host controls the child
+Agent's effective environment.
 
-The inheritance comparison covers:
+| Concern | OAW can control | Host controls |
+| --- | --- | --- |
+| Topology | Select `INLINE` or `NATIVE_SUBAGENT` at the Bundle boundary. | Whether a native Subagent API exists and how it creates the child. |
+| Workflow requirements | Declare required environment surfaces in a Profile and Dispatch Packet. | Whether those surfaces are available to the child. |
+| Model and routing | Record the required or selected model-route identity without credentials. | Resolve or override the child model, provider route, and reasoning settings. |
+| Authentication | Require an opaque authentication context where a Profile needs it. | Provide credentials and decide whether the child shares the parent session. |
+| MCP, Hooks, Skills, Plugins | Name required surfaces and record Host observations. | Load, omit, override, or restrict each surface for the child. |
+| Sandbox and approvals | Reject a Host report that is known to be broader than the Bundle policy. | Enforce the actual OS sandbox and approval behavior. |
 
-| Capability surface | Required relationship |
+`INLINE` is the only topology that necessarily uses the exact current Agent
+environment. `NATIVE_SUBAGENT` uses the Host's native defaults or selected
+Subagent configuration. OAW must not create a private configuration, inject
+credentials, stage Skills, or silently add MCP, Hooks, or Plugins to make the
+child look equivalent.
+
+### 7.1 Environment Surface Reports
+
+Profiles declare the surfaces they require. A default Profile may require only
+the selected Provider binding and project context. A user may choose a strict
+`full-parent` environment requirement containing model route, authentication,
+MCP, Hooks, Skills, Plugins, project configuration, sandbox, and approvals.
+
+The Host adapter reports each requested surface using one of these dispositions:
+
+| Disposition | Meaning |
 | --- | --- |
-| Model route | Same model and model-provider route selected by the Host. |
-| Authentication | Same opaque Host authentication context; credentials never enter OAW records. |
-| MCP | Same enabled server identities and effective configuration digests. |
-| Hooks | Same registered Hook identities and event behavior exposed by the Host. |
-| Skills | Same visible Skill inventory, including plugin-provided Skills. |
-| Plugins | Same enabled Plugin identities and versions. |
-| Host configuration | Same effective Host and project configuration snapshot. |
-| Project context | Same project root and instructions, except an explicit Resource Lease may select a worktree. |
-| Sandbox | Same Host sandbox policy. |
-| Approval | Same approval policy and user-mediated approval channel. |
+| `inherited` | Host explicitly states that the child receives the parent's surface. |
+| `host-configured` | Host supplies an explicit child configuration that satisfies the Profile requirement. |
+| `restricted` | The child receives a narrower surface; the Profile must allow this. |
+| `unknown` | The Host cannot expose enough information to make a claim. |
+| `unavailable` | The Host reports that the surface is absent. |
 
-"Same" means semantic equality of the Host-visible identity and configuration,
-not copying secret values into OAW. A Host may expose opaque identifiers or
-digests. OAW stores no tokens, API keys, credential material, private Hook
-payloads, or full MCP configuration.
+OAW may require `inherited` or an accepted `host-configured` disposition for a
+hard requirement. An `unknown` optional surface produces a visible warning and
+is recorded in the Bundle; it is never silently described as inherited. A
+`full-parent` requirement blocks native execution when any required surface is
+`unknown`, `restricted`, or `unavailable`. This gives users a strict option
+without pretending that OAW can enforce it.
 
-A missing capability is still equal when both parent and child lack it. For
-example, a Host without Hooks can conform if neither context exposes Hooks.
+The report contains only opaque IDs, capability names, policy digests, and
+source metadata. OAW stores no tokens, API keys, credential material, private
+Hook payloads, or full MCP configuration.
 
-An integration that can create a child but cannot demonstrate inherited
-capabilities is not eligible for `NATIVE_SUBAGENT`. It remains eligible for
-`INLINE`.
+### 7.2 Host-Specific Semantics Are Not Portable Guarantees
+
+Current Host documentation demonstrates why a universal inheritance promise is
+incorrect:
+
+- Codex custom agents inherit parent `sandbox_mode`, `mcp_servers`, and
+  `skills.config` when the child configuration omits them, while custom agent
+  files can override supported settings. Model resolution can use a configured
+  subagent default or an explicit child value instead of the parent model.
+  Parent live sandbox and approval overrides are Host behavior, not OAW
+  enforcement. See the [Codex subagents documentation](https://learn.chatgpt.com/docs/agent-configuration/subagents).
+- Claude Code subagents start with a fresh context. Their `tools` inherit when
+  omitted and their model defaults to inherit, but `permissionMode`, `skills`,
+  `mcpServers`, and `hooks` are independently configurable. Plugin subagents
+  ignore some frontmatter fields, and built-in Explore and Plan agents skip
+  `CLAUDE.md` and git status. See [Claude Code custom subagents](https://code.claude.com/docs/en/sub-agents).
+
+Authentication, Plugin loading, provider routing, and Hook behavior therefore
+remain Host-specific unless the active Host exposes an explicit report. OAW
+must not infer them from the fact that a child was created successfully.
+
+An integration that can create a child but cannot satisfy a selected hard
+environment requirement is ineligible for `NATIVE_SUBAGENT` for that Profile.
+It remains eligible for `INLINE` or for a Profile with narrower requirements.
 
 ## 8. Host Integration Contract
 
@@ -283,8 +333,8 @@ A Host-native manifest declares:
 - exact Provider binding inventory support;
 - Dispatch Packet and receipt protocol versions;
 - pause, cancellation, deduplication, and evidence capabilities;
-- native context isolation and capability inheritance support when
-  `NATIVE_SUBAGENT` is declared.
+- native context isolation support when `NATIVE_SUBAGENT` is declared;
+- optional environment-surface reporting and the dispositions it can prove.
 
 `INLINE` is mandatory for a Host-native integration. `NATIVE_SUBAGENT` is
 optional and session-dependent. A static manifest states what the adapter can
@@ -292,8 +342,9 @@ do; a session attestation states what is available now.
 
 The obsolete features `runner-managed`, `isolated-executor`, and
 `native-invocation` are removed. Native child creation is represented directly
-by the `NATIVE_SUBAGENT` topology and its two conformance properties:
-`context-isolation` and `capability-environment-inheritance`.
+by the `NATIVE_SUBAGENT` topology and its Host-reported context and environment
+properties. OAW does not turn a declaration into a universal inheritance
+guarantee.
 
 ## 9. Host Session Snapshot and Conformance
 
@@ -307,26 +358,53 @@ type HostSessionSnapshot struct {
     SessionID                 string
     SupportedTopologies       []ExecutionTopology
     ProviderInventoryDigest   string
-    CapabilityEnvironmentHash string
+    CapabilityReportDigest    string
     SandboxPolicyDigest       string
     ApprovalPolicyDigest      string
     Digest                    string
 }
 ```
 
-Before the Startup Gate, the Host session attests native API availability and
-its inheritance contract without performing engineering work. For an actual
-native dispatch, the Host returns a child attestation containing the parent
-session digest, native invocation handle, child capability environment hash,
-and context isolation evidence. OAW compares the child attestation before
-marking dispatch started or releasing task input to the child.
+The Host may also return a per-surface report:
+
+```go
+type EnvironmentSurfaceObservation struct {
+    Surface     string
+    Disposition string
+    Source      string
+    Digest      string
+}
+
+type HostCapabilityReport struct {
+    ParentSessionID string
+    ChildSessionID  string
+    Surfaces        []EnvironmentSurfaceObservation
+    Digest          string
+}
+
+type EnvironmentRequirement struct {
+    Surface             string
+    Required            bool
+    AcceptedDispositions []string
+}
+```
+
+Before the Startup Gate, the Host reports native API availability and any
+parent-level environment dispositions it can prove without performing
+engineering work. For an actual native dispatch, the Host may return a child
+report containing the parent session identity, native invocation handle,
+per-surface dispositions, and context-isolation evidence. OAW checks the
+selected Profile's hard requirements before marking dispatch started or
+releasing task input to the child. It does not require a report for surfaces
+the Profile did not mark as required.
 
 Static adapter conformance and dynamic session conformance are separate:
 
 - static conformance proves protocol behavior with deterministic fixtures;
-- dynamic conformance proves that this session exposes the required native API
-  and inherited environment;
-- documentation or a CLI's general feature list is not dynamic evidence.
+- dynamic Host reporting proves only the surfaces and dispositions that this
+  session exposes;
+- documentation or a CLI's general feature list is not evidence for an
+  unreported surface.
 
 If the Host capability environment changes after Bundle compilation, new
 dispatch is blocked with `HOST_SESSION_CHANGED`. The user may refresh discovery
@@ -363,6 +441,8 @@ type DispatchPacket struct {
     ProviderInstanceID  string
     CapabilityID        string
     Binding             HostBinding
+    EnvironmentRequirements []EnvironmentRequirement
+    EnvironmentReportDigest string
     InputReferences     []ArtifactReference
     TerminationCondition string
     EvidenceRequirements []EvidenceRequirement
@@ -422,6 +502,12 @@ Built-in Provider handling is dynamic:
 OAW does not copy a selected Skill into a private HOME. Inline and native child
 execution resolve the Skill through the active Host's own inventory.
 
+For `NATIVE_SUBAGENT`, the parent inventory proves that the Provider is
+installed in the active Host, but it does not by itself prove that the child can
+invoke the binding. Every selected Provider binding becomes a hard environment
+requirement, and the Host must report an accepted child disposition before the
+node starts.
+
 ### 11.1 Third-Party Providers
 
 Users can register additional Provider descriptors and installation hints in
@@ -480,7 +566,9 @@ A configured Profile must specify:
 - transitions and terminal gates;
 - incident routes and bounded add-ons;
 - maximum effects and resources;
-- any topology limitations derived from its selected Capability bindings.
+- any topology limitations derived from its selected Capability bindings;
+- required Host environment surfaces and whether `host-configured` or
+  `restricted` dispositions are acceptable.
 
 The compiler intersects:
 
@@ -563,7 +651,8 @@ The topology redesign uses explicit failures:
 | --- | --- | --- |
 | `TOPOLOGY_SELECTION_REQUIRED` | Both topologies are eligible and no user choice exists. | Ask the user once at the Startup Gate. |
 | `NATIVE_SUBAGENT_UNAVAILABLE` | Before selection, the Host has no conforming native API in this session. | Remove native eligibility and continue with inline as the only valid topology. |
-| `HOST_CAPABILITY_INHERITANCE_UNVERIFIED` | An actual child does not satisfy the selected topology's inheritance contract. | Cancel before task input, keep the Run at the pre-dispatch stable boundary, and ask the user to switch topology. |
+| `HOST_CAPABILITY_REQUIREMENT_UNVERIFIED` | A required environment surface is `unknown` or lacks an accepted Host report. | Cancel before task input, keep the Run at the pre-dispatch stable boundary, and ask the user to switch topology or relax the Profile requirement. |
+| `HOST_CAPABILITY_OVERRIDE` | The Host reports a child environment that conflicts with a hard Profile requirement. | Do not dispatch the node; choose inline or a compatible Profile. |
 | `HOST_SESSION_CHANGED` | The Host capability snapshot changed after Bundle compilation. | Refresh and compile a new generation at a stable boundary. |
 | `TOPOLOGY_BINDING_UNAVAILABLE` | A required Capability has no verified binding for the selected topology. | Select another topology or Profile. |
 | `PROVIDER_BINDING_CHANGED` | An installed Provider or exact binding no longer matches the Bundle. | Refresh Provider discovery and recompile. |
@@ -668,9 +757,8 @@ For each Host-native adapter, verify:
 - exact Host-scoped Provider inventory;
 - inline execution uses the active Host session;
 - native child context is separate from parent conversation history;
-- parent and child capability environment digests match for model route,
-  authentication context, MCP, Hooks, Skills, Plugins, configuration,
-  sandbox, and approvals;
+- required environment surfaces have an accepted Host disposition, and every
+  optional unknown or restricted surface is visible in the report;
 - Dispatch Packet identity and Bundle inheritance;
 - pause, cancellation, idempotency, evidence return, and normalized receipts;
 - no private HOME, staged Skill, or filtered Host configuration is created.
@@ -688,8 +776,8 @@ Controlled dogfooding must cover:
 
 1. Codex `INLINE` with the current third-party API route and installed MCP,
    Skills, and Plugins still visible;
-2. Codex `NATIVE_SUBAGENT` only when its native API and inheritance attestation
-   are available;
+2. Codex `NATIVE_SUBAGENT` when its native API is available, with required
+   environment surfaces reported and optional unknown surfaces shown;
 3. a Host without a native API continuing inline;
 4. dynamic discovery of Superpowers, Matt, ECC, and one user-registered
    Provider;
@@ -703,8 +791,8 @@ The redesign is complete only when all of the following are true:
 1. OAW has no code path that starts a Codex, Claude Code, or other model CLI.
 2. `INLINE` is a fully admitted Workflow topology.
 3. `NATIVE_SUBAGENT` is available only through a conforming Host-native API.
-4. A native child inherits the complete parent Host capability environment and
-   isolates conversational context only.
+4. A native child uses Host-native environment semantics, and OAW records the
+   required surfaces it can observe without claiming unreported inheritance.
 5. Users choose topology whenever both valid options exist.
 6. Hosts without native Subagents continue inline without separate setup.
 7. Built-in and third-party Providers are dynamically discovered per Host.
@@ -735,3 +823,7 @@ in dependency order:
 The implementation plan may split these into reviewable tickets. It must not
 introduce an intermediate compatibility layer that allows old and new
 execution models to coexist.
+
+The Host-owned environment boundary and surface-report semantics are governed
+by [ADR 0008](../../adr/0008-treat-subagent-environment-as-host-owned.md),
+which amends ADR 0007 without changing the two-topology control inversion.

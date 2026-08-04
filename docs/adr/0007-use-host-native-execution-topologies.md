@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted; supersedes ADR 0006 and the Codex execution decisions in ADR 0005
+Accepted; supersedes ADR 0006 and the Codex execution decisions in ADR 0005;
+capability-environment inheritance is amended by ADR 0008
 
 ## Context
 
