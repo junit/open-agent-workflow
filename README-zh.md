@@ -42,6 +42,45 @@ policy，并围绕它渲染轻量的 target-native 入口。
   选择、dry run、drift 检查和可恢复的 force。
 - 保留无关用户内容，只删除 OAW 所有的构件。
 
+## Host-scoped Provider 权限
+
+Provider 权限遵循一条精确的身份链：
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex 与 Claude Code 是相互独立的 Host。即使它们引用同一组物理文件，OAW 也会推导出
+不同的 Host Installation 身份。Provider Descriptor binding 与配置的 installation hint
+都只是声明，不能创建 Host Binding Evidence。Policy-only Host 可以报告 Candidate，但不能
+验证 Runtime Provider Instance。foreign-Host 诊断绝不会成为 pin、Registry 输入、Profile
+owner 或 Runtime 权限。
+
+当前 Provider Descriptor 和用户配置契约只接受 v2；
+`oaw.provider-descriptor/v1` 与 `oaw.user-config/v1` 输入会被拒绝，不会隐式升级。
+存在歧义的当前 Host candidate 只能使用下列精确身份字段固定；`location` 与 `version`
+是可选的可读断言：
+
+```toml
+[[provider_pins]]
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-<sha256>"
+evidence_digest = "<sha256>"
+# location = "/exact/physical/path"
+# version = "6.1.1"
+```
+
+稳定的 Host-scope 诊断原因包括 `HOST_BINDING_EVIDENCE_REQUIRED`、
+`PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_FOREIGN_HOST_ONLY`、
+`PROVIDER_PIN_INCOMPATIBLE` 与 `HOST_PROVIDER_SCOPE_MISMATCH`。使用
+`oaw providers inspect --host <host> --format json` 查看物理证据；Runtime denial
+保持不包含路径。
+
 ## 快速开始
 
 发布归档包含对应平台的预编译 `oaw` 或 `oaw.exe`。验证 `SHA256SUMS` 并解压后，

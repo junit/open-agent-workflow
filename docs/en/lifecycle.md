@@ -61,6 +61,23 @@ OAW ships inert descriptors for `oaw/superpowers`, `oaw/matt`, and `oaw/ecc`;
 it does not install their skill content. Built-in Provider discovery remains
 dynamic on the current Host.
 
+Provider verification follows this exact chain:
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex and Claude Code are independent Hosts, so shared physical files still
+produce separate Host Installation identities. Descriptor bindings and
+installation hints are declarations only and cannot create Host Binding
+Evidence. A Policy-only Host can expose Candidates but cannot verify a Runtime
+Instance. Foreign diagnostics never enter pins, Registry resolution, Profile
+compilation, admission, or a Lifecycle Bundle.
+
 Users can register trusted third-party Providers, declarative discovery
 descriptors, Profile Recipes, bindings, pins, and denials in configuration.
 Trusted project configuration may recommend or narrow those records, but it
@@ -82,10 +99,26 @@ for the selected Host with:
 oaw providers inspect --host codex --format text
 ```
 
-The command is read-only. For an ambiguous Provider it lists every candidate
-and an exact location-and-version pin. OAW never chooses a candidate or writes
-the pin. After changing user configuration, begin a new Run so it captures the
-new Configuration Snapshot.
+The command is read-only. For an ambiguous current-Host Provider it lists every
+Candidate and an exact Host-scoped pin:
+
+```toml
+[[provider_pins]]
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-<sha256>"
+evidence_digest = "<sha256>"
+# location = "/exact/physical/path"
+# version = "6.1.1"
+```
+
+OAW never chooses a Candidate or writes the pin. The active contracts reject
+`oaw.provider-descriptor/v1` and `oaw.user-config/v1` instead of migrating
+them. `HOST_BINDING_EVIDENCE_REQUIRED`, `PROVIDER_BINDING_UNAVAILABLE`,
+`PROVIDER_FOREIGN_HOST_ONLY`, `PROVIDER_PIN_INCOMPATIBLE`, and
+`HOST_PROVIDER_SCOPE_MISMATCH` retain stable meanings across inspection and
+Runtime denial. After changing user configuration, begin a new Run so it
+captures the new Configuration Snapshot.
 
 ## Built-in and User-Defined Profiles
 

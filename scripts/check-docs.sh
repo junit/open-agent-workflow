@@ -131,6 +131,52 @@ while IFS= read -r current_document; do
   done <"$CHECK_TEMP/stale-release-boundaries"
 done <"$CHECK_TEMP/current-user-documents"
 
+cat >"$CHECK_TEMP/host-scope-documents" <<'EOF'
+README.md
+README-zh.md
+docs/en/architecture.md
+docs/zh/architecture.md
+docs/en/lifecycle.md
+docs/zh/lifecycle.md
+docs/en/troubleshooting.md
+docs/zh/troubleshooting.md
+docs/en/security.md
+docs/zh/security.md
+policy/ENGINEERING.md
+EOF
+while IFS= read -r host_scope_document; do
+  for authority_term in \
+    'Provider Family' \
+    'Distribution' \
+    'Host Installation' \
+    'Host Binding Evidence' \
+    'Verified Provider Instance'; do
+    require_literal "$host_scope_document" "$authority_term"
+  done
+done <"$CHECK_TEMP/host-scope-documents"
+
+for lifecycle_document in \
+  README.md README-zh.md \
+  docs/en/lifecycle.md docs/zh/lifecycle.md \
+  docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  for pin_field in provider_id host_id installation_key evidence_digest; do
+    require_literal "$lifecycle_document" "$pin_field"
+  done
+done
+
+for diagnostic_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  for stable_reason in \
+    HOST_BINDING_EVIDENCE_REQUIRED \
+    PROVIDER_BINDING_UNAVAILABLE \
+    PROVIDER_FOREIGN_HOST_ONLY \
+    PROVIDER_PIN_INCOMPATIBLE \
+    HOST_PROVIDER_SCOPE_MISMATCH; do
+    require_literal "$diagnostic_document" "$stable_reason"
+  done
+  require_literal "$diagnostic_document" 'oaw.provider-descriptor/v1'
+  require_literal "$diagnostic_document" 'oaw.user-config/v1'
+done
+
 find "$REPOSITORY" -type f -name '*.md' \
   ! -path "$REPOSITORY/.git/*" \
   ! -path "$REPOSITORY/.serena/*" \

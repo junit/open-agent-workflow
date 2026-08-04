@@ -111,6 +111,41 @@ EOF
     '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
     '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
     >>"$fixture_root/README-zh.md"
+  mkdir -p "$fixture_root/policy"
+  : >"$fixture_root/policy/ENGINEERING.md"
+  for document_path in \
+    README.md README-zh.md \
+    docs/en/architecture.md docs/zh/architecture.md \
+    docs/en/lifecycle.md docs/zh/lifecycle.md \
+    docs/en/troubleshooting.md docs/zh/troubleshooting.md \
+    docs/en/security.md docs/zh/security.md \
+    policy/ENGINEERING.md; do
+    printf '%s\n' \
+      'Provider Family' \
+      'Distribution' \
+      'Host Installation' \
+      'Host Binding Evidence' \
+      'Verified Provider Instance' \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in \
+    README.md README-zh.md \
+    docs/en/lifecycle.md docs/zh/lifecycle.md \
+    docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+    printf '%s\n' provider_id host_id installation_key evidence_digest \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+    printf '%s\n' \
+      HOST_BINDING_EVIDENCE_REQUIRED \
+      PROVIDER_BINDING_UNAVAILABLE \
+      PROVIDER_FOREIGN_HOST_ONLY \
+      PROVIDER_PIN_INCOMPATIBLE \
+      HOST_PROVIDER_SCOPE_MISMATCH \
+      oaw.provider-descriptor/v1 \
+      oaw.user-config/v1 \
+      >>"$fixture_root/$document_path"
+  done
   : >"$fixture_root/CHANGELOG.md"
   printf '%s\n' 'experience-based' >>"$fixture_root/docs/en/comparison.md"
   printf '%s\n' '基于经验' >>"$fixture_root/docs/zh/comparison.md"
@@ -230,6 +265,10 @@ assert_contains scripts/check-docs.sh "Public installation management is Go-auth
 assert_contains scripts/check-docs.sh "公开安装管理以 Go 为权威实现。"
 assert_contains scripts/check-docs.sh "Bash remains authoritative"
 assert_contains scripts/check-docs.sh "Bash 仍是权威"
+assert_contains scripts/check-docs.sh "host-scope-documents"
+assert_contains scripts/check-docs.sh "Host Installation"
+assert_contains scripts/check-docs.sh "Verified Provider Instance"
+assert_contains scripts/check-docs.sh "PROVIDER_FOREIGN_HOST_ONLY"
 if grep -E '(^|[;&|[:space:]])(curl|wget)([[:space:]]|$)' \
   "$REPOSITORY/scripts/check-docs.sh" >/dev/null; then
   fail "documentation checker contains a network client command"

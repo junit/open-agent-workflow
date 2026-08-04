@@ -111,6 +111,34 @@ when state records that OAW actually created them, they still resolve beneath
 the allowed root, and they are empty after planned file removals. A directory
 that appeared after preparation is never claimed as OAW-owned.
 
+## Host-Scoped Provider Trust
+
+Runtime Provider authority follows this exact chain:
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex and Claude Code are independent trust domains. Shared files receive
+different Host Installation identities and cannot transfer authority between
+Hosts. Descriptor bindings, discovery markers, configured installation hints,
+and pins are declarations or selection constraints; none can forge Host-owned
+Binding Evidence. Policy-only Hosts may report Candidates but cannot create a
+verified Runtime Instance.
+
+Foreign diagnostics are excluded from pin generation, Registry resolution,
+Profile compilation, admission, Bundles, and Runtime State. The active decoder
+rejects `oaw.provider-descriptor/v1` and `oaw.user-config/v1`. Fail-closed scope
+conditions use `HOST_BINDING_EVIDENCE_REQUIRED`,
+`PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_FOREIGN_HOST_ONLY`,
+`PROVIDER_PIN_INCOMPATIBLE`, or `HOST_PROVIDER_SCOPE_MISMATCH`; Runtime exposes
+only the stable reason and a path-free pointer to the explicit inspection
+surface.
+
 ## Out of Scope
 
 The installer cannot protect against:

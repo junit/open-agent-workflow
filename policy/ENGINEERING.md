@@ -109,11 +109,39 @@ oaw/matt
 oaw/ecc
 ```
 
+Provider authority follows this exact identity chain:
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+A Verified Provider Instance means exactly one Host Installation plus
+Host-owned Binding Evidence for that same installation. Codex and Claude Code
+are independent Hosts; even shared physical files produce separate Host
+Installation identities. Descriptor bindings and configured installation
+hints are declarations only and never create Binding Evidence. A Policy-only
+Host may expose Candidates but cannot verify a Runtime Instance. Foreign-Host
+diagnostics never become pins, Registry input, Profile ownership, admission,
+or Runtime authority.
+
 Built-in descriptors define declarative discovery probes and Capability
 contracts; discovery still occurs dynamically on the current Host. Users may
 register trusted third-party descriptors, Profile Recipes, bindings, pins, and
 denials through configuration. Trusted project configuration may recommend or
 narrow records but cannot create trust or expand authority.
+
+The active Provider Descriptor and user configuration schemas are v2-only.
+Reject `oaw.provider-descriptor/v1` and `oaw.user-config/v1` instead of
+upgrading them. A Provider pin is Host-scoped by `provider_id`, `host_id`,
+`installation_key`, and `evidence_digest`; optional `location` and `version`
+are readable assertions and must also match when present. Stable scope reasons
+include `HOST_BINDING_EVIDENCE_REQUIRED`, `PROVIDER_BINDING_UNAVAILABLE`,
+`PROVIDER_FOREIGN_HOST_ONLY`, `PROVIDER_PIN_INCOMPATIBLE`, and
+`HOST_PROVIDER_SCOPE_MISMATCH`.
 
 A Provider may offer both complete lifecycle and specialist Capabilities. Its
 role comes from the selected Recipe, not its brand. Full-family eligibility

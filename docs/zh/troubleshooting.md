@@ -69,23 +69,50 @@ preparation，但不写 managed content、state、backup 或目录。没有 inst
 **missing provider** 不一定阻止 adapter file 安装，但选定 workflow capability 仍不可用。
 Provider detection 不能选择 lifecycle profile，也不能替换另一个 family。
 
-### Provider candidate 歧义
+### Host-scoped Provider 诊断
 
-运行 `oaw providers inspect --host codex --format text`。检查成功完成时可能报告
-`PROVIDER_NOT_FOUND`、`PROVIDER_DISCOVERED_UNVERIFIED`、
-`PROVIDER_CANDIDATE_AMBIGUOUS`、`PROVIDER_PIN_INCOMPATIBLE`、
-`PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_DISABLED_BY_USER` 或
-`PROVIDER_PROJECT_CONTENT_UNTRUSTED`。
+Provider 权限按以下顺序建立：
 
-处理 `PROVIDER_CANDIDATE_AMBIGUOUS`：
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
 
-1. 如果原 Run 使用了 `--project-root`，使用相同路径执行检查。
-2. 明确选择一个 candidate。
-3. 将建议中的精确 `id`、`location` 和 `version` 作为 `[[provider_pins]]`
-   写入用户自己管理的配置。
-4. 启动新的 Run；现有 Run 不能吸收新的 Configuration Snapshot。
+运行 `oaw providers inspect --host codex --format text`；如果原 Run 使用了
+`--project-root`，这里必须使用同一路径。Codex 与 Claude Code 即使引用共享文件，也仍是
+独立 Host。current section 只包含所选 Host 的 Candidate 和 observation。Policy-only Host
+可以显示 Candidate，但不能验证 Runtime Instance。foreign section 仅供诊断，绝不提供 pin
+或权限。Descriptor binding 与 installation hint 是声明，不是 Host Binding Evidence。
 
-OAW 不会替用户选择 candidate，也不会写入 pin。
+稳定原因含义如下：
+
+| 原因 | 含义 |
+| --- | --- |
+| `HOST_BINDING_EVIDENCE_REQUIRED` | 所选 Host 有 Candidate，但没有 Host-owned Binding Inventory。 |
+| `PROVIDER_BINDING_UNAVAILABLE` | Inventory 存在，但没有精确匹配 Installation/Capability/Binding 的 observation。 |
+| `PROVIDER_FOREIGN_HOST_ONLY` | Candidate 只存在于 foreign diagnostic Host，不能用于当前权限。 |
+| `PROVIDER_PIN_INCOMPATIBLE` | 当前 Host 的 pin 不再匹配 installation 身份或 evidence。 |
+| `HOST_PROVIDER_SCOPE_MISMATCH` | Registry、Instance、Bundle 或 Runtime 的 Host 身份不一致。 |
+
+`PROVIDER_CANDIDATE_AMBIGUOUS` 要求 operator 选择一个当前 Host Candidate，并把精确建议
+加入用户自己管理的配置：
+
+```toml
+[[provider_pins]]
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-<sha256>"
+evidence_digest = "<sha256>"
+# location = "/exact/physical/path"
+# version = "6.1.1"
+```
+
+OAW 不会替用户选择 Candidate，也不会写入 pin。配置变化后必须开始新的 Run。
+`oaw.provider-descriptor/v1` 与 `oaw.user-config/v1` 不再是受支持的 active input；必须显式
+替换为 v2 record，不能期待自动迁移。
 
 ## Management State 不是 Runtime State
 

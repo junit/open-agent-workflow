@@ -51,6 +51,21 @@ Superpowers、Matt、ECC 和第三方 Provider 遵循相同契约。OAW 内置
 `oaw/superpowers`、`oaw/matt` 与 `oaw/ecc` 的惰性 descriptor，但不会安装它们的 skill
 内容。内置 Provider 仍会在当前 Host 上动态发现。
 
+Provider 验证遵循以下精确链条：
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex 与 Claude Code 是独立 Host，因此共享物理文件仍会产生不同的 Host Installation
+身份。Descriptor binding 与 installation hint 只是声明，不能创建 Host Binding Evidence。
+Policy-only Host 可以展示 Candidate，但不能验证 Runtime Instance。foreign diagnostics
+绝不会进入 pin、Registry resolution、Profile compilation、admission 或 Lifecycle Bundle。
+
 用户可以在配置中注册可信的第三方 Provider、声明式 discovery descriptor、Profile
 Recipe、binding、pin 和 deny。可信项目配置可以推荐或收窄这些记录，但不能自行建立用户
 信任或扩大权限。只有 verified Provider Instance 才能满足 Recipe 的 Capability selector。
@@ -68,9 +83,25 @@ eligibility 只取决于已验证的 Capability 覆盖，对内置和用户注�
 oaw providers inspect --host codex --format text
 ```
 
-当 Provider 存在歧义时，命令会列出全部 candidate 以及精确的 location-and-version
-pin。OAW 不会替用户选择 candidate，也不会写入 pin。用户配置变化后必须启动新的
-Run，使其捕获新的 Configuration Snapshot。
+当当前 Host 的 Provider 存在歧义时，命令会列出全部 Candidate 与精确的 Host-scoped
+pin：
+
+```toml
+[[provider_pins]]
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-<sha256>"
+evidence_digest = "<sha256>"
+# location = "/exact/physical/path"
+# version = "6.1.1"
+```
+
+OAW 不会替用户选择 Candidate，也不会写入 pin。当前契约会拒绝
+`oaw.provider-descriptor/v1` 与 `oaw.user-config/v1`，不会迁移它们。
+`HOST_BINDING_EVIDENCE_REQUIRED`、`PROVIDER_BINDING_UNAVAILABLE`、
+`PROVIDER_FOREIGN_HOST_ONLY`、`PROVIDER_PIN_INCOMPATIBLE` 和
+`HOST_PROVIDER_SCOPE_MISMATCH` 在 inspection 与 Runtime denial 中保持稳定语义。
+用户配置变化后必须启动新的 Run，使其捕获新的 Configuration Snapshot。
 
 ## 内置与用户自定义 Profile
 

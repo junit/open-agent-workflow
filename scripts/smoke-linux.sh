@@ -56,6 +56,45 @@ mkdir -p "$SMOKE_HOME" "$SMOKE_CONFIG" "$SMOKE_STATE" "$(dirname -- "$POLICY_ONL
 printf 'profile: ECC-FULL\nstage: implementation\n' >"$POLICY_ONLY"
 POLICY_ONLY_BEFORE=$(cksum <"$POLICY_ONLY")
 
+CODEX_PROVIDER=$SMOKE_HOME/.codex/plugins/superpowers
+CLAUDE_PROVIDER=$SMOKE_HOME/.claude/plugins/superpowers
+mkdir -p \
+  "$CODEX_PROVIDER/skills/using-superpowers" \
+  "$CLAUDE_PROVIDER/skills/using-superpowers"
+printf '%s\n' 'codex-smoke-marker' \
+  >"$CODEX_PROVIDER/skills/using-superpowers/SKILL.md"
+printf '%s\n' 'claude-smoke-marker' \
+  >"$CLAUDE_PROVIDER/skills/using-superpowers/SKILL.md"
+
+HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE" \
+  "$PACKAGE/oaw" providers inspect --host codex --format json \
+  >"$LINUX_SMOKE_TEMP/provider-inspection.json"
+PROVIDER_INSPECTION=$(cat "$LINUX_SMOKE_TEMP/provider-inspection.json")
+case "$PROVIDER_INSPECTION" in
+  *'"current_host":'*'"foreign_hosts":'*) ;;
+  *) fail "Provider inspection omits current or foreign Host section" ;;
+esac
+CURRENT_HOST=${PROVIDER_INSPECTION%%\"foreign_hosts\":*}
+FOREIGN_HOSTS=${PROVIDER_INSPECTION#*\"foreign_hosts\":}
+case "$CURRENT_HOST" in
+  *'.claude/'*) fail "current Host inspection contains a foreign Claude path" ;;
+esac
+case "$CURRENT_HOST" in
+  *'.codex/'*) ;;
+  *) fail "current Host inspection omits the Codex Candidate" ;;
+esac
+case "$FOREIGN_HOSTS" in
+  *'.claude/'*) ;;
+  *) fail "foreign diagnostics omit the Claude Candidate" ;;
+esac
+case "$FOREIGN_HOSTS" in
+  *'provider_pin'*) fail "foreign diagnostics rendered a Provider pin" ;;
+esac
+[ ! -e "$SMOKE_CONFIG/open-agent-workflow/config.toml" ] ||
+  fail "Provider inspection created user configuration"
+[ ! -e "$SMOKE_STATE/open-agent-workflow/runtime" ] ||
+  fail "Provider inspection created Runtime State"
+
 HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE" \
   bash "$PACKAGE/install.sh" install --project "$SMOKE_PROJECT" --target cursor \
   >"$LINUX_SMOKE_TEMP/install.stdout"
@@ -74,4 +113,4 @@ HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE"
 [ ! -e "$SMOKE_STATE/open-agent-workflow/runtime" ] ||
   fail "uninstall created Runtime State"
 
-printf 'PASS: Linux release binary, wrapper, Install State, and Policy-only boundaries verified\n'
+printf 'PASS: Linux release binary, Host-scoped Provider inspection, Install State, and Policy-only boundaries verified\n'

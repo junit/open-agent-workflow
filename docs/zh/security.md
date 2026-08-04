@@ -90,6 +90,31 @@ Uninstall 只删除干净且有记录的 managed block 或 owned file。它保�
 仍解析在 allowed root 下，并且 planned file removal 后为空的目录才可删除。Prepare 后才
 出现的目录绝不会被认领为 OAW-owned。
 
+## Host-scoped Provider Trust
+
+Runtime Provider 权限遵循以下精确链条：
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex 与 Claude Code 是独立 trust domain。共享文件会获得不同的 Host Installation 身份，
+不能在 Host 之间转移权限。Descriptor binding、discovery marker、配置的 installation hint
+和 pin 都只是声明或选择约束，不能伪造 Host-owned Binding Evidence。Policy-only Host 可以
+报告 Candidate，但不能创建 verified Runtime Instance。
+
+foreign diagnostics 不会进入 pin generation、Registry resolution、Profile compilation、
+admission、Bundle 或 Runtime State。Active decoder 会拒绝
+`oaw.provider-descriptor/v1` 与 `oaw.user-config/v1`。Fail-closed scope condition 使用
+`HOST_BINDING_EVIDENCE_REQUIRED`、`PROVIDER_BINDING_UNAVAILABLE`、
+`PROVIDER_FOREIGN_HOST_ONLY`、`PROVIDER_PIN_INCOMPATIBLE` 或
+`HOST_PROVIDER_SCOPE_MISMATCH`；Runtime 只暴露稳定原因和不包含路径的明确 inspection
+入口提示。
+
 ## 范围之外
 
 安装器不能防御：

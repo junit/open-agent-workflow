@@ -53,6 +53,31 @@ Release archive 已包含该二进制；源码 checkout 必须先构建 `./oaw`�
 prospective content 写入调用方提供的临时路径。作为 **pure renderer**，它不会检查或变更
 最终 destination。
 
+## Host-scoped Provider 权限
+
+Provider 身份与权限沿以下链条流转：
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex 与 Claude Code 是独立 Host。即使二者共享同一个物理 Provider 目录，由于 Host 和
+surface 身份参与 digest，它们仍会得到不同的 Host Installation key。Descriptor binding
+和配置的 installation hint 只是声明。Registry 只有在所选 Host Adapter 观察到精确 binding
+并把它关联到精确 installation 后，才能产生 Verified Provider Instance。
+
+Policy-only Host 可以生成 Candidate report，但不能声称 Runtime verification。可选的
+foreign-Host discovery 会进入独立 diagnostic projection，绝不会传入 pin matching、
+Registry resolution、Profile compilation、admission、Bundle creation 或 Runtime State。
+当前 schema 会拒绝 `oaw.provider-descriptor/v1` 与 `oaw.user-config/v1`，不会静默升级。
+Scope failure 保持稳定原因 `HOST_BINDING_EVIDENCE_REQUIRED`、
+`PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_FOREIGN_HOST_ONLY`、
+`PROVIDER_PIN_INCOMPATIBLE` 与 `HOST_PROVIDER_SCOPE_MISMATCH`。
+
 ## Runtime Plane
 
 Runtime Plane 是可选层，不会替代 Policy Plane。Canonical `oaw.runtime/v1` transport

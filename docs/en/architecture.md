@@ -62,6 +62,35 @@ receives validated values and writes prospective content only to a
 caller-provided temporary path. Because it is a **pure renderer**, it does not
 inspect or mutate the eventual destination.
 
+## Host-Scoped Provider Authority
+
+Provider identity and authority flow through one chain:
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex and Claude Code are independent Hosts. A physical Provider directory
+shared by both still yields different Host Installation keys because Host and
+surface identities participate in the digest. Descriptor bindings and
+configured installation hints are declarations only. The selected Host Adapter
+must observe the exact binding and associate it with the exact installation
+before the Registry can emit a Verified Provider Instance.
+
+Policy-only Hosts can produce Candidate reports without claiming Runtime
+verification. Optional foreign-Host discovery is rendered in a separate
+diagnostic projection and is never passed to pin matching, Registry resolution,
+Profile compilation, admission, Bundle creation, or Runtime State. The active
+schemas reject `oaw.provider-descriptor/v1` and `oaw.user-config/v1` rather than
+silently upgrading them. Scope failures retain the stable reasons
+`HOST_BINDING_EVIDENCE_REQUIRED`, `PROVIDER_BINDING_UNAVAILABLE`,
+`PROVIDER_FOREIGN_HOST_ONLY`, `PROVIDER_PIN_INCOMPATIBLE`, and
+`HOST_PROVIDER_SCOPE_MISMATCH`.
+
 ## Runtime Plane
 
 The Runtime Plane is optional and does not replace the Policy Plane. The

@@ -52,6 +52,48 @@ canonical policy and renders thin target-native entrypoints around it.
   with target selection, dry runs, drift checks, and recoverable force.
 - Preserves unrelated user content and removes only OAW-owned artifacts.
 
+## Host-Scoped Provider Authority
+
+Provider authority follows one exact identity chain:
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
+Codex and Claude Code are independent Hosts. Even when they reference the same
+physical files, OAW derives separate Host Installation identities. Provider
+Descriptor bindings and configured installation hints are declarations only;
+they cannot create Host Binding Evidence. A Policy-only Host may report
+Candidates, but it cannot verify a Runtime Provider Instance. Foreign-Host
+diagnostics never become a pin, Registry input, Profile owner, or Runtime
+authority.
+
+The active Provider Descriptor and user configuration contracts are v2-only;
+`oaw.provider-descriptor/v1` and `oaw.user-config/v1` inputs are rejected rather
+than upgraded. An ambiguous current-Host candidate can be pinned only with the
+exact identity fields below; `location` and `version` are optional readable
+assertions:
+
+```toml
+[[provider_pins]]
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-<sha256>"
+evidence_digest = "<sha256>"
+# location = "/exact/physical/path"
+# version = "6.1.1"
+```
+
+Stable Host-scope diagnostics include `HOST_BINDING_EVIDENCE_REQUIRED`,
+`PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_FOREIGN_HOST_ONLY`,
+`PROVIDER_PIN_INCOMPATIBLE`, and `HOST_PROVIDER_SCOPE_MISMATCH`. Use
+`oaw providers inspect --host <host> --format json` for physical evidence;
+Runtime denials remain path-free.
+
 ## Quick Start
 
 Release archives contain the correct precompiled `oaw` or `oaw.exe` binary.

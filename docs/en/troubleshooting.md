@@ -75,24 +75,53 @@ A **missing provider** does not necessarily stop adapter file installation, but
 the selected workflow capability will remain unavailable. Provider detection
 cannot choose a lifecycle profile or substitute another family.
 
-### Provider candidate ambiguity
+### Host-scoped Provider diagnosis
 
-Run `oaw providers inspect --host codex --format text`. A completed inspection
-may report `PROVIDER_NOT_FOUND`, `PROVIDER_DISCOVERED_UNVERIFIED`,
-`PROVIDER_CANDIDATE_AMBIGUOUS`, `PROVIDER_PIN_INCOMPATIBLE`,
-`PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_DISABLED_BY_USER`, or
-`PROVIDER_PROJECT_CONTENT_UNTRUSTED`.
+Provider authority is built in this order:
 
-For `PROVIDER_CANDIDATE_AMBIGUOUS`:
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
 
-1. Inspect with the same `--project-root`, if the Run used one.
-2. Select one candidate explicitly.
-3. Add its exact `id`, `location`, and `version` suggestion under
-   `[[provider_pins]]` in the user-owned configuration.
-4. Begin a new Run. An existing Run cannot absorb the new Configuration
-   Snapshot.
+Run `oaw providers inspect --host codex --format text` with the same
+`--project-root`, if the Run used one. Codex and Claude Code are independent
+Hosts even when they reference shared files. The current section contains only
+the selected Host's Candidates and observations. A Policy-only Host may show
+Candidates but cannot verify a Runtime Instance. The foreign section is
+diagnostic-only and never supplies a pin or authority. Descriptor bindings and
+installation hints are declarations, not Host Binding Evidence.
 
-OAW does not choose a candidate and does not write the pin.
+Interpret the stable reasons as follows:
+
+| Reason | Meaning |
+| --- | --- |
+| `HOST_BINDING_EVIDENCE_REQUIRED` | The selected Host has Candidates but no Host-owned Binding Inventory. |
+| `PROVIDER_BINDING_UNAVAILABLE` | Inventory exists but no exact Installation/Capability/Binding observation matches. |
+| `PROVIDER_FOREIGN_HOST_ONLY` | A Candidate exists only in a foreign diagnostic Host and remains unusable for current authority. |
+| `PROVIDER_PIN_INCOMPATIBLE` | The current-Host pin no longer matches installation identity or evidence. |
+| `HOST_PROVIDER_SCOPE_MISMATCH` | Registry, Instance, Bundle, or Runtime Host identities disagree. |
+
+`PROVIDER_CANDIDATE_AMBIGUOUS` requires the operator to select one current-Host
+Candidate and add the exact suggestion to user-owned configuration:
+
+```toml
+[[provider_pins]]
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-<sha256>"
+evidence_digest = "<sha256>"
+# location = "/exact/physical/path"
+# version = "6.1.1"
+```
+
+OAW does not choose a Candidate and does not write the pin. Begin a new Run
+after changing configuration. `oaw.provider-descriptor/v1` and
+`oaw.user-config/v1` are unsupported active inputs; replace them with explicit
+v2 records rather than expecting migration.
 
 ## Management State Is Not Runtime State
 
