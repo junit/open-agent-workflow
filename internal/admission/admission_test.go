@@ -423,9 +423,9 @@ func admissionFixture(t *testing.T) admissionTestFixture {
 		t.Fatal(err)
 	}
 	verified := registry.ProviderInstance{
-		ProviderID: "acme/suite", DescriptorDigest: descriptorDigest, Location: "/verified/acme", Version: "1.0.0",
-		ConfigurationDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64), EvidenceDigest: strings.Repeat("c", 64),
-		Capabilities: []registry.VerifiedCapability{{ID: "review", Binding: reviewBinding}, {ID: "security-review", Binding: securityBinding}}, Digest: strings.Repeat("e", 64),
+		ProviderID: "acme/suite", HostID: "codex", DescriptorDigest: descriptorDigest, DistributionKey: strings.Repeat("1", 64), InstallationKey: "installation-acme", Location: "/verified/acme", Version: "1.0.0",
+		ConfigurationDigest: strings.Repeat("a", 64), BindingInventoryDigest: strings.Repeat("b", 64), EvidenceDigest: strings.Repeat("c", 64),
+		Capabilities: []registry.VerifiedCapability{{ID: "review", Binding: reviewBinding, BindingEvidenceDigest: strings.Repeat("2", 64)}, {ID: "security-review", Binding: securityBinding, BindingEvidenceDigest: strings.Repeat("3", 64)}}, Digest: strings.Repeat("e", 64),
 	}
 	return admissionTestFixture{
 		catalog:   admissionTestCatalog{provider: provider, digest: strings.Repeat("f", 64)},

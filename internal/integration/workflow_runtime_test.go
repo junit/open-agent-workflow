@@ -11,7 +11,6 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
@@ -155,23 +154,27 @@ func newTicket07IntegrationFixture(t *testing.T, installECC bool) ticket07Integr
 	home := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "host-binding-invoked")
 	evidence := "#!/bin/sh\ntouch \"" + marker + "\"\nexit 97\n# " + integrationHostCredential + "\n"
-	paths := []string{
-		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md",
-		".agents/skills/to-spec/SKILL.md",
-		".agents/skills/to-tickets/SKILL.md",
+	paths := map[string]string{
+		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "using-superpowers",
+		".agents/skills/to-spec/SKILL.md":                              "to-spec",
+		".agents/skills/to-tickets/SKILL.md":                           "to-tickets",
 	}
 	if installECC {
-		paths = append(paths, ".agents/skills/everything-claude-code/SKILL.md")
+		paths[".agents/skills/everything-claude-code/SKILL.md"] = "everything-claude-code"
 	}
-	for _, relative := range paths {
-		writeTicket07File(t, filepath.Join(home, filepath.FromSlash(relative)), evidence)
+	for relative, name := range paths {
+		writeTicket07File(t, filepath.Join(home, filepath.FromSlash(relative)), "---\nname: "+name+"\n---\n"+evidence)
 	}
 	discovered, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := &registry.BindingInventory{Host: "codex", Bindings: ticket07Bindings(snapshot.Catalog())}
-	report, effective, err := registry.Resolve(snapshot, discovered, inventory)
+	providerIDs := []string{"oaw/superpowers", "oaw/matt"}
+	if installECC {
+		providerIDs = append(providerIDs, "oaw/ecc")
+	}
+	inventory := hosttest.ObserveProviderBindings(t, snapshot.Catalog(), discovered, home, providerIDs...)
+	report, effective, err := registry.Resolve(snapshot, "codex", discovered, &inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,19 +253,6 @@ func requestTicket07WriteStage(engine *oawruntime.Engine, ready oawruntime.RunRe
 			ExecutorID: "executor-write", RequestedEffects: []string{"write-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "ticket 07 integration stage complete",
 		}},
 	})
-}
-
-func ticket07Bindings(value catalog.Catalog) []catalog.HostBinding {
-	bindings := make([]catalog.HostBinding, 0)
-	for _, provider := range value.Providers() {
-		if provider.ID != "oaw/superpowers" && provider.ID != "oaw/matt" && provider.ID != "oaw/ecc" {
-			continue
-		}
-		for _, capability := range provider.Capabilities {
-			bindings = append(bindings, capability.HostBindings...)
-		}
-	}
-	return bindings
 }
 
 func ticket07ProviderPinned(bundle oawruntime.LifecycleBundle, providerID string) (string, bool) {

@@ -23,7 +23,7 @@ func providerResolutionDiagnostic(report registry.ResolutionReport, providerID s
 func validProviderResolutionReason(value string) bool {
 	switch value {
 	case "PROVIDER_NOT_FOUND",
-		"PROVIDER_DISCOVERED_UNVERIFIED",
+		"HOST_BINDING_EVIDENCE_REQUIRED",
 		"PROVIDER_CANDIDATE_AMBIGUOUS",
 		"PROVIDER_PIN_INCOMPATIBLE",
 		"PROVIDER_BINDING_UNAVAILABLE",

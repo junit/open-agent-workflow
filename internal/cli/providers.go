@@ -45,13 +45,16 @@ type providerInspectionProvider struct {
 }
 
 type providerInspectionInstance struct {
-	Location            string `json:"location"`
-	Version             string `json:"version"`
-	DescriptorDigest    string `json:"descriptor_digest"`
-	ConfigurationDigest string `json:"configuration_digest"`
-	BindingDigest       string `json:"binding_digest"`
-	EvidenceDigest      string `json:"evidence_digest"`
-	Digest              string `json:"digest"`
+	HostID                 string `json:"host_id"`
+	DistributionKey        string `json:"distribution_key"`
+	InstallationKey        string `json:"installation_key"`
+	Location               string `json:"location"`
+	Version                string `json:"version"`
+	DescriptorDigest       string `json:"descriptor_digest"`
+	ConfigurationDigest    string `json:"configuration_digest"`
+	BindingInventoryDigest string `json:"binding_inventory_digest"`
+	EvidenceDigest         string `json:"evidence_digest"`
+	Digest                 string `json:"digest"`
 }
 
 type providerInspectionCandidate struct {
@@ -177,8 +180,9 @@ func providerInspectionProjection(inputs providerInputs, hostID string) provider
 		if resolution.Instance != nil {
 			instance := *resolution.Instance
 			provider.Instance = &providerInspectionInstance{
+				HostID: instance.HostID, DistributionKey: instance.DistributionKey, InstallationKey: instance.InstallationKey,
 				Location: instance.Location, Version: instance.Version, DescriptorDigest: instance.DescriptorDigest,
-				ConfigurationDigest: instance.ConfigurationDigest, BindingDigest: instance.BindingDigest,
+				ConfigurationDigest: instance.ConfigurationDigest, BindingInventoryDigest: instance.BindingInventoryDigest,
 				EvidenceDigest: instance.EvidenceDigest, Digest: instance.Digest,
 			}
 		}

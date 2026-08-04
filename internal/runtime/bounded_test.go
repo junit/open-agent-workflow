@@ -1,6 +1,7 @@
 package runtime_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -12,6 +13,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
@@ -577,18 +580,13 @@ capability_id = "review"
 	if err := os.MkdirAll(filepath.Dir(eccPath), 0o700); err != nil {
 		t.Fatalf("MkdirAll(ECC fixture) error = %v", err)
 	}
-	writeTestFile(t, eccPath, []byte("ecc"))
+	writeTestFile(t, eccPath, []byte("---\nname: everything-claude-code\n---\n"))
 	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("discovery.Discover() error = %v", err)
 	}
-	inventory := &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{
-		{Host: "codex", Kind: "agent", Reference: "planner"},
-		{Host: "codex", Kind: "agent", Reference: "architect"},
-		{Host: "codex", Kind: "agent", Reference: "code-reviewer"},
-		{Host: "codex", Kind: "agent", Reference: "security-reviewer"},
-	}}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	inventory := hosttest.ObserveProviderBindings(t, snapshot.Catalog(), evidence, home, "oaw/ecc")
+	resolutions, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
@@ -618,12 +616,7 @@ func newAmbiguousBoundedRuntimeFixture(t *testing.T) (boundedRuntimeFixture, str
 	if err != nil {
 		t.Fatalf("discovery.Discover() error = %v", err)
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{
-		Host: "codex",
-		Bindings: []catalog.HostBinding{{
-			Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review",
-		}},
-	})
+	resolutions, effective, err := registry.Resolve(snapshot, "codex", evidence, nil)
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
@@ -686,18 +679,19 @@ func TestStartBoundedReportsConcreteProviderStates(t *testing.T) {
 		name       string
 		userConfig string
 		versions   []string
-		inventory  *registry.BindingInventory
+		bindings   []catalog.HostBinding
+		inventory  bool
 		want       string
 	}{
-		{name: "not found", inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_NOT_FOUND"},
-		{name: "discovered unverified", versions: []string{"6.1.1"}, want: "PROVIDER_DISCOVERED_UNVERIFIED"},
-		{name: "pin incompatible", userConfig: "schema_version = \"oaw.user-config/v2\"\n[[provider_pins]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\ninstallation_key = \"installation-incompatible\"\nevidence_digest = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nversion = \"9.9.9\"\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_PIN_INCOMPATIBLE"},
-		{name: "binding unavailable", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}}, want: "PROVIDER_BINDING_UNAVAILABLE"},
-		{name: "disabled", userConfig: "schema_version = \"oaw.user-config/v2\"\ndenied_providers = [\"oaw/superpowers\"]\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_DISABLED_BY_USER"},
+		{name: "not found", inventory: true, bindings: []catalog.HostBinding{reviewBinding}, want: "PROVIDER_NOT_FOUND"},
+		{name: "discovered unverified", versions: []string{"6.1.1"}, want: "HOST_BINDING_EVIDENCE_REQUIRED"},
+		{name: "pin incompatible", userConfig: "schema_version = \"oaw.user-config/v2\"\n[[provider_pins]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\ninstallation_key = \"installation-incompatible\"\nevidence_digest = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nversion = \"9.9.9\"\n", versions: []string{"6.1.1"}, inventory: true, bindings: []catalog.HostBinding{reviewBinding}, want: "PROVIDER_PIN_INCOMPATIBLE"},
+		{name: "binding unavailable", versions: []string{"6.1.1"}, inventory: true, want: "HOST_BINDING_EVIDENCE_REQUIRED"},
+		{name: "disabled", userConfig: "schema_version = \"oaw.user-config/v2\"\ndenied_providers = [\"oaw/superpowers\"]\n", versions: []string{"6.1.1"}, inventory: true, bindings: []catalog.HostBinding{reviewBinding}, want: "PROVIDER_DISABLED_BY_USER"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			fixture := newSuperpowersBoundedStateFixture(t, test.userConfig, test.versions, test.inventory)
+			fixture := newSuperpowersBoundedStateFixture(t, test.userConfig, test.versions, test.bindings, test.inventory)
 			selector := &classification.CapabilitySelector{ProviderID: "oaw/superpowers", CapabilityID: "review", Source: classification.SelectorUserIntent}
 			engine := newBoundedEngine(t, filepath.Join(t.TempDir(), "state"), fixture)
 			reply, err := engine.Exchange(boundedStartFrame(fixture, selector, "", "provider-state-"+strings.ReplaceAll(test.name, " ", "-")))
@@ -720,7 +714,7 @@ func TestStartBoundedReportsConcreteProviderStates(t *testing.T) {
 	})
 }
 
-func newSuperpowersBoundedStateFixture(t *testing.T, userConfig string, versions []string, inventory *registry.BindingInventory) boundedRuntimeFixture {
+func newSuperpowersBoundedStateFixture(t *testing.T, userConfig string, versions []string, bindings []catalog.HostBinding, inventorySet bool) boundedRuntimeFixture {
 	t.Helper()
 	projectRoot := t.TempDir()
 	userRoot := t.TempDir()
@@ -743,7 +737,20 @@ func newSuperpowersBoundedStateFixture(t *testing.T, userConfig string, versions
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	var inventory *host.BindingInventory
+	if inventorySet && len(evidence.Candidates("oaw/superpowers")) == 1 {
+		candidate := evidence.Candidates("oaw/superpowers")[0]
+		observations := make([]host.BindingObservation, 0, len(bindings))
+		for index, binding := range bindings {
+			observations = append(observations, host.BindingObservation{HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding, Source: "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, "evidence", fmt.Sprintf("%d", index)), Digest: strings.Repeat("a", 64)})
+		}
+		value, inventoryErr := host.NewBindingInventory("codex", observations)
+		if inventoryErr != nil {
+			t.Fatal(inventoryErr)
+		}
+		inventory = &value
+	}
+	resolutions, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -768,7 +775,7 @@ func newUntrustedBoundedStateFixture(t *testing.T) boundedRuntimeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}})
+	resolutions, effective, err := registry.Resolve(snapshot, "codex", evidence, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

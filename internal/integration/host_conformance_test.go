@@ -18,6 +18,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
@@ -266,14 +267,15 @@ func ticket08RuntimeFixture(t *testing.T, projectRoot string, integration host.I
 		t.Fatal(err)
 	}
 	home := t.TempDir()
-	for _, relative := range []string{".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", ".agents/skills/to-spec/SKILL.md", ".agents/skills/to-tickets/SKILL.md"} {
-		writeTicket07File(t, filepath.Join(home, filepath.FromSlash(relative)), ticket08Credential)
+	for relative, name := range map[string]string{".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "using-superpowers", ".agents/skills/to-spec/SKILL.md": "to-spec", ".agents/skills/to-tickets/SKILL.md": "to-tickets"} {
+		writeTicket07File(t, filepath.Join(home, filepath.FromSlash(relative)), "---\nname: "+name+"\n---\n"+ticket08Credential)
 	}
 	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: ticket07Bindings(snapshot.Catalog())})
+	inventory := hosttest.ObserveProviderBindings(t, snapshot.Catalog(), evidence, home, "oaw/superpowers", "oaw/matt")
+	_, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
 	if err != nil {
 		t.Fatal(err)
 	}

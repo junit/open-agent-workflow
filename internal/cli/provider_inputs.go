@@ -9,6 +9,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -66,9 +67,14 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_DISCOVERY_REQUIRED: %w", err)
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{
-		Host: options.HostID, Bindings: catalogHostBindings(snapshot.Catalog(), options.HostID),
-	})
+	if options.HostID != "codex" {
+		return providerInputs{}, fmt.Errorf("PROVIDER_HOST_UNSUPPORTED: binding observation is not implemented for Host %q", options.HostID)
+	}
+	inventory, err := codex.ObserveBindings(snapshot.Catalog(), evidence, codex.InventoryOptions{UserHome: userHome, CodexConfigRoot: filepath.Join(userHome, ".codex")})
+	if err != nil {
+		return providerInputs{}, fmt.Errorf("PROVIDER_BINDING_EVIDENCE_REQUIRED: %w", err)
+	}
+	resolutions, effective, err := registry.Resolve(snapshot, options.HostID, evidence, &inventory)
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_REGISTRY_REQUIRED: %w", err)
 	}

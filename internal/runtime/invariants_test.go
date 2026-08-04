@@ -722,7 +722,7 @@ func internalBoundedGrantRevision(t *testing.T) revisionRecord {
 	if err != nil {
 		t.Fatal(err)
 	}
-	verified := registry.ProviderInstance{ProviderID: "acme/suite", DescriptorDigest: descriptorDigest, Location: "/verified/acme", Version: "1.0.0", ConfigurationDigest: strings.Repeat("a", 64), BindingDigest: strings.Repeat("b", 64), EvidenceDigest: strings.Repeat("c", 64), Capabilities: []registry.VerifiedCapability{{ID: "review", Binding: binding}}, Digest: strings.Repeat("d", 64)}
+	verified := registry.ProviderInstance{ProviderID: "acme/suite", HostID: "codex", DescriptorDigest: descriptorDigest, DistributionKey: strings.Repeat("1", 64), InstallationKey: "installation-acme", Location: "/verified/acme", Version: "1.0.0", ConfigurationDigest: strings.Repeat("a", 64), BindingInventoryDigest: strings.Repeat("b", 64), EvidenceDigest: strings.Repeat("c", 64), Capabilities: []registry.VerifiedCapability{{ID: "review", Binding: binding, BindingEvidenceDigest: strings.Repeat("f", 64)}}, Digest: strings.Repeat("d", 64)}
 	catalogSource := grantTestCatalog{provider: provider}
 	registrySource := grantTestRegistry{provider: verified, capability: verified.Capabilities[0]}
 	executor := admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}

@@ -6,14 +6,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"unicode"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
@@ -129,30 +127,6 @@ func defaultConfigRoot() string {
 		root = filepath.Join(home, ".config")
 	}
 	return filepath.Join(root, "open-agent-workflow")
-}
-
-func catalogHostBindings(value catalog.Catalog, hostID string) []catalog.HostBinding {
-	bindings := make([]catalog.HostBinding, 0)
-	seen := make(map[string]struct{})
-	for _, provider := range value.Providers() {
-		for _, capability := range provider.Capabilities {
-			for _, binding := range capability.HostBindings {
-				if binding.Host != hostID {
-					continue
-				}
-				key := binding.Host + "\x00" + binding.Kind + "\x00" + binding.Reference
-				if _, found := seen[key]; found {
-					continue
-				}
-				seen[key] = struct{}{}
-				bindings = append(bindings, binding)
-			}
-		}
-	}
-	sort.Slice(bindings, func(left, right int) bool {
-		return bindings[left].Host+"\x00"+bindings[left].Kind+"\x00"+bindings[left].Reference < bindings[right].Host+"\x00"+bindings[right].Kind+"\x00"+bindings[right].Reference
-	})
-	return bindings
 }
 
 func runtimeReasonHost(err error) string {

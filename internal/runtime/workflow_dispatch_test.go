@@ -286,7 +286,7 @@ capability_id = "review"
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, updatedRegistry, err := registry.Resolve(updatedSnapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: fixture.bindings})
+	_, updatedRegistry, err := registry.Resolve(updatedSnapshot, "codex", evidence, &fixture.inventory)
 	if err != nil {
 		t.Fatal(err)
 	}

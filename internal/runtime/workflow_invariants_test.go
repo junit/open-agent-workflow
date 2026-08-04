@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
@@ -334,16 +333,16 @@ func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers 
 	projectRoot := t.TempDir()
 	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
-	for _, relative := range []string{
-		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md",
-		".agents/skills/to-spec/SKILL.md",
-		".agents/skills/to-tickets/SKILL.md",
+	for relative, name := range map[string]string{
+		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "using-superpowers",
+		".agents/skills/to-spec/SKILL.md":                              "to-spec",
+		".agents/skills/to-tickets/SKILL.md":                           "to-tickets",
 	} {
 		path := filepath.Join(home, filepath.FromSlash(relative))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte("workflow invariant fixture"), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte("---\nname: "+name+"\n---\nworkflow invariant fixture"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -352,7 +351,7 @@ func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers 
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte("workflow invariant ambiguous fixture"), 0o600); err != nil {
+		if err := os.WriteFile(path, []byte("---\nname: using-superpowers\n---\nworkflow invariant ambiguous fixture"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -360,16 +359,12 @@ func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers 
 	if err != nil {
 		t.Fatal(err)
 	}
-	bindings := make([]catalog.HostBinding, 0)
-	for _, provider := range snapshot.Catalog().Providers() {
-		if provider.ID != "oaw/superpowers" && provider.ID != "oaw/matt" {
-			continue
-		}
-		for _, capability := range provider.Capabilities {
-			bindings = append(bindings, capability.HostBindings...)
-		}
+	providerIDs := []string{"oaw/matt"}
+	if !ambiguousSuperpowers {
+		providerIDs = append(providerIDs, "oaw/superpowers")
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: bindings})
+	inventory := hosttest.ObserveProviderBindings(t, snapshot.Catalog(), evidence, home, providerIDs...)
+	resolutions, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
 	if err != nil {
 		t.Fatal(err)
 	}

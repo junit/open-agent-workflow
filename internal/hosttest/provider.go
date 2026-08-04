@@ -1,8 +1,11 @@
 package hosttest
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
@@ -18,6 +21,71 @@ type ProviderFixture struct {
 	Inventory    host.BindingInventory
 	Candidate    discovery.Candidate
 	Installation string
+}
+
+// ObserveProviderBindings installs physical Codex test fixtures for the named
+// discovered Providers, then returns evidence from the production observer.
+func ObserveProviderBindings(t testing.TB, value catalog.Catalog, report discovery.Report, home string, providerIDs ...string) host.BindingInventory {
+	t.Helper()
+	selected := make(map[string]struct{}, len(providerIDs))
+	for _, providerID := range providerIDs {
+		selected[providerID] = struct{}{}
+	}
+	agentFiles := make(map[string]string)
+	for _, provider := range value.Providers() {
+		if _, found := selected[provider.ID]; !found {
+			continue
+		}
+		candidates := report.Candidates(provider.ID)
+		if len(candidates) != 1 {
+			t.Fatalf("Provider %s candidates = %d, want one", provider.ID, len(candidates))
+		}
+		candidate := candidates[0]
+		for _, capability := range provider.Capabilities {
+			for _, binding := range capability.HostBindings {
+				if binding.Host != "codex" {
+					continue
+				}
+				switch binding.Kind {
+				case "skill":
+					name, relative := binding.Reference, ""
+					if _, suffix, found := strings.Cut(binding.Reference, ":"); found {
+						name = suffix
+						relative = filepath.Join("skills", suffix, "SKILL.md")
+					} else {
+						relative = filepath.Join(binding.Reference, "SKILL.md")
+					}
+					path := filepath.Join(candidate.Location, relative)
+					if _, err := os.Stat(path); os.IsNotExist(err) {
+						writeProviderFixtureFile(t, candidate.Location, relative, "---\nname: "+name+"\n---\n")
+					} else if err != nil {
+						t.Fatal(err)
+					}
+				case "agent":
+					relative := filepath.Join("agents", binding.Reference+".toml")
+					writeProviderFixtureFile(t, candidate.Location, relative, "name = "+fmt.Sprintf("%q", binding.Reference)+"\n")
+					agentFiles[binding.Reference] = filepath.Join(candidate.Location, relative)
+				}
+			}
+		}
+	}
+	if len(agentFiles) != 0 {
+		var configuration strings.Builder
+		keys := make([]string, 0, len(agentFiles))
+		for key := range agentFiles {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			fmt.Fprintf(&configuration, "[agents.%s]\nconfig_file = %q\n", key, agentFiles[key])
+		}
+		writeProviderFixtureFile(t, home, ".codex/config.toml", configuration.String())
+	}
+	inventory, err := codex.ObserveBindings(value, report, codex.InventoryOptions{UserHome: home, CodexConfigRoot: filepath.Join(home, ".codex")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inventory
 }
 
 // BuildProviderFixture creates Host evidence through the Codex observer. It

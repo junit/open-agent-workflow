@@ -193,7 +193,7 @@ type workflowRuntimeFixture struct {
 	snapshot        config.Snapshot
 	resolutions     registry.ResolutionReport
 	registry        registry.Registry
-	bindings        []catalog.HostBinding
+	inventory       host.BindingInventory
 	hostIntegration host.IntegrationRecord
 }
 
@@ -211,9 +211,9 @@ func newWorkflowRuntimeFixtureWithCandidates(t *testing.T, ambiguousSuperpowers 
 	snapshot, hostIntegration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
 	providers := map[string]string{
-		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "superpowers",
-		".agents/skills/to-spec/SKILL.md":                              "matt-spec",
-		".agents/skills/to-tickets/SKILL.md":                           "matt-tickets",
+		".codex/plugins/superpowers/skills/using-superpowers/SKILL.md": "---\nname: using-superpowers\n---\n",
+		".agents/skills/to-spec/SKILL.md":                              "---\nname: to-spec\n---\n",
+		".agents/skills/to-tickets/SKILL.md":                           "---\nname: to-tickets\n---\n",
 	}
 	if ambiguousSuperpowers {
 		providers[".codex/plugins/cache/openai-api-curated/superpowers/6.1.1/skills/using-superpowers/SKILL.md"] = "superpowers-6.1.1"
@@ -229,20 +229,16 @@ func newWorkflowRuntimeFixtureWithCandidates(t *testing.T, ambiguousSuperpowers 
 	if err != nil {
 		t.Fatalf("discovery.Discover() error = %v", err)
 	}
-	bindings := make([]catalog.HostBinding, 0)
-	for _, provider := range snapshot.Catalog().Providers() {
-		if provider.ID != "oaw/superpowers" && provider.ID != "oaw/matt" {
-			continue
-		}
-		for _, capability := range provider.Capabilities {
-			bindings = append(bindings, capability.HostBindings...)
-		}
+	providerIDs := []string{"oaw/matt"}
+	if !ambiguousSuperpowers {
+		providerIDs = append(providerIDs, "oaw/superpowers")
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: bindings})
+	inventory := hosttest.ObserveProviderBindings(t, snapshot.Catalog(), evidence, home, providerIDs...)
+	resolutions, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
 	if err != nil {
 		t.Fatalf("registry.Resolve() error = %v", err)
 	}
-	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, resolutions: resolutions, registry: effective, bindings: append([]catalog.HostBinding{}, bindings...), hostIntegration: hostIntegration}
+	return workflowRuntimeFixture{projectRoot: projectRoot, home: home, snapshot: snapshot, resolutions: resolutions, registry: effective, inventory: inventory, hostIntegration: hostIntegration}
 }
 
 func newWorkflowEngine(t *testing.T, stateRoot string, fixture workflowRuntimeFixture, isolated bool) *runtime.Engine {

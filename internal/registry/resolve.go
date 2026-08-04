@@ -1,20 +1,29 @@
 package registry
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-const (
-	providerBindingsSchemaV1 = "oaw.provider-bindings/v1"
-	providerInstanceSchemaV1 = "oaw.provider-instance/v1"
-)
+const providerInstanceSchemaV2 = "oaw.provider-instance/v2"
 
-func Resolve(snapshot config.Snapshot, evidence discovery.Report, inventory *BindingInventory) (ResolutionReport, Registry, error) {
+func Resolve(snapshot config.Snapshot, hostID string, evidence discovery.Report, inventory *host.BindingInventory) (ResolutionReport, Registry, error) {
+	if _, err := catalog.ParseLocalID(hostID); err != nil {
+		return ResolutionReport{}, Registry{}, fmt.Errorf("HOST_PROVIDER_SCOPE_MISMATCH: invalid Host ID %q: %w", hostID, err)
+	}
+	if evidence.HostID() != hostID {
+		return ResolutionReport{}, Registry{}, fmt.Errorf("HOST_PROVIDER_SCOPE_MISMATCH: discovery Host %q does not match selected Host %q", evidence.HostID(), hostID)
+	}
+	if inventory != nil && inventory.HostID != hostID {
+		return ResolutionReport{}, Registry{}, fmt.Errorf("HOST_PROVIDER_SCOPE_MISMATCH: inventory Host %q does not match selected Host %q", inventory.HostID, hostID)
+	}
+
 	descriptors := make(map[string]catalog.ProviderDescriptorRecord)
 	identities := make(map[string]struct{})
 	for _, provider := range snapshot.Catalog().Providers() {
@@ -40,7 +49,7 @@ func Resolve(snapshot config.Snapshot, evidence discovery.Report, inventory *Bin
 	resolutions := make([]ProviderResolution, 0, len(providerIDs))
 	instances := make([]ProviderInstance, 0, len(providerIDs))
 	for _, providerID := range providerIDs {
-		settings := snapshot.ProviderSettings(providerID, evidence.HostID())
+		settings := snapshot.ProviderSettings(providerID, hostID)
 		candidates := evidence.Candidates(providerID)
 		resolution := ProviderResolution{ProviderID: providerID, Instance: nil, Candidates: candidates}
 		if settings.Disabled {
@@ -78,20 +87,20 @@ func Resolve(snapshot config.Snapshot, evidence discovery.Report, inventory *Bin
 			resolutions = append(resolutions, resolution)
 			continue
 		}
-		if inventory == nil {
+		if inventory == nil || len(inventory.Observations) == 0 {
 			resolution.State = CandidateState
-			resolution.Reason = "PROVIDER_DISCOVERED_UNVERIFIED"
+			resolution.Reason = "HOST_BINDING_EVIDENCE_REQUIRED"
 			resolutions = append(resolutions, resolution)
 			continue
 		}
-		capabilities := resolveCapabilities(descriptor, settings, *inventory)
+		capabilities := resolveCapabilities(descriptor, settings, selected[0], *inventory)
 		if len(capabilities) == 0 {
 			resolution.State = BindingUnavailable
 			resolution.Reason = "PROVIDER_BINDING_UNAVAILABLE"
 			resolutions = append(resolutions, resolution)
 			continue
 		}
-		instance, err := buildProviderInstance(descriptor, settings, selected[0], capabilities)
+		instance, err := buildProviderInstance(descriptor, settings, selected[0], inventory.Digest, capabilities)
 		if err != nil {
 			return ResolutionReport{}, Registry{}, err
 		}
@@ -101,11 +110,11 @@ func Resolve(snapshot config.Snapshot, evidence discovery.Report, inventory *Bin
 		resolutions = append(resolutions, resolution)
 		instances = append(instances, instance)
 	}
-	report, err := newResolutionReport(resolutions)
+	report, err := newResolutionReport(hostID, resolutions)
 	if err != nil {
 		return ResolutionReport{}, Registry{}, err
 	}
-	effective, err := newRegistry(instances)
+	effective, err := newRegistry(hostID, instances)
 	if err != nil {
 		return ResolutionReport{}, Registry{}, err
 	}
@@ -129,16 +138,17 @@ func matchingCandidates(values []discovery.Candidate, pin config.ProviderPin) []
 	return result
 }
 
-func resolveCapabilities(descriptor catalog.ProviderDescriptorRecord, settings config.ProviderSettings, inventory BindingInventory) []VerifiedCapability {
+func resolveCapabilities(descriptor catalog.ProviderDescriptorRecord, settings config.ProviderSettings, candidate discovery.Candidate, inventory host.BindingInventory) []VerifiedCapability {
 	allowed := make(map[string]struct{}, len(settings.CapabilityLimit))
 	for _, id := range settings.CapabilityLimit {
 		allowed[id] = struct{}{}
 	}
-	available := make(map[string]struct{}, len(inventory.Bindings))
-	for _, binding := range inventory.Bindings {
-		if binding.Host == inventory.Host {
-			available[bindingKey(binding)] = struct{}{}
+	observed := make(map[string]host.BindingObservation, len(inventory.Observations))
+	for _, observation := range inventory.Observations {
+		if observation.HostID != inventory.HostID || observation.HostID != candidate.HostID || observation.InstallationKey != candidate.InstallationKey {
+			continue
 		}
+		observed[bindingKey(observation.Binding)] = observation
 	}
 	preferences := make(map[string]config.BindingPreference, len(settings.Preferences))
 	for _, preference := range settings.Preferences {
@@ -151,68 +161,65 @@ func resolveCapabilities(descriptor catalog.ProviderDescriptorRecord, settings c
 				continue
 			}
 		}
-		bindings := make([]catalog.HostBinding, 0, len(capability.HostBindings))
+		bindings := make([]host.BindingObservation, 0, len(capability.HostBindings))
 		for _, binding := range capability.HostBindings {
-			if binding.Host != inventory.Host {
+			if binding.Host != candidate.HostID {
 				continue
 			}
-			if _, found := available[bindingKey(binding)]; found {
-				bindings = append(bindings, binding)
+			if observation, found := observed[bindingKey(binding)]; found {
+				bindings = append(bindings, observation)
 			}
 		}
 		if len(bindings) == 0 {
 			continue
 		}
-		sort.Slice(bindings, func(i, j int) bool { return bindingKey(bindings[i]) < bindingKey(bindings[j]) })
+		sort.Slice(bindings, func(i, j int) bool {
+			return bindingKey(bindings[i].Binding) < bindingKey(bindings[j].Binding)
+		})
 		selected := bindings[0]
 		if preference, found := preferences[capability.ID]; found {
 			preferred := catalog.HostBinding{Host: preference.HostID, Kind: preference.Kind, Reference: preference.Reference}
-			for _, binding := range bindings {
-				if binding == preferred {
-					selected = binding
+			for _, observation := range bindings {
+				if observation.Binding == preferred {
+					selected = observation
 					break
 				}
 			}
 		}
-		result = append(result, VerifiedCapability{ID: capability.ID, Binding: selected})
+		result = append(result, VerifiedCapability{ID: capability.ID, Binding: selected.Binding, BindingEvidenceDigest: selected.Digest})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
 	return result
 }
 
-func buildProviderInstance(descriptor catalog.ProviderDescriptorRecord, settings config.ProviderSettings, candidate discovery.Candidate, capabilities []VerifiedCapability) (ProviderInstance, error) {
+func buildProviderInstance(descriptor catalog.ProviderDescriptorRecord, settings config.ProviderSettings, candidate discovery.Candidate, inventoryDigest string, capabilities []VerifiedCapability) (ProviderInstance, error) {
 	descriptorDigest, _, err := canonicaljson.Digest(descriptor)
 	if err != nil {
 		return ProviderInstance{}, err
 	}
-	bindingRecord := struct {
-		SchemaVersion string               `json:"schema_version"`
-		Capabilities  []VerifiedCapability `json:"capabilities"`
-	}{providerBindingsSchemaV1, capabilities}
-	bindingDigest, _, err := canonicaljson.Digest(bindingRecord)
-	if err != nil {
-		return ProviderInstance{}, err
-	}
 	instance := ProviderInstance{
-		ProviderID: descriptor.ID, DescriptorDigest: descriptorDigest, Location: candidate.Location,
-		Version: candidate.Version, ConfigurationDigest: settings.Digest, BindingDigest: bindingDigest,
-		EvidenceDigest: candidate.EvidenceDigest, Capabilities: append([]VerifiedCapability{}, capabilities...),
+		ProviderID: descriptor.ID, HostID: candidate.HostID, DescriptorDigest: descriptorDigest,
+		DistributionKey: candidate.DistributionKey, InstallationKey: candidate.InstallationKey,
+		Location: candidate.Location, Version: candidate.Version, ConfigurationDigest: settings.Digest,
+		BindingInventoryDigest: inventoryDigest, EvidenceDigest: candidate.EvidenceDigest,
+		Capabilities: append([]VerifiedCapability{}, capabilities...),
 	}
 	record := struct {
-		SchemaVersion       string               `json:"schema_version"`
-		ProviderID          string               `json:"provider_id"`
-		DescriptorDigest    string               `json:"descriptor_digest"`
-		Location            string               `json:"location"`
-		Version             string               `json:"version"`
-		ConfigurationDigest string               `json:"configuration_digest"`
-		BindingDigest       string               `json:"binding_digest"`
-		EvidenceDigest      string               `json:"evidence_digest"`
-		Capabilities        []VerifiedCapability `json:"capabilities"`
-	}{
-		providerInstanceSchemaV1, instance.ProviderID, instance.DescriptorDigest, instance.Location,
-		instance.Version, instance.ConfigurationDigest, instance.BindingDigest, instance.EvidenceDigest,
-		instance.Capabilities,
-	}
+		SchemaVersion          string               `json:"schema_version"`
+		ProviderID             string               `json:"provider_id"`
+		HostID                 string               `json:"host_id"`
+		DescriptorDigest       string               `json:"descriptor_digest"`
+		DistributionKey        string               `json:"distribution_key"`
+		InstallationKey        string               `json:"installation_key"`
+		Location               string               `json:"location"`
+		Version                string               `json:"version"`
+		ConfigurationDigest    string               `json:"configuration_digest"`
+		BindingInventoryDigest string               `json:"binding_inventory_digest"`
+		EvidenceDigest         string               `json:"evidence_digest"`
+		Capabilities           []VerifiedCapability `json:"capabilities"`
+	}{providerInstanceSchemaV2, instance.ProviderID, instance.HostID, instance.DescriptorDigest,
+		instance.DistributionKey, instance.InstallationKey, instance.Location, instance.Version,
+		instance.ConfigurationDigest, instance.BindingInventoryDigest, instance.EvidenceDigest, instance.Capabilities}
 	instance.Digest, _, err = canonicaljson.Digest(record)
 	return instance, err
 }

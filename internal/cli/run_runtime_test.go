@@ -132,6 +132,19 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	if err := os.WriteFile(eccIndicator, []byte("fixture"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	eccAgent := filepath.Join(home, ".agents", "skills", "everything-claude-code", "agents", "code-reviewer.toml")
+	if err := os.MkdirAll(filepath.Dir(eccAgent), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(eccAgent, []byte("name = \"code-reviewer\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("[agents.code-reviewer]\nconfig_file = \""+eccAgent+"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	fixture := "#!/bin/sh\nprintf x >> \"$OAW_CODEX_FIXTURE_COUNT\"\nprintf '%s\\n' '{\"type\":\"turn.completed\",\"id\":\"fixture-turn\"}'\n"
 	if err := os.WriteFile(filepath.Join(binRoot, "codex"), []byte(fixture), 0o700); err != nil {
 		t.Fatal(err)

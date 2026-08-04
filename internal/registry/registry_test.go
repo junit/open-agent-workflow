@@ -4,12 +4,15 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
@@ -20,14 +23,14 @@ func TestResolveReportsEveryProviderState(t *testing.T) {
 		name       string
 		userConfig string
 		setupHome  func(*testing.T, string)
-		inventory  *registry.BindingInventory
+		inventory  string
 		state      registry.ProviderState
 		reason     string
 	}{
-		{"not found", "", nil, nil, registry.NotFound, "PROVIDER_NOT_FOUND"},
-		{"candidate", "", writeSuperpowersDirect, nil, registry.CandidateState, "PROVIDER_DISCOVERED_UNVERIFIED"},
-		{"verified", "", writeSuperpowersDirect, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{verificationBinding}}, registry.Verified, "PROVIDER_VERIFIED"},
-		{"ambiguous", "", writeSuperpowersDirectAndVersion, nil, registry.Ambiguous, "PROVIDER_CANDIDATE_AMBIGUOUS"},
+		{"not found", "", nil, "none", registry.NotFound, "PROVIDER_NOT_FOUND"},
+		{"candidate", "", writeSuperpowersDirect, "none", registry.CandidateState, "HOST_BINDING_EVIDENCE_REQUIRED"},
+		{"verified", "", writeSuperpowersDirect, "verified", registry.Verified, "PROVIDER_VERIFIED"},
+		{"ambiguous", "", writeSuperpowersDirectAndVersion, "none", registry.Ambiguous, "PROVIDER_CANDIDATE_AMBIGUOUS"},
 		{"incompatible", `
 schema_version = "oaw.user-config/v2"
 [[provider_pins]]
@@ -36,17 +39,27 @@ host_id = "codex"
 installation_key = "installation-incompatible"
 evidence_digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 version = "9.9.9"
-`, writeSuperpowersDirect, nil, registry.Incompatible, "PROVIDER_PIN_INCOMPATIBLE"},
-		{"binding unavailable", "", writeSuperpowersDirect, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}}, registry.BindingUnavailable, "PROVIDER_BINDING_UNAVAILABLE"},
+`, writeSuperpowersDirect, "none", registry.Incompatible, "PROVIDER_PIN_INCOMPATIBLE"},
+		{"binding unavailable", "", writeSuperpowersDirect, "empty", registry.CandidateState, "HOST_BINDING_EVIDENCE_REQUIRED"},
 		{"disabled", `
 schema_version = "oaw.user-config/v2"
 denied_providers = ["oaw/superpowers"]
-`, writeSuperpowersDirect, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{verificationBinding}}, registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
+`, writeSuperpowersDirect, "verified", registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
 			snapshot, evidence := builtInInputs(t, tt.userConfig, tt.setupHome)
-			report, effective, err := registry.Resolve(snapshot, evidence, tt.inventory)
+			var inventory *host.BindingInventory
+			if tt.inventory == "verified" {
+				inventory = inventoryForCandidate(t, evidence.Candidates("oaw/superpowers"), verificationBinding)
+			} else if tt.inventory == "empty" {
+				empty, err := host.NewBindingInventory("codex", nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				inventory = &empty
+			}
+			report, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 			if err != nil {
 				t.Fatalf("Resolve() error = %v", err)
 			}
@@ -59,6 +72,72 @@ denied_providers = ["oaw/superpowers"]
 				t.Fatalf("registry admitted=%v for state %q", admitted, tt.state)
 			}
 		})
+	}
+}
+
+func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, home, ".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", "---\nname: using-superpowers\n---\n")
+	reviewPath := writeFile(t, home, ".codex/plugins/superpowers/skills/requesting-code-review/SKILL.md", "---\nname: requesting-code-review\n---\n")
+	snapshot, err := config.Load(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	discovered, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := codex.ObserveBindings(snapshot.Catalog(), discovered, codex.InventoryOptions{UserHome: home, CodexConfigRoot: filepath.Join(home, ".codex")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, effective, err := registry.Resolve(snapshot, "codex", discovered, &inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution := requireResolution(t, report, "oaw/superpowers")
+	if report.HostID() != "codex" || effective.HostID() != "codex" || resolution.Instance == nil || resolution.Instance.HostID != "codex" || resolution.Instance.InstallationKey == "" || resolution.Instance.BindingInventoryDigest != inventory.Digest {
+		t.Fatalf("Host-scoped resolution = %#v / %#v", resolution, effective)
+	}
+	capability, found := effective.Capability("oaw/superpowers", "review")
+	if !found || capability.BindingEvidenceDigest == "" {
+		t.Fatalf("verified Capability = %#v, %v", capability, found)
+	}
+
+	if _, _, err := registry.Resolve(snapshot, "claude", discovered, &inventory); err == nil || !strings.Contains(err.Error(), "HOST_PROVIDER_SCOPE_MISMATCH") {
+		t.Fatalf("foreign Host Resolve() error = %v", err)
+	}
+	empty, err := host.NewBindingInventory("codex", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, current := range map[string]*host.BindingInventory{"nil": nil, "empty": &empty} {
+		t.Run(name, func(t *testing.T) {
+			report, _, err := registry.Resolve(snapshot, "codex", discovered, current)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolution := requireResolution(t, report, "oaw/superpowers")
+			if resolution.State != registry.CandidateState || resolution.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" {
+				t.Fatalf("resolution = %#v", resolution)
+			}
+		})
+	}
+	candidates := discovered.Candidates("oaw/superpowers")
+	wrongInstallation, err := host.NewBindingInventory("codex", []host.BindingObservation{{
+		HostID: "codex", InstallationKey: "installation-wrong",
+		Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review"},
+		Source:  "host-filesystem", EvidenceReference: reviewPath, Digest: strings.Repeat("a", 64),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, _, err = registry.Resolve(snapshot, "codex", discovered, &wrongInstallation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolution = requireResolution(t, report, "oaw/superpowers"); resolution.State != registry.BindingUnavailable || resolution.Reason != "PROVIDER_BINDING_UNAVAILABLE" || resolution.Candidates[0].InstallationKey != candidates[0].InstallationKey {
+		t.Fatalf("wrong Installation resolution = %#v", resolution)
 	}
 }
 
@@ -83,7 +162,7 @@ func TestResolveReportsUntrustedAndUserDenyWins(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			report, effective, err := registry.Resolve(snapshot, evidence, nil)
+			report, effective, err := registry.Resolve(snapshot, "codex", evidence, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,10 +220,10 @@ version = "1.2.3"
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{{
+	inventory := inventoryForCandidate(t, []discovery.Candidate{pinned}, catalog.HostBinding{
 		Host: "codex", Kind: "skill", Reference: "superpowers:verification-before-completion",
-	}}}
-	report, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	})
+	report, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,12 +253,10 @@ func TestResolveSeesOnlySelectedHostCandidates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, effective, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{
-		Host: "codex",
-		Bindings: []catalog.HostBinding{{
-			Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review",
-		}},
+	inventory := inventoryForCandidate(t, evidence.Candidates("oaw/superpowers"), catalog.HostBinding{
+		Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review",
 	})
+	report, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,16 +284,16 @@ func TestResolveAppliesPreferencesLimitsAndPartialCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{
-		{Host: "codex", Kind: "skill", Reference: "acme:alpha-review"},
-		{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
-		{Host: "codex", Kind: "tool", Reference: "acme:verify"},
-	}}
-	firstReport, firstRegistry, err := registry.Resolve(snapshot, evidence, inventory)
+	inventory := inventoryForCandidate(t, evidence.Candidates("acme/suite"),
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:alpha-review"},
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
+		catalog.HostBinding{Host: "codex", Kind: "tool", Reference: "acme:verify"},
+	)
+	firstReport, firstRegistry, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secondReport, secondRegistry, err := registry.Resolve(snapshot, evidence, inventory)
+	secondReport, secondRegistry, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,11 +334,11 @@ func TestResolveUsesDeterministicBindingFallbackAndVerifiedSubset(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{
-		{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
-		{Host: "codex", Kind: "skill", Reference: "acme:alpha-review"},
-	}}
-	report, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	inventory := inventoryForCandidate(t, evidence.Candidates("acme/suite"),
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:alpha-review"},
+	)
+	report, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,6 +390,26 @@ func writeSuperpowersDirectAndVersion(t *testing.T, home string) {
 	t.Helper()
 	writeSuperpowersDirect(t, home)
 	writeFile(t, home, ".codex/plugins/cache/openai-api-curated/superpowers/1.2.3/skills/using-superpowers/SKILL.md", "version")
+}
+
+func inventoryForCandidate(t *testing.T, candidates []discovery.Candidate, bindings ...catalog.HostBinding) *host.BindingInventory {
+	t.Helper()
+	if len(candidates) != 1 {
+		t.Fatalf("inventoryForCandidate requires one Candidate, got %d", len(candidates))
+	}
+	candidate := candidates[0]
+	observations := make([]host.BindingObservation, 0, len(bindings))
+	for index, binding := range bindings {
+		observations = append(observations, host.BindingObservation{
+			HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
+			Source: "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat(string(rune('a'+index)), 64),
+		})
+	}
+	inventory, err := host.NewBindingInventory("codex", observations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &inventory
 }
 
 func untrustedProject(t *testing.T) string {

@@ -11,6 +11,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
@@ -25,11 +26,11 @@ func TestTicket02VerticalSliceProducesImmutableEffectiveRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{
-		{Host: "codex", Kind: "skill", Reference: "superpowers:verification-before-completion"},
-		{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
-	}}
-	report, effective, err := registry.Resolve(snapshot, evidence, inventory)
+	inventory := integrationInventory(t, evidence, map[string][]catalog.HostBinding{
+		"oaw/superpowers": {{Host: "codex", Kind: "skill", Reference: "superpowers:verification-before-completion"}},
+		"acme/suite":      {{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"}},
+	})
+	report, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +108,7 @@ path = "providers/acme.toml"
 	if err != nil {
 		t.Fatal(err)
 	}
-	report, _, err := registry.Resolve(drifted, evidence, nil)
+	report, _, err := registry.Resolve(drifted, "codex", evidence, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +140,7 @@ func TestTicket02NegativeDiscoveryAndResolutionStates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		report, _, err := registry.Resolve(snapshot, evidence, nil)
+		report, _, err := registry.Resolve(snapshot, "codex", evidence, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -156,11 +157,15 @@ func TestTicket02NegativeDiscoveryAndResolutionStates(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		report, _, err := registry.Resolve(snapshot, evidence, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}})
+		empty, err := host.NewBindingInventory("codex", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if resolution := requireResolution(t, report, "acme/suite"); resolution.State != registry.BindingUnavailable {
+		report, _, err := registry.Resolve(snapshot, "codex", evidence, &empty)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if resolution := requireResolution(t, report, "acme/suite"); resolution.State != registry.CandidateState {
 			t.Fatalf("resolution = %#v", resolution)
 		}
 	})
@@ -226,6 +231,25 @@ func requireResolution(t *testing.T, report registry.ResolutionReport, providerI
 		t.Fatalf("Resolution(%q) not found", providerID)
 	}
 	return resolution
+}
+
+func integrationInventory(t *testing.T, evidence discovery.Report, bindings map[string][]catalog.HostBinding) *host.BindingInventory {
+	t.Helper()
+	observations := make([]host.BindingObservation, 0)
+	for providerID, values := range bindings {
+		candidates := evidence.Candidates(providerID)
+		if len(candidates) != 1 {
+			t.Fatalf("provider %s candidates = %d, want one", providerID, len(candidates))
+		}
+		for index, binding := range values {
+			observations = append(observations, host.BindingObservation{HostID: "codex", InstallationKey: candidates[0].InstallationKey, Binding: binding, Source: "host-filesystem", EvidenceReference: filepath.Join(candidates[0].Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat("a", 64)})
+		}
+	}
+	inventory, err := host.NewBindingInventory("codex", observations)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &inventory
 }
 
 func writeSymlink(t *testing.T, root, relative, target string) {
