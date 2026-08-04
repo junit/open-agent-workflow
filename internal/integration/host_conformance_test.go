@@ -269,7 +269,7 @@ func ticket08RuntimeFixture(t *testing.T, projectRoot string, integration host.I
 	for _, relative := range []string{".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", ".agents/skills/to-spec/SKILL.md", ".agents/skills/to-tickets/SKILL.md"} {
 		writeTicket07File(t, filepath.Join(home, filepath.FromSlash(relative)), ticket08Credential)
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}

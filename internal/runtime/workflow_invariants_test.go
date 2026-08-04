@@ -348,7 +348,7 @@ func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers 
 		}
 	}
 	if ambiguousSuperpowers {
-		path := filepath.Join(home, filepath.FromSlash(".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md"))
+		path := filepath.Join(home, filepath.FromSlash(".codex/plugins/cache/openai-api-curated/superpowers/6.1.1/skills/using-superpowers/SKILL.md"))
 		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
@@ -356,7 +356,7 @@ func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers 
 			t.Fatal(err)
 		}
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}

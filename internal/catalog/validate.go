@@ -9,6 +9,9 @@ func validateCatalog(catalog *Catalog) error {
 	providerIndex := make(map[string]ProviderDescriptorRecord, len(catalog.providers))
 	for i := range catalog.providers {
 		provider := &catalog.providers[i]
+		if provider.SchemaVersion != ProviderDescriptorSchemaV2 {
+			return fmt.Errorf("UNSUPPORTED_PROVIDER_SCHEMA: %q", provider.SchemaVersion)
+		}
 		if _, err := ParseQualifiedID(provider.ID); err != nil {
 			return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 		}

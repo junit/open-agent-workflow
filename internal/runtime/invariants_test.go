@@ -715,7 +715,7 @@ func internalBoundedGrantRevision(t *testing.T) revisionRecord {
 	record := internalBoundedRevision(t, RunReady)
 	binding := catalog.HostBinding{Host: "codex", Kind: "agent", Reference: "acme:review"}
 	provider := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV1, DescriptorVersion: "1.0.0", ID: "acme/suite", Discovery: []catalog.DiscoveryProbe{},
+		SchemaVersion: catalog.ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: "acme/suite", Discovery: []catalog.DiscoveryProbe{{ID: "codex", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "acme", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/acme", EvidencePath: "SKILL.md"}},
 		Capabilities: []catalog.CapabilityRecord{{ID: "review", InputSchema: "input/v1", OutcomeSchema: "outcome/v1", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, RequestModes: []catalog.RequestMode{catalog.RequestModeBounded}, Responsibilities: []string{}, ExecutorTopology: catalog.IsolatedRequired, DelegationAllowList: []string{}, HostBindings: []catalog.HostBinding{binding}}},
 	}
 	descriptorDigest, _, err := canonicaljson.Digest(provider)

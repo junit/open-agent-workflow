@@ -1,13 +1,13 @@
 {
-  "schema_version": "oaw.provider-descriptor/v1",
-  "descriptor_version": "1.0.0",
+  "schema_version": "oaw.provider-descriptor/v2",
+  "descriptor_version": "2.0.0",
   "id": "oaw/ecc",
   "display_name": "Everything Claude Code",
   "discovery": [
-    {"id":"ecc-global-skill","kind":"path-exists","root":"user-home","path":".agents/skills/everything-claude-code/SKILL.md"},
-    {"id":"ecc-marketplace-plugin","kind":"path-exists","root":"user-home","path":".claude/plugins/marketplaces/everything-claude-code/plugins/ecc/.codex-plugin/plugin.json"},
-    {"id":"ecc-marketplace-skill","kind":"path-exists","root":"user-home","path":".claude/plugins/marketplaces/everything-claude-code/.agents/skills/everything-claude-code/SKILL.md"},
-    {"id":"ecc-versioned-cache","kind":"one-level-version-path-exists","root":"user-home","prefix":".claude/plugins/cache/everything-claude-code/ecc","suffix":".codex-plugin/plugin.json"}
+    {"id":"ecc-global-skill","hosts":["codex"],"surface":"codex-user-skills","distribution":"ecc-global","kind":"path-exists","root":"user-home","candidate_path":".agents/skills/everything-claude-code","evidence_path":"SKILL.md"},
+    {"id":"ecc-marketplace-plugin","hosts":["claude"],"surface":"claude-marketplace","distribution":"everything-claude-code","kind":"path-exists","root":"user-home","candidate_path":".claude/plugins/marketplaces/everything-claude-code/plugins/ecc","evidence_path":".codex-plugin/plugin.json"},
+    {"id":"ecc-marketplace-skill","hosts":["claude"],"surface":"claude-marketplace","distribution":"everything-claude-code","kind":"path-exists","root":"user-home","candidate_path":".claude/plugins/marketplaces/everything-claude-code","evidence_path":".agents/skills/everything-claude-code/SKILL.md"},
+    {"id":"ecc-versioned-cache","hosts":["claude"],"surface":"claude-plugin-cache","distribution":"everything-claude-code","kind":"one-level-version-path-exists","root":"user-home","prefix":".claude/plugins/cache/everything-claude-code/ecc","evidence_path":".codex-plugin/plugin.json"}
   ],
   "capabilities": [
     {"id":"planning","input_schema":"oaw.capability-input/v1","outcome_schema":"oaw.capability-outcome/v1","maximum_effects":["read-project","write-project"],"resources":["project-worktree"],"request_modes":["WORKFLOW"],"responsibilities":["requirements","domain-modeling","specification","ticket-decomposition","implementation-planning"],"executor_topology":"isolated-required","delegation_allow_list":["architecture"],"host_bindings":[{"host":"codex","kind":"agent","reference":"planner"}]},

@@ -43,8 +43,8 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	valid := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV1, valid); err != nil {
+	valid := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV2, valid); err != nil {
 		t.Fatalf("Validate(valid) error = %v", err)
 	}
 	if err := registry.Validate("oaw.capability-input/v1", valid); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
@@ -90,8 +90,8 @@ func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]} {}`)
-	if err := registry.Validate(ProviderDescriptorV1, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_INPUT_INVALID") {
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]} {}`)
+	if err := registry.Validate(ProviderDescriptorV2, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_INPUT_INVALID") {
 		t.Fatalf("Validate(trailing) error = %v", err)
 	}
 }
@@ -101,12 +101,12 @@ func TestRegistryRejectsSchemaViolations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	unknownField := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
-	if err := registry.Validate(ProviderDescriptorV1, unknownField); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	unknownField := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
+	if err := registry.Validate(ProviderDescriptorV2, unknownField); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(unknown field) error = %v", err)
 	}
-	unsafePath := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"p","kind":"path-exists","root":"user-home","path":".agents/../secret"}],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV1, unsafePath); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	unsafePath := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"p","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":".agents/../secret","evidence_path":"SKILL.md"}],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV2, unsafePath); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(unsafe path) error = %v", err)
 	}
 }

@@ -37,9 +37,9 @@ func TestRunCatalogTextOutputMatchesContract(t *testing.T) {
 		{
 			name: "providers",
 			args: []string{"catalog", "list", "providers"},
-			want: "provider oaw/ecc version=1.0.0 capabilities=11\n" +
-				"provider oaw/matt version=1.0.0 capabilities=9\n" +
-				"provider oaw/superpowers version=1.0.0 capabilities=10\n",
+			want: "provider oaw/ecc version=2.0.0 capabilities=11\n" +
+				"provider oaw/matt version=2.0.0 capabilities=9\n" +
+				"provider oaw/superpowers version=2.0.0 capabilities=10\n",
 		},
 		{
 			name: "recipes",

@@ -1,7 +1,7 @@
 package catalog
 
 const (
-	ProviderDescriptorSchemaV1 = "oaw.provider-descriptor/v1"
+	ProviderDescriptorSchemaV2 = "oaw.provider-descriptor/v2"
 	ProfileRecipeSchemaV1      = "oaw.profile-recipe/v1"
 	ProfileAliasSetSchemaV1    = "oaw.profile-alias-set/v1"
 )
@@ -40,13 +40,15 @@ type ProviderDescriptorRecord struct {
 }
 
 type DiscoveryProbe struct {
-	ID     string   `json:"id" toml:"id"`
-	Kind   string   `json:"kind" toml:"kind"`
-	Root   string   `json:"root" toml:"root"`
-	Path   string   `json:"path,omitempty" toml:"path"`
-	Prefix string   `json:"prefix,omitempty" toml:"prefix"`
-	Suffix string   `json:"suffix,omitempty" toml:"suffix"`
-	Paths  []string `json:"paths,omitempty" toml:"paths"`
+	ID            string   `json:"id" toml:"id"`
+	Hosts         []string `json:"hosts" toml:"hosts"`
+	Surface       string   `json:"surface" toml:"surface"`
+	Distribution  string   `json:"distribution" toml:"distribution"`
+	Kind          string   `json:"kind" toml:"kind"`
+	Root          string   `json:"root" toml:"root"`
+	CandidatePath string   `json:"candidate_path,omitempty" toml:"candidate_path"`
+	EvidencePath  string   `json:"evidence_path,omitempty" toml:"evidence_path"`
+	Prefix        string   `json:"prefix,omitempty" toml:"prefix"`
 }
 
 type CapabilityRecord struct {

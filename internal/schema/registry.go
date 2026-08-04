@@ -12,7 +12,6 @@ import (
 )
 
 const (
-	ProviderDescriptorV1     = "https://open-agent-workflow.dev/schemas/v1/provider-descriptor.schema.json"
 	ProviderDescriptorV2     = "https://open-agent-workflow.dev/schemas/v2/provider-descriptor.schema.json"
 	ProfileRecipeV1          = "https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json"
 	ProfileAliasSetV1        = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
@@ -37,7 +36,6 @@ func New(files fs.FS) (*Registry, error) {
 	resources := []struct{ path, id string }{
 		{"schemas/v2/provider-descriptor.schema.json", ProviderDescriptorV2},
 		{"schemas/v2/user-config.schema.json", UserConfigV2},
-		{"schemas/v1/provider-descriptor.schema.json", ProviderDescriptorV1},
 		{"schemas/v1/profile-recipe.schema.json", ProfileRecipeV1},
 		{"schemas/v1/profile-alias-set.schema.json", ProfileAliasSetV1},
 		{"schemas/v1/user-config.schema.json", UserConfigV1},

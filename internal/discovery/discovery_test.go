@@ -22,11 +22,11 @@ func TestDiscoverBuiltInsProducesSortedEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	first, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
-	second, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	second, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("Discover(second) error = %v", err)
 	}
@@ -49,11 +49,50 @@ func TestDiscoverBuiltInsProducesSortedEvidence(t *testing.T) {
 	}
 }
 
+func TestDiscoverScopesCandidatesToSelectedHost(t *testing.T) {
+	home := t.TempDir()
+	writeEvidence(t, home, ".codex/skills/acme/review/SKILL.md", "codex")
+	writeEvidence(t, home, ".claude/skills/acme/review/SKILL.md", "claude")
+	value := testCatalog(t,
+		catalog.DiscoveryProbe{ID: "codex", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "acme", Kind: "path-exists", Root: "user-home", CandidatePath: ".codex/skills/acme", EvidencePath: "review/SKILL.md"},
+		catalog.DiscoveryProbe{ID: "claude", Hosts: []string{"claude"}, Surface: "claude-skills", Distribution: "acme", Kind: "path-exists", Root: "user-home", CandidatePath: ".claude/skills/acme", EvidencePath: "review/SKILL.md"},
+	)
+	codex, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := codex.Candidates("acme/suite")
+	if len(got) != 1 || got[0].HostID != "codex" || strings.Contains(got[0].Location, ".claude") {
+		t.Fatalf("Codex candidates = %#v", got)
+	}
+}
+
+func TestDiscoverSeparatesSharedInstallationByHost(t *testing.T) {
+	home := t.TempDir()
+	writeEvidence(t, home, ".agents/skills/acme/review/SKILL.md", "shared")
+	value := testCatalog(t, catalog.DiscoveryProbe{
+		ID: "shared", Hosts: []string{"claude", "codex"}, Surface: "shared-skills", Distribution: "acme", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/acme", EvidencePath: "review/SKILL.md",
+	})
+	codex, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	claude, err := discovery.Discover(value, discovery.Options{HostID: "claude", UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	codexCandidate := codex.Candidates("acme/suite")[0]
+	claudeCandidate := claude.Candidates("acme/suite")[0]
+	if codexCandidate.Location != claudeCandidate.Location || codexCandidate.InstallationKey == claudeCandidate.InstallationKey {
+		t.Fatalf("shared candidates = %#v / %#v", codexCandidate, claudeCandidate)
+	}
+}
+
 func TestDiscoverGroupsDirectEvidenceIntoOneCandidate(t *testing.T) {
 	home := t.TempDir()
-	writeEvidence(t, home, ".agents/skills/acme/SKILL.md", "skill")
-	target := writeEvidence(t, home, ".local/share/acme/plugin.json", "plugin")
-	symlink := filepath.Join(home, ".agents", "plugins", "acme.json")
+	writeEvidence(t, home, ".agents/acme/skill/SKILL.md", "skill")
+	target := writeEvidence(t, home, ".agents/acme/assets/plugin.json", "plugin")
+	symlink := filepath.Join(home, ".agents", "acme", "plugin.json")
 	if err := os.MkdirAll(filepath.Dir(symlink), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -61,10 +100,10 @@ func TestDiscoverGroupsDirectEvidenceIntoOneCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	value := testCatalog(t,
-		catalog.DiscoveryProbe{ID: "skill", Kind: "path-exists", Root: "user-home", Path: ".agents/skills/acme/SKILL.md"},
-		catalog.DiscoveryProbe{ID: "plugin", Kind: "path-exists", Root: "user-home", Path: ".agents/plugins/acme.json"},
+		catalog.DiscoveryProbe{ID: "skill", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/acme", EvidencePath: "skill/SKILL.md"},
+		catalog.DiscoveryProbe{ID: "plugin", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/acme", EvidencePath: "plugin.json"},
 	)
-	report, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
@@ -73,8 +112,8 @@ func TestDiscoverGroupsDirectEvidenceIntoOneCandidate(t *testing.T) {
 		t.Fatalf("Candidates() = %#v", candidates)
 	}
 	candidate := candidates[0]
-	physicalHome := physicalPath(t, home)
-	if candidate.Location != physicalHome || !strings.HasPrefix(candidate.Key, "direct:") || !strings.HasPrefix(candidate.Version, "content-") {
+	physicalCandidate := physicalPath(t, filepath.Join(home, ".agents", "acme"))
+	if candidate.Location != physicalCandidate || candidate.InstallationKey == "" || !strings.HasPrefix(candidate.Version, "content-") {
 		t.Fatalf("direct candidate = %#v", candidate)
 	}
 	if len(candidate.Evidence) != 2 || candidate.Evidence[0].ProbeID != "plugin" || candidate.Evidence[1].ProbeID != "skill" {
@@ -95,9 +134,9 @@ func TestDiscoverCreatesOneCandidatePerImmediateVersion(t *testing.T) {
 	writeEvidence(t, home, ".cache/acme/2.0.0/SKILL.md", "two")
 	writeEvidence(t, home, ".cache/acme/1.0.0/SKILL.md", "one")
 	value := testCatalog(t, catalog.DiscoveryProbe{
-		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", Suffix: "SKILL.md",
+		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", EvidencePath: "SKILL.md",
 	})
-	report, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
@@ -117,8 +156,8 @@ func TestDiscoverCreatesOneCandidatePerImmediateVersion(t *testing.T) {
 }
 
 func TestDiscoverReportsNoCandidateForMissingFiles(t *testing.T) {
-	value := testCatalog(t, catalog.DiscoveryProbe{ID: "missing", Kind: "path-exists", Root: "user-home", Path: ".agents/missing/SKILL.md"})
-	report, err := discovery.Discover(value, discovery.Options{UserHome: t.TempDir()})
+	value := testCatalog(t, catalog.DiscoveryProbe{ID: "missing", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/missing", EvidencePath: "SKILL.md"})
+	report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
@@ -134,30 +173,33 @@ func TestDiscoverRejectsEscapingSymlinkAndOversizedEvidence(t *testing.T) {
 	t.Run("escaping symlink", func(t *testing.T) {
 		home := t.TempDir()
 		outside := writeEvidence(t, t.TempDir(), "outside.txt", "outside")
-		link := filepath.Join(home, "evidence.txt")
+		if err := os.MkdirAll(filepath.Join(home, "candidate"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		link := filepath.Join(home, "candidate", "evidence.txt")
 		if err := os.Symlink(outside, link); err != nil {
 			t.Fatal(err)
 		}
-		value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", Path: "evidence.txt"})
-		if _, err := discovery.Discover(value, discovery.Options{UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PATH_ESCAPE") {
+		value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", CandidatePath: "candidate", EvidencePath: "evidence.txt"})
+		if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PATH_ESCAPE") {
 			t.Fatalf("Discover() error = %v", err)
 		}
 	})
 
 	t.Run("oversized evidence", func(t *testing.T) {
 		home := t.TempDir()
-		writeEvidence(t, home, "evidence.txt", "12345")
-		value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", Path: "evidence.txt"})
-		if _, err := discovery.Discover(value, discovery.Options{UserHome: home, MaximumEvidenceBytes: 4}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_EVIDENCE_TOO_LARGE") {
+		writeEvidence(t, home, "candidate/evidence.txt", "12345")
+		value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", CandidatePath: "candidate", EvidencePath: "evidence.txt"})
+		if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home, MaximumEvidenceBytes: 4}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_EVIDENCE_TOO_LARGE") {
 			t.Fatalf("Discover() error = %v", err)
 		}
 	})
 
 	t.Run("hard limit cannot be raised", func(t *testing.T) {
 		home := t.TempDir()
-		writeEvidence(t, home, "evidence.txt", strings.Repeat("x", (4<<20)+1))
-		value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", Path: "evidence.txt"})
-		if _, err := discovery.Discover(value, discovery.Options{UserHome: home, MaximumEvidenceBytes: 8 << 20}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_EVIDENCE_TOO_LARGE") {
+		writeEvidence(t, home, "candidate/evidence.txt", strings.Repeat("x", (4<<20)+1))
+		value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", CandidatePath: "candidate", EvidencePath: "evidence.txt"})
+		if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home, MaximumEvidenceBytes: 8 << 20}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_EVIDENCE_TOO_LARGE") {
 			t.Fatalf("Discover() error = %v", err)
 		}
 	})
@@ -167,9 +209,9 @@ func TestDiscoverIgnoresNestedVersionDirectories(t *testing.T) {
 	home := t.TempDir()
 	writeEvidence(t, home, ".cache/acme/channel/1.0.0/SKILL.md", "nested")
 	value := testCatalog(t, catalog.DiscoveryProbe{
-		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", Suffix: "SKILL.md",
+		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", EvidencePath: "SKILL.md",
 	})
-	report, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("Discover() error = %v", err)
 	}
@@ -188,10 +230,10 @@ func TestDiscoveryDigestIsIndependentOfDirectoryEnumerationOrder(t *testing.T) {
 		}
 	}
 	value := testCatalog(t, catalog.DiscoveryProbe{
-		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", Suffix: "SKILL.md",
+		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", EvidencePath: "SKILL.md",
 	})
 	createVersions([]string{"3", "1", "2"})
-	first, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	first, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +241,7 @@ func TestDiscoveryDigestIsIndependentOfDirectoryEnumerationOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	createVersions([]string{"2", "3", "1"})
-	second, err := discovery.Discover(value, discovery.Options{UserHome: home})
+	second, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,12 +255,11 @@ func TestDiscoverRejectsUnsupportedProbeSurface(t *testing.T) {
 		name  string
 		probe catalog.DiscoveryProbe
 	}{
-		{"root", catalog.DiscoveryProbe{ID: "xdg", Kind: "path-exists", Root: "xdg-config-home", Path: "acme/SKILL.md"}},
-		{"kind", catalog.DiscoveryProbe{ID: "all", Kind: "all-paths-exist", Root: "user-home", Paths: []string{"acme/SKILL.md"}}},
+		{"root", catalog.DiscoveryProbe{ID: "xdg", Kind: "path-exists", Root: "xdg-config-home", CandidatePath: "acme", EvidencePath: "SKILL.md"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if _, err := discovery.Discover(testCatalog(t, tt.probe), discovery.Options{UserHome: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PROBE_UNSUPPORTED") {
+			if _, err := discovery.Discover(testCatalog(t, tt.probe), discovery.Options{HostID: "codex", UserHome: t.TempDir()}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PROBE_UNSUPPORTED") {
 				t.Fatalf("Discover() error = %v", err)
 			}
 		})
@@ -226,35 +267,35 @@ func TestDiscoverRejectsUnsupportedProbeSurface(t *testing.T) {
 }
 
 func TestDiscoverRejectsInvalidRootAndNonRegularEvidence(t *testing.T) {
-	value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", Path: "evidence"})
+	value := testCatalog(t, catalog.DiscoveryProbe{ID: "direct", Kind: "path-exists", Root: "user-home", CandidatePath: "candidate", EvidencePath: "evidence"})
 	for _, root := range []string{"", filepath.Join(t.TempDir(), "missing")} {
-		if _, err := discovery.Discover(value, discovery.Options{UserHome: root}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_ROOT_INVALID") {
+		if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: root}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_ROOT_INVALID") {
 			t.Fatalf("Discover(root=%q) error = %v", root, err)
 		}
 	}
 	fileRoot := writeEvidence(t, t.TempDir(), "root.txt", "file")
-	if _, err := discovery.Discover(value, discovery.Options{UserHome: fileRoot}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_ROOT_INVALID") {
+	if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: fileRoot}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_ROOT_INVALID") {
 		t.Fatalf("Discover(file root) error = %v", err)
 	}
 	home := t.TempDir()
-	if err := os.Mkdir(filepath.Join(home, "evidence"), 0o700); err != nil {
+	if err := os.MkdirAll(filepath.Join(home, "candidate", "evidence"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := discovery.Discover(value, discovery.Options{UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_EVIDENCE_NOT_REGULAR") {
+	if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_EVIDENCE_NOT_REGULAR") {
 		t.Fatalf("Discover(directory evidence) error = %v", err)
 	}
 }
 
 func TestDiscoverVersionProbeHandlesOnlyContainedDirectories(t *testing.T) {
 	probe := catalog.DiscoveryProbe{
-		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", Suffix: "SKILL.md",
+		ID: "versions", Kind: "one-level-version-path-exists", Root: "user-home", Prefix: ".cache/acme", EvidencePath: "SKILL.md",
 	}
 	value := testCatalog(t, probe)
 
 	t.Run("prefix must be directory", func(t *testing.T) {
 		home := t.TempDir()
 		writeEvidence(t, home, ".cache/acme", "file")
-		if _, err := discovery.Discover(value, discovery.Options{UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_VERSION_PREFIX_NOT_DIRECTORY") {
+		if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_CANDIDATE_NOT_DIRECTORY") {
 			t.Fatalf("Discover() error = %v", err)
 		}
 	})
@@ -267,7 +308,7 @@ func TestDiscoverVersionProbeHandlesOnlyContainedDirectories(t *testing.T) {
 		if err := os.Symlink(filepath.Join(home, ".local", "acme-version"), link); err != nil {
 			t.Fatal(err)
 		}
-		report, err := discovery.Discover(value, discovery.Options{UserHome: home})
+		report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
 		if err != nil {
 			t.Fatalf("Discover() error = %v", err)
 		}
@@ -287,7 +328,7 @@ func TestDiscoverVersionProbeHandlesOnlyContainedDirectories(t *testing.T) {
 		if err := os.Symlink(outside, filepath.Join(prefix, "1.0.0")); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := discovery.Discover(value, discovery.Options{UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PATH_ESCAPE") {
+		if _, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PATH_ESCAPE") {
 			t.Fatalf("Discover() error = %v", err)
 		}
 	})
@@ -295,8 +336,19 @@ func TestDiscoverVersionProbeHandlesOnlyContainedDirectories(t *testing.T) {
 
 func testCatalog(t *testing.T, probes ...catalog.DiscoveryProbe) catalog.Catalog {
 	t.Helper()
+	for i := range probes {
+		if probes[i].Hosts == nil {
+			probes[i].Hosts = []string{"codex"}
+		}
+		if probes[i].Surface == "" {
+			probes[i].Surface = "codex-skills"
+		}
+		if probes[i].Distribution == "" {
+			probes[i].Distribution = "acme"
+		}
+	}
 	value, err := catalog.New([]catalog.ProviderDescriptorRecord{{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV1, DescriptorVersion: "1.0.0", ID: "acme/suite", DisplayName: "Acme Suite", Discovery: probes, Capabilities: []catalog.CapabilityRecord{},
+		SchemaVersion: catalog.ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: "acme/suite", DisplayName: "Acme Suite", Discovery: probes, Capabilities: []catalog.CapabilityRecord{},
 	}}, []catalog.ProfileRecipeRecord{}, []catalog.ProfileAliasRecord{})
 	if err != nil {
 		t.Fatalf("catalog.New() error = %v", err)

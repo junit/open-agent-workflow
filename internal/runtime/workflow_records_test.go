@@ -73,8 +73,8 @@ func workflowRecordGraph(t *testing.T) profile.ExecutionGraph {
 	t.Helper()
 	binding := catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:complete"}
 	provider := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV1, DescriptorVersion: "1.0.0",
-		ID: "acme/suite", DisplayName: "Acme", Discovery: []catalog.DiscoveryProbe{},
+		SchemaVersion: catalog.ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0",
+		ID: "acme/suite", DisplayName: "Acme", Discovery: []catalog.DiscoveryProbe{{ID: "codex", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "acme", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/acme", EvidencePath: "SKILL.md"}},
 		Capabilities: []catalog.CapabilityRecord{{
 			ID: "completion", InputSchema: "acme.input/v1", OutcomeSchema: "acme.output/v1",
 			MaximumEffects: []string{"read-project"}, Resources: []string{"project"},

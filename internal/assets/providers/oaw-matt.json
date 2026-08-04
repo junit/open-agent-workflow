@@ -1,13 +1,13 @@
 {
-  "schema_version": "oaw.provider-descriptor/v1",
-  "descriptor_version": "1.0.0",
+  "schema_version": "oaw.provider-descriptor/v2",
+  "descriptor_version": "2.0.0",
   "id": "oaw/matt",
   "display_name": "Matt",
   "discovery": [
-    {"id":"matt-to-spec","kind":"path-exists","root":"user-home","path":".agents/skills/to-spec/SKILL.md"},
-    {"id":"matt-to-tickets","kind":"path-exists","root":"user-home","path":".agents/skills/to-tickets/SKILL.md"},
-    {"id":"matt-tdd","kind":"path-exists","root":"user-home","path":".agents/skills/tdd/SKILL.md"},
-    {"id":"matt-diagnosing-bugs","kind":"path-exists","root":"user-home","path":".agents/skills/diagnosing-bugs/SKILL.md"}
+    {"id":"matt-to-spec","hosts":["codex"],"surface":"codex-user-skills","distribution":"matt-skills","kind":"path-exists","root":"user-home","candidate_path":".agents/skills","evidence_path":"to-spec/SKILL.md"},
+    {"id":"matt-to-tickets","hosts":["codex"],"surface":"codex-user-skills","distribution":"matt-skills","kind":"path-exists","root":"user-home","candidate_path":".agents/skills","evidence_path":"to-tickets/SKILL.md"},
+    {"id":"matt-tdd","hosts":["codex"],"surface":"codex-user-skills","distribution":"matt-skills","kind":"path-exists","root":"user-home","candidate_path":".agents/skills","evidence_path":"tdd/SKILL.md"},
+    {"id":"matt-diagnosing-bugs","hosts":["codex"],"surface":"codex-user-skills","distribution":"matt-skills","kind":"path-exists","root":"user-home","candidate_path":".agents/skills","evidence_path":"diagnosing-bugs/SKILL.md"}
   ],
   "capabilities": [
     {"id":"specification","input_schema":"oaw.capability-input/v1","outcome_schema":"oaw.capability-outcome/v1","maximum_effects":["read-project","write-project"],"resources":["project-worktree"],"request_modes":["WORKFLOW"],"responsibilities":["requirements","domain-modeling","specification"],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"to-spec"}]},

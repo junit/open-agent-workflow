@@ -216,7 +216,7 @@ func newWorkflowRuntimeFixtureWithCandidates(t *testing.T, ambiguousSuperpowers 
 		".agents/skills/to-tickets/SKILL.md":                           "matt-tickets",
 	}
 	if ambiguousSuperpowers {
-		providers[".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md"] = "superpowers-6.1.1"
+		providers[".codex/plugins/cache/openai-api-curated/superpowers/6.1.1/skills/using-superpowers/SKILL.md"] = "superpowers-6.1.1"
 	}
 	for path, content := range providers {
 		fullPath := filepath.Join(home, path)
@@ -225,7 +225,7 @@ func newWorkflowRuntimeFixtureWithCandidates(t *testing.T, ambiguousSuperpowers 
 		}
 		writeTestFile(t, fullPath, []byte(content))
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("discovery.Discover() error = %v", err)
 	}

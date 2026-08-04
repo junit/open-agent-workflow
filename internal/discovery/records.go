@@ -7,33 +7,42 @@ import (
 )
 
 const (
-	discoveryEvidenceSchemaV1 = "oaw.discovery-evidence/v1"
-	discoveryReportSchemaV1   = "oaw.discovery-report/v1"
+	discoveryEvidenceSchemaV2 = "oaw.discovery-evidence/v2"
+	discoveryReportSchemaV2   = "oaw.discovery-report/v2"
 )
 
 type Evidence struct {
-	ProviderID    string `json:"provider_id"`
-	CandidateKey  string `json:"candidate_key"`
-	ProbeID       string `json:"probe_id"`
-	Kind          string `json:"kind"`
-	Path          string `json:"path"`
-	Version       string `json:"version"`
-	ContentDigest string `json:"content_digest"`
+	ProviderID      string `json:"provider_id"`
+	HostID          string `json:"host_id"`
+	SurfaceID       string `json:"surface_id"`
+	DistributionKey string `json:"distribution_key"`
+	InstallationKey string `json:"installation_key"`
+	ProbeID         string `json:"probe_id"`
+	Kind            string `json:"kind"`
+	Path            string `json:"path"`
+	Version         string `json:"version"`
+	ContentDigest   string `json:"content_digest"`
 }
 
 type Candidate struct {
-	ProviderID     string     `json:"provider_id"`
-	Key            string     `json:"key"`
-	Location       string     `json:"location"`
-	Version        string     `json:"version"`
-	EvidenceDigest string     `json:"evidence_digest"`
-	Evidence       []Evidence `json:"evidence"`
+	ProviderID      string     `json:"provider_id"`
+	HostID          string     `json:"host_id"`
+	SurfaceID       string     `json:"surface_id"`
+	DistributionKey string     `json:"distribution_key"`
+	InstallationKey string     `json:"installation_key"`
+	Location        string     `json:"location"`
+	Version         string     `json:"version"`
+	EvidenceDigest  string     `json:"evidence_digest"`
+	Evidence        []Evidence `json:"evidence"`
 }
 
 type Report struct {
+	hostID     string
 	candidates []Candidate
 	digest     string
 }
+
+func (report Report) HostID() string { return report.hostID }
 
 func (report Report) Candidates(providerID string) []Candidate {
 	start := sort.Search(len(report.candidates), func(i int) bool {
@@ -48,34 +57,56 @@ func (report Report) Candidates(providerID string) []Candidate {
 
 func (report Report) Digest() string { return report.digest }
 
-func newReport(candidates []Candidate) (Report, error) {
+func newReport(hostID string, candidates []Candidate) (Report, error) {
 	values := cloneCandidates(candidates)
 	sort.Slice(values, func(i, j int) bool {
 		return candidateSortKey(values[i]) < candidateSortKey(values[j])
 	})
 	record := struct {
 		SchemaVersion string      `json:"schema_version"`
+		HostID        string      `json:"host_id"`
 		Candidates    []Candidate `json:"candidates"`
-	}{discoveryReportSchemaV1, values}
+	}{discoveryReportSchemaV2, hostID, values}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return Report{}, err
 	}
-	return Report{candidates: values, digest: digest}, nil
+	return Report{hostID: hostID, candidates: values, digest: digest}, nil
 }
 
-func prepareEvidence(values []Evidence) ([]Evidence, string, error) {
+func normalizeEvidence(values []Evidence) []Evidence {
 	result := append([]Evidence{}, values...)
 	sort.Slice(result, func(i, j int) bool {
 		return evidenceSortKey(result[i]) < evidenceSortKey(result[j])
 	})
-	result = deduplicateEvidence(result)
+	return deduplicateEvidence(result)
+}
+
+func digestEvidence(values []Evidence) (string, error) {
+	type digestRecord struct {
+		ProviderID    string `json:"provider_id"`
+		HostID        string `json:"host_id"`
+		SurfaceID     string `json:"surface_id"`
+		ProbeID       string `json:"probe_id"`
+		Kind          string `json:"kind"`
+		Path          string `json:"path"`
+		Version       string `json:"version"`
+		ContentDigest string `json:"content_digest"`
+	}
+	records := make([]digestRecord, len(values))
+	for i, value := range values {
+		records[i] = digestRecord{
+			ProviderID: value.ProviderID, HostID: value.HostID, SurfaceID: value.SurfaceID,
+			ProbeID: value.ProbeID, Kind: value.Kind, Path: value.Path,
+			Version: value.Version, ContentDigest: value.ContentDigest,
+		}
+	}
 	record := struct {
-		SchemaVersion string     `json:"schema_version"`
-		Evidence      []Evidence `json:"evidence"`
-	}{discoveryEvidenceSchemaV1, result}
+		SchemaVersion string         `json:"schema_version"`
+		Evidence      []digestRecord `json:"evidence"`
+	}{discoveryEvidenceSchemaV2, records}
 	digest, _, err := canonicaljson.Digest(record)
-	return result, digest, err
+	return digest, err
 }
 
 func deduplicateEvidence(values []Evidence) []Evidence {
@@ -105,11 +136,11 @@ func cloneCandidates(values []Candidate) []Candidate {
 }
 
 func candidateSortKey(value Candidate) string {
-	return value.ProviderID + "\x00" + value.Key
+	return value.ProviderID + "\x00" + value.HostID + "\x00" + value.SurfaceID + "\x00" + value.Location + "\x00" + value.InstallationKey
 }
 
 func evidenceSortKey(value Evidence) string {
-	return value.ProviderID + "\x00" + value.CandidateKey + "\x00" + value.ProbeID + "\x00" + value.Path
+	return value.ProviderID + "\x00" + value.HostID + "\x00" + value.SurfaceID + "\x00" + value.ProbeID + "\x00" + value.Path
 }
 
 func evidenceIdentity(value Evidence) string {

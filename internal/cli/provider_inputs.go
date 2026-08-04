@@ -62,7 +62,7 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 			return providerInputs{}, fmt.Errorf("PROVIDER_DISCOVERY_REQUIRED: %w", err)
 		}
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: userHome})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: options.HostID, UserHome: userHome})
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_DISCOVERY_REQUIRED: %w", err)
 	}

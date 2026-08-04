@@ -7,12 +7,12 @@ import (
 )
 
 func TestDecodeProviderAcceptsMinimalRecord(t *testing.T) {
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
 	got, err := DecodeProvider(raw)
 	if err != nil {
 		t.Fatalf("DecodeProvider() error = %v", err)
 	}
-	if got.ID != "oaw/test" || got.DescriptorVersion != "1.0.0" {
+	if got.ID != "oaw/test" || got.DescriptorVersion != "2.0.0" {
 		t.Fatalf("DecodeProvider() = %#v", got)
 	}
 }
@@ -40,7 +40,7 @@ func TestDecodeAliasSetAcceptsMinimalRecord(t *testing.T) {
 }
 
 func TestDecodeProviderRejectsUnknownField(t *testing.T) {
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
 	assertDecodeError(t, DecodeProvider, raw, "INVALID_PROVIDER_DESCRIPTOR")
 }
 
@@ -55,7 +55,7 @@ func TestDecodeRecipeRejectsUnsupportedSchema(t *testing.T) {
 }
 
 func TestDecodeProviderRejectsInvalidEnum(t *testing.T) {
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[{"id":"implementation","input_schema":"oaw.capability-input/v1","outcome_schema":"oaw.capability-outcome/v1","maximum_effects":[],"resources":[],"request_modes":["INVALID"],"responsibilities":[],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"test"}]}]}`)
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":"test","evidence_path":"SKILL.md"}],"capabilities":[{"id":"implementation","input_schema":"oaw.capability-input/v1","outcome_schema":"oaw.capability-outcome/v1","maximum_effects":[],"resources":[],"request_modes":["INVALID"],"responsibilities":[],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"test"}]}]}`)
 	assertDecodeError(t, DecodeProvider, raw, "INVALID_PROVIDER_DESCRIPTOR")
 }
 
@@ -70,13 +70,13 @@ func TestDecodeAliasSetRejectsInvalidID(t *testing.T) {
 }
 
 func TestDecodersRejectMissingRequiredFields(t *testing.T) {
-	assertDecodeError(t, DecodeProvider, []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[]}`), "INVALID_PROVIDER_DESCRIPTOR")
+	assertDecodeError(t, DecodeProvider, []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[]}`), "INVALID_PROVIDER_DESCRIPTOR")
 	assertDecodeError(t, DecodeRecipe, []byte(`{"schema_version":"oaw.profile-recipe/v1","recipe_version":"1.0.0","id":"oaw/test","display_name":"Test","required_responsibilities":[],"nodes":[],"incident_routes":[],"entry":"start","terminal_gates":[]}`), "INVALID_PROFILE_RECIPE")
 	assertDecodeError(t, DecodeAliasSet, []byte(`{"schema_version":"oaw.profile-alias-set/v1","aliases":[]}`), "INVALID_PROFILE_ALIAS_SET")
 }
 
 func TestDecodeProviderReturnsIndependentSlices(t *testing.T) {
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","kind":"path-exists","root":"user-home","path":".agents/skills/test/SKILL.md"}],"capabilities":[]}`)
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":".agents/skills/test","evidence_path":"SKILL.md"}],"capabilities":[]}`)
 	first, err := DecodeProvider(raw)
 	if err != nil {
 		t.Fatalf("first DecodeProvider() error = %v", err)
@@ -85,16 +85,16 @@ func TestDecodeProviderReturnsIndependentSlices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second DecodeProvider() error = %v", err)
 	}
-	first.Discovery[0].Path = "changed"
-	if second.Discovery[0].Path == "changed" {
+	first.Discovery[0].Hosts[0] = "changed"
+	if second.Discovery[0].Hosts[0] == "changed" {
 		t.Fatal("DecodeProvider() reused mutable slices")
 	}
 }
 
 func TestDecodeProviderRejectsProbeShapeAndUnsafePath(t *testing.T) {
-	shape := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","kind":"path-exists","root":"user-home","path":"ok","paths":["extra"]}],"capabilities":[]}`)
+	shape := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":"ok","evidence_path":"SKILL.md","prefix":"extra"}],"capabilities":[]}`)
 	assertDecodeError(t, DecodeProvider, shape, "DISCOVERY_PROBE_SHAPE_INVALID")
-	unsafe := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","kind":"path-exists","root":"user-home","path":".agents/../secret"}],"capabilities":[]}`)
+	unsafe := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":".agents/../secret","evidence_path":"SKILL.md"}],"capabilities":[]}`)
 	assertDecodeError(t, DecodeProvider, unsafe, "DISCOVERY_PATH_INVALID")
 }
 
@@ -104,12 +104,12 @@ func TestDecodeRecipeRejectsInvalidProcedure(t *testing.T) {
 }
 
 func TestDecodeProviderValidatesProbeKindsAndCapabilityContract(t *testing.T) {
-	base := `{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":%s,"capabilities":%s}`
+	base := `{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":%s,"capabilities":%s}`
 	probes := []string{
-		`[{"id":"all","kind":"all-paths-exist","root":"project-root","paths":["a","b"]}]`,
-		`[{"id":"version","kind":"one-level-version-path-exists","root":"xdg-config-home","prefix":"cache/tool","suffix":"SKILL.md"}]`,
-		`[{"id":"bad","kind":"unknown","root":"user-home","path":"a"}]`,
-		`[{"id":"badroot","kind":"path-exists","root":"unknown","path":"a"}]`,
+		`[{"id":"direct","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"project-root","candidate_path":"a","evidence_path":"SKILL.md"}]`,
+		`[{"id":"version","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"one-level-version-path-exists","root":"xdg-config-home","prefix":"cache/tool","evidence_path":"SKILL.md"}]`,
+		`[{"id":"bad","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"unknown","root":"user-home","candidate_path":"a","evidence_path":"SKILL.md"}]`,
+		`[{"id":"badroot","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"unknown","candidate_path":"a","evidence_path":"SKILL.md"}]`,
 	}
 	for _, probes := range probes[:2] {
 		if _, err := DecodeProvider([]byte(fmt.Sprintf(base, probes, "[]"))); err != nil {
@@ -119,13 +119,13 @@ func TestDecodeProviderValidatesProbeKindsAndCapabilityContract(t *testing.T) {
 	assertDecodeError(t, DecodeProvider, []byte(fmt.Sprintf(base, probes[2], "[]")), "DISCOVERY_PROBE_SHAPE_INVALID")
 	assertDecodeError(t, DecodeProvider, []byte(fmt.Sprintf(base, probes[3], "[]")), "INVALID_PROVIDER_DESCRIPTOR")
 	capability := `[{"id":"impl","input_schema":"in","outcome_schema":"out","maximum_effects":["read-project"],"resources":["project"],"request_modes":["WORKFLOW"],"responsibilities":["implementation"],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"impl"}]}]`
-	if _, err := DecodeProvider([]byte(fmt.Sprintf(base, "[]", capability))); err != nil {
+	if _, err := DecodeProvider([]byte(fmt.Sprintf(base, probes[0], capability))); err != nil {
 		t.Fatalf("valid capability rejected: %v", err)
 	}
 }
 
 func TestDecodeProviderRejectsDuplicateMembersAndInvalidBindings(t *testing.T) {
-	base := `{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[%s]}`
+	base := `{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"probe","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":"test","evidence_path":"SKILL.md"}],"capabilities":[%s]}`
 	duplicates := []string{
 		`{"id":"impl","input_schema":"in","outcome_schema":"out","maximum_effects":["read-project","read-project"],"resources":[],"request_modes":["WORKFLOW"],"responsibilities":[],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"impl"}]}`,
 		`{"id":"impl","input_schema":"in","outcome_schema":"out","maximum_effects":[],"resources":[],"request_modes":["WORKFLOW","WORKFLOW"],"responsibilities":[],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"impl"}]}`,

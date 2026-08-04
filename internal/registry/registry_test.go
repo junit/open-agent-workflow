@@ -76,7 +76,7 @@ func TestResolveReportsUntrustedAndUserDenyWins(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: t.TempDir()})
+			evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: t.TempDir()})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -113,7 +113,7 @@ version = "1.2.3"
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ version = "1.2.3"
 	}
 }
 
-func TestResolveDoesNotSelectByVersionOrHostAffinity(t *testing.T) {
+func TestResolveSeesOnlySelectedHostCandidates(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, home, ".claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/using-superpowers/SKILL.md", "claude-6.0.3")
 	writeFile(t, home, ".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md", "claude-6.1.1")
@@ -146,7 +146,7 @@ func TestResolveDoesNotSelectByVersionOrHostAffinity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,18 +160,18 @@ func TestResolveDoesNotSelectByVersionOrHostAffinity(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolution := requireResolution(t, report, "oaw/superpowers")
-	if resolution.State != registry.Ambiguous || resolution.Reason != "PROVIDER_CANDIDATE_AMBIGUOUS" {
+	if resolution.State != registry.Verified || resolution.Reason != "PROVIDER_VERIFIED" {
 		t.Fatalf("resolution = %#v", resolution)
 	}
 	versions := make([]string, len(resolution.Candidates))
 	for index, candidate := range resolution.Candidates {
 		versions[index] = candidate.Version
 	}
-	if got := fmt.Sprint(versions); got != "[6.0.3 6.1.1 11c74d6b]" {
+	if got := fmt.Sprint(versions); got != "[11c74d6b]" {
 		t.Fatalf("candidate versions = %s", got)
 	}
-	if _, found := effective.Provider("oaw/superpowers"); found {
-		t.Fatal("ambiguous Provider entered the Effective Registry")
+	if _, found := effective.Provider("oaw/superpowers"); !found {
+		t.Fatal("selected-Host Provider did not enter the Effective Registry")
 	}
 }
 
@@ -179,7 +179,7 @@ func TestResolveAppliesPreferencesLimitsAndPartialCapabilities(t *testing.T) {
 	snapshot := customSnapshot(t, true, true)
 	home := t.TempDir()
 	writeFile(t, home, ".agents/acme/SKILL.md", "acme")
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -229,7 +229,7 @@ func TestResolveUsesDeterministicBindingFallbackAndVerifiedSubset(t *testing.T) 
 	snapshot := customSnapshot(t, false, false)
 	home := t.TempDir()
 	writeFile(t, home, ".agents/acme/SKILL.md", "acme")
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func builtInInputs(t *testing.T, userConfig string, setupHome func(*testing.T, s
 	if setupHome != nil {
 		setupHome(t, home)
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -388,16 +388,20 @@ func testSchemaRegistry(t *testing.T) *schema.Registry {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v1"
-descriptor_version = "1.0.0"
+schema_version = "oaw.provider-descriptor/v2"
+descriptor_version = "2.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
 [[discovery]]
 id = "acme-skill"
+hosts = ["codex"]
+surface = "codex-user-skills"
+distribution = "acme"
 kind = "path-exists"
 root = "user-home"
-path = ".agents/acme/SKILL.md"
+candidate_path = ".agents/acme"
+evidence_path = "SKILL.md"
 
 [[capabilities]]
 id = "review"

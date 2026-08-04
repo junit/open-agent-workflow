@@ -141,7 +141,7 @@ func TestNewCatalogRejectsNodeAndBindingErrors(t *testing.T) {
 }
 
 func testProvider(id, capabilityID, responsibility string) ProviderDescriptorRecord {
-	return ProviderDescriptorRecord{SchemaVersion: ProviderDescriptorSchemaV1, DescriptorVersion: "1.0.0", ID: id, DisplayName: id, Discovery: []DiscoveryProbe{{ID: "probe", Kind: "path-exists", Root: "user-home", Path: ".agents/skills/test/SKILL.md"}}, Capabilities: []CapabilityRecord{{ID: capabilityID, InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, RequestModes: []RequestMode{RequestModeWorkflow}, Responsibilities: []string{responsibility, "completion"}, ExecutorTopology: IsolatedRequired, HostBindings: []HostBinding{{Host: "codex", Kind: "skill", Reference: "test"}}}}}
+	return ProviderDescriptorRecord{SchemaVersion: ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: id, DisplayName: id, Discovery: []DiscoveryProbe{{ID: "probe", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "test", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/test", EvidencePath: "SKILL.md"}}, Capabilities: []CapabilityRecord{{ID: capabilityID, InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, RequestModes: []RequestMode{RequestModeWorkflow}, Responsibilities: []string{responsibility, "completion"}, ExecutorTopology: IsolatedRequired, HostBindings: []HostBinding{{Host: "codex", Kind: "skill", Reference: "test"}}}}}
 }
 
 func testRecipe(id, providerID, capabilityID string) ProfileRecipeRecord {

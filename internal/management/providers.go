@@ -89,7 +89,8 @@ func compatibilityProbeExists(home string, probe catalog.DiscoveryProbe) bool {
 	}
 	switch probe.Kind {
 	case "path-exists":
-		return regularFile(compatibilityRootedPath(home, probe.Path))
+		candidate := compatibilityRootedPath(home, probe.CandidatePath)
+		return regularFile(filepath.Join(candidate, filepath.FromSlash(probe.EvidencePath)))
 	case "one-level-version-path-exists":
 		prefix := compatibilityRootedPath(home, probe.Prefix)
 		info, err := os.Stat(prefix)
@@ -110,7 +111,7 @@ func compatibilityProbeExists(home string, probe catalog.DiscoveryProbe) bool {
 			if strings.HasPrefix(entry.Name(), ".") {
 				continue
 			}
-			candidate := filepath.Join(prefix, entry.Name(), filepath.FromSlash(probe.Suffix))
+			candidate := filepath.Join(prefix, entry.Name(), filepath.FromSlash(probe.EvidencePath))
 			if regularFile(candidate) {
 				return true
 			}

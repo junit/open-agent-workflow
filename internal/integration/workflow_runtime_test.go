@@ -166,7 +166,7 @@ func newTicket07IntegrationFixture(t *testing.T, installECC bool) ticket07Integr
 	for _, relative := range paths {
 		writeTicket07File(t, filepath.Join(home, filepath.FromSlash(relative)), evidence)
 	}
-	discovered, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	discovered, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}

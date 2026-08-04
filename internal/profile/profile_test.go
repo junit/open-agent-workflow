@@ -376,11 +376,11 @@ func compilerFixtureWithImplementationMode(t *testing.T, implementationMode cata
 	implementationBinding := catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:implement"}
 	completionBinding := catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:complete"}
 	provider := catalog.ProviderDescriptorRecord{
-		SchemaVersion:     catalog.ProviderDescriptorSchemaV1,
-		DescriptorVersion: "1.0.0",
+		SchemaVersion:     catalog.ProviderDescriptorSchemaV2,
+		DescriptorVersion: "2.0.0",
 		ID:                "acme/suite",
 		DisplayName:       "Acme Suite",
-		Discovery:         []catalog.DiscoveryProbe{},
+		Discovery:         []catalog.DiscoveryProbe{{ID: "codex", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "acme", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/acme", EvidencePath: "SKILL.md"}},
 		Capabilities: []catalog.CapabilityRecord{
 			{
 				ID: "implementation", InputSchema: "acme.input/v1", OutcomeSchema: "acme.outcome/v1",

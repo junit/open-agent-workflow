@@ -30,7 +30,7 @@ func loadFromFS(files fs.FS) (catalog.Catalog, error) {
 		if readErr != nil {
 			return catalog.Catalog{}, fmt.Errorf("BUILTIN_PROVIDER_READ_FAILED: %s: %w", path, readErr)
 		}
-		if validationErr := registry.Validate(schema.ProviderDescriptorV1, raw); validationErr != nil {
+		if validationErr := registry.Validate(schema.ProviderDescriptorV2, raw); validationErr != nil {
 			return catalog.Catalog{}, fmt.Errorf("BUILTIN_PROVIDER_INVALID: %s: %w", path, validationErr)
 		}
 		provider, decodeErr := catalog.DecodeProvider(raw)

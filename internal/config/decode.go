@@ -67,7 +67,7 @@ func DecodeProvider(raw []byte, registry *schema.Registry) (Decoded[catalog.Prov
 	if err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, err
 	}
-	if err := registry.Validate(schema.ProviderDescriptorV1, encoded); err != nil {
+	if err := registry.Validate(schema.ProviderDescriptorV2, encoded); err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 	}
 	validated, err := catalog.DecodeProvider(encoded)
@@ -251,7 +251,7 @@ func normalizeProvider(record *catalog.ProviderDescriptorRecord) {
 		record.Capabilities = []catalog.CapabilityRecord{}
 	}
 	for i := range record.Discovery {
-		normalizeStringSlice(&record.Discovery[i].Paths)
+		normalizeStringSlice(&record.Discovery[i].Hosts)
 	}
 	sort.Slice(record.Discovery, func(i, j int) bool { return record.Discovery[i].ID < record.Discovery[j].ID })
 	for i := range record.Capabilities {

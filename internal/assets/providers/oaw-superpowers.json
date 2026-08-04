@@ -1,15 +1,15 @@
 {
-  "schema_version": "oaw.provider-descriptor/v1",
-  "descriptor_version": "1.0.0",
+  "schema_version": "oaw.provider-descriptor/v2",
+  "descriptor_version": "2.0.0",
   "id": "oaw/superpowers",
   "display_name": "Superpowers",
   "discovery": [
-    {"id":"claude-direct","kind":"path-exists","root":"user-home","path":".claude/plugins/superpowers/skills/using-superpowers/SKILL.md"},
-    {"id":"codex-direct","kind":"path-exists","root":"user-home","path":".codex/plugins/superpowers/skills/using-superpowers/SKILL.md"},
-    {"id":"claude-marketplace-checkout","kind":"path-exists","root":"user-home","path":".claude/plugins/marketplaces/superpowers-marketplace/skills/using-superpowers/SKILL.md"},
-    {"id":"claude-official-cache","kind":"one-level-version-path-exists","root":"user-home","prefix":".claude/plugins/cache/claude-plugins-official/superpowers","suffix":"skills/using-superpowers/SKILL.md"},
-    {"id":"claude-marketplace-cache","kind":"one-level-version-path-exists","root":"user-home","prefix":".claude/plugins/cache/superpowers-marketplace/superpowers","suffix":"skills/using-superpowers/SKILL.md"},
-    {"id":"codex-curated-cache","kind":"one-level-version-path-exists","root":"user-home","prefix":".codex/plugins/cache/openai-api-curated/superpowers","suffix":"skills/using-superpowers/SKILL.md"}
+    {"id":"claude-direct","hosts":["claude"],"surface":"claude-plugin","distribution":"checkout","kind":"path-exists","root":"user-home","candidate_path":".claude/plugins/superpowers","evidence_path":"skills/using-superpowers/SKILL.md"},
+    {"id":"codex-direct","hosts":["codex"],"surface":"codex-plugin","distribution":"checkout","kind":"path-exists","root":"user-home","candidate_path":".codex/plugins/superpowers","evidence_path":"skills/using-superpowers/SKILL.md"},
+    {"id":"claude-marketplace-checkout","hosts":["claude"],"surface":"claude-marketplace","distribution":"marketplace","kind":"path-exists","root":"user-home","candidate_path":".claude/plugins/marketplaces/superpowers-marketplace","evidence_path":"skills/using-superpowers/SKILL.md"},
+    {"id":"claude-official-cache","hosts":["claude"],"surface":"claude-plugin-cache","distribution":"claude-official","kind":"one-level-version-path-exists","root":"user-home","prefix":".claude/plugins/cache/claude-plugins-official/superpowers","evidence_path":"skills/using-superpowers/SKILL.md"},
+    {"id":"claude-marketplace-cache","hosts":["claude"],"surface":"claude-plugin-cache","distribution":"marketplace","kind":"one-level-version-path-exists","root":"user-home","prefix":".claude/plugins/cache/superpowers-marketplace/superpowers","evidence_path":"skills/using-superpowers/SKILL.md"},
+    {"id":"codex-curated-cache","hosts":["codex"],"surface":"codex-plugin-cache","distribution":"openai-curated","kind":"one-level-version-path-exists","root":"user-home","prefix":".codex/plugins/cache/openai-api-curated/superpowers","evidence_path":"skills/using-superpowers/SKILL.md"}
   ],
   "capabilities": [
     {"id":"discovery-design","input_schema":"oaw.capability-input/v1","outcome_schema":"oaw.capability-outcome/v1","maximum_effects":["read-project","write-project"],"resources":["project-worktree"],"request_modes":["WORKFLOW"],"responsibilities":["requirements","domain-modeling","specification"],"executor_topology":"isolated-required","delegation_allow_list":[],"host_bindings":[{"host":"codex","kind":"skill","reference":"superpowers:brainstorming"}]},

@@ -31,7 +31,7 @@ func DecodeProvider(data []byte) (ProviderDescriptorRecord, error) {
 	if err := strictDecode(data, &record); err != nil {
 		return ProviderDescriptorRecord{}, fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 	}
-	if record.SchemaVersion != ProviderDescriptorSchemaV1 {
+	if record.SchemaVersion != ProviderDescriptorSchemaV2 {
 		return ProviderDescriptorRecord{}, fmt.Errorf("UNSUPPORTED_PROVIDER_SCHEMA: %q", record.SchemaVersion)
 	}
 	if record.DescriptorVersion == "" || record.ID == "" || record.DisplayName == "" || record.Discovery == nil || record.Capabilities == nil {
@@ -101,6 +101,7 @@ func DecodeAliasSet(data []byte) (ProfileAliasSetRecord, error) {
 
 func validateProviderMembers(record *ProviderDescriptorRecord) error {
 	probeIDs := map[string]struct{}{}
+	providerHosts := map[string]struct{}{}
 	for i := range record.Discovery {
 		probe := &record.Discovery[i]
 		if _, err := ParseLocalID(probe.ID); err != nil {
@@ -110,8 +111,23 @@ func validateProviderMembers(record *ProviderDescriptorRecord) error {
 			return errors.New("DUPLICATE_DISCOVERY_PROBE_ID: duplicate probe id")
 		}
 		probeIDs[probe.ID] = struct{}{}
-		if err := uniqueStrings(probe.Paths, "DUPLICATE_DISCOVERY_PATH"); err != nil {
+		if len(probe.Hosts) == 0 {
+			return errors.New("INVALID_PROVIDER_DESCRIPTOR: discovery hosts are required")
+		}
+		if err := uniqueStrings(probe.Hosts, "DUPLICATE_DISCOVERY_HOST"); err != nil {
 			return err
+		}
+		for _, host := range probe.Hosts {
+			if _, err := ParseLocalID(host); err != nil {
+				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
+			}
+			providerHosts[host] = struct{}{}
+		}
+		if _, err := ParseLocalID(probe.Surface); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
+		}
+		if _, err := ParseLocalID(probe.Distribution); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 		}
 		if err := validateProbe(probe); err != nil {
 			return err
@@ -168,8 +184,11 @@ func validateProviderMembers(record *ProviderDescriptorRecord) error {
 		}
 		bindingKeys := make(map[string]struct{}, len(capability.HostBindings))
 		for _, binding := range capability.HostBindings {
-			if binding.Host == "" || binding.Reference == "" || (binding.Kind != "skill" && binding.Kind != "agent" && binding.Kind != "tool") {
+			if _, err := ParseLocalID(binding.Host); err != nil || binding.Reference == "" || (binding.Kind != "skill" && binding.Kind != "agent" && binding.Kind != "tool") {
 				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid host binding")
+			}
+			if _, declared := providerHosts[binding.Host]; !declared {
+				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: binding host %q has no discovery probe", binding.Host)
 			}
 			key := binding.Host + "\x00" + binding.Kind + "\x00" + binding.Reference
 			if _, exists := bindingKeys[key]; exists {
@@ -244,29 +263,24 @@ func validateRecipeMembers(record *ProfileRecipeRecord) error {
 }
 
 func validateProbe(probe *DiscoveryProbe) error {
-	if probe.Kind != "path-exists" && probe.Kind != "all-paths-exist" && probe.Kind != "one-level-version-path-exists" {
+	if probe.Kind != "path-exists" && probe.Kind != "one-level-version-path-exists" {
 		return fmt.Errorf("DISCOVERY_PROBE_SHAPE_INVALID: invalid discovery kind %q", probe.Kind)
 	}
 	if probe.Root != "user-home" && probe.Root != "xdg-config-home" && probe.Root != "project-root" {
 		return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid discovery root %q", probe.Root)
 	}
-	paths := make([]string, 0, len(probe.Paths)+2)
+	paths := make([]string, 0, 2)
 	switch probe.Kind {
 	case "path-exists":
-		if probe.Path == "" || probe.Prefix != "" || probe.Suffix != "" || len(probe.Paths) != 0 {
+		if probe.CandidatePath == "" || probe.EvidencePath == "" || probe.Prefix != "" {
 			return errors.New("DISCOVERY_PROBE_SHAPE_INVALID: path-exists payload mismatch")
 		}
-		paths = append(paths, probe.Path)
-	case "all-paths-exist":
-		if len(probe.Paths) == 0 || probe.Path != "" || probe.Prefix != "" || probe.Suffix != "" {
-			return errors.New("DISCOVERY_PROBE_SHAPE_INVALID: all-paths-exist payload mismatch")
-		}
-		paths = append(paths, probe.Paths...)
+		paths = append(paths, probe.CandidatePath, probe.EvidencePath)
 	case "one-level-version-path-exists":
-		if probe.Prefix == "" || probe.Suffix == "" || probe.Path != "" || len(probe.Paths) != 0 {
+		if probe.Prefix == "" || probe.EvidencePath == "" || probe.CandidatePath != "" {
 			return errors.New("DISCOVERY_PROBE_SHAPE_INVALID: version probe payload mismatch")
 		}
-		paths = append(paths, probe.Prefix, probe.Suffix)
+		paths = append(paths, probe.Prefix, probe.EvidencePath)
 	}
 	for _, value := range paths {
 		if !safeRelativePath(value) {
@@ -307,7 +321,7 @@ func uniqueStrings(values []string, code string) error {
 func cloneProvider(record ProviderDescriptorRecord) ProviderDescriptorRecord {
 	record.Discovery = cloneSlice(record.Discovery)
 	for i := range record.Discovery {
-		record.Discovery[i].Paths = cloneSlice(record.Discovery[i].Paths)
+		record.Discovery[i].Hosts = cloneSlice(record.Discovery[i].Hosts)
 	}
 	record.Capabilities = cloneSlice(record.Capabilities)
 	for i := range record.Capabilities {

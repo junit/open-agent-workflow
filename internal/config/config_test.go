@@ -100,16 +100,20 @@ capability_ids = ["review"]
 func TestDecodeProviderTOMLUsesCatalogContract(t *testing.T) {
 	registry := testRegistry(t)
 	raw := []byte(`
-schema_version = "oaw.provider-descriptor/v1"
-descriptor_version = "1.0.0"
+schema_version = "oaw.provider-descriptor/v2"
+descriptor_version = "2.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
 [[discovery]]
 id = "acme-skill"
+hosts = ["codex"]
+surface = "codex-user-skills"
+distribution = "acme"
 kind = "path-exists"
 root = "user-home"
-path = ".agents/skills/acme/SKILL.md"
+candidate_path = ".agents/skills/acme"
+evidence_path = "SKILL.md"
 
 [[capabilities]]
 id = "review"
@@ -702,8 +706,8 @@ func projectTrustTableTOML(fingerprint ProjectFingerprint) string {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v1"
-descriptor_version = "1.0.0"
+schema_version = "oaw.provider-descriptor/v2"
+descriptor_version = "2.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 discovery = []
@@ -711,11 +715,20 @@ capabilities = []
 `
 
 const testReviewProviderTOML = `
-schema_version = "oaw.provider-descriptor/v1"
-descriptor_version = "1.0.0"
+schema_version = "oaw.provider-descriptor/v2"
+descriptor_version = "2.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
-discovery = []
+
+[[discovery]]
+id = "acme-skill"
+hosts = ["codex"]
+surface = "codex-user-skills"
+distribution = "acme"
+kind = "path-exists"
+root = "user-home"
+candidate_path = ".agents/skills/acme"
+evidence_path = "SKILL.md"
 
 [[capabilities]]
 id = "review"

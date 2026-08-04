@@ -21,7 +21,7 @@ func TestTicket02VerticalSliceProducesImmutableEffectiveRegistry(t *testing.T) {
 	writeFile(t, home, ".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", "superpowers")
 	writeFile(t, home, ".agents/skills/to-spec/SKILL.md", "matt")
 	writeFile(t, home, ".agents/acme/SKILL.md", "acme")
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ path = "providers/acme.toml"
 	if drifted.ProjectStatus() != config.ProjectUntrusted || drifted.ProjectReason() != "PROJECT_DESCRIPTOR_DIGEST_MISMATCH" {
 		t.Fatalf("drifted project = %q, %q", drifted.ProjectStatus(), drifted.ProjectReason())
 	}
-	evidence, err := discovery.Discover(drifted.Catalog(), discovery.Options{UserHome: t.TempDir()})
+	evidence, err := discovery.Discover(drifted.Catalog(), discovery.Options{HostID: "codex", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestTicket02NegativeDiscoveryAndResolutionStates(t *testing.T) {
 		home := t.TempDir()
 		outside := writeFile(t, t.TempDir(), "SKILL.md", "outside")
 		writeSymlink(t, home, ".agents/acme/SKILL.md", outside)
-		if _, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PATH_ESCAPE") {
+		if _, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home}); err == nil || !strings.Contains(err.Error(), "DISCOVERY_PATH_ESCAPE") {
 			t.Fatalf("Discover() error = %v", err)
 		}
 	})
@@ -135,7 +135,7 @@ func TestTicket02NegativeDiscoveryAndResolutionStates(t *testing.T) {
 		home := t.TempDir()
 		writeFile(t, home, ".codex/plugins/cache/openai-api-curated/superpowers/1.0.0/skills/using-superpowers/SKILL.md", "one")
 		writeFile(t, home, ".codex/plugins/cache/openai-api-curated/superpowers/2.0.0/skills/using-superpowers/SKILL.md", "two")
-		evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+		evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,7 +152,7 @@ func TestTicket02NegativeDiscoveryAndResolutionStates(t *testing.T) {
 		snapshot, _, _, _ := buildTrustedFixture(t)
 		home := t.TempDir()
 		writeFile(t, home, ".agents/acme/SKILL.md", "acme")
-		evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+		evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -261,16 +261,20 @@ func testSchemaRegistry(t *testing.T) *schema.Registry {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v1"
-descriptor_version = "1.0.0"
+schema_version = "oaw.provider-descriptor/v2"
+descriptor_version = "2.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
 [[discovery]]
 id = "acme-skill"
+hosts = ["codex"]
+surface = "codex-user-skills"
+distribution = "acme"
 kind = "path-exists"
 root = "user-home"
-path = ".agents/acme/SKILL.md"
+candidate_path = ".agents/acme"
+evidence_path = "SKILL.md"
 
 [[capabilities]]
 id = "review"

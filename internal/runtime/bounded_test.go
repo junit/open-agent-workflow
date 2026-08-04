@@ -578,7 +578,7 @@ capability_id = "review"
 		t.Fatalf("MkdirAll(ECC fixture) error = %v", err)
 	}
 	writeTestFile(t, eccPath, []byte("ecc"))
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("discovery.Discover() error = %v", err)
 	}
@@ -605,7 +605,7 @@ func newAmbiguousBoundedRuntimeFixture(t *testing.T) (boundedRuntimeFixture, str
 	}
 	home := t.TempDir()
 	for _, relative := range []string{
-		".claude/plugins/cache/claude-plugins-official/superpowers/6.1.1/skills/using-superpowers/SKILL.md",
+		".codex/plugins/cache/openai-api-curated/superpowers/6.1.1/skills/using-superpowers/SKILL.md",
 		".codex/plugins/cache/openai-api-curated/superpowers/11c74d6b/skills/using-superpowers/SKILL.md",
 	} {
 		path := filepath.Join(home, filepath.FromSlash(relative))
@@ -614,7 +614,7 @@ func newAmbiguousBoundedRuntimeFixture(t *testing.T) (boundedRuntimeFixture, str
 		}
 		writeTestFile(t, path, []byte("ambiguous superpowers"))
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatalf("discovery.Discover() error = %v", err)
 	}
@@ -739,7 +739,7 @@ func newSuperpowersBoundedStateFixture(t *testing.T, userConfig string, versions
 		}
 		writeTestFile(t, path, []byte(version))
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: home})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -764,7 +764,7 @@ func newUntrustedBoundedStateFixture(t *testing.T) boundedRuntimeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{UserHome: t.TempDir()})
+	evidence, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,16 +776,20 @@ func newUntrustedBoundedStateFixture(t *testing.T) boundedRuntimeFixture {
 }
 
 const testUntrustedProviderTOML = `
-schema_version = "oaw.provider-descriptor/v1"
-descriptor_version = "1.0.0"
+schema_version = "oaw.provider-descriptor/v2"
+descriptor_version = "2.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
 [[discovery]]
 id = "acme"
+hosts = ["codex"]
+surface = "codex-user-skills"
+distribution = "acme"
 kind = "path-exists"
 root = "user-home"
-path = ".agents/acme/SKILL.md"
+candidate_path = ".agents/acme"
+evidence_path = "SKILL.md"
 
 [[capabilities]]
 id = "review"

@@ -38,7 +38,7 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		if err := registry.Validate(schema.ProviderDescriptorV1, raw); err != nil {
+		if err := registry.Validate(schema.ProviderDescriptorV2, raw); err != nil {
 			t.Fatalf("schema validation for %s: %v", path, err)
 		}
 		record, err := catalog.DecodeProvider(raw)
@@ -46,7 +46,7 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 			t.Fatalf("DecodeProvider(%s): %v", path, err)
 		}
 		gotIDs = append(gotIDs, record.ID)
-		if record.DescriptorVersion != "1.0.0" {
+		if record.DescriptorVersion != "2.0.0" {
 			t.Errorf("%s descriptor version = %q", record.ID, record.DescriptorVersion)
 		}
 		var capabilityIDs []string
@@ -80,10 +80,10 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 			t.Errorf("%s capabilities = %v, want %v", record.ID, capabilityIDs, expectedCapabilities[record.ID])
 		}
 		for _, probe := range record.Discovery {
-			for _, pathValue := range []string{probe.Path, probe.Prefix, probe.Suffix} {
-				assertSafeDiscoveryPath(t, record.ID, probe.ID, pathValue)
+			if len(probe.Hosts) == 0 || probe.Surface == "" || probe.Distribution == "" {
+				t.Errorf("%s/%s has incomplete Host scope", record.ID, probe.ID)
 			}
-			for _, pathValue := range probe.Paths {
+			for _, pathValue := range []string{probe.CandidatePath, probe.Prefix, probe.EvidencePath} {
 				assertSafeDiscoveryPath(t, record.ID, probe.ID, pathValue)
 			}
 		}

@@ -282,7 +282,7 @@ capability_id = "review"
 	if updatedSnapshot.Digest() == fixture.snapshot.Digest() {
 		t.Fatal("updated Configuration Snapshot retained the old digest")
 	}
-	evidence, err := discovery.Discover(updatedSnapshot.Catalog(), discovery.Options{UserHome: fixture.home})
+	evidence, err := discovery.Discover(updatedSnapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: fixture.home})
 	if err != nil {
 		t.Fatal(err)
 	}
