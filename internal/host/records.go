@@ -27,15 +27,16 @@ const (
 type Feature string
 
 const (
-	FeatureIsolatedExecutor       Feature = "isolated-executor"
-	FeatureExactBindingInvocation Feature = "exact-binding-invocation"
-	FeaturePause                  Feature = "pause"
-	FeatureBundleInheritance      Feature = "bundle-inheritance"
-	FeatureEvidenceReturn         Feature = "evidence-return"
-	FeatureInvocationDedup        Feature = "invocation-deduplication"
-	FeatureCancellation           Feature = "cancellation"
-	FeatureNormalizedObservation  Feature = "normalized-observation"
-	FeatureNativeInvocation       Feature = "native-invocation"
+	FeatureIsolatedExecutor         Feature = "isolated-executor"
+	FeatureExactBindingInvocation   Feature = "exact-binding-invocation"
+	FeaturePause                    Feature = "pause"
+	FeatureBundleInheritance        Feature = "bundle-inheritance"
+	FeatureEvidenceReturn           Feature = "evidence-return"
+	FeatureInvocationDedup          Feature = "invocation-deduplication"
+	FeatureCancellation             Feature = "cancellation"
+	FeatureNormalizedObservation    Feature = "normalized-observation"
+	FeatureProviderBindingInventory Feature = "provider-binding-inventory"
+	FeatureNativeInvocation         Feature = "native-invocation"
 )
 
 type Manifest struct {
@@ -69,15 +70,16 @@ type AuditEvidence struct {
 type CheckID string
 
 const (
-	CheckIsolatedExecutor       CheckID = "isolated-executor"
-	CheckExactBindingInvocation CheckID = "exact-binding-invocation"
-	CheckPause                  CheckID = "pause"
-	CheckBundleInheritance      CheckID = "bundle-inheritance"
-	CheckEvidenceReturn         CheckID = "evidence-return"
-	CheckInvocationDedup        CheckID = "invocation-deduplication"
-	CheckCancellation           CheckID = "cancellation"
-	CheckNormalizedObservation  CheckID = "normalized-observation"
-	CheckNativeInvocation       CheckID = "native-invocation"
+	CheckIsolatedExecutor         CheckID = "isolated-executor"
+	CheckExactBindingInvocation   CheckID = "exact-binding-invocation"
+	CheckPause                    CheckID = "pause"
+	CheckBundleInheritance        CheckID = "bundle-inheritance"
+	CheckEvidenceReturn           CheckID = "evidence-return"
+	CheckInvocationDedup          CheckID = "invocation-deduplication"
+	CheckCancellation             CheckID = "cancellation"
+	CheckNormalizedObservation    CheckID = "normalized-observation"
+	CheckProviderBindingInventory CheckID = "provider-binding-inventory"
+	CheckNativeInvocation         CheckID = "native-invocation"
 )
 
 type ConformanceCheck struct {
@@ -109,6 +111,7 @@ type IntegrationRecord struct {
 }
 
 type RuntimeFrame struct {
+	HostID              string    `json:"host_id"`
 	IntegrationID       string    `json:"integration_id"`
 	UnavailableFeatures []Feature `json:"unavailable_features"`
 }

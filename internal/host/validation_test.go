@@ -186,7 +186,7 @@ func TestHostErrorAndRuntimeFrameCopies(t *testing.T) {
 	if (&host.Error{Code: "HOST_TEST"}).Error() != "HOST_TEST" {
 		t.Fatal("code-only error changed")
 	}
-	frame := host.RuntimeFrame{IntegrationID: "acme/codex-runtime", UnavailableFeatures: []host.Feature{host.FeaturePause}}
+	frame := host.RuntimeFrame{HostID: "codex", IntegrationID: "acme/codex-runtime", UnavailableFeatures: []host.Feature{host.FeaturePause}}
 	cloned := host.CloneRuntimeFrame(frame)
 	cloned.UnavailableFeatures[0] = host.FeatureCancellation
 	if frame.UnavailableFeatures[0] != host.FeaturePause {

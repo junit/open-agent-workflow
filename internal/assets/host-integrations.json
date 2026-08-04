@@ -68,10 +68,11 @@
           "invocation-deduplication",
           "isolated-executor",
           "normalized-observation",
-          "pause"
+          "pause",
+          "provider-binding-inventory"
         ]
       },
-      "manifest_digest": "1cdbf2d09620d585486000418f1770fc604ae323a9cd8c27bd3e0bdef5c30d5d",
+      "manifest_digest": "62ab43df9e567588c1f981ff6da6f7ab8da9c293f0cb99a376bca88902837112",
       "audit": {
         "status": "passed",
         "references": [
@@ -90,54 +91,59 @@
         "schema_version": "oaw.host-conformance-report/v1",
         "suite_version": "oaw.host-conformance/v1",
         "integration_id": "oaw/codex-runner",
-        "manifest_digest": "1cdbf2d09620d585486000418f1770fc604ae323a9cd8c27bd3e0bdef5c30d5d",
+        "manifest_digest": "62ab43df9e567588c1f981ff6da6f7ab8da9c293f0cb99a376bca88902837112",
         "checks": [
           {
             "id": "bundle-inheritance",
             "passed": true,
-            "evidence": "414f5003c442c7d5f2338aa813575464068f201ba3add55d1aff4b4c65b00746"
+            "evidence": "91f8a6a00fbfdb4baa7e7ddca70045ef15d3481ac58025d3ff06588bfa235022"
           },
           {
             "id": "cancellation",
             "passed": true,
-            "evidence": "7f69fe67d6f7e38cfce2d6bc8cb0b90b54fd7324ea6a1529ba53cb977a6321bb"
+            "evidence": "4a0204571becd75bba2ed94715485ad282d357915c7d96a27449890c90e1528c"
           },
           {
             "id": "evidence-return",
             "passed": true,
-            "evidence": "b3c54487b907a84536826eb6544c356b6443df427e417190dcd0716eb86f48af"
+            "evidence": "8b1f16d4e134d57ce033cef623545528a0eeabba130bd012ba479fe5abf19257"
           },
           {
             "id": "exact-binding-invocation",
             "passed": true,
-            "evidence": "5bc19488048d24242bbd23b1ba1b677654b287511cbd607118144dfe6aba435c"
+            "evidence": "47acb01679113ec088c88732a28b625c7b1f8232f91ecc3bcd9611070d06a54f"
           },
           {
             "id": "invocation-deduplication",
             "passed": true,
-            "evidence": "a6057d82c17f3ac6e36ab8809ddb04ca795a8d298557e75c20870724b9a8dac2"
+            "evidence": "5aa84cdd4351d1ca87f0d56d3d2a6dbee102fcecb55ac72860029222a9d9e99c"
           },
           {
             "id": "isolated-executor",
             "passed": true,
-            "evidence": "bcdf5e7262707817dda086bad36ff7de6fa75b60ce223dcbc0239d1f55eb7fed"
+            "evidence": "80f2596f78b01d4422f1a857bcf51857d83f47060827ec503ede530ce7703e26"
           },
           {
             "id": "normalized-observation",
             "passed": true,
-            "evidence": "5a0ae7ad8fbbae478acd4332d23af49d2ae5d87156a15fa79ea658ec1f8b02fa"
+            "evidence": "ba6d9cb990c8aa7da44a71a310a241f5197fba7a7e77ecaa60d59daa3e68127e"
           },
           {
             "id": "pause",
             "passed": true,
-            "evidence": "a3b239d0096b009dda3d0e5082f490673479c48632ddffee1ba6c1df1d1d74fa"
+            "evidence": "3c8943ebf95e1cb488a5869a172ebde000a7a7b03936066cbfa74e366064bca4"
+          },
+          {
+            "id": "provider-binding-inventory",
+            "passed": true,
+            "evidence": "66663dee641d13217afb13125fc6d941a8aa65aade45fbca0f8e2b5a79e309e4"
           }
         ],
-        "transcript_digest": "4786a868ac9bcfdbc7d7577bd2cd77b489de19e4a502a3c0ae5a8dae2727f380",
+        "transcript_digest": "8adc256e439eb038fcb087832195c46d76005b7b6cba5ae9f8863ceb86607b21",
         "passed": true,
-        "digest": "7ea7026fda4146cbd6a19db8ea25168a9c02bf2f81f67a29ba37ab3fac419e4b"
+        "digest": "d9698c6f49bb5df8b8051b85490a56dfaf425fd3c36f54d80152b96e0c7593be"
       },
-      "digest": "bea2b3a7caee2062e7b058a8fbfe1187adfc5c60ac7c033275d02e251393d303"
+      "digest": "4ccefc9fafd1802fe90638eab4c2b84fc7be234f28bee71e5bb5cc5cec86c317"
     },
     {
       "schema_version": "oaw.host-integration/v1",

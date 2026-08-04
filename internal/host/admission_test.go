@@ -15,7 +15,7 @@ func TestAdmitWorkflowReturnsPinnedEffectiveHost(t *testing.T) {
 		{Host: "codex", Kind: "skill", Reference: "superpowers:writing-plans"},
 		{Host: "codex", Kind: "agent", Reference: "matt:tdd"},
 	}
-	admitted, err := host.AdmitWorkflow([]host.IntegrationRecord{integration}, host.RuntimeFrame{IntegrationID: integration.ID}, bindings)
+	admitted, err := host.AdmitWorkflow([]host.IntegrationRecord{integration}, host.RuntimeFrame{HostID: "codex", IntegrationID: integration.ID}, bindings)
 	if err != nil {
 		t.Fatalf("AdmitWorkflow() error = %v", err)
 	}
@@ -23,7 +23,7 @@ func TestAdmitWorkflowReturnsPinnedEffectiveHost(t *testing.T) {
 		t.Fatalf("admission = %#v", admitted)
 	}
 	admitted.EffectiveFeatures[0] = host.FeatureNativeInvocation
-	fresh, err := host.AdmitWorkflow([]host.IntegrationRecord{integration}, host.RuntimeFrame{IntegrationID: integration.ID}, bindings)
+	fresh, err := host.AdmitWorkflow([]host.IntegrationRecord{integration}, host.RuntimeFrame{HostID: "codex", IntegrationID: integration.ID}, bindings)
 	if err != nil || fresh.EffectiveFeatures[0] == host.FeatureNativeInvocation {
 		t.Fatalf("AdmitWorkflow() exposed mutable storage: %#v, %v", fresh, err)
 	}
@@ -33,7 +33,7 @@ func TestAdmitWorkflowAcceptsConformingNativeIntegration(t *testing.T) {
 	integration := nativeIntegration(t)
 	admitted, err := host.AdmitWorkflow(
 		[]host.IntegrationRecord{integration},
-		host.RuntimeFrame{IntegrationID: integration.ID},
+		host.RuntimeFrame{HostID: "codex", IntegrationID: integration.ID},
 		[]catalog.HostBinding{{Host: "codex", Kind: "tool", Reference: "native.invoke"}},
 	)
 	if err != nil {
@@ -56,15 +56,16 @@ func TestAdmitWorkflowFailsClosed(t *testing.T) {
 		code     string
 	}{
 		{"missing frame", []host.IntegrationRecord{managed}, host.RuntimeFrame{}, validBinding, "HOST_INTEGRATION_REQUIRED"},
-		{"unknown Integration", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: "acme/missing"}, validBinding, "HOST_INTEGRATION_NOT_ADMITTED"},
-		{"instruction-only", []host.IntegrationRecord{instruction}, host.RuntimeFrame{IntegrationID: instruction.ID}, validBinding, "HOST_INTEGRATION_NOT_ADMITTED"},
-		{"required Feature unavailable", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID, UnavailableFeatures: []host.Feature{host.FeaturePause}}, validBinding, "HOST_RUNTIME_REQUIREMENTS_UNMET"},
-		{"unknown unavailable Feature", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID, UnavailableFeatures: []host.Feature{"invented"}}, validBinding, "HOST_RUNTIME_REQUIREMENTS_UNMET"},
-		{"duplicate unavailable Feature", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID, UnavailableFeatures: []host.Feature{host.FeaturePause, host.FeaturePause}}, validBinding, "HOST_RUNTIME_REQUIREMENTS_UNMET"},
-		{"wrong Binding Host", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID}, []catalog.HostBinding{{Host: "claude", Kind: "skill", Reference: "fixture"}}, "HOST_BINDING_UNSUPPORTED"},
-		{"unsupported Binding kind", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID}, []catalog.HostBinding{{Host: "codex", Kind: "command", Reference: "fixture"}}, "HOST_BINDING_UNSUPPORTED"},
-		{"invalid Binding", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID}, []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: ""}}, "HOST_BINDING_UNSUPPORTED"},
-		{"no Binding", []host.IntegrationRecord{managed}, host.RuntimeFrame{IntegrationID: managed.ID}, nil, "HOST_BINDING_UNSUPPORTED"},
+		{"unknown Integration", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: "acme/missing"}, validBinding, "HOST_INTEGRATION_NOT_ADMITTED"},
+		{"instruction-only", []host.IntegrationRecord{instruction}, host.RuntimeFrame{HostID: "codex", IntegrationID: instruction.ID}, validBinding, "HOST_INTEGRATION_NOT_ADMITTED"},
+		{"wrong Runtime Host", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "claude", IntegrationID: managed.ID}, validBinding, "HOST_PROVIDER_SCOPE_MISMATCH"},
+		{"required Feature unavailable", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID, UnavailableFeatures: []host.Feature{host.FeaturePause}}, validBinding, "HOST_RUNTIME_REQUIREMENTS_UNMET"},
+		{"unknown unavailable Feature", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID, UnavailableFeatures: []host.Feature{"invented"}}, validBinding, "HOST_RUNTIME_REQUIREMENTS_UNMET"},
+		{"duplicate unavailable Feature", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID, UnavailableFeatures: []host.Feature{host.FeaturePause, host.FeaturePause}}, validBinding, "HOST_RUNTIME_REQUIREMENTS_UNMET"},
+		{"wrong Binding Host", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID}, []catalog.HostBinding{{Host: "claude", Kind: "skill", Reference: "fixture"}}, "HOST_BINDING_UNSUPPORTED"},
+		{"unsupported Binding kind", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID}, []catalog.HostBinding{{Host: "codex", Kind: "command", Reference: "fixture"}}, "HOST_BINDING_UNSUPPORTED"},
+		{"invalid Binding", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID}, []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: ""}}, "HOST_BINDING_UNSUPPORTED"},
+		{"no Binding", []host.IntegrationRecord{managed}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID}, nil, "HOST_BINDING_UNSUPPORTED"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			_, err := host.AdmitWorkflow(test.records, test.frame, test.bindings)
@@ -76,7 +77,7 @@ func TestAdmitWorkflowFailsClosed(t *testing.T) {
 
 	tampered := host.CloneIntegration(managed)
 	tampered.Digest = strings.Repeat("0", 64)
-	if _, err := host.AdmitWorkflow([]host.IntegrationRecord{tampered}, host.RuntimeFrame{IntegrationID: managed.ID}, validBinding); host.ErrorCode(err) != "HOST_INTEGRATION_NOT_ADMITTED" {
+	if _, err := host.AdmitWorkflow([]host.IntegrationRecord{tampered}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID}, validBinding); host.ErrorCode(err) != "HOST_INTEGRATION_NOT_ADMITTED" {
 		t.Fatalf("tampered Integration error = %v", err)
 	}
 	pendingAudit := host.CloneIntegration(managed)
@@ -90,12 +91,19 @@ func TestAdmitWorkflowFailsClosed(t *testing.T) {
 	failedReport.Conformance.Passed = false
 	missingProtocol := host.CloneIntegration(managed)
 	missingProtocol.Manifest.Protocols = nil
+	missingInventoryFeature := host.CloneIntegration(managed)
+	for index, feature := range missingInventoryFeature.Manifest.Features {
+		if feature == host.FeatureProviderBindingInventory {
+			missingInventoryFeature.Manifest.Features = append(missingInventoryFeature.Manifest.Features[:index], missingInventoryFeature.Manifest.Features[index+1:]...)
+			break
+		}
+	}
 	for name, record := range map[string]host.IntegrationRecord{
 		"pending audit": pendingAudit, "missing Report": missingReport, "stale Report": staleReport,
-		"failed Report": failedReport, "missing Runtime Protocol": missingProtocol,
+		"failed Report": failedReport, "missing Runtime Protocol": missingProtocol, "missing Provider Binding Inventory Feature": missingInventoryFeature,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := host.AdmitWorkflow([]host.IntegrationRecord{record}, host.RuntimeFrame{IntegrationID: managed.ID}, validBinding); host.ErrorCode(err) != "HOST_INTEGRATION_NOT_ADMITTED" {
+			if _, err := host.AdmitWorkflow([]host.IntegrationRecord{record}, host.RuntimeFrame{HostID: "codex", IntegrationID: managed.ID}, validBinding); host.ErrorCode(err) != "HOST_INTEGRATION_NOT_ADMITTED" {
 				t.Fatalf("AdmitWorkflow() error = %v", err)
 			}
 		})
@@ -114,7 +122,7 @@ func nativeIntegration(t *testing.T) host.IntegrationRecord {
 	}
 	checks := make([]host.ConformanceCheck, len(manifest.Features))
 	for index, feature := range manifest.Features {
-		checks[index] = host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789"[index]), 64)}
+		checks[index] = host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789a"[index]), 64)}
 	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
 		SchemaVersion: host.ConformanceReportSchemaV1, SuiteVersion: host.ConformanceSuiteV1,

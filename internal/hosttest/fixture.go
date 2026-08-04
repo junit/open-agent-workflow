@@ -56,7 +56,7 @@ func ManagedIntegration(t testing.TB) host.IntegrationRecord {
 	features := []host.Feature{
 		host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn,
 		host.FeatureExactBindingInvocation, host.FeatureInvocationDedup, host.FeatureIsolatedExecutor,
-		host.FeatureNormalizedObservation, host.FeaturePause,
+		host.FeatureNormalizedObservation, host.FeaturePause, host.FeatureProviderBindingInventory,
 	}
 	manifest, err := host.NewManifest(host.Manifest{
 		SchemaVersion: host.HostManifestSchemaV1, ManifestVersion: "1.0.0", HostID: "codex",
@@ -72,7 +72,7 @@ func ManagedIntegration(t testing.TB) host.IntegrationRecord {
 	}
 	checks := make([]host.ConformanceCheck, len(features))
 	for index, feature := range features {
-		checks[index] = host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("12345678"[index]), 64)}
+		checks[index] = host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789"[index]), 64)}
 	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
 		SchemaVersion: host.ConformanceReportSchemaV1, SuiteVersion: host.ConformanceSuiteV1,

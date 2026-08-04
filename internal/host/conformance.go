@@ -38,6 +38,17 @@ type InvocationFixtureRequest struct {
 	EvidenceChallengeDigest string              `json:"evidence_challenge_digest"`
 }
 
+type BindingInventoryFixtureRequest struct {
+	HostID                  string              `json:"host_id"`
+	InstallationKey         string              `json:"installation_key"`
+	Binding                 catalog.HostBinding `json:"binding"`
+	EvidenceChallengeDigest string              `json:"evidence_challenge_digest"`
+}
+
+type ProviderBindingObserver interface {
+	ObserveProviderBindings(BindingInventoryFixtureRequest) (BindingInventory, error)
+}
+
 type ObservationFixtureReceipt struct {
 	InvocationID string               `json:"invocation_id"`
 	ExecutionID  string               `json:"execution_id"`
@@ -93,6 +104,12 @@ type conformanceInvocationResult struct {
 	NativeValid        bool
 }
 
+type conformanceBindingInventoryTranscript struct {
+	Request   BindingInventoryFixtureRequest
+	Inventory BindingInventory
+	Error     bool
+}
+
 func RunConformance(integrationID string, manifest Manifest, adapter ConformanceAdapter) (ConformanceReport, error) {
 	normalized, err := NewManifest(manifest)
 	if err != nil {
@@ -113,6 +130,7 @@ func RunConformance(integrationID string, manifest Manifest, adapter Conformance
 	pauseReceipt, pauseErr := adapter.Pause(pauseRequest)
 	cancelRequest := CancelFixtureRequest{InvocationID: invocations.CancelInvocationID}
 	cancelReceipt, cancelErr := adapter.Cancel(cancelRequest)
+	inventoryTranscript, inventoryValid := runConformanceBindingInventory(integrationID, normalized, adapter)
 
 	executorValid := executorErr == nil && executorReceipt.ExecutorID == executorRequest.ExecutorID && executorReceipt.Isolated
 	bundleValid := executorReceipt.BundleDigest == bundleDigest && invocations.BundleValid
@@ -124,20 +142,22 @@ func RunConformance(integrationID string, manifest Manifest, adapter Conformance
 		CheckPause: pauseValid, CheckBundleInheritance: bundleValid,
 		CheckEvidenceReturn: invocations.EvidenceValid, CheckInvocationDedup: invocations.DedupValid,
 		CheckCancellation: cancelValid, CheckNormalizedObservation: invocations.ObservationValid,
-		CheckNativeInvocation: invocations.NativeValid,
+		CheckProviderBindingInventory: inventoryValid,
+		CheckNativeInvocation:         invocations.NativeValid,
 	}
 	transcript := struct {
-		ExecutorRequest ExecutorFixtureRequest
-		ExecutorReceipt ExecutorFixtureReceipt
-		ExecutorError   bool
-		Invocations     []conformanceInvocationTranscript
-		PauseRequest    PauseFixtureRequest
-		PauseReceipt    PauseFixtureReceipt
-		PauseError      bool
-		CancelRequest   CancelFixtureRequest
-		CancelReceipt   CancelFixtureReceipt
-		CancelError     bool
-	}{executorRequest, executorReceipt, executorErr != nil, invocations.Transcripts, pauseRequest, pauseReceipt, pauseErr != nil, cancelRequest, cancelReceipt, cancelErr != nil}
+		ExecutorRequest  ExecutorFixtureRequest
+		ExecutorReceipt  ExecutorFixtureReceipt
+		ExecutorError    bool
+		Invocations      []conformanceInvocationTranscript
+		PauseRequest     PauseFixtureRequest
+		PauseReceipt     PauseFixtureReceipt
+		PauseError       bool
+		CancelRequest    CancelFixtureRequest
+		CancelReceipt    CancelFixtureReceipt
+		CancelError      bool
+		BindingInventory conformanceBindingInventoryTranscript
+	}{executorRequest, executorReceipt, executorErr != nil, invocations.Transcripts, pauseRequest, pauseReceipt, pauseErr != nil, cancelRequest, cancelReceipt, cancelErr != nil, inventoryTranscript}
 	transcriptDigest, _, err := canonicaljson.Digest(transcript)
 	if err != nil {
 		return ConformanceReport{}, hostError("HOST_CONFORMANCE_INVALID", "fixture transcript cannot be canonicalized", err)
@@ -155,6 +175,36 @@ func RunConformance(integrationID string, manifest Manifest, adapter Conformance
 		IntegrationID: integrationID, ManifestDigest: normalized.ContentDigest(),
 		Checks: checks, TranscriptDigest: transcriptDigest, Passed: allPassed,
 	})
+}
+
+func runConformanceBindingInventory(integrationID string, manifest Manifest, adapter ConformanceAdapter) (conformanceBindingInventoryTranscript, bool) {
+	request := BindingInventoryFixtureRequest{
+		HostID:                  manifest.HostID,
+		InstallationKey:         "installation-" + fixtureDigest("provider-binding-installation", integrationID, manifest.ContentDigest()),
+		Binding:                 catalog.HostBinding{Host: manifest.HostID, Kind: manifest.BindingKinds[0], Reference: "oaw-conformance-provider-binding"},
+		EvidenceChallengeDigest: fixtureDigest("provider-binding-evidence", integrationID, manifest.ContentDigest()),
+	}
+	transcript := conformanceBindingInventoryTranscript{Request: request}
+	observer, supported := any(adapter).(ProviderBindingObserver)
+	if !supported {
+		transcript.Error = true
+		return transcript, false
+	}
+	inventory, err := observer.ObserveProviderBindings(request)
+	transcript.Inventory = CloneBindingInventory(inventory)
+	transcript.Error = err != nil
+	if err != nil || inventory.HostID != request.HostID || len(inventory.Observations) != 1 {
+		return transcript, false
+	}
+	normalized, normalizeErr := NewBindingInventory(inventory.HostID, inventory.Observations)
+	if normalizeErr != nil || normalized.Digest != inventory.Digest {
+		return transcript, false
+	}
+	observation := inventory.Observations[0]
+	valid := observation.HostID == request.HostID && observation.InstallationKey == request.InstallationKey &&
+		observation.Binding == request.Binding && observation.Source == "native-probe" &&
+		observation.EvidenceReference == "evidence://host-conformance/provider-binding" && observation.Digest == request.EvidenceChallengeDigest
+	return transcript, valid
 }
 
 func runConformanceInvocations(integrationID string, manifest Manifest, adapter ConformanceAdapter, executor ExecutorFixtureRequest) conformanceInvocationResult {

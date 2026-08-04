@@ -34,7 +34,7 @@ func TestTicket08ConformanceToRestartPinsRunnerAndNativeHosts(t *testing.T) {
 		t.Run(string(level), func(t *testing.T) {
 			adapter := &ticket08Adapter{native: level == host.NativeManaged}
 			integration := ticket08ConformingIntegration(t, "acme/codex-"+string(level), "1.0.0", level, "codex", []string{"agent", "skill", "tool"}, adapter)
-			wantCalls := 3 + 2*len(integration.Manifest.BindingKinds)
+			wantCalls := 4 + 2*len(integration.Manifest.BindingKinds)
 			if adapter.calls != wantCalls {
 				t.Fatalf("conformance Adapter calls = %d, want %d", adapter.calls, wantCalls)
 			}
@@ -42,7 +42,7 @@ func TestTicket08ConformanceToRestartPinsRunnerAndNativeHosts(t *testing.T) {
 			fixture := ticket08RuntimeFixture(t, projectRoot, integration)
 			stateRoot := filepath.Join(t.TempDir(), "state")
 			projectionRoot := ticket07PhysicalDirectory(t, filepath.Join(t.TempDir(), "projection"))
-			engine := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{IntegrationID: integration.ID}, oawruntime.ProjectionOptions{Root: projectionRoot})
+			engine := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{HostID: integration.Manifest.HostID, IntegrationID: integration.ID}, oawruntime.ProjectionOptions{Root: projectionRoot})
 			selected := startAndSelectTicket07Workflow(t, engine, fixture, "ticket08-"+string(level))
 			granted, err := requestTicket07WriteStage(engine, selected, "ticket08-grant")
 			if err != nil {
@@ -51,7 +51,7 @@ func TestTicket08ConformanceToRestartPinsRunnerAndNativeHosts(t *testing.T) {
 			grant := granted.Snapshot.Grants[len(granted.Snapshot.Grants)-1]
 			prepared := ticket08Dispatch(t, engine, granted, grant, "ticket08-dispatch")
 			observed := ticket08Observe(t, engine, prepared, grant, "ticket08-observe", "")
-			restarted := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{IntegrationID: integration.ID}, oawruntime.ProjectionOptions{Root: projectionRoot})
+			restarted := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{HostID: integration.Manifest.HostID, IntegrationID: integration.ID}, oawruntime.ProjectionOptions{Root: projectionRoot})
 			inspected, err := restarted.Exchange(oawruntime.RunFrame{
 				SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameInspect,
 				MessageID: "ticket08-inspect", IdempotencyKey: "ticket08-inspect", RunID: observed.RunID,
@@ -89,7 +89,7 @@ func TestTicket08WorkflowAdmissionFailuresLeaveHeadUnchanged(t *testing.T) {
 			integration := ticket08ConformingIntegration(t, "acme/denied-host", "1.0.0", host.RunnerManaged, test.hostID, test.kinds, adapter)
 			fixture := ticket08RuntimeFixture(t, t.TempDir(), integration)
 			stateRoot := filepath.Join(t.TempDir(), "state")
-			engine := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{IntegrationID: integration.ID, UnavailableFeatures: test.unavailable}, oawruntime.ProjectionOptions{})
+			engine := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{HostID: integration.Manifest.HostID, IntegrationID: integration.ID, UnavailableFeatures: test.unavailable}, oawruntime.ProjectionOptions{})
 			started := ticket08StartWorkflow(t, engine, fixture, "ticket08-denied")
 			headBefore := ticket08Head(t, stateRoot, started.RunID)
 			_, err := engine.Exchange(oawruntime.RunFrame{
@@ -116,7 +116,7 @@ func TestTicket08StableSwitchAdoptsCurrentHostAndRejectsStaleEngine(t *testing.T
 	firstFixture := ticket08RuntimeFixture(t, projectRoot, first)
 	secondFixture := ticket08RuntimeFixture(t, projectRoot, second)
 	stateRoot := filepath.Join(t.TempDir(), "state")
-	firstEngine := ticket08Engine(t, stateRoot, firstFixture, host.RuntimeFrame{IntegrationID: first.ID}, oawruntime.ProjectionOptions{})
+	firstEngine := ticket08Engine(t, stateRoot, firstFixture, host.RuntimeFrame{HostID: first.Manifest.HostID, IntegrationID: first.ID}, oawruntime.ProjectionOptions{})
 	selected := startAndSelectTicket07Workflow(t, firstEngine, firstFixture, "ticket08-generation")
 	granted, err := requestTicket07WriteStage(firstEngine, selected, "ticket08-generation-grant")
 	if err != nil {
@@ -126,7 +126,7 @@ func TestTicket08StableSwitchAdoptsCurrentHostAndRejectsStaleEngine(t *testing.T
 	prepared := ticket08Dispatch(t, firstEngine, granted, grant, "ticket08-generation-dispatch")
 	observed := ticket08Observe(t, firstEngine, prepared, grant, "ticket08-generation-observe", "specification-approved")
 
-	secondEngine := ticket08Engine(t, stateRoot, secondFixture, host.RuntimeFrame{IntegrationID: second.ID}, oawruntime.ProjectionOptions{})
+	secondEngine := ticket08Engine(t, stateRoot, secondFixture, host.RuntimeFrame{HostID: second.Manifest.HostID, IntegrationID: second.ID}, oawruntime.ProjectionOptions{})
 	headBefore := ticket08Head(t, stateRoot, observed.RunID)
 	_, err = secondEngine.Exchange(oawruntime.RunFrame{
 		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameInspect,
@@ -157,8 +157,8 @@ func TestTicket08StableSwitchAdoptsCurrentHostAndRejectsStaleEngine(t *testing.T
 	if oawruntime.ErrorCode(err) != "HOST_INTEGRATION_CHANGED" || ticket08Head(t, stateRoot, switched.RunID) != headBefore {
 		t.Fatalf("stale Host INSPECT = %v", err)
 	}
-	wantFirst := 3 + 2*len(first.Manifest.BindingKinds)
-	wantSecond := 3 + 2*len(second.Manifest.BindingKinds)
+	wantFirst := 4 + 2*len(first.Manifest.BindingKinds)
+	wantSecond := 4 + 2*len(second.Manifest.BindingKinds)
 	if firstAdapter.calls != wantFirst || secondAdapter.calls != wantSecond {
 		t.Fatalf("Runtime invoked Adapters: first=%d second=%d", firstAdapter.calls, secondAdapter.calls)
 	}
@@ -222,6 +222,14 @@ func (adapter *ticket08Adapter) Invoke(request host.InvocationFixtureRequest) (h
 	}, nil
 }
 
+func (adapter *ticket08Adapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
+	adapter.calls++
+	return host.NewBindingInventory(request.HostID, []host.BindingObservation{{
+		HostID: request.HostID, InstallationKey: request.InstallationKey, Binding: request.Binding,
+		Source: "native-probe", EvidenceReference: "evidence://host-conformance/provider-binding", Digest: request.EvidenceChallengeDigest,
+	}})
+}
+
 func (adapter *ticket08Adapter) Pause(request host.PauseFixtureRequest) (host.PauseFixtureReceipt, error) {
 	adapter.calls++
 	return host.PauseFixtureReceipt{RunID: request.RunID, Paused: true}, nil
@@ -234,7 +242,7 @@ func (adapter *ticket08Adapter) Cancel(request host.CancelFixtureRequest) (host.
 
 func ticket08ConformingIntegration(t *testing.T, id, version string, level host.IntegrationLevel, hostID string, kinds []string, adapter *ticket08Adapter) host.IntegrationRecord {
 	t.Helper()
-	features := []host.Feature{host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn, host.FeatureExactBindingInvocation, host.FeatureInvocationDedup, host.FeatureIsolatedExecutor, host.FeatureNormalizedObservation, host.FeaturePause}
+	features := []host.Feature{host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn, host.FeatureExactBindingInvocation, host.FeatureInvocationDedup, host.FeatureIsolatedExecutor, host.FeatureNormalizedObservation, host.FeaturePause, host.FeatureProviderBindingInventory}
 	if level == host.NativeManaged {
 		features = append(features, host.FeatureNativeInvocation)
 	}

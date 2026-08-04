@@ -64,7 +64,7 @@ func TestWorkflowContinueRevalidatesActiveHostAfterRestart(t *testing.T) {
 	granted := requestWorkflowStage(t, healthy, ready, "workflow-host-restart-grant", []string{"read-project"}, []string{"project-worktree"})
 	grant := granted.Snapshot.Grants[len(granted.Snapshot.Grants)-1]
 	unavailable := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{
-		IntegrationID: fixture.hostIntegration.ID, UnavailableFeatures: []host.Feature{host.FeaturePause},
+		HostID: "codex", IntegrationID: fixture.hostIntegration.ID, UnavailableFeatures: []host.Feature{host.FeaturePause},
 	})
 	_, err := unavailable.Exchange(inspectFrame(granted.RunID, "workflow-host-restart-inspect"))
 	assertErrorCode(t, err, "HOST_RUNTIME_REQUIREMENTS_UNMET")

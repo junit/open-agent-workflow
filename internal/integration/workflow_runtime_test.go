@@ -201,7 +201,7 @@ func newTicket07Engine(t *testing.T, stateRoot string, fixture ticket07Integrati
 				Effects:   []string{"git-local", "read-project", "run-process", "write-project"},
 				Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
 			},
-			Host: host.RuntimeFrame{IntegrationID: fixture.hostIntegration.ID},
+			Host: host.RuntimeFrame{HostID: "codex", IntegrationID: fixture.hostIntegration.ID},
 			Executors: []oawruntime.WorkflowExecutorRegistration{
 				{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}},
 				{Registration: admission.ExecutorRegistration{ID: "executor-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},

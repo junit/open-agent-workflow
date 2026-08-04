@@ -374,7 +374,7 @@ func newInternalWorkflowEngineWithCandidates(t *testing.T, ambiguousSuperpowers 
 		Workflow: WorkflowOptions{
 			Configuration: snapshot, Resolutions: resolutions, Registry: effective,
 			Authority: admission.AuthorityCeiling{Effects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true},
-			Host:      host.RuntimeFrame{IntegrationID: hostIntegration.ID},
+			Host:      host.RuntimeFrame{HostID: "codex", IntegrationID: hostIntegration.ID},
 			Executors: []WorkflowExecutorRegistration{
 				{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}},
 				{Registration: admission.ExecutorRegistration{ID: "executor-review-1", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true},

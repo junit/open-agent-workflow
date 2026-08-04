@@ -85,7 +85,7 @@ func TestWorkflowProfileSelectionRejectsUnavailableHostFeature(t *testing.T) {
 	fixture := newWorkflowRuntimeFixture(t)
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	engine := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{
-		IntegrationID: fixture.hostIntegration.ID, UnavailableFeatures: []host.Feature{host.FeaturePause},
+		HostID: "codex", IntegrationID: fixture.hostIntegration.ID, UnavailableFeatures: []host.Feature{host.FeaturePause},
 	})
 	started, err := engine.Exchange(workflowStartFrame(fixture, "workflow-host-feature-start"))
 	if err != nil {
@@ -243,9 +243,9 @@ func newWorkflowRuntimeFixtureWithCandidates(t *testing.T, ambiguousSuperpowers 
 
 func newWorkflowEngine(t *testing.T, stateRoot string, fixture workflowRuntimeFixture, isolated bool) *runtime.Engine {
 	t.Helper()
-	frame := host.RuntimeFrame{IntegrationID: "oaw/codex-instruction"}
+	frame := host.RuntimeFrame{HostID: "codex", IntegrationID: "oaw/codex-instruction"}
 	if isolated {
-		frame = host.RuntimeFrame{IntegrationID: fixture.hostIntegration.ID}
+		frame = host.RuntimeFrame{HostID: "codex", IntegrationID: fixture.hostIntegration.ID}
 	}
 	return newWorkflowEngineWithHostFrame(t, stateRoot, fixture, frame)
 }

@@ -28,7 +28,7 @@ func TestTicket09DefaultConfigurationPinsSelectedCodexAndInstructionHosts(t *tes
 			t.Fatalf("default Integration claims Runtime guarantees: %#v", record)
 		}
 	}
-	_, err = host.AdmitWorkflow(records, host.RuntimeFrame{IntegrationID: "oaw/claude-instruction"}, []catalog.HostBinding{{Host: "claude", Kind: "skill", Reference: "fixture"}})
+	_, err = host.AdmitWorkflow(records, host.RuntimeFrame{HostID: "claude", IntegrationID: "oaw/claude-instruction"}, []catalog.HostBinding{{Host: "claude", Kind: "skill", Reference: "fixture"}})
 	if host.ErrorCode(err) != "HOST_INTEGRATION_NOT_ADMITTED" {
 		t.Fatalf("instruction-only fallback admission error = %v", err)
 	}

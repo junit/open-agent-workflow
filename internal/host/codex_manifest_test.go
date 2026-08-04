@@ -1,6 +1,7 @@
 package host_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
@@ -31,12 +32,24 @@ func TestBuiltinCodexRuntimeIntegrationIsSelectedAndPinned(t *testing.T) {
 	if codex.Conformance == nil || !codex.Conformance.Passed || codex.Audit.Status != host.AuditPassed {
 		t.Fatalf("Codex proof = audit=%#v conformance=%#v", codex.Audit, codex.Conformance)
 	}
+	if !slices.Contains(codex.Manifest.Features, host.FeatureProviderBindingInventory) || !containsConformanceCheck(codex.Conformance.Checks, host.CheckProviderBindingInventory) {
+		t.Fatalf("Codex binding inventory proof is missing: %#v", codex)
+	}
 	if codex.Digest == "" || codex.ManifestDigest == "" || codex.Audit.Digest == "" || codex.Conformance.Digest == "" {
 		t.Fatalf("Codex digests are incomplete: %#v", codex)
 	}
 	if err := host.ValidateIntegrationRecord(codex); err != nil {
 		t.Fatalf("ValidateIntegrationRecord(Codex) error = %v", err)
 	}
+}
+
+func containsConformanceCheck(checks []host.ConformanceCheck, id host.CheckID) bool {
+	for _, check := range checks {
+		if check.ID == id && check.Passed {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuiltinNonCodexHostsRemainInstructionOnly(t *testing.T) {

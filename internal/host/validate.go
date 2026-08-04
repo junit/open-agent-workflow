@@ -24,6 +24,7 @@ var workflowFeatures = []Feature{
 	FeatureIsolatedExecutor,
 	FeatureNormalizedObservation,
 	FeaturePause,
+	FeatureProviderBindingInventory,
 }
 
 var knownFeatures = append(append([]Feature{}, workflowFeatures...), FeatureNativeInvocation)
@@ -38,6 +39,7 @@ var knownChecks = []CheckID{
 	CheckNativeInvocation,
 	CheckNormalizedObservation,
 	CheckPause,
+	CheckProviderBindingInventory,
 }
 
 func NewManifest(value Manifest) (Manifest, error) {

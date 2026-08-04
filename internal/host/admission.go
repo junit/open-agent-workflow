@@ -33,6 +33,9 @@ func AdmitWorkflow(records []IntegrationRecord, frame RuntimeFrame, bindings []c
 	if integration == nil || ValidateIntegrationRecord(*integration) != nil || integration.Manifest.IntegrationLevel == InstructionOnly || integration.Audit.Status != AuditPassed || integration.Conformance == nil || !integration.Conformance.Passed {
 		return WorkflowAdmission{}, hostError("HOST_INTEGRATION_NOT_ADMITTED", "Host Integration is absent, untrusted, instruction-only, or nonconforming", nil)
 	}
+	if frame.HostID != integration.Manifest.HostID {
+		return WorkflowAdmission{}, hostError("HOST_PROVIDER_SCOPE_MISMATCH", "Runtime frame Host does not match the selected Host Integration", nil)
+	}
 	unavailable := append([]Feature{}, frame.UnavailableFeatures...)
 	sort.Slice(unavailable, func(left, right int) bool { return unavailable[left] < unavailable[right] })
 	for index, feature := range unavailable {

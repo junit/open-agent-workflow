@@ -17,7 +17,7 @@ func FuzzConformanceReceiptFailsClosed(f *testing.F) {
 		BindingKinds: []string{"skill"}, Features: []host.Feature{
 			host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn,
 			host.FeatureExactBindingInvocation, host.FeatureInvocationDedup,
-			host.FeatureIsolatedExecutor, host.FeatureNormalizedObservation, host.FeaturePause,
+			host.FeatureIsolatedExecutor, host.FeatureNormalizedObservation, host.FeaturePause, host.FeatureProviderBindingInventory,
 		},
 	})
 	if err != nil {
@@ -71,6 +71,10 @@ func (adapter fuzzReceiptAdapter) Invoke(request host.InvocationFixtureRequest) 
 	receipt.Binding.Reference = adapter.bindingReference
 	receipt.RawOutput = adapter.raw
 	return receipt, err
+}
+
+func (fuzzReceiptAdapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
+	return conformingAdapter{}.ObserveProviderBindings(request)
 }
 
 func (adapter fuzzReceiptAdapter) Pause(request host.PauseFixtureRequest) (host.PauseFixtureReceipt, error) {

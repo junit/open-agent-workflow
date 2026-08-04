@@ -39,7 +39,8 @@
               {"contains": {"const": "evidence-return"}},
               {"contains": {"const": "invocation-deduplication"}},
               {"contains": {"const": "cancellation"}},
-              {"contains": {"const": "normalized-observation"}}
+              {"contains": {"const": "normalized-observation"}},
+              {"contains": {"const": "provider-binding-inventory"}}
             ]
           }
         }
@@ -66,6 +67,7 @@
         "invocation-deduplication",
         "cancellation",
         "normalized-observation",
+        "provider-binding-inventory",
         "native-invocation"
       ]
     }

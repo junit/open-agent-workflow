@@ -14,7 +14,7 @@ import (
 func TestLifecycleBundlePinsWorkflowSelectionAndTrustedInputs(t *testing.T) {
 	configuration, integration := hosttest.LoadManagedSnapshot(t, "")
 	graph := workflowRecordGraph(t)
-	hostAdmission, err := host.AdmitWorkflow(configuration.HostIntegrations(), host.RuntimeFrame{IntegrationID: integration.ID}, []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: "acme:complete"}})
+	hostAdmission, err := host.AdmitWorkflow(configuration.HostIntegrations(), host.RuntimeFrame{HostID: "codex", IntegrationID: integration.ID}, []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: "acme:complete"}})
 	if err != nil {
 		t.Fatalf("host.AdmitWorkflow() error = %v", err)
 	}

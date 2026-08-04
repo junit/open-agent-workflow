@@ -61,7 +61,7 @@
       "additionalProperties": false,
       "required": ["id", "passed", "evidence"],
       "properties": {
-        "id": {"enum": ["isolated-executor", "exact-binding-invocation", "pause", "bundle-inheritance", "evidence-return", "invocation-deduplication", "cancellation", "normalized-observation", "native-invocation"]},
+        "id": {"enum": ["isolated-executor", "exact-binding-invocation", "pause", "bundle-inheritance", "evidence-return", "invocation-deduplication", "cancellation", "normalized-observation", "provider-binding-inventory", "native-invocation"]},
         "passed": {"type": "boolean"},
         "evidence": {"$ref": "#/$defs/digest"}
       }
@@ -75,7 +75,7 @@
         "suite_version": {"const": "oaw.host-conformance/v1"},
         "integration_id": {"$ref": "#/$defs/qualified_id"},
         "manifest_digest": {"$ref": "#/$defs/digest"},
-        "checks": {"type": "array", "minItems": 1, "maxItems": 9, "items": {"$ref": "#/$defs/check"}},
+        "checks": {"type": "array", "minItems": 1, "maxItems": 10, "items": {"$ref": "#/$defs/check"}},
         "transcript_digest": {"$ref": "#/$defs/digest"},
         "passed": {"type": "boolean"},
         "digest": {"$ref": "#/$defs/digest"}

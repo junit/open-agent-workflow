@@ -113,7 +113,7 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 	return oawruntime.NewEngine(oawruntime.Options{
 		StateRoot: stateRoot,
 		Bounded:   oawruntime.BoundedOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Executors: []admission.ExecutorRegistration{{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}, {ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}}},
-		Workflow:  oawruntime.WorkflowOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Host: host.RuntimeFrame{IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
+		Workflow:  oawruntime.WorkflowOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Host: host.RuntimeFrame{HostID: hostID, IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
 	})
 }
 

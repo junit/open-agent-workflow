@@ -54,6 +54,13 @@ func (adapter conformingAdapter) Invoke(request host.InvocationFixtureRequest) (
 	}, nil
 }
 
+func (conformingAdapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
+	return host.NewBindingInventory(request.HostID, []host.BindingObservation{{
+		HostID: request.HostID, InstallationKey: request.InstallationKey, Binding: request.Binding,
+		Source: "native-probe", EvidenceReference: "evidence://host-conformance/provider-binding", Digest: request.EvidenceChallengeDigest,
+	}})
+}
+
 func (conformingAdapter) Pause(request host.PauseFixtureRequest) (host.PauseFixtureReceipt, error) {
 	return host.PauseFixtureReceipt{RunID: request.RunID, Paused: true}, nil
 }
@@ -132,6 +139,26 @@ func TestRunConformanceReportsEachBehavioralFailure(t *testing.T) {
 	}
 }
 
+func TestRunConformanceRejectsInvalidProviderBindingInventory(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		mutate func(*host.BindingInventory)
+	}{
+		{"wrong Host", func(value *host.BindingInventory) { value.HostID = "claude" }},
+		{"wrong Installation", func(value *host.BindingInventory) { value.Observations[0].InstallationKey = "installation-copied" }},
+		{"wrong Binding", func(value *host.BindingInventory) { value.Observations[0].Binding.Reference = "copied" }},
+		{"wrong evidence digest", func(value *host.BindingInventory) { value.Observations[0].Digest = strings.Repeat("0", 64) }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := &mutatingAdapter{inventory: test.mutate}
+			report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
+			if err != nil || report.Passed || conformanceCheckPassed(report, host.CheckProviderBindingInventory) {
+				t.Fatalf("invalid inventory report = %#v, %v", report, err)
+			}
+		})
+	}
+}
+
 func TestRunConformanceRedactsAdapterErrors(t *testing.T) {
 	adapter := &mutatingAdapter{invokeError: errors.New(conformanceRawSecret)}
 	report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
@@ -179,6 +206,15 @@ type mutatingAdapter struct {
 	pause       func(*host.PauseFixtureReceipt)
 	cancel      func(*host.CancelFixtureReceipt)
 	invokeError error
+	inventory   func(*host.BindingInventory)
+}
+
+func (adapter *mutatingAdapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
+	value, err := (conformingAdapter{}).ObserveProviderBindings(request)
+	if adapter.inventory != nil {
+		adapter.inventory(&value)
+	}
+	return value, err
 }
 
 func (adapter *mutatingAdapter) CreateExecutor(request host.ExecutorFixtureRequest) (host.ExecutorFixtureReceipt, error) {

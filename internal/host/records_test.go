@@ -22,6 +22,7 @@ func TestNewManifestNormalizesAndDefendsCollections(t *testing.T) {
 		host.FeatureInvocationDedup,
 		host.FeatureIsolatedExecutor,
 		host.FeatureNormalizedObservation,
+		host.FeatureProviderBindingInventory,
 	}
 	manifest, err := host.NewManifest(host.Manifest{
 		SchemaVersion:    host.HostManifestSchemaV1,
@@ -112,6 +113,7 @@ func TestNewIntegrationPinsManifestAuditAndConformance(t *testing.T) {
 		{ID: host.CheckInvocationDedup, Passed: true, Evidence: strings.Repeat("6", 64)},
 		{ID: host.CheckIsolatedExecutor, Passed: true, Evidence: strings.Repeat("7", 64)},
 		{ID: host.CheckNormalizedObservation, Passed: true, Evidence: strings.Repeat("8", 64)},
+		{ID: host.CheckProviderBindingInventory, Passed: true, Evidence: strings.Repeat("9", 64)},
 	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
 		SchemaVersion:    host.ConformanceReportSchemaV1,
@@ -182,6 +184,7 @@ func runnerManifest(t *testing.T) host.Manifest {
 			host.FeatureIsolatedExecutor,
 			host.FeatureNormalizedObservation,
 			host.FeaturePause,
+			host.FeatureProviderBindingInventory,
 		},
 	})
 	if err != nil {
