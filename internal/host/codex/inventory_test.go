@@ -54,6 +54,35 @@ func TestObserveBindingsDoesNotTrustDescriptorDeclarations(t *testing.T) {
 	}
 }
 
+func TestCodexInventoryAcceptsAgentPoolOptions(t *testing.T) {
+	fixture := newCodexInventoryFixture(t, "skill", "acme:review")
+	writeInventoryFile(t, fixture.Home, ".codex/plugins/acme/skills/review/SKILL.md", "---\nname: review\n---\n")
+	writeInventoryFile(t, fixture.CodexRoot, "config.toml", "[agents]\nmax_threads = 8\nmax_depth = 2\n")
+
+	inventory, err := codex.ObserveBindings(
+		fixture.Catalog,
+		fixture.Discovery,
+		codex.InventoryOptions{UserHome: fixture.Home, CodexConfigRoot: fixture.CodexRoot},
+	)
+	if err != nil || len(inventory.Observations) != 1 {
+		t.Fatalf("inventory = %#v, %v", inventory, err)
+	}
+}
+
+func TestCodexInventoryRejectsUnknownAgentPoolOption(t *testing.T) {
+	fixture := newCodexInventoryFixture(t, "skill", "acme:review")
+	writeInventoryFile(t, fixture.CodexRoot, "config.toml", "[agents]\nunknown_limit = 8\n")
+
+	_, err := codex.ObserveBindings(
+		fixture.Catalog,
+		fixture.Discovery,
+		codex.InventoryOptions{UserHome: fixture.Home, CodexConfigRoot: fixture.CodexRoot},
+	)
+	if err == nil || !strings.Contains(err.Error(), "HOST_BINDING_REGISTRY_INVALID") {
+		t.Fatalf("ObserveBindings() error = %v", err)
+	}
+}
+
 func TestObserveBindingsRejectsUnsafeSkillEvidence(t *testing.T) {
 	t.Run("symlink escape", func(t *testing.T) {
 		fixture := newCodexInventoryFixture(t, "skill", "acme:review")

@@ -169,6 +169,13 @@ func loadAgentRegistry(codexRoot string) (map[string]string, error) {
 		return nil, fmt.Errorf("HOST_BINDING_REGISTRY_INVALID: %w", err)
 	}
 	for reference, primitive := range document.Agents {
+		if isCodexAgentPoolOption(reference) {
+			var value int
+			if err := metadata.PrimitiveDecode(primitive, &value); err != nil || value < 1 {
+				return nil, fmt.Errorf("HOST_BINDING_REGISTRY_INVALID: agent option %s must be a positive integer", reference)
+			}
+			continue
+		}
 		if _, err := catalog.ParseLocalID(reference); err != nil {
 			return nil, fmt.Errorf("HOST_BINDING_REGISTRY_INVALID: invalid agent reference %q", reference)
 		}
@@ -187,11 +194,15 @@ func loadAgentRegistry(codexRoot string) (map[string]string, error) {
 	}
 	for _, key := range metadata.Undecoded() {
 		parts := key.String()
-		if strings.HasPrefix(parts, "agents.") {
+		if strings.HasPrefix(parts, "agents.") && !isCodexAgentPoolOption(strings.TrimPrefix(parts, "agents.")) {
 			return nil, fmt.Errorf("HOST_BINDING_REGISTRY_INVALID: unknown agent field %s", parts)
 		}
 	}
 	return result, nil
+}
+
+func isCodexAgentPoolOption(value string) bool {
+	return value == "max_threads" || value == "max_depth"
 }
 
 func parseSkillName(data []byte) (string, error) {
