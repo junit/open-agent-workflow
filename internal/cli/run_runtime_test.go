@@ -103,6 +103,73 @@ func TestNewCLIEngineRejectsStartProjectRootMismatch(t *testing.T) {
 	}
 }
 
+func TestRunCodexProviderAssemblyDenialIsPathFree(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("symlink fixture")
+	}
+	home := t.TempDir()
+	configBase := t.TempDir()
+	projectRoot := t.TempDir()
+	stateRoot := filepath.Join(t.TempDir(), "runtime")
+	selectedSecret := filepath.Join(t.TempDir(), "selected-host-secret")
+	foreignSecret := filepath.Join(t.TempDir(), "foreign-host-secret")
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", configBase)
+	if err := os.MkdirAll(filepath.Dir(filepath.Join(home, ".codex", "plugins", "superpowers")), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(selectedSecret, filepath.Join(home, ".codex", "plugins", "superpowers")); err != nil {
+		t.Fatal(err)
+	}
+	foreignIndicator := filepath.Join(home, ".claude", "plugins", "superpowers", "skills", "using-superpowers", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(foreignIndicator), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(foreignIndicator, []byte(foreignSecret), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	proposal := cliDirectProposal()
+	for index := range proposal.Traits {
+		if proposal.Traits[index].Trait == classification.TraitBoundedCapabilityRequest {
+			proposal.Traits[index].Value = classification.TraitTrue
+		}
+	}
+	proposal.CapabilitySelector = &classification.CapabilitySelector{ProviderID: "oaw/superpowers", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	frame := oawruntime.RunFrame{
+		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameStart,
+		MessageID: "path-free-denial", IdempotencyKey: "path-free-denial",
+		Start: &oawruntime.StartInput{
+			RequestID: "path-free-denial", Project: oawruntime.ProjectIdentity{Root: projectRoot, ConfigurationDigest: strings.Repeat("a", 64)}, Proposal: proposal,
+			Bounded: &oawruntime.BoundedInput{DeliverableID: "path-free-denial", InputDigest: strings.Repeat("b", 64), RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"}, TerminationCondition: "one review", ExecutorID: "oaw-codex-write"},
+		},
+	}
+	raw, err := canonicaljson.Marshal(frame)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	status := RunWithInput([]string{"run", "--host=codex", "--state-root", stateRoot}, bytes.NewReader(raw), &stdout, &stderr)
+	if status == 0 {
+		t.Fatalf("run unexpectedly succeeded: stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+	var denial runtimeDenial
+	if err := json.Unmarshal(stdout.Bytes(), &denial); err != nil {
+		t.Fatalf("denial JSON = %q: %v", stdout.String(), err)
+	}
+	if denial.Kind != "DENIED" || denial.Reason != "PROVIDER_DISCOVERY_REQUIRED" || !strings.Contains(stderr.String(), "Run oaw providers inspect --host codex for physical evidence.") {
+		t.Fatalf("denial=%#v stderr=%q", denial, stderr.String())
+	}
+	for _, forbidden := range []string{selectedSecret, foreignSecret, configBase, ".claude"} {
+		if strings.Contains(stdout.String(), forbidden) || strings.Contains(stderr.String(), forbidden) {
+			t.Fatalf("Runtime denial leaked %q: stdout=%q stderr=%q", forbidden, stdout.String(), stderr.String())
+		}
+	}
+	entries, readErr := os.ReadDir(filepath.Join(stateRoot, "runs"))
+	if readErr != nil && !os.IsNotExist(readErr) || len(entries) != 0 {
+		t.Fatalf("assembly denial created Runtime State: %v, %#v", readErr, entries)
+	}
+}
+
 func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	if goruntime.GOOS == "windows" {
 		t.Skip("POSIX fixture executable")

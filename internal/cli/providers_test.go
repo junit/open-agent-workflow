@@ -44,6 +44,82 @@ func TestParseProvidersCommand(t *testing.T) {
 	}
 }
 
+func TestProvidersInspectV2SeparatesCurrentAuthorityFromForeignDiagnostics(t *testing.T) {
+	newProviderInspectionHostsFixture(t, []string{"current"}, true)
+	var stdout, stderr bytes.Buffer
+	if status := RunWithInput([]string{"providers", "inspect", "--host=codex", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
+		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
+	}
+	var output providerInspectionV2Document
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
+	}
+	if output.SchemaVersion != "oaw.provider-inspection/v2" || output.CurrentHost.HostID != "codex" || !output.CurrentHost.RuntimeManaged || output.CurrentHost.DiscoveryDigest == "" || output.CurrentHost.BindingInventoryDigest == "" || output.CurrentHost.ResolutionDigest == "" || output.CurrentHost.RegistryDigest == "" {
+		t.Fatalf("current Host = %#v", output)
+	}
+	for _, observation := range output.CurrentHost.ObservedBindings {
+		if observation.HostID != "codex" {
+			t.Fatalf("current observation = %#v", observation)
+		}
+	}
+	current := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
+	if current.State != registry.Verified || current.Instance == nil || current.Instance.HostID != "codex" || current.Instance.InstallationKey == "" || current.Instance.BindingInventoryDigest != output.CurrentHost.BindingInventoryDigest || len(current.Candidates) != 1 {
+		t.Fatalf("current Provider = %#v", current)
+	}
+	if candidate := current.Candidates[0]; candidate.HostID != "codex" || candidate.SurfaceID == "" || candidate.DistributionKey == "" || candidate.InstallationKey == "" || strings.Contains(candidate.Location, ".claude") || candidate.ProviderPin != nil {
+		t.Fatalf("current Candidate = %#v", candidate)
+	}
+	if len(output.ForeignHosts) != 1 || output.ForeignHosts[0].HostID != "claude" || output.ForeignHosts[0].DiscoveryDigest == "" {
+		t.Fatalf("foreign Hosts = %#v", output.ForeignHosts)
+	}
+	foreign := inspectionForeignProviderByID(t, output.ForeignHosts[0].Providers, "oaw/superpowers")
+	if foreign.DiagnosticReason != "PROVIDER_FOREIGN_HOST_ONLY" || len(foreign.Candidates) != 1 || foreign.Candidates[0].HostID != "claude" || !strings.Contains(foreign.Candidates[0].Location, ".claude") || foreign.Candidates[0].ProviderPin != nil {
+		t.Fatalf("foreign Provider = %#v", foreign)
+	}
+}
+
+func TestProvidersInspectForeignOnlyLeavesCurrentResolutionNotFound(t *testing.T) {
+	newProviderInspectionHostsFixture(t, nil, true)
+	var stdout, stderr bytes.Buffer
+	if status := RunWithInput([]string{"providers", "inspect", "--host=codex", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
+		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
+	}
+	var output providerInspectionV2Document
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
+	}
+	current := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
+	if current.State != registry.NotFound || current.Reason != "PROVIDER_NOT_FOUND" || len(current.Candidates) != 0 {
+		t.Fatalf("current Provider = %#v", current)
+	}
+	if len(output.ForeignHosts) != 1 {
+		t.Fatalf("foreign Hosts = %#v", output.ForeignHosts)
+	}
+	foreign := inspectionForeignProviderByID(t, output.ForeignHosts[0].Providers, "oaw/superpowers")
+	if foreign.DiagnosticReason != "PROVIDER_FOREIGN_HOST_ONLY" || len(foreign.Candidates) != 1 || foreign.Candidates[0].ProviderPin != nil {
+		t.Fatalf("foreign Provider = %#v", foreign)
+	}
+}
+
+func TestProvidersInspectSupportsPolicyOnlyHost(t *testing.T) {
+	newProviderInspectionHostsFixture(t, nil, true)
+	var stdout, stderr bytes.Buffer
+	if status := RunWithInput([]string{"providers", "inspect", "--host=claude", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
+		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
+	}
+	var output providerInspectionV2Document
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
+	}
+	if output.CurrentHost.HostID != "claude" || output.CurrentHost.RuntimeManaged || output.CurrentHost.BindingInventoryDigest != "" || output.CurrentHost.RegistryDigest == "" {
+		t.Fatalf("policy-only current Host = %#v", output.CurrentHost)
+	}
+	provider := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
+	if provider.State != registry.CandidateState || provider.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || provider.Instance != nil || len(provider.Candidates) != 1 || provider.Candidates[0].ProviderPin != nil {
+		t.Fatalf("policy-only Provider = %#v", provider)
+	}
+}
+
 func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	newProviderInspectionFixture(t, false)
 	args := []string{"providers", "inspect", "--host", "codex", "--format", "text"}
@@ -60,6 +136,11 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	}
 	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v2\"") {
 		t.Fatalf("text output = %q", firstText.String())
+	}
+	for _, field := range []string{"provider_id =", "host_id =", "installation_key =", "evidence_digest ="} {
+		if !strings.Contains(firstText.String(), field) {
+			t.Fatalf("text output omits exact pin field %q: %q", field, firstText.String())
+		}
 	}
 	if strings.Contains(firstText.String(), "indicator-secret") || strings.Contains(firstText.String(), "SKILL.md") {
 		t.Fatalf("text output leaked evidence content/path: %q", firstText.String())
@@ -93,11 +174,11 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	if err := json.Unmarshal(firstJSON.Bytes(), &output); err != nil {
 		t.Fatalf("JSON output = %q: %v", firstJSON.String(), err)
 	}
-	if output.SchemaVersion != providerInspectionSchemaV1 || output.Host != "codex" || output.ConfigurationDigest == "" || output.CatalogDigest == "" || output.DiscoveryDigest == "" || output.ResolutionDigest == "" || output.RegistryDigest == "" {
+	if output.SchemaVersion != providerInspectionSchemaV2 || output.CurrentHost.HostID != "codex" || output.ConfigurationDigest == "" || output.CatalogDigest == "" || output.CurrentHost.DiscoveryDigest == "" || output.CurrentHost.ResolutionDigest == "" || output.CurrentHost.RegistryDigest == "" {
 		t.Fatalf("output = %#v", output)
 	}
 	found := false
-	for _, provider := range output.Providers {
+	for _, provider := range output.CurrentHost.Providers {
 		if provider.ProviderID != "oaw/superpowers" {
 			continue
 		}
@@ -112,7 +193,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatalf("providers = %#v", output.Providers)
+		t.Fatalf("providers = %#v", output.CurrentHost.Providers)
 	}
 }
 
@@ -160,7 +241,88 @@ type providerInspectionFixture struct {
 	configPath string
 }
 
+type providerInspectionV2Document struct {
+	SchemaVersion string `json:"schema_version"`
+	CurrentHost   struct {
+		HostID                 string                          `json:"host_id"`
+		RuntimeManaged         bool                            `json:"runtime_managed"`
+		DiscoveryDigest        string                          `json:"discovery_digest"`
+		BindingInventoryDigest string                          `json:"binding_inventory_digest"`
+		ResolutionDigest       string                          `json:"resolution_digest"`
+		RegistryDigest         string                          `json:"registry_digest"`
+		ObservedBindings       []providerInspectionObservation `json:"observed_bindings"`
+		Providers              []providerInspectionV2Provider  `json:"providers"`
+	} `json:"current_host"`
+	ForeignHosts []struct {
+		HostID          string                                `json:"host_id"`
+		DiscoveryDigest string                                `json:"discovery_digest"`
+		Providers       []providerInspectionV2ForeignProvider `json:"providers"`
+	} `json:"foreign_hosts"`
+}
+
+type providerInspectionObservation struct {
+	HostID string `json:"host_id"`
+}
+
+type providerInspectionV2Provider struct {
+	ProviderID string                          `json:"provider_id"`
+	State      registry.ProviderState          `json:"state"`
+	Reason     string                          `json:"reason"`
+	Instance   *providerInspectionInstance     `json:"instance"`
+	Candidates []providerInspectionV2Candidate `json:"candidates"`
+}
+
+type providerInspectionV2ForeignProvider struct {
+	ProviderID       string                          `json:"provider_id"`
+	DiagnosticReason string                          `json:"diagnostic_reason"`
+	Candidates       []providerInspectionV2Candidate `json:"candidates"`
+}
+
+type providerInspectionV2Candidate struct {
+	HostID          string              `json:"host_id"`
+	SurfaceID       string              `json:"surface_id"`
+	DistributionKey string              `json:"distribution_key"`
+	InstallationKey string              `json:"installation_key"`
+	Location        string              `json:"location"`
+	Version         string              `json:"version"`
+	EvidenceDigest  string              `json:"evidence_digest"`
+	ProviderPin     *config.ProviderPin `json:"provider_pin"`
+}
+
+func inspectionProviderByID(t *testing.T, values []providerInspectionV2Provider, providerID string) providerInspectionV2Provider {
+	t.Helper()
+	for _, value := range values {
+		if value.ProviderID == providerID {
+			return value
+		}
+	}
+	t.Fatalf("Provider %s missing from %#v", providerID, values)
+	return providerInspectionV2Provider{}
+}
+
+func inspectionForeignProviderByID(t *testing.T, values []providerInspectionV2ForeignProvider, providerID string) providerInspectionV2ForeignProvider {
+	t.Helper()
+	for _, value := range values {
+		if value.ProviderID == providerID {
+			return value
+		}
+	}
+	t.Fatalf("foreign Provider %s missing from %#v", providerID, values)
+	return providerInspectionV2ForeignProvider{}
+}
+
 func newProviderInspectionFixture(t *testing.T, existingConfig bool) providerInspectionFixture {
+	t.Helper()
+	fixture := newProviderInspectionHostsFixture(t, []string{"6.0.3", "6.1.1", `11c74d6b"quoted`}, false)
+	if existingConfig {
+		if err := os.WriteFile(fixture.configPath, []byte("schema_version = \"oaw.user-config/v2\"\n"), 0o640); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return fixture
+}
+
+func newProviderInspectionHostsFixture(t *testing.T, codexVersions []string, includeClaude bool) providerInspectionFixture {
 	t.Helper()
 	userHome := t.TempDir()
 	configBase := t.TempDir()
@@ -171,16 +333,24 @@ func newProviderInspectionFixture(t *testing.T, existingConfig bool) providerIns
 		t.Fatal(err)
 	}
 	configPath := filepath.Join(configRoot, "config.toml")
-	if existingConfig {
-		if err := os.WriteFile(configPath, []byte("schema_version = \"oaw.user-config/v2\"\n"), 0o640); err != nil {
+	for _, version := range codexVersions {
+		indicator := filepath.Join(userHome, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", version, "skills", "using-superpowers", "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(indicator), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(indicator, []byte("indicator-secret"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		binding := filepath.Join(filepath.Dir(filepath.Dir(indicator)), "writing-plans", "SKILL.md")
+		if err := os.MkdirAll(filepath.Dir(binding), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(binding, []byte("---\nname: writing-plans\n---\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, version := range []string{"6.0.3", "6.1.1", "11c74d6b"} {
-		indicator := filepath.Join(userHome, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", version, "skills", "using-superpowers", "SKILL.md")
-		if version == "11c74d6b" {
-			indicator = filepath.Join(userHome, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", version+`"quoted`, "skills", "using-superpowers", "SKILL.md")
-		}
+	if includeClaude {
+		indicator := filepath.Join(userHome, ".claude", "plugins", "superpowers", "skills", "using-superpowers", "SKILL.md")
 		if err := os.MkdirAll(filepath.Dir(indicator), 0o700); err != nil {
 			t.Fatal(err)
 		}

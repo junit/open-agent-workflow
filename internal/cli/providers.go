@@ -12,10 +12,12 @@ import (
 	"github.com/BurntSushi/toml"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
-const providerInspectionSchemaV1 = "oaw.provider-inspection/v1"
+const providerInspectionSchemaV2 = "oaw.provider-inspection/v2"
 
 type providerCommand struct {
 	hostID      string
@@ -24,16 +26,36 @@ type providerCommand struct {
 }
 
 type providerInspectionOutput struct {
-	SchemaVersion       string                       `json:"schema_version"`
-	Host                string                       `json:"host"`
-	UserConfigPath      string                       `json:"user_config_path"`
-	UserConfigExists    bool                         `json:"user_config_exists"`
-	ConfigurationDigest string                       `json:"configuration_digest"`
-	CatalogDigest       string                       `json:"catalog_digest"`
-	DiscoveryDigest     string                       `json:"discovery_digest"`
-	ResolutionDigest    string                       `json:"resolution_digest"`
-	RegistryDigest      string                       `json:"registry_digest"`
-	Providers           []providerInspectionProvider `json:"providers"`
+	SchemaVersion       string                          `json:"schema_version"`
+	UserConfigPath      string                          `json:"user_config_path"`
+	UserConfigExists    bool                            `json:"user_config_exists"`
+	ConfigurationDigest string                          `json:"configuration_digest"`
+	CatalogDigest       string                          `json:"catalog_digest"`
+	CurrentHost         providerInspectionCurrentHost   `json:"current_host"`
+	ForeignHosts        []providerInspectionForeignHost `json:"foreign_hosts"`
+}
+
+type providerInspectionCurrentHost struct {
+	HostID                 string                       `json:"host_id"`
+	RuntimeManaged         bool                         `json:"runtime_managed"`
+	DiscoveryDigest        string                       `json:"discovery_digest"`
+	BindingInventoryDigest string                       `json:"binding_inventory_digest,omitempty"`
+	ResolutionDigest       string                       `json:"resolution_digest"`
+	RegistryDigest         string                       `json:"registry_digest"`
+	ObservedBindings       []host.BindingObservation    `json:"observed_bindings"`
+	Providers              []providerInspectionProvider `json:"providers"`
+}
+
+type providerInspectionForeignHost struct {
+	HostID          string                              `json:"host_id"`
+	DiscoveryDigest string                              `json:"discovery_digest"`
+	Providers       []providerInspectionForeignProvider `json:"providers"`
+}
+
+type providerInspectionForeignProvider struct {
+	ProviderID       string                        `json:"provider_id"`
+	DiagnosticReason string                        `json:"diagnostic_reason"`
+	Candidates       []providerInspectionCandidate `json:"candidates"`
 }
 
 type providerInspectionProvider struct {
@@ -58,10 +80,14 @@ type providerInspectionInstance struct {
 }
 
 type providerInspectionCandidate struct {
-	Version        string              `json:"version"`
-	Location       string              `json:"location"`
-	EvidenceDigest string              `json:"evidence_digest"`
-	ProviderPin    *config.ProviderPin `json:"provider_pin,omitempty"`
+	HostID          string              `json:"host_id"`
+	SurfaceID       string              `json:"surface_id"`
+	DistributionKey string              `json:"distribution_key"`
+	InstallationKey string              `json:"installation_key"`
+	Version         string              `json:"version"`
+	Location        string              `json:"location"`
+	EvidenceDigest  string              `json:"evidence_digest"`
+	ProviderPin     *config.ProviderPin `json:"provider_pin,omitempty"`
 }
 
 type providerPinDocument struct {
@@ -76,7 +102,7 @@ func runProviders(args []string, stdout, stderr io.Writer) int {
 		return 64
 	}
 	inputs, err := loadProviderInputs(providerInputOptions{
-		HostID: parsed.hostID, ProjectRoot: parsed.projectRoot, UserConfigRoot: defaultConfigRoot(),
+		HostID: parsed.hostID, ProjectRoot: parsed.projectRoot, UserConfigRoot: defaultConfigRoot(), IncludeForeignDiagnostics: true,
 	})
 	if err != nil {
 		reason := providerInputReason(err)
@@ -87,7 +113,7 @@ func runProviders(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "oaw: %s: %v\n", reason, err)
 		return status
 	}
-	output := providerInspectionProjection(inputs, parsed.hostID)
+	output := providerInspectionProjection(inputs)
 	if parsed.format == "json" {
 		return writeProviderInspectionJSON(output, stdout, stderr)
 	}
@@ -172,7 +198,7 @@ func providerInputReason(err error) string {
 	return "PROVIDER_INPUTS_REQUIRED"
 }
 
-func providerInspectionProjection(inputs providerInputs, hostID string) providerInspectionOutput {
+func providerInspectionProjection(inputs providerInputs) providerInspectionOutput {
 	resolutions := inputs.Resolutions.Resolutions()
 	providers := make([]providerInspectionProvider, 0, len(resolutions))
 	for _, resolution := range resolutions {
@@ -190,31 +216,70 @@ func providerInspectionProjection(inputs providerInputs, hostID string) provider
 			var pin *config.ProviderPin
 			if resolution.State == registry.Ambiguous {
 				value := config.ProviderPin{
-					ProviderID: resolution.ProviderID, HostID: hostID,
+					ProviderID: resolution.ProviderID, HostID: inputs.HostID,
 					InstallationKey: candidate.InstallationKey, EvidenceDigest: candidate.EvidenceDigest,
 					Location: candidate.Location, Version: candidate.Version,
 				}
 				pin = &value
 			}
-			provider.Candidates = append(provider.Candidates, providerInspectionCandidate{Version: candidate.Version, Location: candidate.Location, EvidenceDigest: candidate.EvidenceDigest, ProviderPin: pin})
+			provider.Candidates = append(provider.Candidates, inspectionCandidate(candidate, pin))
 		}
 		providers = append(providers, provider)
 	}
 	sort.Slice(providers, func(left, right int) bool { return providers[left].ProviderID < providers[right].ProviderID })
+	observations := make([]host.BindingObservation, 0)
+	inventoryDigest := ""
+	if inputs.Inventory != nil {
+		inventoryDigest = inputs.Inventory.Digest
+		observations = append(observations, inputs.Inventory.Observations...)
+	}
+	foreignHosts := make([]providerInspectionForeignHost, 0, len(inputs.Foreign))
+	for _, foreign := range inputs.Foreign {
+		foreignProviders := make([]providerInspectionForeignProvider, 0)
+		for _, descriptor := range inputs.Configuration.Catalog().Providers() {
+			candidates := foreign.Discovery.Candidates(descriptor.ID)
+			if len(candidates) == 0 {
+				continue
+			}
+			projected := make([]providerInspectionCandidate, 0, len(candidates))
+			for _, candidate := range candidates {
+				projected = append(projected, inspectionCandidate(candidate, nil))
+			}
+			foreignProviders = append(foreignProviders, providerInspectionForeignProvider{
+				ProviderID: descriptor.ID, DiagnosticReason: "PROVIDER_FOREIGN_HOST_ONLY", Candidates: projected,
+			})
+		}
+		foreignHosts = append(foreignHosts, providerInspectionForeignHost{
+			HostID: foreign.HostID, DiscoveryDigest: foreign.Discovery.Digest(), Providers: foreignProviders,
+		})
+	}
 	return providerInspectionOutput{
-		SchemaVersion: providerInspectionSchemaV1, Host: hostID, UserConfigPath: inputs.UserConfigPath, UserConfigExists: inputs.UserConfigExists,
-		ConfigurationDigest: inputs.Configuration.Digest(), CatalogDigest: inputs.Configuration.Catalog().Digest(), DiscoveryDigest: inputs.Discovery.Digest(),
-		ResolutionDigest: inputs.Resolutions.Digest(), RegistryDigest: inputs.Registry.Digest(), Providers: providers,
+		SchemaVersion: providerInspectionSchemaV2, UserConfigPath: inputs.UserConfigPath, UserConfigExists: inputs.UserConfigExists,
+		ConfigurationDigest: inputs.Configuration.Digest(), CatalogDigest: inputs.Configuration.Catalog().Digest(),
+		CurrentHost: providerInspectionCurrentHost{
+			HostID: inputs.HostID, RuntimeManaged: inputs.RuntimeManaged, DiscoveryDigest: inputs.Discovery.Digest(),
+			BindingInventoryDigest: inventoryDigest, ResolutionDigest: inputs.Resolutions.Digest(), RegistryDigest: inputs.Registry.Digest(),
+			ObservedBindings: observations, Providers: providers,
+		},
+		ForeignHosts: foreignHosts,
+	}
+}
+
+func inspectionCandidate(candidate discovery.Candidate, pin *config.ProviderPin) providerInspectionCandidate {
+	return providerInspectionCandidate{
+		HostID: candidate.HostID, SurfaceID: candidate.SurfaceID, DistributionKey: candidate.DistributionKey,
+		InstallationKey: candidate.InstallationKey, Version: candidate.Version, Location: candidate.Location,
+		EvidenceDigest: candidate.EvidenceDigest, ProviderPin: pin,
 	}
 }
 
 func writeProviderInspectionText(inputs providerInputs, output providerInspectionOutput, stdout, stderr io.Writer) int {
-	sections := make([]string, 0, len(output.Providers))
+	sections := make([]string, 0, len(output.CurrentHost.Providers)+len(output.ForeignHosts))
 	includeSchema := !inputs.UserConfigExists
-	for _, provider := range output.Providers {
+	for _, provider := range output.CurrentHost.Providers {
 		lines := []string{fmt.Sprintf("provider %s state=%s reason=%s", provider.ProviderID, provider.State, provider.Reason)}
 		for _, candidate := range provider.Candidates {
-			lines = append(lines, fmt.Sprintf("candidate version=%s location=%s evidence_digest=%s", candidate.Version, candidate.Location, candidate.EvidenceDigest))
+			lines = append(lines, fmt.Sprintf("candidate host_id=%s surface_id=%s distribution_key=%s installation_key=%s version=%s location=%s evidence_digest=%s", candidate.HostID, candidate.SurfaceID, candidate.DistributionKey, candidate.InstallationKey, candidate.Version, candidate.Location, candidate.EvidenceDigest))
 			if candidate.ProviderPin != nil {
 				fragment, err := encodeProviderPin(*candidate.ProviderPin, includeSchema)
 				if err != nil {
@@ -227,7 +292,16 @@ func writeProviderInspectionText(inputs providerInputs, output providerInspectio
 		}
 		sections = append(sections, strings.Join(lines, "\n"))
 	}
-	value := fmt.Sprintf("configuration path=%s exists=%t\n%s\n", output.UserConfigPath, output.UserConfigExists, strings.Join(sections, "\n\n"))
+	for _, foreign := range output.ForeignHosts {
+		for _, provider := range foreign.Providers {
+			lines := []string{fmt.Sprintf("foreign_host %s provider=%s reason=%s", foreign.HostID, provider.ProviderID, provider.DiagnosticReason)}
+			for _, candidate := range provider.Candidates {
+				lines = append(lines, fmt.Sprintf("candidate host_id=%s surface_id=%s distribution_key=%s installation_key=%s version=%s location=%s evidence_digest=%s", candidate.HostID, candidate.SurfaceID, candidate.DistributionKey, candidate.InstallationKey, candidate.Version, candidate.Location, candidate.EvidenceDigest))
+			}
+			sections = append(sections, strings.Join(lines, "\n"))
+		}
+	}
+	value := fmt.Sprintf("configuration path=%s exists=%t\ncurrent_host %s runtime_managed=%t\n%s\n", output.UserConfigPath, output.UserConfigExists, output.CurrentHost.HostID, output.CurrentHost.RuntimeManaged, strings.Join(sections, "\n\n"))
 	if _, err := io.WriteString(stdout, value); err != nil {
 		fmt.Fprintf(stderr, "oaw: OUTPUT_WRITE_FAILED: %v\n", err)
 		return 74

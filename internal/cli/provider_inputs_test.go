@@ -3,10 +3,106 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
+
+func TestLoadProviderInputsSeparatesSelectedHostAuthorityFromForeignDiagnostics(t *testing.T) {
+	userHome := t.TempDir()
+	writeProviderInputMarker(t, userHome, ".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", "codex-superpowers")
+	writeProviderInputMarker(t, userHome, ".claude/plugins/superpowers/skills/using-superpowers/SKILL.md", "claude-superpowers")
+	base := providerInputOptions{
+		HostID: "codex", ProjectRoot: t.TempDir(), UserConfigRoot: filepath.Join(t.TempDir(), "open-agent-workflow"), UserHome: userHome,
+	}
+
+	currentOnly, err := loadProviderInputs(base)
+	if err != nil {
+		t.Fatalf("loadProviderInputs(current) error = %v", err)
+	}
+	withForeignOptions := base
+	withForeignOptions.IncludeForeignDiagnostics = true
+	withForeign, err := loadProviderInputs(withForeignOptions)
+	if err != nil {
+		t.Fatalf("loadProviderInputs(foreign) error = %v", err)
+	}
+	if withForeign.HostID != "codex" || !withForeign.RuntimeManaged || withForeign.Discovery.HostID() != "codex" || withForeign.Registry.HostID() != "codex" || withForeign.Inventory == nil || len(withForeign.Foreign) != 1 || withForeign.Foreign[0].HostID != "claude" {
+		t.Fatalf("provider inputs = %#v", withForeign)
+	}
+	for _, candidate := range withForeign.Discovery.Candidates("oaw/superpowers") {
+		if candidate.HostID != "codex" || strings.Contains(candidate.Location, ".claude") {
+			t.Fatalf("current Candidate = %#v", candidate)
+		}
+	}
+	foreignCandidates := withForeign.Foreign[0].Discovery.Candidates("oaw/superpowers")
+	if len(foreignCandidates) != 1 || foreignCandidates[0].HostID != "claude" || !strings.Contains(foreignCandidates[0].Location, ".claude") {
+		t.Fatalf("foreign Candidates = %#v", foreignCandidates)
+	}
+	if len(currentOnly.Foreign) != 0 || currentOnly.Resolutions.Digest() != withForeign.Resolutions.Digest() || currentOnly.Registry.Digest() != withForeign.Registry.Digest() {
+		t.Fatalf("foreign diagnostics changed authority: current=%#v foreign=%#v", currentOnly, withForeign)
+	}
+
+	claudeOptions := base
+	claudeOptions.HostID = "claude"
+	claude, err := loadProviderInputs(claudeOptions)
+	if err != nil {
+		t.Fatalf("loadProviderInputs(claude) error = %v", err)
+	}
+	if claude.HostID != "claude" || claude.RuntimeManaged || claude.Discovery.HostID() != "claude" || claude.Inventory != nil || claude.Registry.HostID() != "claude" {
+		t.Fatalf("policy-only inputs = %#v", claude)
+	}
+	if _, found := claude.Registry.Provider("oaw/superpowers"); found {
+		t.Fatalf("policy-only Host produced verified Registry: %#v", claude.Registry)
+	}
+	resolution, found := claude.Resolutions.Resolution("oaw/superpowers")
+	if !found || resolution.State != registry.CandidateState || resolution.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || len(resolution.Candidates) != 1 {
+		t.Fatalf("policy-only resolution = %#v, found=%v", resolution, found)
+	}
+}
+
+func TestLoadProviderInputsScopesConfiguredInstallationsToTheirHost(t *testing.T) {
+	userHome := t.TempDir()
+	configRoot := filepath.Join(t.TempDir(), "open-agent-workflow")
+	codexInstallation := filepath.Join(t.TempDir(), "codex-superpowers")
+	claudeInstallation := filepath.Join(t.TempDir(), "claude-superpowers")
+	writeProviderInputMarker(t, codexInstallation, "skills/using-superpowers/SKILL.md", "codex-superpowers")
+	writeProviderInputMarker(t, claudeInstallation, "skills/using-superpowers/SKILL.md", "claude-superpowers")
+	if err := os.MkdirAll(configRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configContents := "schema_version = \"oaw.user-config/v2\"\n\n" +
+		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\nsurface_id = \"codex-plugin\"\nlocation = \"" + codexInstallation + "\"\ndiscovery_probe_id = \"codex-direct\"\n\n" +
+		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"claude\"\nsurface_id = \"claude-plugin\"\nlocation = \"" + claudeInstallation + "\"\ndiscovery_probe_id = \"claude-direct\"\n"
+	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte(configContents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	inputs, err := loadProviderInputs(providerInputOptions{
+		HostID: "codex", ProjectRoot: t.TempDir(), UserConfigRoot: configRoot, UserHome: userHome, IncludeForeignDiagnostics: true,
+	})
+	if err != nil {
+		t.Fatalf("loadProviderInputs() error = %v", err)
+	}
+	physicalCodex, err := filepath.EvalSymlinks(codexInstallation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	physicalClaude, err := filepath.EvalSymlinks(claudeInstallation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current := inputs.Discovery.Candidates("oaw/superpowers")
+	if len(current) != 1 || current[0].HostID != "codex" || current[0].Location != physicalCodex {
+		t.Fatalf("selected Host candidates = %#v", current)
+	}
+	if len(inputs.Foreign) != 1 || inputs.Foreign[0].HostID != "claude" {
+		t.Fatalf("foreign reports = %#v", inputs.Foreign)
+	}
+	foreign := inputs.Foreign[0].Discovery.Candidates("oaw/superpowers")
+	if len(foreign) != 1 || foreign[0].HostID != "claude" || foreign[0].Location != physicalClaude {
+		t.Fatalf("foreign Host candidates = %#v", foreign)
+	}
+}
 
 func TestLoadProviderInputsIsDeterministicAndReadOnly(t *testing.T) {
 	userHome := t.TempDir()
@@ -52,5 +148,16 @@ func TestLoadProviderInputsIsDeterministicAndReadOnly(t *testing.T) {
 	}
 	if _, err := os.Stat(wantConfigPath); !os.IsNotExist(err) {
 		t.Fatalf("Provider assembly created user config: %v", err)
+	}
+}
+
+func writeProviderInputMarker(t *testing.T, root, relative, content string) {
+	t.Helper()
+	path := filepath.Join(root, relative)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

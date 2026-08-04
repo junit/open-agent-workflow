@@ -100,7 +100,7 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 	}
 	inputs, err := loadProviderInputs(providerInputOptions{HostID: hostID, ProjectRoot: projectRoot, UserConfigRoot: defaultConfigRoot()})
 	if err != nil {
-		return nil, fmt.Errorf("RUNTIME_PROVIDER_INPUTS_REQUIRED: %w", err)
+		return nil, runtimeProviderInputsError(hostID, err)
 	}
 	authority := admission.AuthorityCeiling{
 		Effects:   []string{"git-local", "network-read", "read-project", "run-process", "write-project"},
@@ -115,6 +115,10 @@ func newCLIEngine(stateRoot, configuredProjectRoot string, frame oawruntime.RunF
 		Bounded:   oawruntime.BoundedOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, HostID: hostID, Authority: authority, Executors: []admission.ExecutorRegistration{{ID: "oaw-codex-write", Kind: admission.ExecutorIsolated}, {ID: "oaw-codex-review", Kind: admission.ExecutorIsolated}}},
 		Workflow:  oawruntime.WorkflowOptions{Configuration: inputs.Configuration, Resolutions: inputs.Resolutions, Registry: inputs.Registry, Authority: authority, Host: host.RuntimeFrame{HostID: hostID, IntegrationID: host.SelectedRuntimeIntegrationID}, Executors: executors},
 	})
+}
+
+func runtimeProviderInputsError(hostID string, inputErr error) error {
+	return fmt.Errorf("%s: Run oaw providers inspect --host %s for physical evidence.", providerInputReason(inputErr), hostID)
 }
 
 func defaultConfigRoot() string {
@@ -473,6 +477,9 @@ func defaultRuntimeStateRoot() string {
 func runtimeReason(err error) string {
 	if code := oawruntime.ErrorCode(err); code != "" {
 		return code
+	}
+	if reason := providerInputReason(err); strings.HasPrefix(reason, "PROVIDER_") {
+		return reason
 	}
 	return "RUNTIME_INTERNAL"
 }
