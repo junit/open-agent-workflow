@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 )
 
@@ -20,7 +21,7 @@ func validateWorkflowState(record revisionRecord) error {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow identity", nil)
 	}
 	workflow := snapshot.Workflow
-	if !validDigest(workflow.ConfigurationDigest) || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) || workflow.Input.ActiveTicket != "" && validateIdentifier(workflow.Input.ActiveTicket) != nil || workflow.ActiveTicket != workflow.Input.ActiveTicket {
+	if _, err := catalog.ParseLocalID(workflow.HostID); err != nil || !validDigest(workflow.ConfigurationDigest) || !validDigest(workflow.RegistryDigest) || validateIdentifier(workflow.Input.DeliverableID) != nil || !validDigest(workflow.Input.InputDigest) || workflow.Input.ActiveTicket != "" && validateIdentifier(workflow.Input.ActiveTicket) != nil || workflow.ActiveTicket != workflow.Input.ActiveTicket {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow trusted inputs", nil)
 	}
 	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.Observations != nil || snapshot.GrantIDs == nil || snapshot.ResourceLeaseIDs == nil || workflow.Observations == nil || workflow.RevokedGrantIDs == nil || workflow.ResourceLeases == nil || workflow.ProjectionLag == nil || len(workflow.ProjectionLag) != 0 {
@@ -82,7 +83,7 @@ func validateWorkflowMessages(record revisionRecord) error {
 func validateWorkflowBundles(snapshot RunSnapshot, record revisionRecord) error {
 	workflow := snapshot.Workflow
 	for index, bundle := range workflow.Bundles {
-		if err := validateLifecycleBundle(bundle); err != nil || bundle.RunID != snapshot.RunID || bundle.DeliverableID != workflow.Input.DeliverableID || bundle.InputDigest != workflow.Input.InputDigest || bundle.Generation != uint64(index+1) || bundle.CreatedRevision > record.Revision || snapshot.LifecycleBundles[index] != bundle.ID {
+		if err := validateLifecycleBundle(bundle); err != nil || bundle.HostID != workflow.HostID || bundle.RunID != snapshot.RunID || bundle.DeliverableID != workflow.Input.DeliverableID || bundle.InputDigest != workflow.Input.InputDigest || bundle.Generation != uint64(index+1) || bundle.CreatedRevision > record.Revision || snapshot.LifecycleBundles[index] != bundle.ID {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Workflow Bundle", err)
 		}
 		if index > 0 && workflow.Bundles[index-1].Generation >= bundle.Generation {
@@ -96,7 +97,7 @@ func validateWorkflowBundles(snapshot RunSnapshot, record revisionRecord) error 
 	if active.ID != workflow.Bundles[len(workflow.Bundles)-1].ID || active.Generation != workflow.ActiveGeneration || workflow.ActiveNodeID == "" {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow active Bundle does not match the latest generation", nil)
 	}
-	if active.Configuration.Digest != workflow.ConfigurationDigest || active.RegistryDigest != workflow.RegistryDigest {
+	if active.HostID != workflow.HostID || active.Configuration.Digest != workflow.ConfigurationDigest || active.RegistryDigest != workflow.RegistryDigest {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow active trusted inputs do not match the active Bundle", nil)
 	}
 	if _, found := workflowGraphNode(active.Graph, workflow.ActiveNodeID); !found {
@@ -129,7 +130,8 @@ func validateWorkflowGrants(snapshot RunSnapshot, record revisionRecord) error {
 		if !found || grant.Generation != bundle.Generation || grant.GraphDigest != bundle.GraphDigest || grant.NodeID == "" {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow Grant is not bound to a persisted Bundle", nil)
 		}
-		if _, found := workflowGraphNode(bundle.Graph, grant.NodeID); !found {
+		node, found := workflowGraphNode(bundle.Graph, grant.NodeID)
+		if !found || grant.ProviderID != node.ProviderID || grant.ProviderInstanceDigest != node.ProviderInstanceDigest || grant.CapabilityID != node.CapabilityID || grant.Binding != node.Binding || grant.Binding.Host != bundle.HostID {
 			return runtimeError("RUN_STATE_REVISION_INVALID", "Workflow Grant node is missing from its Bundle", nil)
 		}
 	}

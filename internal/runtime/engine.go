@@ -138,8 +138,8 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		if boundedInput == nil {
 			return RunReply{}, runtimeError("BOUNDED_REQUEST_INVALID", "Bounded input is required", nil)
 		}
-		if !boundedConfigurationReady(project, engine.bounded) {
-			return RunReply{}, runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+		if err := boundedConfigurationError(project, engine.bounded); err != nil {
+			return RunReply{}, err
 		}
 		selector, diagnostic, resolveErr := resolveBoundedSelector(classificationProposal.CapabilitySelector, boundedInput.TrustedRuleID, engine.bounded)
 		if resolveErr != nil {
@@ -160,8 +160,8 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		if workflowInput == nil || boundedInput != nil {
 			return RunReply{}, runtimeError("WORKFLOW_REQUEST_INVALID", "Workflow input is required", nil)
 		}
-		if !workflowConfigurationReady(project, engine.workflow) {
-			return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+		if err := workflowConfigurationError(project, engine.workflow); err != nil {
+			return RunReply{}, err
 		}
 		status = RunAwaitingSelection
 		event = "WORKFLOW_SELECTION_REQUIRED"
@@ -188,7 +188,7 @@ func (engine *Engine) start(frame RunFrame) (RunReply, error) {
 		}
 
 		snapshot := RunSnapshot{
-			SchemaVersion:        snapshotSchemaV1,
+			SchemaVersion:        snapshotSchemaV2,
 			RunID:                runID,
 			RequestID:            frame.Start.RequestID,
 			Project:              project,
@@ -412,8 +412,8 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 			if current.Snapshot.RequestMode != classification.RequestModeBounded || current.Snapshot.Status != RunAwaitingCapability || current.Snapshot.Bounded == nil || current.Snapshot.Bounded.Selector != nil {
 				return runtimeError("RUN_TRANSITION_INVALID", "Capability selection requires an awaiting Bounded run", nil)
 			}
-			if !boundedConfigurationMatches(current.Snapshot.Bounded, engine.bounded) {
-				return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
+			if err := boundedConfigurationMatchError(current.Snapshot.Bounded, engine.bounded); err != nil {
+				return err
 			}
 			selector, diagnostic, resolveErr := resolveBoundedSelector(normalizedContinue.CapabilitySelector, normalizedContinue.TrustedRuleID, engine.bounded)
 			if resolveErr != nil {
@@ -458,8 +458,8 @@ func (engine *Engine) continueRun(frame RunFrame) (RunReply, error) {
 			if current.Snapshot.RequestMode != classification.RequestModeBounded || current.Snapshot.Status != RunReady || current.Snapshot.Bounded == nil || current.Snapshot.Bounded.Selector == nil || len(current.Snapshot.Grants) != 0 || len(current.Snapshot.GrantIDs) != 0 {
 				return runtimeError("RUN_TRANSITION_INVALID", "REQUEST_DISPATCH requires a ready Bounded run without a Grant", nil)
 			}
-			if !boundedConfigurationMatches(current.Snapshot.Bounded, engine.bounded) {
-				return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
+			if err := boundedConfigurationMatchError(current.Snapshot.Bounded, engine.bounded); err != nil {
+				return err
 			}
 			nextRevision := current.Revision + 1
 			grant, grantErr := issueBoundedGrant(current.Snapshot, engine.bounded, nextRevision)

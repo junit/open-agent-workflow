@@ -55,12 +55,32 @@ func TestWorkflowStartRequiresExplicitProfileSelection(t *testing.T) {
 		t.Fatalf("selected Workflow state = %#v", workflow)
 	}
 	bundle := workflow.Bundles[0]
-	if selected.Snapshot.LifecycleBundles[0] != bundle.ID || bundle.Selection.Profile != "MATT-SP-HYBRID" || bundle.RecipeID != "oaw/reliable-feature" || bundle.RecipeVersion != "1.0.0" || bundle.Configuration.Digest != fixture.snapshot.Digest() || bundle.RegistryDigest != fixture.registry.Digest() || bundle.GraphDigest == "" || len(bundle.ProviderInstances) != 2 || len(bundle.AddOns) != 0 {
+	if selected.Snapshot.LifecycleBundles[0] != bundle.ID || bundle.Selection.Profile != "MATT-SP-HYBRID" || bundle.RecipeID != "oaw/reliable-feature" || bundle.RecipeVersion != "1.0.0" || bundle.HostID != "codex" || bundle.Graph.HostID != "codex" || bundle.BindingInventoryDigest != fixture.inventory.Digest || bundle.Configuration.Digest != fixture.snapshot.Digest() || bundle.RegistryDigest != fixture.registry.Digest() || bundle.GraphDigest == "" || len(bundle.ProviderInstances) != 2 || len(bundle.AddOns) != 0 {
 		t.Fatalf("Lifecycle Bundle pins = %#v", bundle)
 	}
 	if bundle.HostIntegrationID != fixture.hostIntegration.ID || bundle.HostIntegrationDigest != fixture.hostIntegration.Digest || bundle.HostManifestDigest != fixture.hostIntegration.ManifestDigest || bundle.HostAuditDigest != fixture.hostIntegration.Audit.Digest || bundle.HostConformanceDigest != fixture.hostIntegration.Conformance.Digest {
 		t.Fatalf("Lifecycle Bundle Host pins = %#v", bundle)
 	}
+}
+
+func TestWorkflowStartRejectsRegistryOutsideRuntimeHostScope(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{HostID: "claude", IntegrationID: fixture.hostIntegration.ID})
+
+	_, err := engine.Exchange(workflowStartFrame(fixture, "workflow-foreign-host"))
+	assertErrorCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+	assertRunsRootEmpty(t, stateRoot)
+}
+
+func TestWorkflowStartRejectsMissingHostConfigurationWithoutState(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{IntegrationID: fixture.hostIntegration.ID})
+
+	_, err := engine.Exchange(workflowStartFrame(fixture, "workflow-missing-host"))
+	assertErrorCode(t, err, "WORKFLOW_CONFIGURATION_REQUIRED")
+	assertRunsRootEmpty(t, stateRoot)
 }
 
 func TestWorkflowProfileSelectionRejectsInstructionOnlyHost(t *testing.T) {

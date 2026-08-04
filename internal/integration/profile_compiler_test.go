@@ -142,9 +142,12 @@ func TestEquivalentRecipeInputsHaveIdenticalGraphDigest(t *testing.T) {
 }
 
 type effectiveRegistry struct {
+	hostID       string
 	providers    map[string]registry.ProviderInstance
 	capabilities map[string]registry.VerifiedCapability
 }
+
+func (value effectiveRegistry) HostID() string { return value.hostID }
 
 func (value effectiveRegistry) Provider(id string) (registry.ProviderInstance, bool) {
 	provider, found := value.providers[id]
@@ -157,12 +160,12 @@ func (value effectiveRegistry) Capability(providerID, capabilityID string) (regi
 }
 
 func verifiedFor(available catalog.Catalog, omitted map[string]map[string]bool) effectiveRegistry {
-	result := effectiveRegistry{providers: map[string]registry.ProviderInstance{}, capabilities: map[string]registry.VerifiedCapability{}}
+	result := effectiveRegistry{hostID: "codex", providers: map[string]registry.ProviderInstance{}, capabilities: map[string]registry.VerifiedCapability{}}
 	for _, provider := range available.Providers() {
 		if omitted[provider.ID] != nil && omitted[provider.ID]["*"] {
 			continue
 		}
-		instance := registry.ProviderInstance{ProviderID: provider.ID, Digest: provider.ID + "-instance"}
+		instance := registry.ProviderInstance{ProviderID: provider.ID, HostID: "codex", Digest: provider.ID + "-instance"}
 		for _, capability := range provider.Capabilities {
 			if omitted[provider.ID] != nil && omitted[provider.ID][capability.ID] {
 				continue

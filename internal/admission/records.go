@@ -37,6 +37,7 @@ type CatalogSource interface {
 }
 
 type VerifiedRegistry interface {
+	HostID() string
 	Provider(id string) (registry.ProviderInstance, bool)
 	Capability(providerID, capabilityID string) (registry.VerifiedCapability, bool)
 	Digest() string
@@ -48,6 +49,7 @@ type GrantRequest struct {
 	DeliverableID        string
 	InputDigest          string
 	IssuedRevision       uint64
+	HostID               string
 	Selector             classification.CapabilitySelector
 	Effects              []string
 	Resources            []string
@@ -99,6 +101,7 @@ type WorkflowStageGrantRequest struct {
 	BundleID    string
 	NodeID      string
 	GraphDigest string
+	GraphHostID string
 	Generation  uint64
 	Node        profile.GraphNode
 }

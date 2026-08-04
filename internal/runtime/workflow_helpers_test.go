@@ -283,6 +283,7 @@ func TestWorkflowProjectionValidationAndFilesystemBoundaries(t *testing.T) {
 	}
 	unselected := valid
 	unselected.Profile, unselected.BundleGeneration, unselected.BundleID, unselected.BundleDigest, unselected.Stage, unselected.GraphDigest = "", 0, "", "", "", ""
+	unselected.HostID, unselected.BindingInventoryDigest = "", ""
 	unselected.HostIntegrationID, unselected.HostIntegrationDigest, unselected.HostManifestDigest, unselected.HostAuditDigest, unselected.HostConformanceDigest = "", "", "", "", ""
 	unselected.EvidenceReferences = []EvidenceReference{}
 	finalizeInternalProjection(t, &unselected)
@@ -411,14 +412,14 @@ func TestWorkflowRecordAndProjectionHelpersFailClosed(t *testing.T) {
 	identity := bundleRequest{
 		RunID: "run-0123456789abcdef0123456789abcdef", DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64),
 		Generation: 1, CreatedRevision: 2, Selection: ProfileSelection{Profile: "SP-FULL"},
-		Configuration: snapshot.Record(), RegistryDigest: strings.Repeat("2", 64),
+		Configuration: snapshot.Record(), Registry: grantTestRegistry{},
 	}
 	if _, err := newLifecycleBundle(bundleRequest{}); ErrorCode(err) != "PROFILE_SELECTION_INVALID" {
 		t.Fatalf("empty Lifecycle Bundle request error = %v", err)
 	}
 	for _, request := range []bundleRequest{
 		{Selection: ProfileSelection{Profile: "SP-FULL"}},
-		{RunID: identity.RunID, DeliverableID: identity.DeliverableID, InputDigest: identity.InputDigest, Generation: 1, CreatedRevision: 2, Selection: identity.Selection, RegistryDigest: identity.RegistryDigest},
+		{RunID: identity.RunID, DeliverableID: identity.DeliverableID, InputDigest: identity.InputDigest, Generation: 1, CreatedRevision: 2, Selection: identity.Selection, Registry: identity.Registry},
 		identity,
 	} {
 		if _, err := newLifecycleBundle(request); ErrorCode(err) != "WORKFLOW_BUNDLE_INVALID" {
@@ -490,11 +491,12 @@ func TestWorkflowRecordAndProjectionHelpersFailClosed(t *testing.T) {
 func validInternalWorkflowProjection(t *testing.T) WorkflowProjection {
 	t.Helper()
 	value := WorkflowProjection{
-		SchemaVersion: workflowProjectionSchemaV1, RunID: "run-0123456789abcdef0123456789abcdef", Revision: 2,
+		SchemaVersion: workflowProjectionSchemaV2, RunID: "run-0123456789abcdef0123456789abcdef", Revision: 2,
 		RevisionDigest: strings.Repeat("1", 64), StateDigest: strings.Repeat("2", 64), Status: RunReady,
 		Event: "WORKFLOW_BUNDLE_CREATED", ConfigurationDigest: strings.Repeat("3", 64), ActiveTicket: "ticket-10", LagStatus: "current",
 		BundleID: "bundle-0123456789abcdef0123456789abcdef", BundleDigest: strings.Repeat("4", 64),
 		Profile: "MATT-SP-HYBRID", BundleGeneration: 1, Stage: "requirements", GraphDigest: strings.Repeat("5", 64),
+		HostID: "codex", BindingInventoryDigest: strings.Repeat("b", 64),
 		EvidenceReferences: []EvidenceReference{{Reference: "evidence://projection", Digest: strings.Repeat("a", 64)}},
 		HostIntegrationID:  "acme/codex-runtime", HostIntegrationDigest: strings.Repeat("6", 64),
 		HostManifestDigest: strings.Repeat("7", 64), HostAuditDigest: strings.Repeat("8", 64),

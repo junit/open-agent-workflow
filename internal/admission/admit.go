@@ -31,7 +31,7 @@ func VerifyBoundedCapability(selector classification.CapabilitySelector, catalog
 	if catalogSource == nil || registrySource == nil || !validDigest(catalogSource.Digest()) || !validDigest(registrySource.Digest()) {
 		return admissionError("CAPABILITY_NOT_VERIFIED", "trusted Catalog or Registry is unavailable", nil)
 	}
-	request := GrantRequest{Selector: selector, Catalog: catalogSource, Registry: registrySource}
+	request := GrantRequest{HostID: registrySource.HostID(), Selector: selector, Catalog: catalogSource, Registry: registrySource}
 	_, capability, _, _, err := resolveCapability(request)
 	if err != nil {
 		return err
@@ -93,6 +93,9 @@ func IssueWorkflowStageGrant(request WorkflowStageGrantRequest) (CapabilityGrant
 	}
 	if request.Generation == 0 || !bundleIDPattern.MatchString(request.BundleID) || !validDigest(request.GraphDigest) || request.NodeID != request.Node.ID || !validLocalID(request.NodeID) {
 		return CapabilityGrant{}, admissionError("WORKFLOW_GRANT_INVALID", "invalid Stage Grant identity", nil)
+	}
+	if !validLocalID(request.GraphHostID) || request.GraphHostID != normalized.HostID || request.Node.Binding.Host != request.GraphHostID {
+		return CapabilityGrant{}, admissionError("HOST_PROVIDER_SCOPE_MISMATCH", "Stage Grant graph, node Binding, and request Host do not agree", nil)
 	}
 	providerRecord, capabilityRecord, providerInstance, verifiedCapability, err := resolveCapability(normalized)
 	if err != nil {
@@ -193,6 +196,9 @@ func normalizeGrantRequest(value GrantRequest) (GrantRequest, error) {
 	if !runIDPattern.MatchString(value.RunID) || !validIdentifier(value.RequestID) || !validIdentifier(value.DeliverableID) || !validDigest(value.InputDigest) || value.IssuedRevision == 0 || strings.TrimSpace(value.TerminationCondition) == "" || value.Catalog == nil || value.Registry == nil || !validDigest(value.Catalog.Digest()) || !validDigest(value.Registry.Digest()) {
 		return GrantRequest{}, admissionError("BOUNDED_REQUEST_INVALID", "invalid request identity or trusted inputs", nil)
 	}
+	if !validLocalID(value.HostID) || value.Registry.HostID() != value.HostID {
+		return GrantRequest{}, admissionError("HOST_PROVIDER_SCOPE_MISMATCH", "request and verified Registry Host do not agree", nil)
+	}
 	if _, err := catalog.ParseQualifiedID(value.Selector.ProviderID); err != nil {
 		return GrantRequest{}, admissionError("BOUNDED_REQUEST_INVALID", "invalid Provider selector", err)
 	}
@@ -250,6 +256,9 @@ func resolveCapability(request GrantRequest) (catalog.ProviderDescriptorRecord, 
 	verifiedCapability, capabilityVerified := request.Registry.Capability(request.Selector.ProviderID, request.Selector.CapabilityID)
 	if providerMatches != 1 || !providerFound || !capabilityVerified || providerInstance.ProviderID != request.Selector.ProviderID || verifiedCapability.ID != request.Selector.CapabilityID || !validDigest(providerInstance.Digest) {
 		return catalog.ProviderDescriptorRecord{}, catalog.CapabilityRecord{}, registry.ProviderInstance{}, registry.VerifiedCapability{}, admissionError("CAPABILITY_NOT_VERIFIED", "Provider or Capability is not uniquely verified", nil)
+	}
+	if request.Registry.HostID() != request.HostID || providerInstance.HostID != request.HostID || verifiedCapability.Binding.Host != request.HostID {
+		return catalog.ProviderDescriptorRecord{}, catalog.CapabilityRecord{}, registry.ProviderInstance{}, registry.VerifiedCapability{}, admissionError("HOST_PROVIDER_SCOPE_MISMATCH", "Registry, Provider Instance, Binding, and request Host do not agree", nil)
 	}
 	descriptorDigest, _, err := canonicaljson.Digest(providerRecord)
 	if err != nil || descriptorDigest != providerInstance.DescriptorDigest {

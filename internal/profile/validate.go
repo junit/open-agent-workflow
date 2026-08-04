@@ -75,8 +75,19 @@ func stringPresent(values []string, wanted string) bool {
 }
 
 func validateExecutionGraph(graph ExecutionGraph, omitted map[string]bool) error {
+	if _, err := catalog.ParseLocalID(graph.hostID); err != nil {
+		return compileError("HOST_PROVIDER_SCOPE_MISMATCH", "Execution Graph has invalid Host %q", graph.hostID)
+	}
+	for _, provider := range graph.providerInstances {
+		if provider.HostID != graph.hostID {
+			return compileError("HOST_PROVIDER_SCOPE_MISMATCH", "Graph Provider %s belongs to Host %q, not %q", provider.ProviderID, provider.HostID, graph.hostID)
+		}
+	}
 	nodes := make(map[string]GraphNode, len(graph.nodes))
 	for _, node := range graph.nodes {
+		if node.Binding.Host != graph.hostID {
+			return compileError("HOST_PROVIDER_SCOPE_MISMATCH", "Graph node %s Binding belongs to Host %q, not %q", node.ID, node.Binding.Host, graph.hostID)
+		}
 		nodes[node.ID] = node
 	}
 	entry, found := nodes[graph.entry]

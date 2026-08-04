@@ -142,6 +142,7 @@ func TestTicket07TwoEnginesShareAuthorityWithoutInvokingHostBindings(t *testing.
 type ticket07IntegrationFixture struct {
 	projectRoot          string
 	snapshot             config.Snapshot
+	resolutions          registry.ResolutionReport
 	registry             registry.Registry
 	hostIntegration      host.IntegrationRecord
 	hostInvocationMarker string
@@ -188,7 +189,7 @@ func newTicket07IntegrationFixture(t *testing.T, installECC bool) ticket07Integr
 	if !found || installECC && ecc.State != registry.Verified || !installECC && ecc.State != registry.NotFound {
 		t.Fatalf("ECC resolution = %#v", ecc)
 	}
-	return ticket07IntegrationFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective, hostIntegration: hostIntegration, hostInvocationMarker: marker}
+	return ticket07IntegrationFixture{projectRoot: projectRoot, snapshot: snapshot, resolutions: report, registry: effective, hostIntegration: hostIntegration, hostInvocationMarker: marker}
 }
 
 func newTicket07Engine(t *testing.T, stateRoot string, fixture ticket07IntegrationFixture, projection oawruntime.ProjectionOptions) *oawruntime.Engine {
@@ -196,7 +197,7 @@ func newTicket07Engine(t *testing.T, stateRoot string, fixture ticket07Integrati
 	engine, err := oawruntime.NewEngine(oawruntime.Options{
 		StateRoot: stateRoot,
 		Workflow: oawruntime.WorkflowOptions{
-			Configuration: fixture.snapshot, Registry: fixture.registry,
+			Configuration: fixture.snapshot, Resolutions: fixture.resolutions, Registry: fixture.registry,
 			Authority: admission.AuthorityCeiling{
 				Effects:   []string{"git-local", "read-project", "run-process", "write-project"},
 				Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,

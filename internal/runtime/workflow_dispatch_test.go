@@ -258,6 +258,30 @@ func TestWorkflowStableBoundarySwitchCreatesANewBundleGeneration(t *testing.T) {
 	}
 }
 
+func TestWorkflowHostChangeCannotInspectOrAppendBundleGeneration(t *testing.T) {
+	fixture := newWorkflowRuntimeFixture(t)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newWorkflowEngine(t, stateRoot, fixture, true)
+	ready := startAndSelectWorkflow(t, engine, fixture, "workflow-host-change")
+	granted := requestWorkflowStage(t, engine, ready, "workflow-host-change-grant", []string{"read-project"}, []string{"project-worktree"})
+	grant := granted.Snapshot.Grants[0]
+	prepared := prepareWorkflowStage(t, engine, granted, "workflow-host-change-prepared", grant)
+	observed := observeWorkflowStage(t, engine, prepared, grant, "workflow-host-change-observed", runtime.ObservationSucceeded, "succeeded", "specification-approved")
+	foreign := newWorkflowEngineWithHostFrame(t, stateRoot, fixture, host.RuntimeFrame{HostID: "claude", IntegrationID: fixture.hostIntegration.ID})
+
+	_, err := foreign.Exchange(inspectFrame(observed.RunID, "workflow-host-change-inspect"))
+	assertErrorCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+	_, err = foreign.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "workflow-host-change-switch", IdempotencyKey: "workflow-host-change-switch", RunID: observed.RunID, ExpectedRevision: observed.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalSwitchProfile, StableBoundarySwitch: &runtime.StableBoundarySwitch{
+			Boundary: "specification-approved", Selection: runtime.ProfileSelection{Profile: "SP-FULL"},
+		}},
+	})
+	assertErrorCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+	assertRevisionCount(t, stateRoot, observed.RunID, int(observed.Revision))
+}
+
 func TestWorkflowStableBoundarySwitchExplicitlyAdoptsCurrentConfiguration(t *testing.T) {
 	fixture := newWorkflowRuntimeFixture(t)
 	stateRoot := filepath.Join(t.TempDir(), "state")

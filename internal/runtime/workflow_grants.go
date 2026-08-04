@@ -35,7 +35,13 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 	if snapshot.RequestMode != classification.RequestModeWorkflow || snapshot.Status != RunReady || snapshot.Workflow == nil || snapshot.Workflow.ActiveGrantID != "" || len(snapshot.Workflow.Bundles) == 0 {
 		return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "Stage Grant requires a ready Workflow run without an active Grant", nil)
 	}
-	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) || snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() {
+	if err := workflowTrustedInputsError(engine.workflow); err != nil {
+		return RunReply{}, err
+	}
+	if snapshot.Workflow.HostID != engine.workflow.Host.HostID {
+		return RunReply{}, runtimeError("HOST_PROVIDER_SCOPE_MISMATCH", "active Workflow Run belongs to another Host", nil)
+	}
+	if snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() {
 		return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "active Workflow trusted inputs do not match Engine options", nil)
 	}
 	bundle := snapshot.Workflow.Bundles[len(snapshot.Workflow.Bundles)-1]
@@ -59,13 +65,14 @@ func (engine *Engine) issueWorkflowStage(current revisionRecord, frame RunFrame,
 		Grant: admission.GrantRequest{
 			RunID: snapshot.RunID, RequestID: snapshot.RequestID, DeliverableID: snapshot.Workflow.Input.DeliverableID,
 			InputDigest: snapshot.Workflow.Input.InputDigest, IssuedRevision: nextRevision,
+			HostID:   engine.workflow.Host.HostID,
 			Selector: classification.CapabilitySelector{ProviderID: node.ProviderID, CapabilityID: node.CapabilityID, Source: classification.SelectorUserIntent},
 			Effects:  request.RequestedEffects, Resources: request.RequestedResources, TerminationCondition: request.TerminationCondition,
 			Executor: executor, DelegationAllowList: node.DelegationAllowList,
 			Catalog: engine.workflow.Configuration.Catalog(), Registry: engine.workflow.Registry,
 			Authority: engine.workflow.Authority, Executors: registrations,
 		},
-		BundleID: bundle.ID, NodeID: node.ID, GraphDigest: bundle.GraphDigest,
+		BundleID: bundle.ID, NodeID: node.ID, GraphDigest: bundle.GraphDigest, GraphHostID: bundle.Graph.HostID,
 		Generation: bundle.Generation, Node: node,
 	})
 	if err != nil {

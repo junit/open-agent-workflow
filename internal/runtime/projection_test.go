@@ -67,7 +67,7 @@ func TestWorkflowProjectionEmitsRedactedCommittedRevisions(t *testing.T) {
 		t.Fatalf("projection evidence references = %#v", last.EvidenceReferences)
 	}
 	bundle := switched.Snapshot.Workflow.Bundles[1]
-	if last.HostIntegrationID != bundle.HostIntegrationID || last.HostIntegrationDigest != bundle.HostIntegrationDigest || last.HostManifestDigest != bundle.HostManifestDigest || last.HostAuditDigest != bundle.HostAuditDigest || last.HostConformanceDigest != bundle.HostConformanceDigest {
+	if last.HostID != bundle.HostID || last.BindingInventoryDigest != bundle.BindingInventoryDigest || last.HostIntegrationID != bundle.HostIntegrationID || last.HostIntegrationDigest != bundle.HostIntegrationDigest || last.HostManifestDigest != bundle.HostManifestDigest || last.HostAuditDigest != bundle.HostAuditDigest || last.HostConformanceDigest != bundle.HostConformanceDigest {
 		t.Fatalf("projection Host pins = %#v, want %#v", last, bundle)
 	}
 }
@@ -178,7 +178,7 @@ func TestFilesystemWorkflowProjectionRejectsSymlinkDestination(t *testing.T) {
 	_, err := oawruntime.NewEngine(oawruntime.Options{
 		StateRoot: filepath.Join(t.TempDir(), "state"),
 		Workflow: oawruntime.WorkflowOptions{
-			Configuration: fixture.snapshot, Registry: fixture.registry,
+			Configuration: fixture.snapshot, Resolutions: fixture.resolutions, Registry: fixture.registry,
 			Projection: oawruntime.ProjectionOptions{Root: root},
 		},
 	})
@@ -232,7 +232,7 @@ func newWorkflowEngineWithProjection(t *testing.T, stateRoot string, fixture wor
 	engine, err := oawruntime.NewEngine(oawruntime.Options{
 		StateRoot: stateRoot,
 		Workflow: oawruntime.WorkflowOptions{
-			Configuration: fixture.snapshot, Registry: fixture.registry,
+			Configuration: fixture.snapshot, Resolutions: fixture.resolutions, Registry: fixture.registry,
 			Authority: admission.AuthorityCeiling{
 				Effects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true,
 			},

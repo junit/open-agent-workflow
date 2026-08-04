@@ -55,6 +55,10 @@ func TestWorkflowStateValidationRejectsSemanticTampering(t *testing.T) {
 		{"stable boundary", states.ready, func(value *revisionRecord) { value.Snapshot.Workflow.LastStableBoundary = "missing" }},
 		{"Grant compatibility", states.granted, func(value *revisionRecord) { value.Snapshot.GrantIDs = nil }},
 		{"Grant content", states.granted, func(value *revisionRecord) { value.Snapshot.Grants[0].Digest = strings.Repeat("0", 64) }},
+		{"Grant Binding Host", states.granted, func(value *revisionRecord) {
+			value.Snapshot.Grants[0].Binding.Host = "claude"
+			resignCapabilityGrant(t, &value.Snapshot.Grants[0])
+		}},
 		{"Grant ID", states.granted, func(value *revisionRecord) { value.Snapshot.GrantIDs[0] = "grant-other" }},
 		{"duplicate Grant", states.granted, func(value *revisionRecord) {
 			value.Snapshot.Grants = append(value.Snapshot.Grants, value.Snapshot.Grants[0])

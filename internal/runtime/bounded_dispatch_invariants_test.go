@@ -49,6 +49,10 @@ func TestBoundedHandshakeRevisionValidationRejectsObservationAndReplyTampering(t
 		{"raw observation", func(value *revisionRecord) { value.Snapshot.Observations[0].RawOutput = "raw" }},
 		{"observation Grant", func(value *revisionRecord) { value.Snapshot.Observations[0].GrantID = "grant-other" }},
 		{"observation evidence", func(value *revisionRecord) { value.Snapshot.Observations[0].EvidenceReferences[0].Digest = "bad" }},
+		{"Grant Binding Host", func(value *revisionRecord) {
+			value.Snapshot.Grants[0].Binding.Host = "claude"
+			resignCapabilityGrant(t, &value.Snapshot.Grants[0])
+		}},
 		{"observation evidence order", func(value *revisionRecord) {
 			value.Snapshot.Observations[0].EvidenceReferences = []EvidenceReference{
 				{Reference: "evidence://z", Digest: strings.Repeat("2", 64)},

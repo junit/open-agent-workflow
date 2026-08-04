@@ -290,11 +290,14 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	if err != nil {
 		return RunReply{}, err
 	}
+	if err := validateActiveWorkflowHostScope(engine.workflow, bundle); err != nil {
+		return RunReply{}, err
+	}
 	if !containsWorkflowValue(bundle.Graph.StableBoundaries, request.Boundary) {
 		return RunReply{}, runtimeError("STABLE_BOUNDARY_INVALID", "stable boundary is not declared by the active Bundle", nil)
 	}
-	if !validDigest(engine.workflow.Configuration.Digest()) || !validDigest(engine.workflow.Registry.Digest()) {
-		return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "Workflow trusted inputs are unavailable", nil)
+	if err := workflowTrustedInputsError(engine.workflow); err != nil {
+		return RunReply{}, err
 	}
 	graph, err := profile.CompileProfile(engine.workflow.Configuration.Catalog(), engine.workflow.Registry, profile.CompileRequest{Profile: request.Selection.Profile, Bindings: request.Selection.Bindings})
 	if err != nil {
@@ -311,7 +314,7 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	newBundle, err := newLifecycleBundle(bundleRequest{
 		RunID: current.RunID, DeliverableID: current.Snapshot.Workflow.Input.DeliverableID, InputDigest: current.Snapshot.Workflow.Input.InputDigest,
 		Generation: current.Snapshot.Workflow.ActiveGeneration + 1, CreatedRevision: nextRevision, Selection: request.Selection,
-		Configuration: engine.workflow.Configuration.Record(), RegistryDigest: engine.workflow.Registry.Digest(), Graph: graph.Record(), Host: hostAdmission,
+		Configuration: engine.workflow.Configuration.Record(), Registry: engine.workflow.Registry, Graph: graph.Record(), Host: hostAdmission,
 	})
 	if err != nil {
 		return RunReply{}, err
@@ -321,6 +324,7 @@ func (engine *Engine) switchWorkflowProfile(current revisionRecord, frame RunFra
 	snapshot.Workflow.Bundles = append(snapshot.Workflow.Bundles, cloneLifecycleBundle(newBundle))
 	snapshot.Workflow.ConfigurationDigest = newBundle.Configuration.Digest
 	snapshot.Workflow.RegistryDigest = newBundle.RegistryDigest
+	snapshot.Workflow.HostID = newBundle.HostID
 	snapshot.Workflow.ActiveGeneration = newBundle.Generation
 	snapshot.Workflow.ActiveNodeID = newBundle.Graph.Entry
 	snapshot.Workflow.ActiveGrantID = ""

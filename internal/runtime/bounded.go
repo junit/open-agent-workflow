@@ -153,20 +153,43 @@ func resolveBoundedSelector(value *classification.CapabilitySelector, trustedRul
 }
 
 func boundedConfigurationReady(project ProjectIdentity, options BoundedOptions) bool {
+	return boundedConfigurationError(project, options) == nil
+}
+
+func boundedConfigurationError(project ProjectIdentity, options BoundedOptions) error {
 	configurationDigest := options.Configuration.Digest()
 	catalogDigest := options.Configuration.Catalog().Digest()
 	registryDigest := options.Registry.Digest()
-	return validDigest(configurationDigest) && project.ConfigurationDigest == configurationDigest && validDigest(catalogDigest) && validDigest(registryDigest)
+	if !validDigest(configurationDigest) || project.ConfigurationDigest != configurationDigest || !validDigest(catalogDigest) || !validDigest(registryDigest) || !validDigest(options.Resolutions.Digest()) {
+		return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+	}
+	registryHostID := options.Registry.HostID()
+	resolutionHostID := options.Resolutions.HostID()
+	for _, hostID := range []string{options.HostID, registryHostID, resolutionHostID} {
+		if _, err := catalog.ParseLocalID(hostID); err != nil {
+			return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "configured Host, Registry, and Resolution Report Host identities are required", err)
+		}
+	}
+	if registryHostID != options.HostID || resolutionHostID != options.HostID {
+		return runtimeError("HOST_PROVIDER_SCOPE_MISMATCH", "configured Host, Registry, and Resolution Report do not agree", nil)
+	}
+	return nil
 }
 
-func boundedConfigurationMatches(state *BoundedState, options BoundedOptions) bool {
+func boundedConfigurationMatchError(state *BoundedState, options BoundedOptions) error {
 	if state == nil {
-		return false
+		return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "active Run has no Bounded trusted inputs", nil)
 	}
-	return state.ConfigurationDigest == options.Configuration.Digest() &&
-		state.CatalogDigest == options.Configuration.Catalog().Digest() &&
-		state.RegistryDigest == options.Registry.Digest() &&
-		validDigest(state.ConfigurationDigest) && validDigest(state.CatalogDigest) && validDigest(state.RegistryDigest)
+	if err := boundedConfigurationError(ProjectIdentity{ConfigurationDigest: options.Configuration.Digest()}, options); err != nil {
+		return err
+	}
+	if state.HostID != options.HostID {
+		return runtimeError("HOST_PROVIDER_SCOPE_MISMATCH", "active Bounded Run belongs to another Host", nil)
+	}
+	if state.ConfigurationDigest != options.Configuration.Digest() || state.CatalogDigest != options.Configuration.Catalog().Digest() || state.RegistryDigest != options.Registry.Digest() || !validDigest(state.ConfigurationDigest) || !validDigest(state.CatalogDigest) || !validDigest(state.RegistryDigest) {
+		return runtimeError("BOUNDED_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
+	}
+	return nil
 }
 
 func normalizeCapabilitySelection(value ContinueInput) (ContinueInput, error) {
@@ -267,6 +290,7 @@ func issueBoundedGrant(snapshot RunSnapshot, options BoundedOptions, issuedRevis
 		DeliverableID:        snapshot.Bounded.Input.DeliverableID,
 		InputDigest:          snapshot.Bounded.Input.InputDigest,
 		IssuedRevision:       issuedRevision,
+		HostID:               options.HostID,
 		Selector:             *snapshot.Bounded.Selector,
 		Effects:              append([]string{}, snapshot.Bounded.Input.RequestedEffects...),
 		Resources:            append([]string{}, snapshot.Bounded.Input.RequestedResources...),
@@ -291,6 +315,7 @@ func issueBoundedGrant(snapshot RunSnapshot, options BoundedOptions, issuedRevis
 func boundedState(input BoundedInput, selector *classification.CapabilitySelector, options BoundedOptions) *BoundedState {
 	state := &BoundedState{
 		Input:               input,
+		HostID:              options.HostID,
 		ConfigurationDigest: options.Configuration.Digest(),
 		CatalogDigest:       options.Configuration.Catalog().Digest(),
 		RegistryDigest:      options.Registry.Digest(),

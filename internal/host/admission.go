@@ -10,6 +10,7 @@ import (
 )
 
 type WorkflowAdmission struct {
+	HostID            string    `json:"host_id"`
 	IntegrationID     string    `json:"integration_id"`
 	IntegrationDigest string    `json:"integration_digest"`
 	ManifestDigest    string    `json:"manifest_digest"`
@@ -64,7 +65,7 @@ func AdmitWorkflow(records []IntegrationRecord, frame RuntimeFrame, bindings []c
 		}
 	}
 	return WorkflowAdmission{
-		IntegrationID: frame.IntegrationID, IntegrationDigest: integration.Digest,
+		HostID: frame.HostID, IntegrationID: frame.IntegrationID, IntegrationDigest: integration.Digest,
 		ManifestDigest: integration.ManifestDigest, AuditDigest: integration.Audit.Digest,
 		ConformanceDigest: integration.Conformance.Digest, EffectiveFeatures: effective,
 	}, nil

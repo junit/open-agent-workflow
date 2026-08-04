@@ -120,6 +120,8 @@ func TestStartBoundedRejectsForgedRuleProvenanceAndMissingTrustedInputs(t *testi
 	selector := &classification.CapabilitySelector{
 		ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent,
 	}
+	missingHostOptions := boundedOptions(filepath.Join(t.TempDir(), "state"), fixture)
+	missingHostOptions.Bounded.HostID = ""
 	for _, test := range []struct {
 		name    string
 		options runtime.Options
@@ -142,6 +144,12 @@ func TestStartBoundedRejectsForgedRuleProvenanceAndMissingTrustedInputs(t *testi
 			name:    "missing pinned configuration",
 			options: runtime.Options{StateRoot: filepath.Join(t.TempDir(), "state")},
 			frame:   boundedStartFrame(fixture, selector, "", "missing-bounded-options"),
+			code:    "BOUNDED_CONFIGURATION_REQUIRED",
+		},
+		{
+			name:    "missing Host configuration",
+			options: missingHostOptions,
+			frame:   boundedStartFrame(fixture, selector, "", "missing-bounded-host"),
 			code:    "BOUNDED_CONFIGURATION_REQUIRED",
 		},
 	} {
@@ -644,12 +652,48 @@ func boundedOptions(stateRoot string, fixture boundedRuntimeFixture) runtime.Opt
 			Configuration: fixture.snapshot,
 			Resolutions:   fixture.resolutions,
 			Registry:      fixture.registry,
+			HostID:        "codex",
 			Authority: admission.AuthorityCeiling{
 				Effects: []string{"read-project"}, Resources: []string{"project"},
 			},
 			Executors: []admission.ExecutorRegistration{{ID: "executor-review", Kind: admission.ExecutorIsolated}},
 		},
 	}
+}
+
+func TestStartBoundedRejectsRegistryOutsideConfiguredHostScope(t *testing.T) {
+	fixture := newBoundedRuntimeFixture(t, false)
+	options := boundedOptions(filepath.Join(t.TempDir(), "state"), fixture)
+	options.Bounded.HostID = "claude"
+	engine, err := runtime.NewEngine(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = engine.Exchange(boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "bounded-foreign-host"))
+	assertErrorCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+}
+
+func TestBoundedGrantIssuanceRejectsHostChangeWithoutRevision(t *testing.T) {
+	fixture := newBoundedRuntimeFixture(t, false)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := newBoundedEngine(t, stateRoot, fixture)
+	started, err := engine.Exchange(boundedStartFrame(fixture, &classification.CapabilitySelector{ProviderID: "oaw/ecc", CapabilityID: "review", Source: classification.SelectorUserIntent}, "", "bounded-host-change"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	options := boundedOptions(stateRoot, fixture)
+	options.Bounded.HostID = "claude"
+	foreign, err := runtime.NewEngine(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = foreign.Exchange(runtime.RunFrame{
+		SchemaVersion: runtime.RuntimeSchemaV1, Kind: runtime.FrameContinue,
+		MessageID: "bounded-host-change-grant", IdempotencyKey: "bounded-host-change-grant", RunID: started.RunID, ExpectedRevision: started.Revision,
+		Continue: &runtime.ContinueInput{Signal: runtime.SignalRequestDispatch},
+	})
+	assertErrorCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+	assertRevisionCount(t, stateRoot, started.RunID, 1)
 }
 
 func TestStartBoundedReportsAmbiguousProviderResolution(t *testing.T) {

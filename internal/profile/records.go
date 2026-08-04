@@ -8,9 +8,10 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
-const ExecutionGraphSchemaV1 = "oaw.execution-graph/v1"
+const ExecutionGraphSchemaV2 = "oaw.execution-graph/v2"
 
 type EffectiveRegistry interface {
+	HostID() string
 	Provider(id string) (registry.ProviderInstance, bool)
 	Capability(providerID, capabilityID string) (registry.VerifiedCapability, bool)
 }
@@ -33,6 +34,7 @@ type ProfileBinding struct {
 
 type GraphProviderInstance struct {
 	ProviderID     string `json:"provider_id"`
+	HostID         string `json:"host_id"`
 	InstanceDigest string `json:"instance_digest"`
 }
 
@@ -68,6 +70,7 @@ type GraphNode struct {
 
 type ExecutionGraph struct {
 	schemaVersion     string
+	hostID            string
 	recipeID          string
 	recipeVersion     string
 	recipeDigest      string
@@ -83,6 +86,7 @@ type ExecutionGraph struct {
 
 type ExecutionGraphRecord struct {
 	SchemaVersion     string                  `json:"schema_version"`
+	HostID            string                  `json:"host_id"`
 	RecipeID          string                  `json:"recipe_id"`
 	RecipeVersion     string                  `json:"recipe_version"`
 	RecipeDigest      string                  `json:"recipe_digest"`
@@ -97,6 +101,7 @@ type ExecutionGraphRecord struct {
 }
 
 func (graph ExecutionGraph) SchemaVersion() string { return graph.schemaVersion }
+func (graph ExecutionGraph) HostID() string        { return graph.hostID }
 func (graph ExecutionGraph) RecipeID() string      { return graph.recipeID }
 func (graph ExecutionGraph) RecipeVersion() string { return graph.recipeVersion }
 func (graph ExecutionGraph) RecipeDigest() string  { return graph.recipeDigest }
@@ -105,7 +110,7 @@ func (graph ExecutionGraph) Digest() string        { return graph.digest }
 
 func (graph ExecutionGraph) Record() ExecutionGraphRecord {
 	return ExecutionGraphRecord{
-		SchemaVersion: graph.schemaVersion, RecipeID: graph.recipeID,
+		SchemaVersion: graph.schemaVersion, HostID: graph.hostID, RecipeID: graph.recipeID,
 		RecipeVersion: graph.recipeVersion, RecipeDigest: graph.recipeDigest,
 		Entry: graph.entry, Bindings: cloneBindings(graph.bindings),
 		ProviderInstances: append([]GraphProviderInstance{}, graph.providerInstances...),
@@ -128,8 +133,21 @@ func (record ExecutionGraphRecord) ContentDigest() string {
 }
 
 func ValidateExecutionGraphRecord(record ExecutionGraphRecord) error {
-	if record.SchemaVersion != ExecutionGraphSchemaV1 || record.RecipeID == "" || record.RecipeVersion == "" || record.RecipeDigest == "" || record.Entry == "" || record.Digest == "" || record.ContentDigest() != record.Digest {
+	if record.SchemaVersion != ExecutionGraphSchemaV2 || record.HostID == "" || record.RecipeID == "" || record.RecipeVersion == "" || record.RecipeDigest == "" || record.Entry == "" || record.Digest == "" || record.ContentDigest() != record.Digest {
 		return fmt.Errorf("PROFILE_GRAPH_RECORD_INVALID")
+	}
+	if _, err := catalog.ParseLocalID(record.HostID); err != nil {
+		return fmt.Errorf("PROFILE_GRAPH_RECORD_INVALID: %w", err)
+	}
+	for _, provider := range record.ProviderInstances {
+		if provider.HostID != record.HostID {
+			return fmt.Errorf("HOST_PROVIDER_SCOPE_MISMATCH: graph Provider %s belongs to Host %q, not %q", provider.ProviderID, provider.HostID, record.HostID)
+		}
+	}
+	for _, node := range record.Nodes {
+		if node.Binding.Host != record.HostID {
+			return fmt.Errorf("HOST_PROVIDER_SCOPE_MISMATCH: graph node %s Binding belongs to Host %q, not %q", node.ID, node.Binding.Host, record.HostID)
+		}
 	}
 	return nil
 }
@@ -205,6 +223,7 @@ func cloneGraphNodes(values []GraphNode) []GraphNode {
 func executionGraphRecordContent(record ExecutionGraphRecord) any {
 	return struct {
 		SchemaVersion     string                  `json:"schema_version"`
+		HostID            string                  `json:"host_id"`
 		RecipeID          string                  `json:"recipe_id"`
 		RecipeVersion     string                  `json:"recipe_version"`
 		RecipeDigest      string                  `json:"recipe_digest"`
@@ -216,7 +235,7 @@ func executionGraphRecordContent(record ExecutionGraphRecord) any {
 		TerminalGates     []string                `json:"terminal_gates"`
 		StableBoundaries  []string                `json:"stable_boundaries"`
 	}{
-		record.SchemaVersion, record.RecipeID, record.RecipeVersion, record.RecipeDigest,
+		record.SchemaVersion, record.HostID, record.RecipeID, record.RecipeVersion, record.RecipeDigest,
 		record.Entry, record.Bindings, record.ProviderInstances, record.Nodes,
 		record.IncidentRoutes, record.TerminalGates, record.StableBoundaries,
 	}

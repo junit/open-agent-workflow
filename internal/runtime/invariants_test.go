@@ -34,7 +34,7 @@ func TestRevisionValidationFailsClosedForEveryPinnedIdentity(t *testing.T) {
 		{"message digest", func(value *revisionRecord) { value.MessageDigest = "bad" }, "RUN_STATE_REVISION_INVALID"},
 		{"event", func(value *revisionRecord) { value.Event = "" }, "RUN_STATE_REVISION_INVALID"},
 		{"revision one predecessor", func(value *revisionRecord) { value.PredecessorDigest = strings.Repeat("0", 64) }, "RUN_STATE_REVISION_INVALID"},
-		{"snapshot schema", func(value *revisionRecord) { value.Snapshot.SchemaVersion = "wrong" }, "RUN_STATE_REVISION_INVALID"},
+		{"v1 snapshot schema", func(value *revisionRecord) { value.Snapshot.SchemaVersion = "oaw.runtime-snapshot/v1" }, "RUN_STATE_REVISION_INVALID"},
 		{"snapshot run", func(value *revisionRecord) { value.Snapshot.RunID = "run-00000000000000000000000000000000" }, "RUN_STATE_REVISION_INVALID"},
 		{"snapshot revision", func(value *revisionRecord) { value.Snapshot.Revision = 2 }, "RUN_STATE_REVISION_INVALID"},
 		{"record configuration", func(value *revisionRecord) { value.ConfigurationDigest = strings.Repeat("0", 64) }, "RUN_STATE_REVISION_INVALID"},
@@ -666,7 +666,7 @@ func internalBoundedRevision(t *testing.T, status RunStatus) revisionRecord {
 			DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), RequestedEffects: []string{"read-project"},
 			RequestedResources: []string{"project"}, TerminationCondition: "one report", ExecutorID: "executor",
 		},
-		Selector: selector, ConfigurationDigest: record.Snapshot.ConfigurationDigest,
+		Selector: selector, HostID: "codex", ConfigurationDigest: record.Snapshot.ConfigurationDigest,
 		CatalogDigest: strings.Repeat("b", 64), RegistryDigest: strings.Repeat("c", 64),
 	}
 	record.Event = "BOUNDED_READY"
@@ -700,6 +700,8 @@ type grantTestRegistry struct {
 	capability registry.VerifiedCapability
 }
 
+func (value grantTestRegistry) HostID() string { return "codex" }
+
 func (value grantTestRegistry) Provider(id string) (registry.ProviderInstance, bool) {
 	return value.provider, id == value.provider.ProviderID
 }
@@ -727,10 +729,11 @@ func internalBoundedGrantRevision(t *testing.T) revisionRecord {
 	registrySource := grantTestRegistry{provider: verified, capability: verified.Capabilities[0]}
 	executor := admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}
 	record.Snapshot.Bounded.Selector = &classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "review", Source: classification.SelectorUserIntent}
+	record.Snapshot.Bounded.HostID = "codex"
 	record.Snapshot.Bounded.CatalogDigest = catalogSource.Digest()
 	record.Snapshot.Bounded.RegistryDigest = registrySource.Digest()
 	record.Snapshot.Bounded.Input = BoundedInput{DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"}, TerminationCondition: "one report", ExecutorID: executor.ID}
-	grant, err := admission.IssueBoundedGrant(admission.GrantRequest{RunID: record.RunID, RequestID: record.Snapshot.RequestID, DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), IssuedRevision: 2, Selector: *record.Snapshot.Bounded.Selector, Effects: []string{"read-project"}, Resources: []string{"project"}, TerminationCondition: "one report", Executor: executor, Catalog: catalogSource, Registry: registrySource, Authority: admission.AuthorityCeiling{Effects: []string{"read-project"}, Resources: []string{"project"}}, Executors: []admission.ExecutorRegistration{executor}})
+	grant, err := admission.IssueBoundedGrant(admission.GrantRequest{RunID: record.RunID, RequestID: record.Snapshot.RequestID, DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64), IssuedRevision: 2, HostID: "codex", Selector: *record.Snapshot.Bounded.Selector, Effects: []string{"read-project"}, Resources: []string{"project"}, TerminationCondition: "one report", Executor: executor, Catalog: catalogSource, Registry: registrySource, Authority: admission.AuthorityCeiling{Effects: []string{"read-project"}, Resources: []string{"project"}}, Executors: []admission.ExecutorRegistration{executor}})
 	if err != nil {
 		t.Fatalf("IssueBoundedGrant() error = %v", err)
 	}

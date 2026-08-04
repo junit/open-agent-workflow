@@ -80,7 +80,6 @@ func TestTicket08WorkflowAdmissionFailuresLeaveHeadUnchanged(t *testing.T) {
 		unavailable []host.Feature
 		code        string
 	}{
-		{name: "wrong Binding Host", hostID: "claude", kinds: []string{"agent", "skill", "tool"}, code: "HOST_BINDING_UNSUPPORTED"},
 		{name: "wrong Binding kind", hostID: "codex", kinds: []string{"tool"}, code: "HOST_BINDING_UNSUPPORTED"},
 		{name: "per-run narrowing", hostID: "codex", kinds: []string{"agent", "skill", "tool"}, unavailable: []host.Feature{host.FeaturePause}, code: "HOST_RUNTIME_REQUIREMENTS_UNMET"},
 	} {
@@ -105,6 +104,35 @@ func TestTicket08WorkflowAdmissionFailuresLeaveHeadUnchanged(t *testing.T) {
 				t.Fatalf("denied selection changed HEAD: %s != %s", headAfter, headBefore)
 			}
 		})
+	}
+}
+
+func TestTicket08ForeignHostRegistryRejectedBeforeRunCreation(t *testing.T) {
+	adapter := &ticket08Adapter{}
+	integration := ticket08ConformingIntegration(t, "acme/claude-runtime", "1.0.0", host.RunnerManaged, "claude", []string{"agent", "skill", "tool"}, adapter)
+	fixture := ticket08RuntimeFixture(t, t.TempDir(), integration)
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	engine := ticket08Engine(t, stateRoot, fixture, host.RuntimeFrame{HostID: "claude", IntegrationID: integration.ID}, oawruntime.ProjectionOptions{})
+	proposal := integrationDirectProposal()
+	for index := range proposal.Traits {
+		if proposal.Traits[index].Trait == classification.TraitArchitectureDecision || proposal.Traits[index].Trait == classification.TraitDomainUncertainty {
+			proposal.Traits[index].Value = classification.TraitTrue
+		}
+	}
+	_, err := engine.Exchange(oawruntime.RunFrame{
+		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameStart,
+		MessageID: "ticket08-foreign-host", IdempotencyKey: "ticket08-foreign-host",
+		Start: &oawruntime.StartInput{
+			RequestID: "ticket08-foreign-host", Project: oawruntime.ProjectIdentity{Root: fixture.projectRoot, ConfigurationDigest: fixture.snapshot.Digest()},
+			Proposal: &proposal, Workflow: &oawruntime.WorkflowInput{DeliverableID: "ticket08-foreign-host", InputDigest: strings.Repeat("d", 64)},
+		},
+	})
+	if oawruntime.ErrorCode(err) != "HOST_PROVIDER_SCOPE_MISMATCH" {
+		t.Fatalf("foreign Host START error = %v", err)
+	}
+	entries, readErr := os.ReadDir(filepath.Join(stateRoot, "runs"))
+	if readErr != nil || len(entries) != 0 {
+		t.Fatalf("foreign Host START created Runtime state: %v, %#v", readErr, entries)
 	}
 }
 
@@ -283,11 +311,11 @@ func ticket08RuntimeFixture(t *testing.T, projectRoot string, integration host.I
 		t.Fatal(err)
 	}
 	inventory := hosttest.ObserveProviderBindings(t, snapshot.Catalog(), evidence, home, "oaw/superpowers", "oaw/matt")
-	_, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
+	report, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return ticket07IntegrationFixture{projectRoot: projectRoot, snapshot: snapshot, registry: effective, hostIntegration: integration, hostInvocationMarker: filepath.Join(t.TempDir(), "runtime-invoked-host")}
+	return ticket07IntegrationFixture{projectRoot: projectRoot, snapshot: snapshot, resolutions: report, registry: effective, hostIntegration: integration, hostInvocationMarker: filepath.Join(t.TempDir(), "runtime-invoked-host")}
 }
 
 func ticket08WriteUserIntegration(t *testing.T, root string, integration host.IntegrationRecord) {
@@ -303,7 +331,7 @@ func ticket08WriteUserIntegration(t *testing.T, root string, integration host.In
 func ticket08Engine(t *testing.T, stateRoot string, fixture ticket07IntegrationFixture, frame host.RuntimeFrame, projection oawruntime.ProjectionOptions) *oawruntime.Engine {
 	t.Helper()
 	engine, err := oawruntime.NewEngine(oawruntime.Options{StateRoot: stateRoot, Workflow: oawruntime.WorkflowOptions{
-		Configuration: fixture.snapshot, Registry: fixture.registry, Host: frame, Projection: projection,
+		Configuration: fixture.snapshot, Resolutions: fixture.resolutions, Registry: fixture.registry, Host: frame, Projection: projection,
 		Authority: admission.AuthorityCeiling{Effects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project", "project-worktree"}, ResourceLeases: true, AllowDelegation: true},
 		Executors: []oawruntime.WorkflowExecutorRegistration{{Registration: admission.ExecutorRegistration{ID: "executor-write", Kind: admission.ExecutorIsolated}}, {Registration: admission.ExecutorRegistration{ID: "executor-review", Kind: admission.ExecutorIsolated}, ReadOnly: true, Fresh: true}},
 	}})

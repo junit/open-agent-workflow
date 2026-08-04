@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
@@ -34,13 +35,43 @@ func normalizeWorkflowInput(value *WorkflowInput) (WorkflowInput, error) {
 	return *value, nil
 }
 
-func workflowConfigurationReady(project ProjectIdentity, options WorkflowOptions) bool {
-	return validDigest(options.Configuration.Digest()) && validDigest(options.Registry.Digest()) && project.ConfigurationDigest == options.Configuration.Digest()
+func workflowConfigurationError(project ProjectIdentity, options WorkflowOptions) error {
+	if err := workflowTrustedInputsError(options); err != nil {
+		return err
+	}
+	if project.ConfigurationDigest != options.Configuration.Digest() {
+		return runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+	}
+	return nil
+}
+
+func workflowTrustedInputsError(options WorkflowOptions) error {
+	if !validDigest(options.Configuration.Digest()) || !validDigest(options.Registry.Digest()) || !validDigest(options.Resolutions.Digest()) {
+		return runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "pinned Configuration and Registry are required", nil)
+	}
+	if err := workflowHostScopeError(options); err != nil {
+		return err
+	}
+	return nil
+}
+
+func workflowHostScopeError(options WorkflowOptions) error {
+	registryHostID := options.Registry.HostID()
+	resolutionHostID := options.Resolutions.HostID()
+	for _, hostID := range []string{options.Host.HostID, registryHostID, resolutionHostID} {
+		if _, err := catalog.ParseLocalID(hostID); err != nil {
+			return runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "Runtime Host, Registry, and Resolution Report Host identities are required", err)
+		}
+	}
+	if registryHostID != options.Host.HostID || resolutionHostID != options.Host.HostID {
+		return runtimeError("HOST_PROVIDER_SCOPE_MISMATCH", "Runtime Host, Registry, and Resolution Report do not agree", nil)
+	}
+	return nil
 }
 
 func workflowAwaitingState(input WorkflowInput, options WorkflowOptions) *WorkflowState {
 	return &WorkflowState{
-		Input: input, ConfigurationDigest: options.Configuration.Digest(), RegistryDigest: options.Registry.Digest(),
+		Input: input, HostID: options.Host.HostID, ConfigurationDigest: options.Configuration.Digest(), RegistryDigest: options.Registry.Digest(),
 		Bundles: []LifecycleBundle{}, ActiveGeneration: 0, ActiveNodeID: "", ActiveTicket: input.ActiveTicket, ActiveGrantID: "",
 		Observations: []StageObservation{}, RevokedGrantIDs: []string{}, ResourceLeases: []ResourceLease{}, ProjectionLag: []ProjectionLag{},
 	}
@@ -50,7 +81,13 @@ func (engine *Engine) selectWorkflowProfile(current revisionRecord, frame RunFra
 	if current.Snapshot.RequestMode != classification.RequestModeWorkflow || current.Snapshot.Status != RunAwaitingSelection || current.Snapshot.Workflow == nil || input.ProfileSelection == nil {
 		return RunReply{}, runtimeError("RUN_TRANSITION_INVALID", "Profile selection requires an awaiting Workflow run", nil)
 	}
-	if !workflowConfigurationReady(current.Snapshot.Project, engine.workflow) || current.Snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || current.Snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() {
+	if err := workflowConfigurationError(current.Snapshot.Project, engine.workflow); err != nil {
+		return RunReply{}, err
+	}
+	if current.Snapshot.Workflow.HostID != engine.workflow.Host.HostID {
+		return RunReply{}, runtimeError("HOST_PROVIDER_SCOPE_MISMATCH", "active Workflow Run belongs to another Host", nil)
+	}
+	if current.Snapshot.Workflow.ConfigurationDigest != engine.workflow.Configuration.Digest() || current.Snapshot.Workflow.RegistryDigest != engine.workflow.Registry.Digest() {
 		return RunReply{}, runtimeError("WORKFLOW_CONFIGURATION_REQUIRED", "active Run trusted inputs do not match Engine options", nil)
 	}
 	graph, err := profile.CompileProfile(engine.workflow.Configuration.Catalog(), engine.workflow.Registry, profile.CompileRequest{
@@ -71,7 +108,7 @@ func (engine *Engine) selectWorkflowProfile(current revisionRecord, frame RunFra
 		RunID: current.RunID, DeliverableID: current.Snapshot.Workflow.Input.DeliverableID,
 		InputDigest: current.Snapshot.Workflow.Input.InputDigest, Generation: 1, CreatedRevision: nextRevision,
 		Selection: *input.ProfileSelection, Configuration: engine.workflow.Configuration.Record(),
-		RegistryDigest: engine.workflow.Registry.Digest(), Graph: graph.Record(), Host: hostAdmission,
+		Registry: engine.workflow.Registry, Graph: graph.Record(), Host: hostAdmission,
 	})
 	if err != nil {
 		return RunReply{}, err

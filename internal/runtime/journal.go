@@ -207,7 +207,7 @@ func validateRevision(record revisionRecord, runID string, revision uint64) erro
 	} else if !validDigest(record.PredecessorDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "missing predecessor digest", nil)
 	}
-	if record.Snapshot.SchemaVersion != snapshotSchemaV1 || record.Snapshot.RunID != runID || record.Snapshot.Revision != revision || record.ConfigurationDigest != record.Snapshot.ConfigurationDigest || record.Snapshot.Project.ConfigurationDigest != record.ConfigurationDigest {
+	if record.Snapshot.SchemaVersion != snapshotSchemaV2 || record.Snapshot.RunID != runID || record.Snapshot.Revision != revision || record.ConfigurationDigest != record.Snapshot.ConfigurationDigest || record.Snapshot.Project.ConfigurationDigest != record.ConfigurationDigest {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "snapshot identity mismatch", nil)
 	}
 	switch record.Snapshot.RequestMode {
@@ -451,7 +451,7 @@ func validateBoundedState(record revisionRecord) error {
 	if snapshot.Project.Root == "" || !filepath.IsAbs(snapshot.Project.Root) || filepath.Clean(snapshot.Project.Root) != snapshot.Project.Root || !validDigest(snapshot.ConfigurationDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted project identity", nil)
 	}
-	if snapshot.ConfigurationDigest != snapshot.Bounded.ConfigurationDigest || !validDigest(snapshot.Bounded.CatalogDigest) || !validDigest(snapshot.Bounded.RegistryDigest) {
+	if _, err := catalog.ParseLocalID(snapshot.Bounded.HostID); err != nil || snapshot.ConfigurationDigest != snapshot.Bounded.ConfigurationDigest || !validDigest(snapshot.Bounded.CatalogDigest) || !validDigest(snapshot.Bounded.RegistryDigest) {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid Bounded trusted input digests", nil)
 	}
 	if snapshot.ProcessedMessages == nil || uint64(len(snapshot.ProcessedMessages)) != record.Revision || snapshot.LifecycleBundles == nil || len(snapshot.LifecycleBundles) != 0 || snapshot.ResourceLeaseIDs == nil || len(snapshot.ResourceLeaseIDs) != 0 {
@@ -556,7 +556,7 @@ func validatePersistedGrant(record revisionRecord, grant admission.CapabilityGra
 		return runtimeError("RUN_STATE_REVISION_INVALID", "invalid persisted Capability Grant", err)
 	}
 	snapshot := record.Snapshot
-	if snapshot.Bounded == nil || snapshot.Bounded.Selector == nil || grant.RunID != snapshot.RunID || grant.RequestID != snapshot.RequestID || grant.IssuedRevision > record.Revision || snapshot.Status == RunGranted && grant.IssuedRevision != record.Revision || grant.DeliverableID != snapshot.Bounded.Input.DeliverableID || grant.InputDigest != snapshot.Bounded.Input.InputDigest || grant.ProviderID != snapshot.Bounded.Selector.ProviderID || grant.CapabilityID != snapshot.Bounded.Selector.CapabilityID || grant.Executor.ID != snapshot.Bounded.Input.ExecutorID || grant.RegistryDigest != snapshot.Bounded.RegistryDigest || grant.CatalogDigest != snapshot.Bounded.CatalogDigest || grant.ParentGrantID != "" || !equalStrings(grant.Effects, snapshot.Bounded.Input.RequestedEffects) || !equalStrings(grant.Resources, snapshot.Bounded.Input.RequestedResources) || grant.TerminationCondition != snapshot.Bounded.Input.TerminationCondition {
+	if snapshot.Bounded == nil || snapshot.Bounded.Selector == nil || grant.RunID != snapshot.RunID || grant.RequestID != snapshot.RequestID || grant.IssuedRevision > record.Revision || snapshot.Status == RunGranted && grant.IssuedRevision != record.Revision || grant.DeliverableID != snapshot.Bounded.Input.DeliverableID || grant.InputDigest != snapshot.Bounded.Input.InputDigest || grant.ProviderID != snapshot.Bounded.Selector.ProviderID || grant.CapabilityID != snapshot.Bounded.Selector.CapabilityID || grant.Binding.Host != snapshot.Bounded.HostID || grant.Executor.ID != snapshot.Bounded.Input.ExecutorID || grant.RegistryDigest != snapshot.Bounded.RegistryDigest || grant.CatalogDigest != snapshot.Bounded.CatalogDigest || grant.ParentGrantID != "" || !equalStrings(grant.Effects, snapshot.Bounded.Input.RequestedEffects) || !equalStrings(grant.Resources, snapshot.Bounded.Input.RequestedResources) || grant.TerminationCondition != snapshot.Bounded.Input.TerminationCondition {
 		return runtimeError("RUN_STATE_REVISION_INVALID", "persisted Grant exceeds Bounded request", nil)
 	}
 	return nil

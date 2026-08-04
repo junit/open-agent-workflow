@@ -24,6 +24,10 @@ func CompileProfile(available CatalogSource, verified EffectiveRegistry, request
 }
 
 func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe catalog.ProfileRecipeRecord, bindings []ProfileBinding) (ExecutionGraph, error) {
+	hostID := verified.HostID()
+	if _, err := catalog.ParseLocalID(hostID); err != nil {
+		return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Registry has invalid Host %q", hostID)
+	}
 	bindingIndex, normalizedBindings, err := indexBindings(bindings)
 	if err != nil {
 		return ExecutionGraph{}, err
@@ -61,6 +65,9 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 		if instance.ProviderID != providerID {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified provider identity %s does not match %s", instance.ProviderID, providerID)
 		}
+		if instance.HostID != hostID {
+			return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Provider %s belongs to Host %q, not %q", providerID, instance.HostID, hostID)
+		}
 		verifiedCapability, found := verified.Capability(providerID, node.Selector.CapabilityID)
 		if !found {
 			if node.Optional {
@@ -71,6 +78,9 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 		}
 		if verifiedCapability.ID != node.Selector.CapabilityID {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified capability identity %s does not match %s", verifiedCapability.ID, node.Selector.CapabilityID)
+		}
+		if verifiedCapability.Binding.Host != hostID {
+			return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Binding for %s/%s belongs to Host %q, not %q", providerID, node.Selector.CapabilityID, verifiedCapability.Binding.Host, hostID)
 		}
 		descriptor, found := descriptors[providerID]
 		if !found {
@@ -106,7 +116,7 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 			DelegationAllowList: sortedStrings(capability.DelegationAllowList), Transitions: transitions,
 		}
 		nodes = append(nodes, graphNode)
-		providers[providerID] = GraphProviderInstance{ProviderID: providerID, InstanceDigest: instance.Digest}
+		providers[providerID] = GraphProviderInstance{ProviderID: providerID, HostID: instance.HostID, InstanceDigest: instance.Digest}
 	}
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 	if err := validateOwnership(nodes, recipe.RequiredResponsibilities); err != nil {
@@ -130,7 +140,7 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 	sort.Slice(incidentRoutes, func(i, j int) bool { return incidentRouteKey(incidentRoutes[i]) < incidentRouteKey(incidentRoutes[j]) })
 
 	graph := ExecutionGraph{
-		schemaVersion: ExecutionGraphSchemaV1, recipeID: recipe.ID, recipeVersion: recipe.RecipeVersion,
+		schemaVersion: ExecutionGraphSchemaV2, hostID: hostID, recipeID: recipe.ID, recipeVersion: recipe.RecipeVersion,
 		recipeDigest: recipeDigest, entry: recipe.Entry, bindings: normalizedBindings,
 		providerInstances: providerInstances, nodes: nodes, incidentRoutes: incidentRoutes,
 		terminalGates: sortedStrings(recipe.TerminalGates), stableBoundaries: sortedStrings(recipe.StableBoundaries),

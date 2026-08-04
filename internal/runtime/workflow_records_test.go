@@ -22,12 +22,12 @@ func TestLifecycleBundlePinsWorkflowSelectionAndTrustedInputs(t *testing.T) {
 		RunID: "run-0123456789abcdef0123456789abcdef", DeliverableID: "delivery-1",
 		InputDigest: strings.Repeat("1", 64), Generation: 1, CreatedRevision: 2,
 		Selection:     ProfileSelection{Profile: "acme/delivery", Bindings: []profile.ProfileBinding{}},
-		Configuration: configuration.Record(), RegistryDigest: strings.Repeat("2", 64), Graph: graph.Record(), Host: hostAdmission,
+		Configuration: configuration.Record(), Registry: workflowRecordRegistryForGraph(graph), Graph: graph.Record(), Host: hostAdmission,
 	})
 	if err != nil {
 		t.Fatalf("newLifecycleBundle() error = %v", err)
 	}
-	if bundle.Generation != 1 || bundle.Selection.Profile != "acme/delivery" || bundle.RecipeID != "acme/delivery" || bundle.RecipeDigest != graph.RecipeDigest() || bundle.RegistryDigest != strings.Repeat("2", 64) || bundle.Configuration.Digest != configuration.Digest() || bundle.GraphDigest != graph.Digest() || len(bundle.ProviderInstances) != 1 || bundle.ID == "" || bundle.Digest == "" {
+	if bundle.Generation != 1 || bundle.Selection.Profile != "acme/delivery" || bundle.RecipeID != "acme/delivery" || bundle.RecipeDigest != graph.RecipeDigest() || bundle.RegistryDigest != strings.Repeat("2", 64) || bundle.HostID != "codex" || bundle.BindingInventoryDigest != strings.Repeat("4", 64) || bundle.Graph.HostID != "codex" || bundle.ProviderInstances[0].HostID != "codex" || bundle.Configuration.Digest != configuration.Digest() || bundle.GraphDigest != graph.Digest() || len(bundle.ProviderInstances) != 1 || bundle.ID == "" || bundle.Digest == "" {
 		t.Fatalf("bundle = %#v", bundle)
 	}
 	if err := validateLifecycleBundle(bundle); err != nil {
@@ -39,7 +39,7 @@ func TestLifecycleBundlePinsWorkflowSelectionAndTrustedInputs(t *testing.T) {
 		RunID: "run-0123456789abcdef0123456789abcdef", DeliverableID: "delivery-1",
 		InputDigest: strings.Repeat("1", 64), Generation: 1, CreatedRevision: 2,
 		Selection: ProfileSelection{Profile: "acme/delivery"}, Configuration: configuration.Record(),
-		RegistryDigest: strings.Repeat("2", 64), Graph: graph.Record(), Host: tamperedAdmission,
+		Registry: workflowRecordRegistryForGraph(graph), Graph: graph.Record(), Host: tamperedAdmission,
 	}); ErrorCode(err) != "WORKFLOW_BUNDLE_INVALID" {
 		t.Fatalf("tampered Bundle Host admission error = %v", err)
 	}
@@ -54,12 +54,38 @@ func TestLifecycleBundlePinsWorkflowSelectionAndTrustedInputs(t *testing.T) {
 	if bundle.ProviderInstances[0].InstanceDigest == "mutated" {
 		t.Fatal("cloneLifecycleBundle() exposed mutable provider storage")
 	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*LifecycleBundle)
+	}{
+		{"v1 schema", func(value *LifecycleBundle) { value.SchemaVersion = "oaw.lifecycle-bundle/v1" }},
+		{"bundle host", func(value *LifecycleBundle) { value.HostID = "claude" }},
+		{"inventory", func(value *LifecycleBundle) { value.BindingInventoryDigest = strings.Repeat("0", 64) }},
+		{"graph host", func(value *LifecycleBundle) { value.Graph.HostID = "claude" }},
+		{"provider host", func(value *LifecycleBundle) { value.ProviderInstances[0].HostID = "claude" }},
+		{"graph provider host", func(value *LifecycleBundle) { value.Graph.ProviderInstances[0].HostID = "claude" }},
+		{"node binding host", func(value *LifecycleBundle) { value.Graph.Nodes[0].Binding.Host = "claude" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := cloneLifecycleBundle(bundle)
+			test.mutate(&candidate)
+			if err := validateLifecycleBundle(candidate); err == nil {
+				t.Fatalf("validateLifecycleBundle() accepted tampered %s", test.name)
+			}
+		})
+	}
 }
 
 type workflowRecordRegistry struct {
+	hostID     string
 	provider   registry.ProviderInstance
 	capability registry.VerifiedCapability
+	digest     string
 }
+
+func (value workflowRecordRegistry) HostID() string { return value.hostID }
+
+func (value workflowRecordRegistry) Digest() string { return value.digest }
 
 func (value workflowRecordRegistry) Provider(id string) (registry.ProviderInstance, bool) {
 	return value.provider, id == value.provider.ProviderID
@@ -93,12 +119,26 @@ func workflowRecordGraph(t *testing.T) profile.ExecutionGraph {
 		t.Fatalf("catalog.New() error = %v", err)
 	}
 	verified := workflowRecordRegistry{
-		provider:   registry.ProviderInstance{ProviderID: "acme/suite", Digest: strings.Repeat("3", 64), Capabilities: []registry.VerifiedCapability{{ID: "completion", Binding: binding}}},
+		hostID:     "codex",
+		provider:   registry.ProviderInstance{ProviderID: "acme/suite", HostID: "codex", BindingInventoryDigest: strings.Repeat("4", 64), Digest: strings.Repeat("3", 64), Capabilities: []registry.VerifiedCapability{{ID: "completion", Binding: binding}}},
 		capability: registry.VerifiedCapability{ID: "completion", Binding: binding},
+		digest:     strings.Repeat("2", 64),
 	}
 	graph, err := profile.CompileRecipe(available, verified, recipe, nil)
 	if err != nil {
 		t.Fatalf("profile.CompileRecipe() error = %v", err)
 	}
 	return graph
+}
+
+func workflowRecordRegistryForGraph(graph profile.ExecutionGraph) workflowRecordRegistry {
+	provider := graph.ProviderInstances()[0]
+	return workflowRecordRegistry{
+		hostID: graph.HostID(),
+		provider: registry.ProviderInstance{
+			ProviderID: provider.ProviderID, HostID: provider.HostID,
+			BindingInventoryDigest: strings.Repeat("4", 64), Digest: provider.InstanceDigest,
+		},
+		digest: strings.Repeat("2", 64),
+	}
 }

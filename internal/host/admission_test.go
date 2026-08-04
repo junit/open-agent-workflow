@@ -19,7 +19,7 @@ func TestAdmitWorkflowReturnsPinnedEffectiveHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("AdmitWorkflow() error = %v", err)
 	}
-	if admitted.IntegrationID != integration.ID || admitted.IntegrationDigest != integration.Digest || admitted.ManifestDigest != integration.ManifestDigest || admitted.AuditDigest != integration.Audit.Digest || admitted.ConformanceDigest != integration.Conformance.Digest || !slices.Equal(admitted.EffectiveFeatures, integration.Manifest.Features) {
+	if admitted.HostID != "codex" || admitted.IntegrationID != integration.ID || admitted.IntegrationDigest != integration.Digest || admitted.ManifestDigest != integration.ManifestDigest || admitted.AuditDigest != integration.Audit.Digest || admitted.ConformanceDigest != integration.Conformance.Digest || !slices.Equal(admitted.EffectiveFeatures, integration.Manifest.Features) {
 		t.Fatalf("admission = %#v", admitted)
 	}
 	admitted.EffectiveFeatures[0] = host.FeatureNativeInvocation

@@ -59,7 +59,7 @@ func TestIssueWorkflowStageGrantPinsBundleGenerationAndGraphNode(t *testing.T) {
 	request.Resources = []string{"project"}
 	grant, err := IssueWorkflowStageGrant(WorkflowStageGrantRequest{
 		Grant: request, BundleID: "bundle-0123456789abcdef0123456789abcdef", NodeID: "review",
-		GraphDigest: strings.Repeat("d", 64), Generation: 1,
+		GraphDigest: strings.Repeat("d", 64), GraphHostID: "codex", Generation: 1,
 		Node: profile.GraphNode{
 			ID: "review", ProviderID: "acme/suite", ProviderInstanceDigest: strings.Repeat("e", 64), CapabilityID: "review",
 			Binding: fixture.catalog.provider.Capabilities[0].HostBindings[0], MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
@@ -78,6 +78,39 @@ func TestIssueWorkflowStageGrantPinsBundleGenerationAndGraphNode(t *testing.T) {
 	grant.NodeID = "changed"
 	if err := ValidateGrant(grant); err == nil {
 		t.Fatal("ValidateGrant() accepted tampered workflow Node identity")
+	}
+}
+
+func TestIssueWorkflowStageGrantRejectsHostScopeMismatch(t *testing.T) {
+	fixture := admissionFixture(t)
+	fixture.catalog.provider.Capabilities[0].RequestModes = []catalog.RequestMode{catalog.RequestModeWorkflow}
+	fixture.pinDescriptor(t)
+	request := fixture.request("review")
+	request.Authority.ResourceLeases = true
+	request.Resources = []string{"project"}
+	base := WorkflowStageGrantRequest{
+		Grant: request, BundleID: "bundle-0123456789abcdef0123456789abcdef", NodeID: "review",
+		GraphDigest: strings.Repeat("d", 64), GraphHostID: "codex", Generation: 1,
+		Node: profile.GraphNode{
+			ID: "review", ProviderID: "acme/suite", ProviderInstanceDigest: strings.Repeat("e", 64), CapabilityID: "review",
+			Binding: fixture.catalog.provider.Capabilities[0].HostBindings[0], MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
+			RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, ExecutorTopology: catalog.IsolatedRequired,
+		},
+	}
+	for _, test := range []struct {
+		name   string
+		mutate func(*WorkflowStageGrantRequest)
+	}{
+		{"request host", func(value *WorkflowStageGrantRequest) { value.Grant.HostID = "claude" }},
+		{"graph host", func(value *WorkflowStageGrantRequest) { value.GraphHostID = "claude" }},
+		{"node binding host", func(value *WorkflowStageGrantRequest) { value.Node.Binding.Host = "claude" }},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := base
+			test.mutate(&candidate)
+			_, err := IssueWorkflowStageGrant(candidate)
+			assertAdmissionCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+		})
 	}
 }
 
@@ -113,6 +146,12 @@ func TestIssueBoundedGrantFailsClosedAtEveryAuthorityBoundary(t *testing.T) {
 		{"binding mismatch", func(_ *GrantRequest, fixture *admissionTestFixture) {
 			fixture.registry.capability.Binding.Reference = "wrong"
 		}, "CAPABILITY_NOT_VERIFIED"},
+		{"request host mismatch", func(value *GrantRequest, _ *admissionTestFixture) { value.HostID = "claude" }, "HOST_PROVIDER_SCOPE_MISMATCH"},
+		{"registry host mismatch", func(_ *GrantRequest, fixture *admissionTestFixture) { fixture.registry.hostID = "claude" }, "HOST_PROVIDER_SCOPE_MISMATCH"},
+		{"provider host mismatch", func(_ *GrantRequest, fixture *admissionTestFixture) { fixture.registry.provider.HostID = "claude" }, "HOST_PROVIDER_SCOPE_MISMATCH"},
+		{"binding host mismatch", func(_ *GrantRequest, fixture *admissionTestFixture) {
+			fixture.registry.capability.Binding.Host = "claude"
+		}, "HOST_PROVIDER_SCOPE_MISMATCH"},
 		{"mode denied", func(_ *GrantRequest, fixture *admissionTestFixture) {
 			fixture.catalog.provider.Capabilities[0].RequestModes = []catalog.RequestMode{catalog.RequestModeWorkflow}
 		}, "CAPABILITY_MODE_NOT_ALLOWED"},
@@ -375,10 +414,13 @@ func (value admissionTestCatalog) Providers() []catalog.ProviderDescriptorRecord
 func (value admissionTestCatalog) Digest() string { return value.digest }
 
 type admissionTestRegistry struct {
+	hostID     string
 	provider   registry.ProviderInstance
 	capability registry.VerifiedCapability
 	digest     string
 }
+
+func (value admissionTestRegistry) HostID() string { return value.hostID }
 
 func (value admissionTestRegistry) Provider(id string) (registry.ProviderInstance, bool) {
 	return value.provider, id == value.provider.ProviderID
@@ -429,7 +471,7 @@ func admissionFixture(t *testing.T) admissionTestFixture {
 	}
 	return admissionTestFixture{
 		catalog:   admissionTestCatalog{provider: provider, digest: strings.Repeat("f", 64)},
-		registry:  admissionTestRegistry{provider: verified, capability: verified.Capabilities[0], digest: strings.Repeat("9", 64)},
+		registry:  admissionTestRegistry{hostID: "codex", provider: verified, capability: verified.Capabilities[0], digest: strings.Repeat("9", 64)},
 		authority: AuthorityCeiling{Effects: []string{"read-project", "run-process"}, Resources: []string{"project"}, ResourceLeases: false, AllowDelegation: true},
 		executors: []ExecutorRegistration{{ID: "executor-review", Kind: ExecutorIsolated}},
 	}
@@ -438,7 +480,7 @@ func admissionFixture(t *testing.T) admissionTestFixture {
 func (value admissionTestFixture) request(capabilityID string) GrantRequest {
 	return GrantRequest{
 		RunID: "run-0123456789abcdef0123456789abcdef", RequestID: "request", DeliverableID: "deliverable", InputDigest: strings.Repeat("1", 64),
-		IssuedRevision: 2, Selector: classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: capabilityID, Source: classification.SelectorUserIntent},
+		IssuedRevision: 2, HostID: "codex", Selector: classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: capabilityID, Source: classification.SelectorUserIntent},
 		Effects: []string{"read-project"}, Resources: []string{"project"}, TerminationCondition: "one normalized review report", Executor: value.executors[0],
 		Catalog: value.catalog, Registry: value.registry, Authority: value.authority, Executors: value.executors, DelegationAllowList: []string{},
 	}
@@ -451,7 +493,7 @@ func (value admissionTestFixture) childRequest(parent CapabilityGrant) ChildGran
 		Parent: parent,
 		Request: GrantRequest{
 			RunID: parent.RunID, RequestID: parent.RequestID, DeliverableID: parent.DeliverableID + "-child", InputDigest: strings.Repeat("2", 64),
-			IssuedRevision: parent.IssuedRevision + 1, Selector: classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "security-review", Source: classification.SelectorUserIntent},
+			IssuedRevision: parent.IssuedRevision + 1, HostID: "codex", Selector: classification.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "security-review", Source: classification.SelectorUserIntent},
 			Effects: []string{"read-project"}, Resources: []string{"project"}, TerminationCondition: "one security report", Executor: value.executors[0],
 			Catalog: value.catalog, Registry: registryValue, Authority: value.authority, Executors: value.executors, DelegationAllowList: []string{},
 		},

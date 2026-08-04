@@ -15,7 +15,7 @@ const RuntimeSchemaV1 = "oaw.runtime/v1"
 const (
 	headSchemaV1     = "oaw.runtime-head/v1"
 	revisionSchemaV1 = "oaw.runtime-revision/v1"
-	snapshotSchemaV1 = "oaw.runtime-snapshot/v1"
+	snapshotSchemaV2 = "oaw.runtime-snapshot/v2"
 )
 
 type FrameKind string
@@ -90,6 +90,7 @@ type BoundedOptions struct {
 	Configuration config.Snapshot
 	Resolutions   registry.ResolutionReport
 	Registry      registry.Registry
+	HostID        string
 	Authority     admission.AuthorityCeiling
 	Executors     []admission.ExecutorRegistration
 }
@@ -165,6 +166,7 @@ type BoundedInput struct {
 type BoundedState struct {
 	Input               BoundedInput                       `json:"input"`
 	Selector            *classification.CapabilitySelector `json:"selector,omitempty"`
+	HostID              string                             `json:"host_id"`
 	ConfigurationDigest string                             `json:"configuration_digest"`
 	CatalogDigest       string                             `json:"catalog_digest"`
 	RegistryDigest      string                             `json:"registry_digest"`

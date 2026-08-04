@@ -16,7 +16,7 @@ func TestCompileRecipePinsVerifiedCapabilityContract(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CompileRecipe() error = %v", err)
 	}
-	if graph.SchemaVersion() != profile.ExecutionGraphSchemaV1 || graph.RecipeID() != recipe.ID || graph.RecipeVersion() != recipe.RecipeVersion {
+	if graph.SchemaVersion() != profile.ExecutionGraphSchemaV2 || graph.HostID() != "codex" || graph.RecipeID() != recipe.ID || graph.RecipeVersion() != recipe.RecipeVersion {
 		t.Fatalf("graph identity = %q %q %q", graph.SchemaVersion(), graph.RecipeID(), graph.RecipeVersion())
 	}
 	if graph.RecipeDigest() == "" || graph.Digest() == "" || graph.Entry() != "implementation" {
@@ -24,7 +24,7 @@ func TestCompileRecipePinsVerifiedCapabilityContract(t *testing.T) {
 	}
 
 	providers := graph.ProviderInstances()
-	if len(providers) != 1 || providers[0].ProviderID != "acme/suite" || providers[0].InstanceDigest != "acme-instance-digest" {
+	if len(providers) != 1 || providers[0].ProviderID != "acme/suite" || providers[0].HostID != "codex" || providers[0].InstanceDigest != "acme-instance-digest" {
 		t.Fatalf("ProviderInstances() = %#v", providers)
 	}
 	nodes := graph.Nodes()
@@ -68,6 +68,15 @@ func TestCompileRecipePinsVerifiedCapabilityContract(t *testing.T) {
 	if graph.ProviderInstances()[0].InstanceDigest != "acme-instance-digest" || graph.Nodes()[0].MaximumEffects[0] == "changed" || len(graph.Nodes()[0].Transitions) > 1 || graph.TerminalGates()[0] != "completion" {
 		t.Fatal("ExecutionGraph exposed mutable storage")
 	}
+}
+
+func TestCompileRecipeRejectsProviderFromAnotherHost(t *testing.T) {
+	available, verified, recipe := compilerFixture(t)
+	instance := verified.providers["acme/suite"]
+	instance.HostID = "claude"
+	verified.providers["acme/suite"] = instance
+	_, err := profile.CompileRecipe(available, verified, recipe, nil)
+	requireCompileCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
 }
 
 func TestCompileRecipeAppliesExactProviderBinding(t *testing.T) {
@@ -120,6 +129,11 @@ func TestExecutionGraphRecordIsDigestPinnedAndDefensive(t *testing.T) {
 	}
 	if err := profile.ValidateExecutionGraphRecord(record); err != nil {
 		t.Fatalf("ValidateExecutionGraphRecord() error = %v", err)
+	}
+	v1Record := record
+	v1Record.SchemaVersion = "oaw.execution-graph/v1"
+	if err := profile.ValidateExecutionGraphRecord(v1Record); err == nil {
+		t.Fatal("ValidateExecutionGraphRecord() accepted a v1 record")
 	}
 	implementationIndex := -1
 	for index := range record.Nodes {
@@ -343,9 +357,12 @@ func TestCompileRecipeOmitsOptionalIncidentHandlerAndRoute(t *testing.T) {
 }
 
 type fakeRegistry struct {
+	hostID       string
 	providers    map[string]registry.ProviderInstance
 	capabilities map[string]registry.VerifiedCapability
 }
+
+func (value fakeRegistry) HostID() string { return value.hostID }
 
 type catalogSource struct {
 	providers []catalog.ProviderDescriptorRecord
@@ -426,16 +443,17 @@ func compilerFixtureWithImplementationMode(t *testing.T, implementationMode cata
 	if err != nil {
 		t.Fatalf("catalog.New() error = %v", err)
 	}
-	instance := registry.ProviderInstance{ProviderID: "acme/suite", Digest: "acme-instance-digest", Capabilities: []registry.VerifiedCapability{
+	instance := registry.ProviderInstance{ProviderID: "acme/suite", HostID: "codex", Digest: "acme-instance-digest", Capabilities: []registry.VerifiedCapability{
 		{ID: "implementation", Binding: implementationBinding},
 		{ID: "review", Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review"}},
 		{ID: "completion", Binding: completionBinding},
 		{ID: "optional-repair", Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:optional-repair"}},
 	}}
-	alternateInstance := registry.ProviderInstance{ProviderID: "vendor/suite", Digest: "vendor-instance-digest", Capabilities: []registry.VerifiedCapability{
+	alternateInstance := registry.ProviderInstance{ProviderID: "vendor/suite", HostID: "codex", Digest: "vendor-instance-digest", Capabilities: []registry.VerifiedCapability{
 		{ID: "implementation", Binding: alternate.Capabilities[0].HostBindings[0]},
 	}}
 	verified := fakeRegistry{
+		hostID:    "codex",
 		providers: map[string]registry.ProviderInstance{"acme/suite": instance, "vendor/suite": alternateInstance},
 		capabilities: map[string]registry.VerifiedCapability{
 			"acme/suite\x00implementation":   {ID: "implementation", Binding: implementationBinding},
