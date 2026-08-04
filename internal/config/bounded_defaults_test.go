@@ -13,7 +13,7 @@ import (
 func TestDecodeUserNormalizesNamedBoundedCapabilityDefaults(t *testing.T) {
 	registry := testSchemaRegistry(t)
 	decoded, err := config.DecodeUser([]byte(`
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 
 [[bounded_capability_defaults]]
 id = "zeta-review"
@@ -90,7 +90,7 @@ capability_id = "Bad Capability"
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := config.DecodeUser([]byte("schema_version = \"oaw.user-config/v1\"\n"+test.values), registry)
+			_, err := config.DecodeUser([]byte("schema_version = \"oaw.user-config/v2\"\n"+test.values), registry)
 			if err == nil || !containsConfigCode(err.Error(), test.code) {
 				t.Fatalf("DecodeUser() error = %v, want %s", err, test.code)
 			}
@@ -119,7 +119,7 @@ func TestSnapshotPinsAndDefensivelyCopiesBoundedDefaults(t *testing.T) {
 	}
 	userRoot := t.TempDir()
 	writeConfigFile(t, filepath.Join(userRoot, "config.toml"), `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[bounded_capability_defaults]]
 id = "review"
 provider_id = "oaw/ecc"

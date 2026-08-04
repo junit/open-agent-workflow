@@ -87,7 +87,7 @@ path = "providers/acme.toml"
 		t.Fatal(err)
 	}
 	userRoot := t.TempDir()
-	writeFile(t, userRoot, "config.toml", "schema_version = \"oaw.user-config/v1\"\n"+projectTrustConfig(fingerprint))
+	writeFile(t, userRoot, "config.toml", "schema_version = \"oaw.user-config/v2\"\n"+projectTrustConfig(fingerprint))
 	trusted, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: projectRoot})
 	if err != nil {
 		t.Fatal(err)
@@ -185,7 +185,7 @@ capability_ids = ["review"]
 	providerPath := writeFile(t, userRoot, "providers/acme.toml", testProviderTOML)
 	writeFile(t, userRoot, "profiles/review.toml", testRecipeTOML)
 	writeFile(t, userRoot, "config.toml", fmt.Sprintf(`
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 denied_providers = ["oaw/matt"]
 [[provider_descriptors]]
 id = "acme/suite"

@@ -287,7 +287,7 @@ func ticket08WriteUserIntegration(t *testing.T, root string, integration host.In
 		t.Fatal(err)
 	}
 	writeTicket07File(t, filepath.Join(root, "integrations", "host.toml"), raw.String())
-	writeTicket07File(t, filepath.Join(root, "config.toml"), "schema_version = \"oaw.user-config/v1\"\n[[host_integrations]]\nid = \""+integration.ID+"\"\npath = \"integrations/host.toml\"\nreplace = false\n")
+	writeTicket07File(t, filepath.Join(root, "config.toml"), "schema_version = \"oaw.user-config/v2\"\n[[host_integrations]]\nid = \""+integration.ID+"\"\npath = \"integrations/host.toml\"\nreplace = false\n")
 }
 
 func ticket08Engine(t *testing.T, stateRoot string, fixture ticket07IntegrationFixture, frame host.RuntimeFrame, projection oawruntime.ProjectionOptions) *oawruntime.Engine {

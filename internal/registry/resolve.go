@@ -40,7 +40,7 @@ func Resolve(snapshot config.Snapshot, evidence discovery.Report, inventory *Bin
 	resolutions := make([]ProviderResolution, 0, len(providerIDs))
 	instances := make([]ProviderInstance, 0, len(providerIDs))
 	for _, providerID := range providerIDs {
-		settings := snapshot.ProviderSettings(providerID)
+		settings := snapshot.ProviderSettings(providerID, evidence.HostID())
 		candidates := evidence.Candidates(providerID)
 		resolution := ProviderResolution{ProviderID: providerID, Instance: nil, Candidates: candidates}
 		if settings.Disabled {
@@ -115,6 +115,9 @@ func Resolve(snapshot config.Snapshot, evidence discovery.Report, inventory *Bin
 func matchingCandidates(values []discovery.Candidate, pin config.ProviderPin) []discovery.Candidate {
 	result := make([]discovery.Candidate, 0, len(values))
 	for _, candidate := range values {
+		if candidate.ProviderID != pin.ProviderID || candidate.HostID != pin.HostID || candidate.InstallationKey != pin.InstallationKey || candidate.EvidenceDigest != pin.EvidenceDigest {
+			continue
+		}
 		if pin.Location != "" && candidate.Location != pin.Location {
 			continue
 		}
@@ -163,7 +166,7 @@ func resolveCapabilities(descriptor catalog.ProviderDescriptorRecord, settings c
 		sort.Slice(bindings, func(i, j int) bool { return bindingKey(bindings[i]) < bindingKey(bindings[j]) })
 		selected := bindings[0]
 		if preference, found := preferences[capability.ID]; found {
-			preferred := catalog.HostBinding{Host: preference.Host, Kind: preference.Kind, Reference: preference.Reference}
+			preferred := catalog.HostBinding{Host: preference.HostID, Kind: preference.Kind, Reference: preference.Reference}
 			for _, binding := range bindings {
 				if binding == preferred {
 					selected = binding

@@ -16,7 +16,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
 
-const configurationSnapshotSchemaV1 = "oaw.configuration-snapshot/v1"
+const configurationSnapshotSchemaV2 = "oaw.configuration-snapshot/v2"
 
 type LoadOptions struct {
 	UserConfigRoot string
@@ -25,6 +25,7 @@ type LoadOptions struct {
 
 type ProviderSettings struct {
 	ProviderID      string              `json:"provider_id"`
+	HostID          string              `json:"host_id"`
 	Disabled        bool                `json:"disabled"`
 	Pin             *ProviderPin        `json:"pin"`
 	Preferences     []BindingPreference `json:"preferences"`
@@ -33,19 +34,20 @@ type ProviderSettings struct {
 }
 
 type Snapshot struct {
-	digest               string
-	catalog              catalog.Catalog
-	projectStatus        ProjectTrustStatus
-	projectReason        string
-	settings             []ProviderSettings
-	boundedDefaults      []BoundedCapabilityDefault
-	requiredProviders    []string
-	recommendedProviders []string
-	untrustedProviderIDs []string
-	hostIntegrations     []host.IntegrationRecord
-	userConfigDigest     string
-	projectRoot          string
-	projectConfigDigest  string
+	digest                string
+	catalog               catalog.Catalog
+	projectStatus         ProjectTrustStatus
+	projectReason         string
+	settings              []ProviderSettings
+	providerInstallations []ProviderInstallation
+	boundedDefaults       []BoundedCapabilityDefault
+	requiredProviders     []string
+	recommendedProviders  []string
+	untrustedProviderIDs  []string
+	hostIntegrations      []host.IntegrationRecord
+	userConfigDigest      string
+	projectRoot           string
+	projectConfigDigest   string
 }
 
 // SnapshotRecord is the immutable public projection of a loaded configuration.
@@ -59,6 +61,7 @@ type SnapshotRecord struct {
 	ProjectStatus             ProjectTrustStatus         `json:"project_status"`
 	ProjectReason             string                     `json:"project_reason"`
 	Settings                  []ProviderSettings         `json:"settings"`
+	ProviderInstallations     []ProviderInstallation     `json:"provider_installations"`
 	BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults"`
 	RequiredProviders         []string                   `json:"required_providers"`
 	RecommendedProviders      []string                   `json:"recommended_providers"`
@@ -69,7 +72,7 @@ type SnapshotRecord struct {
 
 func (snapshot Snapshot) Record() SnapshotRecord {
 	return SnapshotRecord{
-		SchemaVersion:             configurationSnapshotSchemaV1,
+		SchemaVersion:             configurationSnapshotSchemaV2,
 		CatalogDigest:             snapshot.catalog.Digest(),
 		UserConfigDigest:          snapshot.userConfigDigest,
 		ProjectRoot:               snapshot.projectRoot,
@@ -77,6 +80,7 @@ func (snapshot Snapshot) Record() SnapshotRecord {
 		ProjectStatus:             snapshot.projectStatus,
 		ProjectReason:             snapshot.projectReason,
 		Settings:                  cloneProviderSettingsList(snapshot.settings),
+		ProviderInstallations:     append([]ProviderInstallation{}, snapshot.providerInstallations...),
 		BoundedCapabilityDefaults: append([]BoundedCapabilityDefault{}, snapshot.boundedDefaults...),
 		RequiredProviders:         append([]string{}, snapshot.requiredProviders...),
 		RecommendedProviders:      append([]string{}, snapshot.recommendedProviders...),
@@ -170,18 +174,19 @@ func Load(options LoadOptions) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 	snapshot := Snapshot{
-		catalog:              effectiveCatalog,
-		projectStatus:        projectStatus,
-		projectReason:        projectReason,
-		settings:             settings,
-		boundedDefaults:      append([]BoundedCapabilityDefault{}, user.config.Record.BoundedCapabilityDefaults...),
-		requiredProviders:    requiredProviders,
-		recommendedProviders: recommendedProviders,
-		untrustedProviderIDs: untrustedProviderIDs,
-		hostIntegrations:     hostIntegrations,
-		userConfigDigest:     user.config.Digest,
-		projectRoot:          projectRoot,
-		projectConfigDigest:  projectDigest,
+		catalog:               effectiveCatalog,
+		projectStatus:         projectStatus,
+		projectReason:         projectReason,
+		settings:              settings,
+		providerInstallations: append([]ProviderInstallation{}, user.config.Record.ProviderInstallations...),
+		boundedDefaults:       append([]BoundedCapabilityDefault{}, user.config.Record.BoundedCapabilityDefaults...),
+		requiredProviders:     requiredProviders,
+		recommendedProviders:  recommendedProviders,
+		untrustedProviderIDs:  untrustedProviderIDs,
+		hostIntegrations:      hostIntegrations,
+		userConfigDigest:      user.config.Digest,
+		projectRoot:           projectRoot,
+		projectConfigDigest:   projectDigest,
 	}
 	if err := snapshot.setDigest(); err != nil {
 		return Snapshot{}, err
@@ -371,26 +376,47 @@ func referenceIndex(values []ContentReference) map[string]ContentReference {
 
 func buildProviderSettings(value catalog.Catalog, user UserConfigRecord, project ProjectConfigRecord) ([]ProviderSettings, error) {
 	settings := make(map[string]*ProviderSettings)
+	allHosts := make(map[string]struct{})
 	for _, provider := range value.Providers() {
-		settings[provider.ID] = &ProviderSettings{ProviderID: provider.ID, Preferences: []BindingPreference{}, CapabilityLimit: []string{}}
+		hosts := providerHosts(provider)
+		for _, hostID := range hosts {
+			allHosts[hostID] = struct{}{}
+			ensureProviderSettings(settings, provider.ID, hostID)
+		}
 	}
 	for _, id := range user.DeniedProviders {
-		setting := ensureProviderSettings(settings, id)
-		setting.Disabled = true
+		matched := false
+		for _, setting := range settings {
+			if setting.ProviderID == id {
+				setting.Disabled = true
+				matched = true
+			}
+		}
+		if !matched {
+			for hostID := range allHosts {
+				ensureProviderSettings(settings, id, hostID).Disabled = true
+			}
+		}
 	}
 	for i := range user.ProviderPins {
 		pin := user.ProviderPins[i]
-		setting := ensureProviderSettings(settings, pin.ID)
+		setting := ensureProviderSettings(settings, pin.ProviderID, pin.HostID)
 		copyValue := pin
 		setting.Pin = &copyValue
 	}
 	for _, preference := range user.BindingPreferences {
-		setting := ensureProviderSettings(settings, preference.ProviderID)
+		setting := ensureProviderSettings(settings, preference.ProviderID, preference.HostID)
 		setting.Preferences = append(setting.Preferences, preference)
 	}
+	for _, installation := range user.ProviderInstallations {
+		ensureProviderSettings(settings, installation.ProviderID, installation.HostID)
+	}
 	for _, limit := range project.CapabilityLimits {
-		setting := ensureProviderSettings(settings, limit.ProviderID)
-		setting.CapabilityLimit = append([]string{}, limit.CapabilityIDs...)
+		for _, setting := range settings {
+			if setting.ProviderID == limit.ProviderID {
+				setting.CapabilityLimit = append([]string{}, limit.CapabilityIDs...)
+			}
+		}
 	}
 	result := make([]ProviderSettings, 0, len(settings))
 	for _, setting := range settings {
@@ -405,17 +431,44 @@ func buildProviderSettings(value catalog.Catalog, user UserConfigRecord, project
 		}
 		result = append(result, cloneProviderSettings(*setting))
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ProviderID < result[j].ProviderID })
+	sort.Slice(result, func(i, j int) bool {
+		return providerSettingsKey(result[i].ProviderID, result[i].HostID) < providerSettingsKey(result[j].ProviderID, result[j].HostID)
+	})
 	return result, nil
 }
 
-func ensureProviderSettings(values map[string]*ProviderSettings, id string) *ProviderSettings {
-	if value, found := values[id]; found {
+func ensureProviderSettings(values map[string]*ProviderSettings, providerID, hostID string) *ProviderSettings {
+	key := providerSettingsKey(providerID, hostID)
+	if value, found := values[key]; found {
 		return value
 	}
-	value := &ProviderSettings{ProviderID: id, Preferences: []BindingPreference{}, CapabilityLimit: []string{}}
-	values[id] = value
+	value := &ProviderSettings{ProviderID: providerID, HostID: hostID, Preferences: []BindingPreference{}, CapabilityLimit: []string{}}
+	values[key] = value
 	return value
+}
+
+func providerHosts(provider catalog.ProviderDescriptorRecord) []string {
+	hosts := make(map[string]struct{})
+	for _, probe := range provider.Discovery {
+		for _, hostID := range probe.Hosts {
+			hosts[hostID] = struct{}{}
+		}
+	}
+	for _, capability := range provider.Capabilities {
+		for _, binding := range capability.HostBindings {
+			hosts[binding.Host] = struct{}{}
+		}
+	}
+	result := make([]string, 0, len(hosts))
+	for hostID := range hosts {
+		result = append(result, hostID)
+	}
+	sort.Strings(result)
+	return result
+}
+
+func providerSettingsKey(providerID, hostID string) string {
+	return providerID + "\x00" + hostID
 }
 
 func validateSettingsAgainstCatalog(settings ProviderSettings, value catalog.Catalog) error {
@@ -453,7 +506,7 @@ func validateSettingsAgainstCatalog(settings ProviderSettings, value catalog.Cat
 
 func containsBinding(values []catalog.HostBinding, preference BindingPreference) bool {
 	for _, value := range values {
-		if value.Host == preference.Host && value.Kind == preference.Kind && value.Reference == preference.Reference {
+		if value.Host == preference.HostID && value.Kind == preference.Kind && value.Reference == preference.Reference {
 			return true
 		}
 	}
@@ -468,12 +521,19 @@ func (snapshot Snapshot) ProjectStatus() ProjectTrustStatus { return snapshot.pr
 
 func (snapshot Snapshot) ProjectReason() string { return snapshot.projectReason }
 
-func (snapshot Snapshot) ProviderSettings(id string) ProviderSettings {
-	index := sort.Search(len(snapshot.settings), func(i int) bool { return snapshot.settings[i].ProviderID >= id })
-	if index == len(snapshot.settings) || snapshot.settings[index].ProviderID != id {
-		return ProviderSettings{ProviderID: id, Preferences: []BindingPreference{}, CapabilityLimit: []string{}}
+func (snapshot Snapshot) ProviderSettings(providerID, hostID string) ProviderSettings {
+	key := providerSettingsKey(providerID, hostID)
+	index := sort.Search(len(snapshot.settings), func(i int) bool {
+		return providerSettingsKey(snapshot.settings[i].ProviderID, snapshot.settings[i].HostID) >= key
+	})
+	if index == len(snapshot.settings) || providerSettingsKey(snapshot.settings[index].ProviderID, snapshot.settings[index].HostID) != key {
+		return ProviderSettings{ProviderID: providerID, HostID: hostID, Preferences: []BindingPreference{}, CapabilityLimit: []string{}}
 	}
 	return cloneProviderSettings(snapshot.settings[index])
+}
+
+func (snapshot Snapshot) ProviderInstallations() []ProviderInstallation {
+	return append([]ProviderInstallation{}, snapshot.providerInstallations...)
 }
 
 func (snapshot Snapshot) RequiredProviders() []string {
@@ -524,6 +584,7 @@ func snapshotRecordContent(record SnapshotRecord) any {
 		ProjectStatus             ProjectTrustStatus         `json:"project_status"`
 		ProjectReason             string                     `json:"project_reason"`
 		Settings                  []ProviderSettings         `json:"settings"`
+		ProviderInstallations     []ProviderInstallation     `json:"provider_installations"`
 		BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults"`
 		RequiredProviders         []string                   `json:"required_providers"`
 		RecommendedProviders      []string                   `json:"recommended_providers"`
@@ -532,7 +593,7 @@ func snapshotRecordContent(record SnapshotRecord) any {
 	}{
 		record.SchemaVersion, record.CatalogDigest, record.UserConfigDigest,
 		record.ProjectRoot, record.ProjectConfigDigest, record.ProjectStatus,
-		record.ProjectReason, record.Settings, record.BoundedCapabilityDefaults,
+		record.ProjectReason, record.Settings, record.ProviderInstallations, record.BoundedCapabilityDefaults,
 		record.RequiredProviders, record.RecommendedProviders, record.UntrustedProviderIDs,
 		record.HostIntegrations,
 	}
@@ -557,11 +618,12 @@ func cloneHostIntegrations(values []host.IntegrationRecord) []host.IntegrationRe
 func setProviderSettingsDigest(value *ProviderSettings) error {
 	record := struct {
 		ProviderID      string              `json:"provider_id"`
+		HostID          string              `json:"host_id"`
 		Disabled        bool                `json:"disabled"`
 		Pin             *ProviderPin        `json:"pin"`
 		Preferences     []BindingPreference `json:"preferences"`
 		CapabilityLimit []string            `json:"capability_limit"`
-	}{value.ProviderID, value.Disabled, value.Pin, value.Preferences, value.CapabilityLimit}
+	}{value.ProviderID, value.HostID, value.Disabled, value.Pin, value.Preferences, value.CapabilityLimit}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return err
@@ -582,11 +644,12 @@ func cloneProviderSettings(value ProviderSettings) ProviderSettings {
 
 func emptyUserConfig() UserConfigRecord {
 	return UserConfigRecord{
-		SchemaVersion:             UserConfigSchemaV1,
+		SchemaVersion:             UserConfigSchemaV2,
 		DeniedProviders:           []string{},
 		ProviderDescriptors:       []ContentReference{},
 		ProfileRecipes:            []ContentReference{},
 		HostIntegrations:          []ContentReference{},
+		ProviderInstallations:     []ProviderInstallation{},
 		ProviderPins:              []ProviderPin{},
 		BindingPreferences:        []BindingPreference{},
 		BoundedCapabilityDefaults: []BoundedCapabilityDefault{},

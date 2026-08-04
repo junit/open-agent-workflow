@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 	"unicode/utf8"
@@ -20,7 +21,7 @@ func DecodeUser(raw []byte, registry *schema.Registry) (Decoded[UserConfigRecord
 	if err := strictTOML(raw, &record); err != nil {
 		return Decoded[UserConfigRecord]{}, err
 	}
-	if record.SchemaVersion != UserConfigSchemaV1 {
+	if record.SchemaVersion != UserConfigSchemaV2 {
 		return Decoded[UserConfigRecord]{}, fmt.Errorf("UNSUPPORTED_USER_CONFIG_SCHEMA: %q", record.SchemaVersion)
 	}
 	if err := normalizeUser(&record); err != nil {
@@ -30,7 +31,7 @@ func DecodeUser(raw []byte, registry *schema.Registry) (Decoded[UserConfigRecord
 	if err != nil {
 		return Decoded[UserConfigRecord]{}, err
 	}
-	if err := registry.Validate(schema.UserConfigV1, encoded); err != nil {
+	if err := registry.Validate(schema.UserConfigV2, encoded); err != nil {
 		return Decoded[UserConfigRecord]{}, fmt.Errorf("INVALID_USER_CONFIG: %w", err)
 	}
 	return Decoded[UserConfigRecord]{Record: record, CanonicalJSON: encoded, Digest: digest}, nil
@@ -135,16 +136,50 @@ func normalizeUser(record *UserConfigRecord) error {
 	if err := normalizeReferences(record.HostIntegrations, "DUPLICATE_HOST_INTEGRATION_REFERENCE"); err != nil {
 		return err
 	}
-	for _, pin := range record.ProviderPins {
-		if _, err := catalog.ParseQualifiedID(pin.ID); err != nil {
-			return fmt.Errorf("INVALID_PROVIDER_PIN: %w", err)
+	for _, installation := range record.ProviderInstallations {
+		if _, err := catalog.ParseQualifiedID(installation.ProviderID); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_INSTALLATION: %w", err)
 		}
-		if pin.Location == "" && pin.Version == "" {
-			return fmt.Errorf("INVALID_PROVIDER_PIN: %s has no location or version", pin.ID)
+		if _, err := catalog.ParseLocalID(installation.HostID); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_INSTALLATION: %w", err)
+		}
+		if _, err := catalog.ParseLocalID(installation.SurfaceID); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_INSTALLATION: %w", err)
+		}
+		if _, err := catalog.ParseLocalID(installation.DiscoveryProbeID); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_INSTALLATION: %w", err)
+		}
+		if !cleanAbsolutePath(installation.Location) {
+			return fmt.Errorf("INVALID_PROVIDER_INSTALLATION: unsafe location for %s/%s", installation.ProviderID, installation.HostID)
 		}
 	}
-	sort.Slice(record.ProviderPins, func(i, j int) bool { return record.ProviderPins[i].ID < record.ProviderPins[j].ID })
-	if err := uniqueBy(len(record.ProviderPins), func(i int) string { return record.ProviderPins[i].ID }, "DUPLICATE_PROVIDER_PIN"); err != nil {
+	sort.Slice(record.ProviderInstallations, func(i, j int) bool {
+		return providerInstallationKey(record.ProviderInstallations[i]) < providerInstallationKey(record.ProviderInstallations[j])
+	})
+	if err := uniqueBy(len(record.ProviderInstallations), func(i int) string { return providerInstallationKey(record.ProviderInstallations[i]) }, "DUPLICATE_PROVIDER_INSTALLATION"); err != nil {
+		return err
+	}
+	for _, pin := range record.ProviderPins {
+		if _, err := catalog.ParseQualifiedID(pin.ProviderID); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_PIN: %w", err)
+		}
+		if _, err := catalog.ParseLocalID(pin.HostID); err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_PIN: %w", err)
+		}
+		if pin.InstallationKey == "" || hasControl(pin.InstallationKey) || !validDigest(pin.EvidenceDigest) {
+			return fmt.Errorf("INVALID_PROVIDER_PIN: invalid identity for %s/%s", pin.ProviderID, pin.HostID)
+		}
+		if pin.Location != "" && !cleanAbsolutePath(pin.Location) {
+			return fmt.Errorf("INVALID_PROVIDER_PIN: unsafe location for %s/%s", pin.ProviderID, pin.HostID)
+		}
+		if pin.Version != "" && (strings.TrimSpace(pin.Version) != pin.Version || hasControl(pin.Version)) {
+			return fmt.Errorf("INVALID_PROVIDER_PIN: invalid version for %s/%s", pin.ProviderID, pin.HostID)
+		}
+	}
+	sort.Slice(record.ProviderPins, func(i, j int) bool {
+		return providerPinKey(record.ProviderPins[i]) < providerPinKey(record.ProviderPins[j])
+	})
+	if err := uniqueBy(len(record.ProviderPins), func(i int) string { return providerPinKey(record.ProviderPins[i]) }, "DUPLICATE_PROVIDER_PIN"); err != nil {
 		return err
 	}
 	for _, preference := range record.BindingPreferences {
@@ -154,7 +189,7 @@ func normalizeUser(record *UserConfigRecord) error {
 		if _, err := catalog.ParseLocalID(preference.CapabilityID); err != nil {
 			return fmt.Errorf("INVALID_BINDING_PREFERENCE: %w", err)
 		}
-		if preference.Host == "" || preference.Reference == "" || (preference.Kind != "skill" && preference.Kind != "agent" && preference.Kind != "tool") {
+		if _, err := catalog.ParseLocalID(preference.HostID); err != nil || preference.Reference == "" || (preference.Kind != "skill" && preference.Kind != "agent" && preference.Kind != "tool") {
 			return fmt.Errorf("INVALID_BINDING_PREFERENCE: %s/%s", preference.ProviderID, preference.CapabilityID)
 		}
 	}
@@ -315,6 +350,9 @@ func normalizeUserCollections(record *UserConfigRecord) {
 	if record.HostIntegrations == nil {
 		record.HostIntegrations = []ContentReference{}
 	}
+	if record.ProviderInstallations == nil {
+		record.ProviderInstallations = []ProviderInstallation{}
+	}
 	if record.ProviderPins == nil {
 		record.ProviderPins = []ProviderPin{}
 	}
@@ -366,5 +404,38 @@ func uniqueBy(length int, key func(int) string, code string) error {
 }
 
 func bindingPreferenceKey(value BindingPreference) string {
-	return value.ProviderID + "\x00" + value.CapabilityID
+	return value.ProviderID + "\x00" + value.HostID + "\x00" + value.CapabilityID
+}
+
+func providerPinKey(value ProviderPin) string {
+	return value.ProviderID + "\x00" + value.HostID
+}
+
+func providerInstallationKey(value ProviderInstallation) string {
+	return value.ProviderID + "\x00" + value.HostID + "\x00" + value.SurfaceID + "\x00" + value.Location
+}
+
+func cleanAbsolutePath(value string) bool {
+	return value != "" && filepath.IsAbs(value) && filepath.Clean(value) == value && !hasControl(value)
+}
+
+func validDigest(value string) bool {
+	if len(value) != 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func hasControl(value string) bool {
+	for _, character := range value {
+		if character < 0x20 || character == 0x7f {
+			return true
+		}
+	}
+	return false
 }

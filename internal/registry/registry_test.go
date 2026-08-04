@@ -29,14 +29,17 @@ func TestResolveReportsEveryProviderState(t *testing.T) {
 		{"verified", "", writeSuperpowersDirect, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{verificationBinding}}, registry.Verified, "PROVIDER_VERIFIED"},
 		{"ambiguous", "", writeSuperpowersDirectAndVersion, nil, registry.Ambiguous, "PROVIDER_CANDIDATE_AMBIGUOUS"},
 		{"incompatible", `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[provider_pins]]
-id = "oaw/superpowers"
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = "installation-incompatible"
+evidence_digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 version = "9.9.9"
 `, writeSuperpowersDirect, nil, registry.Incompatible, "PROVIDER_PIN_INCOMPATIBLE"},
 		{"binding unavailable", "", writeSuperpowersDirect, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}}, registry.BindingUnavailable, "PROVIDER_BINDING_UNAVAILABLE"},
 		{"disabled", `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 denied_providers = ["oaw/superpowers"]
 `, writeSuperpowersDirect, &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{verificationBinding}}, registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
 	}
@@ -68,7 +71,7 @@ func TestResolveReportsUntrustedAndUserDenyWins(t *testing.T) {
 		reason     string
 	}{
 		{"untrusted", "", registry.Untrusted, "PROVIDER_PROJECT_CONTENT_UNTRUSTED"},
-		{"denied", "schema_version = \"oaw.user-config/v1\"\ndenied_providers = [\"acme/suite\"]\n", registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
+		{"denied", "schema_version = \"oaw.user-config/v2\"\ndenied_providers = [\"acme/suite\"]\n", registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			userRoot := writeUserConfig(t, tt.userConfig)
@@ -98,17 +101,38 @@ func TestResolveReportsUntrustedAndUserDenyWins(t *testing.T) {
 func TestResolveUsesExactPinToDisambiguate(t *testing.T) {
 	home := t.TempDir()
 	writeSuperpowersDirectAndVersion(t, home)
+	baseSnapshot, err := config.Load(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	baseEvidence, err := discovery.Discover(baseSnapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var pinned discovery.Candidate
+	for _, candidate := range baseEvidence.Candidates("oaw/superpowers") {
+		if candidate.Version == "1.2.3" {
+			pinned = candidate
+			break
+		}
+	}
+	if pinned.InstallationKey == "" {
+		t.Fatal("versioned candidate was not discovered")
+	}
 	versionLocation, err := filepath.EvalSymlinks(filepath.Join(home, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", "1.2.3"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	userConfig := fmt.Sprintf(`
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[provider_pins]]
-id = "oaw/superpowers"
+provider_id = "oaw/superpowers"
+host_id = "codex"
+installation_key = %q
+evidence_digest = %q
 location = %q
 version = "1.2.3"
-`, versionLocation)
+`, pinned.InstallationKey, pinned.EvidenceDigest, versionLocation)
 	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: writeUserConfig(t, userConfig)})
 	if err != nil {
 		t.Fatal(err)
@@ -334,7 +358,7 @@ recipe_digests = []
 [[binding_preferences]]
 provider_id = "acme/suite"
 capability_id = "review"
-host = "codex"
+host_id = "codex"
 kind = "skill"
 reference = "acme:zeta-review"
 `
@@ -342,7 +366,7 @@ reference = "acme:zeta-review"
 	userRoot := t.TempDir()
 	writeFile(t, userRoot, "providers/acme.toml", testProviderTOML)
 	writeFile(t, userRoot, "config.toml", fmt.Sprintf(`
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[provider_descriptors]]
 id = "acme/suite"
 path = "providers/acme.toml"

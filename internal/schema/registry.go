@@ -15,7 +15,6 @@ const (
 	ProviderDescriptorV2     = "https://open-agent-workflow.dev/schemas/v2/provider-descriptor.schema.json"
 	ProfileRecipeV1          = "https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json"
 	ProfileAliasSetV1        = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
-	UserConfigV1             = "https://open-agent-workflow.dev/schemas/v1/user-config.schema.json"
 	UserConfigV2             = "https://open-agent-workflow.dev/schemas/v2/user-config.schema.json"
 	ProjectConfigV1          = "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json"
 	ClassificationProposalV1 = "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json"
@@ -38,7 +37,6 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v2/user-config.schema.json", UserConfigV2},
 		{"schemas/v1/profile-recipe.schema.json", ProfileRecipeV1},
 		{"schemas/v1/profile-alias-set.schema.json", ProfileAliasSetV1},
-		{"schemas/v1/user-config.schema.json", UserConfigV1},
 		{"schemas/v1/project-config.schema.json", ProjectConfigV1},
 		{"schemas/v1/classification-proposal.schema.json", ClassificationProposalV1},
 		{"schemas/v1/host-manifest.schema.json", HostManifestV1},

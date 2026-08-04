@@ -185,7 +185,11 @@ func providerInspectionProjection(inputs providerInputs, hostID string) provider
 		for _, candidate := range resolution.Candidates {
 			var pin *config.ProviderPin
 			if resolution.State == registry.Ambiguous {
-				value := config.ProviderPin{ID: resolution.ProviderID, Location: candidate.Location, Version: candidate.Version}
+				value := config.ProviderPin{
+					ProviderID: resolution.ProviderID, HostID: hostID,
+					InstallationKey: candidate.InstallationKey, EvidenceDigest: candidate.EvidenceDigest,
+					Location: candidate.Location, Version: candidate.Version,
+				}
 				pin = &value
 			}
 			provider.Candidates = append(provider.Candidates, providerInspectionCandidate{Version: candidate.Version, Location: candidate.Location, EvidenceDigest: candidate.EvidenceDigest, ProviderPin: pin})
@@ -230,7 +234,7 @@ func writeProviderInspectionText(inputs providerInputs, output providerInspectio
 func encodeProviderPin(pin config.ProviderPin, includeSchema bool) (string, error) {
 	document := providerPinDocument{ProviderPins: []config.ProviderPin{pin}}
 	if includeSchema {
-		document.SchemaVersion = config.UserConfigSchemaV1
+		document.SchemaVersion = config.UserConfigSchemaV2
 	}
 	var buffer bytes.Buffer
 	if err := toml.NewEncoder(&buffer).Encode(document); err != nil {

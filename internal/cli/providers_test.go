@@ -58,7 +58,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	if firstText.String() != secondText.String() {
 		t.Fatal("text inspection is not deterministic")
 	}
-	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v1\"") {
+	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v2\"") {
 		t.Fatalf("text output = %q", firstText.String())
 	}
 	if strings.Contains(firstText.String(), "indicator-secret") || strings.Contains(firstText.String(), "SKILL.md") {
@@ -106,7 +106,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 			t.Fatalf("superpowers = %#v", provider)
 		}
 		for _, candidate := range provider.Candidates {
-			if candidate.ProviderPin == nil || candidate.ProviderPin.ID != provider.ProviderID || candidate.ProviderPin.Location != candidate.Location || candidate.ProviderPin.Version != candidate.Version {
+			if candidate.ProviderPin == nil || candidate.ProviderPin.ProviderID != provider.ProviderID || candidate.ProviderPin.HostID != "codex" || candidate.ProviderPin.InstallationKey == "" || candidate.ProviderPin.EvidenceDigest != candidate.EvidenceDigest || candidate.ProviderPin.Location != candidate.Location || candidate.ProviderPin.Version != candidate.Version {
 				t.Fatalf("candidate pin = %#v", candidate)
 			}
 		}
@@ -172,7 +172,7 @@ func newProviderInspectionFixture(t *testing.T, existingConfig bool) providerIns
 	}
 	configPath := filepath.Join(configRoot, "config.toml")
 	if existingConfig {
-		if err := os.WriteFile(configPath, []byte("schema_version = \"oaw.user-config/v1\"\n"), 0o640); err != nil {
+		if err := os.WriteFile(configPath, []byte("schema_version = \"oaw.user-config/v2\"\n"), 0o640); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -196,7 +196,7 @@ func pinDocumentsFromText(value string) []string {
 	documents := make([]string, 0)
 	current := make([]string, 0)
 	for _, line := range lines {
-		if line == "schema_version = \"oaw.user-config/v1\"" || line == "[[provider_pins]]" || strings.HasPrefix(line, "  id = ") || strings.HasPrefix(line, "  location = ") || strings.HasPrefix(line, "  version = ") {
+		if line == "schema_version = \"oaw.user-config/v2\"" || line == "[[provider_pins]]" || strings.HasPrefix(line, "  id = ") || strings.HasPrefix(line, "  location = ") || strings.HasPrefix(line, "  version = ") {
 			if line == "[[provider_pins]]" && len(current) != 0 && strings.Contains(strings.Join(current, "\n"), "[[provider_pins]]") {
 				documents = append(documents, strings.Join(current, "\n"))
 				current = make([]string, 0)

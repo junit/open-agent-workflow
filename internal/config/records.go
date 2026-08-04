@@ -1,7 +1,7 @@
 package config
 
 const (
-	UserConfigSchemaV1    = "oaw.user-config/v1"
+	UserConfigSchemaV2    = "oaw.user-config/v2"
 	ProjectConfigSchemaV1 = "oaw.project-config/v1"
 )
 
@@ -12,15 +12,26 @@ type ContentReference struct {
 }
 
 type ProviderPin struct {
-	ID       string `json:"id" toml:"id"`
-	Location string `json:"location" toml:"location"`
-	Version  string `json:"version" toml:"version"`
+	ProviderID      string `json:"provider_id" toml:"provider_id"`
+	HostID          string `json:"host_id" toml:"host_id"`
+	InstallationKey string `json:"installation_key" toml:"installation_key"`
+	EvidenceDigest  string `json:"evidence_digest" toml:"evidence_digest"`
+	Location        string `json:"location,omitempty" toml:"location"`
+	Version         string `json:"version,omitempty" toml:"version"`
+}
+
+type ProviderInstallation struct {
+	ProviderID       string `json:"provider_id" toml:"provider_id"`
+	HostID           string `json:"host_id" toml:"host_id"`
+	SurfaceID        string `json:"surface_id" toml:"surface_id"`
+	Location         string `json:"location" toml:"location"`
+	DiscoveryProbeID string `json:"discovery_probe_id" toml:"discovery_probe_id"`
 }
 
 type BindingPreference struct {
 	ProviderID   string `json:"provider_id" toml:"provider_id"`
 	CapabilityID string `json:"capability_id" toml:"capability_id"`
-	Host         string `json:"host" toml:"host"`
+	HostID       string `json:"host_id" toml:"host_id"`
 	Kind         string `json:"kind" toml:"kind"`
 	Reference    string `json:"reference" toml:"reference"`
 }
@@ -44,6 +55,7 @@ type UserConfigRecord struct {
 	ProviderDescriptors       []ContentReference         `json:"provider_descriptors" toml:"provider_descriptors"`
 	ProfileRecipes            []ContentReference         `json:"profile_recipes" toml:"profile_recipes"`
 	HostIntegrations          []ContentReference         `json:"host_integrations" toml:"host_integrations"`
+	ProviderInstallations     []ProviderInstallation     `json:"provider_installations" toml:"provider_installations"`
 	ProviderPins              []ProviderPin              `json:"provider_pins" toml:"provider_pins"`
 	BindingPreferences        []BindingPreference        `json:"binding_preferences" toml:"binding_preferences"`
 	BoundedCapabilityDefaults []BoundedCapabilityDefault `json:"bounded_capability_defaults" toml:"bounded_capability_defaults"`

@@ -40,7 +40,7 @@ func WriteManagedConfiguration(t testing.TB, userRoot, extra string) host.Integr
 	if err := os.WriteFile(integrationPath, encoded.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configuration := "schema_version = \"oaw.user-config/v1\"\n" +
+	configuration := "schema_version = \"oaw.user-config/v2\"\n" +
 		"[[host_integrations]]\n" +
 		"id = \"" + ManagedIntegrationID + "\"\n" +
 		"path = \"integrations/codex-runtime.toml\"\n" +

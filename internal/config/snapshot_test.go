@@ -18,7 +18,7 @@ func TestLoadPinsUserTrustedHostIntegration(t *testing.T) {
 	integration := configTestHostIntegration(t)
 	writeConfigTestHostIntegration(t, userRoot, "integrations/codex.toml", integration)
 	if err := os.WriteFile(filepath.Join(userRoot, "config.toml"), []byte(`
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 
 [[host_integrations]]
 id = "acme/codex-runtime"
@@ -58,7 +58,7 @@ func TestLoadRejectsUntrustedHostIntegrationInputs(t *testing.T) {
 		}
 		writeConfigTestHostIntegration(t, root, "integrations/codex.toml", builtins[2])
 		writeConfigTestUserFile(t, root, `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[host_integrations]]
 id = "oaw/codex-runner"
 path = "integrations/codex.toml"
@@ -73,7 +73,7 @@ replace = true
 		root := t.TempDir()
 		writeConfigTestHostIntegration(t, root, "integrations/codex.toml", configTestHostIntegration(t))
 		writeConfigTestUserFile(t, root, `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[host_integrations]]
 id = "acme/other-runtime"
 path = "integrations/codex.toml"
@@ -90,7 +90,7 @@ replace = false
 		integration.Digest = strings.Repeat("0", 64)
 		writeConfigTestHostIntegration(t, root, "integrations/codex.toml", integration)
 		writeConfigTestUserFile(t, root, `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[host_integrations]]
 id = "acme/codex-runtime"
 path = "integrations/codex.toml"
@@ -104,7 +104,7 @@ replace = false
 	t.Run("duplicate reference", func(t *testing.T) {
 		root := t.TempDir()
 		writeConfigTestUserFile(t, root, `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[host_integrations]]
 id = "acme/codex-runtime"
 path = "integrations/one.toml"
@@ -122,7 +122,7 @@ replace = false
 	t.Run("unsafe path", func(t *testing.T) {
 		root := t.TempDir()
 		writeConfigTestUserFile(t, root, `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[host_integrations]]
 id = "acme/codex-runtime"
 path = "../codex.toml"
@@ -145,7 +145,7 @@ replace = false
 			t.Skipf("symlink unavailable: %v", err)
 		}
 		writeConfigTestUserFile(t, root, `
-schema_version = "oaw.user-config/v1"
+schema_version = "oaw.user-config/v2"
 [[host_integrations]]
 id = "acme/codex-runtime"
 path = "integrations/codex.toml"
@@ -167,7 +167,7 @@ func TestEquivalentHostIntegrationOrderProducesSameSnapshot(t *testing.T) {
 			writeConfigTestHostIntegration(t, root, "integrations/"+strings.TrimPrefix(integration.ID, "acme/")+".toml", integration)
 		}
 		var configText strings.Builder
-		configText.WriteString("schema_version = \"oaw.user-config/v1\"\n")
+		configText.WriteString("schema_version = \"oaw.user-config/v2\"\n")
 		for _, integration := range order {
 			configText.WriteString("[[host_integrations]]\n")
 			configText.WriteString("id = \"" + integration.ID + "\"\n")

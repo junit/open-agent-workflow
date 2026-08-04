@@ -558,7 +558,7 @@ func newBoundedRuntimeFixture(t *testing.T, withDefault bool) boundedRuntimeFixt
 	t.Helper()
 	projectRoot := t.TempDir()
 	userRoot := t.TempDir()
-	userConfig := "schema_version = \"oaw.user-config/v1\"\n"
+	userConfig := "schema_version = \"oaw.user-config/v2\"\n"
 	if withDefault {
 		userConfig += `
 [[bounded_capability_defaults]]
@@ -691,9 +691,9 @@ func TestStartBoundedReportsConcreteProviderStates(t *testing.T) {
 	}{
 		{name: "not found", inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_NOT_FOUND"},
 		{name: "discovered unverified", versions: []string{"6.1.1"}, want: "PROVIDER_DISCOVERED_UNVERIFIED"},
-		{name: "pin incompatible", userConfig: "schema_version = \"oaw.user-config/v1\"\n[[provider_pins]]\nid = \"oaw/superpowers\"\nversion = \"9.9.9\"\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_PIN_INCOMPATIBLE"},
+		{name: "pin incompatible", userConfig: "schema_version = \"oaw.user-config/v2\"\n[[provider_pins]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\ninstallation_key = \"installation-incompatible\"\nevidence_digest = \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\"\nversion = \"9.9.9\"\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_PIN_INCOMPATIBLE"},
 		{name: "binding unavailable", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{}}, want: "PROVIDER_BINDING_UNAVAILABLE"},
-		{name: "disabled", userConfig: "schema_version = \"oaw.user-config/v1\"\ndenied_providers = [\"oaw/superpowers\"]\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_DISABLED_BY_USER"},
+		{name: "disabled", userConfig: "schema_version = \"oaw.user-config/v2\"\ndenied_providers = [\"oaw/superpowers\"]\n", versions: []string{"6.1.1"}, inventory: &registry.BindingInventory{Host: "codex", Bindings: []catalog.HostBinding{reviewBinding}}, want: "PROVIDER_DISABLED_BY_USER"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
