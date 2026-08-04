@@ -52,6 +52,39 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestRegistryValidatesHostScopedProviderDescriptorV2(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[{"id":"codex","hosts":["codex"],"surface":"codex-skills","distribution":"acme","kind":"path-exists","root":"user-home","candidate_path":".agents/skills/acme","evidence_path":"review/SKILL.md"}],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV2, raw); err != nil {
+		t.Fatalf("Validate(v2 descriptor) error = %v", err)
+	}
+}
+
+func TestRegistryRejectsV1ProviderDescriptorFromActiveV2Schema(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV2, raw); err == nil {
+		t.Fatal("v1 descriptor unexpectedly validated against v2")
+	}
+}
+
+func TestRegistryValidatesHostScopedUserConfigV2(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"schema_version":"oaw.user-config/v2","denied_providers":[],"provider_descriptors":[],"profile_recipes":[],"host_integrations":[],"provider_installations":[],"provider_pins":[],"binding_preferences":[],"bounded_capability_defaults":[],"project_trust":[]}`)
+	if err := registry.Validate(UserConfigV2, raw); err != nil {
+		t.Fatalf("Validate(v2 user config) error = %v", err)
+	}
+}
+
 func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
