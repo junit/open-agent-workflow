@@ -120,13 +120,26 @@ admission、Bundle 或 Runtime State。Active decoder 会拒绝
 Codex Host Driver 会收到不可变的 Grant effect 与 resource set。只读 Grant 在
 `--sandbox read-only` 下运行；只有包含 `write-project` 或 `git-local` 的 Grant 才能使用
 `--sandbox workspace-write`。`danger-full-access` 不是 OAW Runtime dispatch mode。
-这样可以防止逻辑只读的 Capability 仅因为 Host 支持写入就获得 project-write 权限。
+Sandbox 选择是必要条件，但并不充分：Codex MCP 子进程位于 shell-tool sandbox 之外，
+否则仍可能写入 project-local metadata。
+
+对于只读 Grant，`Prepare` 会读取 `codex mcp list --json`，为每个 enabled MCP server
+生成排序且仅作用于本次 invocation 的 disable override，并探测最终 effective inventory。
+只有探测结果中 enabled server 数量为零才会继续。无效 inventory 返回
+`CODEX_MCP_INVENTORY_FAILED`；插件或配置 override 不受支持、配置错误、仍存在 enabled
+server 时返回 `CODEX_MCP_ISOLATION_FAILED`。这些错误发生在 `DISPATCH_PREPARED` 与
+`DISPATCH_AUTHORIZED` 之前，不会启动模型，也不会改写用户 Codex 配置。这是 fail-closed
+Host 前置条件，不表示 OAW 替代了操作系统 sandbox。
+Driver 会在 `codex exec` 前立即重复 isolation probe；授权后若出现配置漂移，Run 会进入
+uncertain pause，模型仍不会启动。
 
 CLI 会把可优雅处理的 interrupt 与 termination cancellation 传入活动 Host invocation。
 请求 Host cancel 后，Runtime 记录 `EXECUTION_UNCERTAIN` / `PAUSED` 并要求
 `RECONCILE_INVOCATION`，绝不会伪造成功 observation。任何进程都无法在不可捕获的
 `SIGKILL` 后持久化最终转换，因此 deadline controller 必须在 hard kill 前预留优雅取消
 时间。
+对 stale authorized dispatch 进行幂等重放，可以在不启动第二次 Host invocation 的情况下
+记录 uncertain pause。
 
 ## 范围之外
 

@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	goruntime "runtime"
@@ -14,6 +15,13 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	oawruntime "github.com/wifibaby4u/open-agent-workflow/internal/runtime"
 )
+
+func TestRuntimeReasonPreservesCodexHostFailure(t *testing.T) {
+	err := errors.New("CODEX_MCP_ISOLATION_FAILED: one or more MCP servers remain enabled")
+	if reason := runtimeReason(err); reason != "CODEX_MCP_ISOLATION_FAILED" {
+		t.Fatalf("runtimeReason() = %q, want CODEX_MCP_ISOLATION_FAILED", reason)
+	}
+}
 
 func TestRunWithInputRuntimeExchangeEmitsCanonicalJSONOnly(t *testing.T) {
 	projectRoot := t.TempDir()
@@ -214,7 +222,7 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("[agents.code-reviewer]\nconfig_file = \""+eccAgent+"\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fixture := "#!/bin/sh\nprintf x >> \"$OAW_CODEX_FIXTURE_COUNT\"\nprintf '%s\\n' \"$@\" > \"$OAW_CODEX_FIXTURE_ARGS\"\nprintf '%s\\n' '{\"type\":\"turn.completed\",\"id\":\"fixture-turn\"}'\n"
+	fixture := "#!/bin/sh\nis_mcp=false\nis_probe=false\nfor arg in \"$@\"; do\nif [ \"$arg\" = mcp ]; then is_mcp=true; fi\ncase \"$arg\" in *enabled=false*) is_probe=true ;; esac\ndone\nif [ \"$is_mcp\" = true ]; then\nif [ \"$is_probe\" = true ]; then\nprintf '%s\\n' '[{\"name\":\"serena\",\"enabled\":false}]'\nelse\nprintf '%s\\n' '[{\"name\":\"serena\",\"enabled\":true}]'\nfi\nexit 0\nfi\nprintf x >> \"$OAW_CODEX_FIXTURE_COUNT\"\nprintf '%s\\n' \"$@\" > \"$OAW_CODEX_FIXTURE_ARGS\"\nprintf '%s\\n' '{\"type\":\"turn.completed\",\"id\":\"fixture-turn\"}'\n"
 	if err := os.WriteFile(filepath.Join(binRoot, "codex"), []byte(fixture), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -268,8 +276,18 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	processArgs := strings.Split(strings.TrimSpace(string(argsRaw)), "\n")
-	if len(processArgs) < 5 || processArgs[3] != "--sandbox" || processArgs[4] != "read-only" {
-		t.Fatalf("Codex fixture args = %#v, want read-only sandbox", processArgs)
+	sandboxIndex := -1
+	mcpOverride := false
+	for index, value := range processArgs {
+		if value == "--sandbox" {
+			sandboxIndex = index
+		}
+		if value == "mcp_servers.serena.enabled=false" {
+			mcpOverride = true
+		}
+	}
+	if sandboxIndex < 1 || sandboxIndex+1 >= len(processArgs) || processArgs[sandboxIndex+1] != "read-only" || !mcpOverride {
+		t.Fatalf("Codex fixture args = %#v, want read-only sandbox and Serena disabled", processArgs)
 	}
 }
 

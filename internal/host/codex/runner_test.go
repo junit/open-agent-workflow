@@ -3,6 +3,7 @@ package codex
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -49,6 +50,8 @@ func TestRunnerUsesExactBindingAndDeduplicatesInvocation(t *testing.T) {
 }
 
 func TestRunnerUsesReadOnlySandboxForReadOnlyGrant(t *testing.T) {
+	inventoryCalls := 0
+	isolationCalls := 0
 	runner := &Runner{
 		command:        "codex",
 		maxOutputBytes: 1 << 20,
@@ -56,9 +59,29 @@ func TestRunnerUsesReadOnlySandboxForReadOnlyGrant(t *testing.T) {
 		prepared:       make(map[string]host.DispatchRequest),
 		results:        make(map[string]host.DispatchResult),
 		active:         make(map[string]context.CancelFunc),
+		mcpInventory: func(_ context.Context, command string, _ int64) ([]string, error) {
+			inventoryCalls++
+			if command != "codex" {
+				t.Fatalf("inventory command = %q", command)
+			}
+			return []string{"filesystem", "serena"}, nil
+		},
+		mcpIsolation: func(_ context.Context, command string, servers []string, _ int64) error {
+			isolationCalls++
+			if command != "codex" || strings.Join(servers, ",") != "filesystem,serena" {
+				t.Fatalf("isolation probe = command %q servers %#v", command, servers)
+			}
+			return nil
+		},
 		run: func(_ context.Context, _ string, args []string, _ int64) ([]byte, []byte, error) {
-			if len(args) < 7 || args[3] != "--sandbox" || args[4] != "read-only" {
-				t.Fatalf("Codex args = %#v, want read-only sandbox", args)
+			wantPrefix := []string{"exec", "--json", "--ephemeral", "-c", "mcp_servers.filesystem.enabled=false", "-c", "mcp_servers.serena.enabled=false", "--sandbox", "read-only", "--"}
+			if len(args) < len(wantPrefix)+1 {
+				t.Fatalf("Codex args = %#v", args)
+			}
+			for index, want := range wantPrefix {
+				if args[index] != want {
+					t.Fatalf("Codex args[%d] = %q, want %q; all args = %#v", index, args[index], want, args)
+				}
 			}
 			return []byte(`{"type":"turn.completed","id":"turn-1"}` + "\n"), nil, nil
 		},
@@ -74,6 +97,94 @@ func TestRunnerUsesReadOnlySandboxForReadOnlyGrant(t *testing.T) {
 	}
 	if _, err := runner.Invoke(context.Background(), request); err != nil {
 		t.Fatal(err)
+	}
+	if inventoryCalls != 1 {
+		t.Fatalf("inventory calls = %d, want 1", inventoryCalls)
+	}
+	if isolationCalls != 2 {
+		t.Fatalf("isolation calls = %d, want Prepare and pre-exec verification", isolationCalls)
+	}
+}
+
+func TestRunnerFailsClosedWhenReadOnlyMCPInventoryIsUnavailable(t *testing.T) {
+	runner := &Runner{
+		command: "codex", maxOutputBytes: 1 << 20,
+		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc),
+		mcpInventory: func(context.Context, string, int64) ([]string, error) {
+			return nil, errors.New("inventory failed")
+		},
+		run: func(context.Context, string, []string, int64) ([]byte, []byte, error) {
+			t.Fatal("Codex execution started without a trustworthy MCP inventory")
+			return nil, nil, nil
+		},
+	}
+	request := host.DispatchRequest{
+		GrantID: "grant-read", InvocationID: "invocation-read", ExecutorID: "executor-read",
+		BundleDigest: strings.Repeat("a", 64),
+		Binding:      catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "review"},
+		Effects:      []string{"read-project"}, Resources: []string{"project"},
+	}
+	if err := runner.Prepare(context.Background(), request); err == nil || !strings.Contains(err.Error(), "CODEX_MCP_INVENTORY_FAILED") {
+		t.Fatalf("Prepare error = %v, want CODEX_MCP_INVENTORY_FAILED", err)
+	}
+}
+
+func TestRunnerFailsClosedWhenMCPServerNameCannotBeOverridden(t *testing.T) {
+	runner := &Runner{
+		command: "codex", maxOutputBytes: 1 << 20,
+		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc),
+		mcpInventory: func(context.Context, string, int64) ([]string, error) {
+			return []string{"unsafe.server"}, nil
+		},
+	}
+	request := host.DispatchRequest{
+		GrantID: "grant-read", InvocationID: "invocation-read", ExecutorID: "executor-read",
+		BundleDigest: strings.Repeat("a", 64),
+		Binding:      catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "review"},
+		Effects:      []string{"read-project"}, Resources: []string{"project"},
+	}
+	if err := runner.Prepare(context.Background(), request); err == nil || !strings.Contains(err.Error(), "CODEX_MCP_INVENTORY_FAILED") {
+		t.Fatalf("Prepare error = %v, want fail-closed invalid MCP name", err)
+	}
+}
+
+func TestRunnerFailsClosedWhenMCPIsolationVerificationIsUnavailable(t *testing.T) {
+	runner := &Runner{
+		command: "codex", maxOutputBytes: 1 << 20,
+		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc),
+		mcpInventory: func(context.Context, string, int64) ([]string, error) {
+			return []string{"serena"}, nil
+		},
+	}
+	request := host.DispatchRequest{
+		GrantID: "grant-read", InvocationID: "invocation-read", ExecutorID: "executor-read",
+		BundleDigest: strings.Repeat("a", 64),
+		Binding:      catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "review"},
+		Effects:      []string{"read-project"}, Resources: []string{"project"},
+	}
+	if err := runner.Prepare(context.Background(), request); err == nil || !strings.Contains(err.Error(), "CODEX_MCP_ISOLATION_FAILED") {
+		t.Fatalf("Prepare error = %v, want CODEX_MCP_ISOLATION_FAILED", err)
+	}
+}
+
+func TestRunnerFailsClosedWhenCodexLeavesMCPEnabled(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX fixture executable")
+	}
+	path := filepath.Join(t.TempDir(), "codex-fixture")
+	script := "#!/bin/sh\nprintf '%s\\n' '[{\"name\":\"serena\",\"enabled\":true}]'\n"
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runner := New(Options{Command: path, MaxOutputBytes: 1024})
+	request := host.DispatchRequest{
+		GrantID: "grant-read", InvocationID: "invocation-read", ExecutorID: "executor-read",
+		BundleDigest: strings.Repeat("a", 64),
+		Binding:      catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "review"},
+		Effects:      []string{"read-project"}, Resources: []string{"project"},
+	}
+	if err := runner.Prepare(context.Background(), request); err == nil || !strings.Contains(err.Error(), "CODEX_MCP_ISOLATION_FAILED") {
+		t.Fatalf("Prepare error = %v, want residual MCP failure", err)
 	}
 }
 

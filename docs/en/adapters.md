@@ -49,10 +49,22 @@ Every Codex dispatch receives the committed Grant effects and resources. A
 Grant without `write-project` or `git-local` is forced into Codex
 `--sandbox read-only`; a Grant containing either write effect uses
 `--sandbox workspace-write`. The runner never selects `danger-full-access`.
+Codex sandbox mode alone does not constrain MCP subprocesses. Before a
+read-only dispatch is authorized, the runner inventories enabled MCP servers,
+adds invocation-local disable overrides, and verifies through a second
+inventory that none remains enabled. Inventory failure returns
+`CODEX_MCP_INVENTORY_FAILED`; an override that is unsupported or leaves any
+server enabled returns `CODEX_MCP_ISOLATION_FAILED`. Both fail before the model
+process starts and do not modify user configuration. The same effective
+inventory is checked again immediately before `codex exec` to close
+configuration drift between preparation and invocation.
+
 On an interrupt or termination signal, `oaw` asks the Host to cancel and then
 commits `EXECUTION_UNCERTAIN` / `PAUSED` with `RECONCILE_INVOCATION` recovery.
 An uncatchable `SIGKILL` cannot run that final state transition, so callers
-that impose deadlines must cancel gracefully before a hard-kill fallback.
+that impose deadlines must cancel gracefully before a hard-kill fallback. A
+caller that observes a stale authorized invocation replays the same idempotent
+dispatch frame to commit the uncertain pause without invoking Codex again.
 
 ## OAW Paths
 

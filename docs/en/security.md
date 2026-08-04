@@ -144,9 +144,21 @@ surface.
 The Codex Host Driver receives the immutable Grant effect and resource sets.
 Read-only Grants run under `--sandbox read-only`; only Grants containing
 `write-project` or `git-local` may use `--sandbox workspace-write`.
-`danger-full-access` is not an OAW Runtime dispatch mode. This prevents a
-logically read-only Capability from receiving project-write authority merely
-because the Host supports it.
+`danger-full-access` is not an OAW Runtime dispatch mode. Sandbox selection is
+necessary but insufficient: Codex MCP subprocesses are outside that shell-tool
+sandbox and may otherwise write project-local metadata.
+
+For a read-only Grant, `Prepare` reads `codex mcp list --json`, creates sorted
+invocation-local disable overrides for every enabled MCP server, and probes the
+resulting effective inventory. It proceeds only when the probe reports zero
+enabled servers. Invalid inventory fails as `CODEX_MCP_INVENTORY_FAILED`;
+unsupported plugin/config overlays, configuration errors, and residual enabled
+servers fail as `CODEX_MCP_ISOLATION_FAILED`. These failures happen before
+`DISPATCH_PREPARED` and `DISPATCH_AUTHORIZED`, do not run the model, and do not
+rewrite the user's Codex configuration. This is a fail-closed Host precondition,
+not a claim that OAW replaces an operating-system sandbox. The Driver repeats
+the isolation probe immediately before `codex exec`; drift after authorization
+therefore pauses the Run as uncertain without starting the model.
 
 The CLI propagates graceful interrupt and termination cancellation into the
 active Host invocation. After requesting Host cancellation, Runtime records
@@ -154,6 +166,8 @@ active Host invocation. After requesting Host cancellation, Runtime records
 fabricates a successful observation. No process can persist a final transition
 after an uncatchable `SIGKILL`, so deadline controllers must provide a graceful
 cancellation interval before hard kill.
+An idempotent replay of a stale authorized dispatch records the uncertain pause
+without starting a second Host invocation.
 
 ## Out of Scope
 

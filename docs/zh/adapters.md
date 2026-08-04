@@ -45,11 +45,20 @@ Claude、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot 仍是
 每次 Codex dispatch 都会收到已提交 Grant 的 effects 与 resources。不含
 `write-project` 或 `git-local` 的 Grant 会被强制放入 Codex
 `--sandbox read-only`；包含任一写 effect 的 Grant 使用
-`--sandbox workspace-write`。Runner 永远不会选择 `danger-full-access`。收到 interrupt
+`--sandbox workspace-write`。Runner 永远不会选择 `danger-full-access`。Codex sandbox
+mode 本身不能约束 MCP 子进程。在只读 dispatch 获得授权前，Runner 会盘点 enabled MCP
+server，为本次 invocation 加入 disable override，并再次盘点以确认没有任何 server 仍为
+enabled。盘点失败返回 `CODEX_MCP_INVENTORY_FAILED`；override 不受支持或仍留下 enabled
+server 时返回 `CODEX_MCP_ISOLATION_FAILED`。两者都会在模型进程启动前 fail closed，且不会
+修改用户配置。Runner 会在 `codex exec` 前立即再次检查同一 effective inventory，以关闭
+prepare 与 invoke 之间的配置漂移窗口。
+
+收到 interrupt
 或 termination signal 时，`oaw` 会先请求 Host cancel，再提交
 `EXECUTION_UNCERTAIN` / `PAUSED`，并给出 `RECONCILE_INVOCATION` recovery。无法捕获的
 `SIGKILL` 不能执行最后的状态转换，因此设置 deadline 的调用方必须先优雅取消，之后才能
-使用 hard-kill fallback。
+使用 hard-kill fallback。调用方发现 stale authorized invocation 时，应重放同一个幂等
+dispatch frame；Runtime 会在不再次调用 Codex 的情况下提交 uncertain pause。
 
 ## OAW 路径
 

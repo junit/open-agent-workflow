@@ -516,6 +516,12 @@ func runtimeReason(err error) string {
 	if reason := providerInputReason(err); strings.HasPrefix(reason, "PROVIDER_") {
 		return reason
 	}
+	message := err.Error()
+	for _, reason := range []string{"CODEX_MCP_INVENTORY_FAILED", "CODEX_MCP_ISOLATION_FAILED"} {
+		if message == reason || strings.HasPrefix(message, reason+":") {
+			return reason
+		}
+	}
 	return "RUNTIME_INTERNAL"
 }
 

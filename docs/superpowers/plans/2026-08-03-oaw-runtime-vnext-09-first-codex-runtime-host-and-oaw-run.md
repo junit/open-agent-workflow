@@ -223,7 +223,12 @@ outcome and sorted evidence references; it never carries raw Host output.
   writer. Use `--json`, `--ephemeral`, the Grant-derived `read-only` or
   `workspace-write` sandbox, and a deterministic prompt envelope containing
   the Binding reference and OAW Invocation ID. Never select
-  `danger-full-access`. Parse JSONL into a closed final outcome; hash canonical
+  `danger-full-access`. Treat sandbox mode as insufficient for read-only
+  dispatch because MCP subprocesses are outside the shell-tool sandbox. Before
+  authorization, inventory enabled MCP servers, apply invocation-local disable
+  overrides, and verify that the effective inventory has no enabled server;
+  fail closed without starting the model when this cannot be proven. Parse
+  JSONL into a closed final outcome; hash canonical
   normalized event evidence, and send stderr diagnostics only to the caller's
   stderr. Never return raw output to Runtime.
 
