@@ -9,7 +9,7 @@ import (
 )
 
 func TestNormalizeDispatchResultClosesAndSortsHostEvidence(t *testing.T) {
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}, Effects: []string{"read-project"}, Resources: []string{"project"}}
 	result, err := host.NormalizeDispatchResult(request, host.DispatchResult{
 		GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", ExecutionID: "execution", Outcome: host.DispatchSucceeded,
 		Evidence: []host.DispatchEvidence{{Reference: "evidence://z", Digest: strings.Repeat("b", 64)}, {Reference: "evidence://a", Digest: strings.Repeat("c", 64)}},
@@ -23,7 +23,7 @@ func TestNormalizeDispatchResultClosesAndSortsHostEvidence(t *testing.T) {
 }
 
 func TestNormalizeDispatchResultRejectsForgedOrUntrustedValues(t *testing.T) {
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}, Effects: []string{"read-project"}, Resources: []string{"project"}}
 	for _, mutate := range []func(*host.DispatchResult){
 		func(value *host.DispatchResult) { value.InvocationID = "other" },
 		func(value *host.DispatchResult) { value.Outcome = "invented" },
@@ -35,5 +35,12 @@ func TestNormalizeDispatchResultRejectsForgedOrUntrustedValues(t *testing.T) {
 		if _, err := host.NormalizeDispatchResult(request, candidate); err == nil {
 			t.Fatal("NormalizeDispatchResult accepted forged value")
 		}
+	}
+}
+
+func TestValidateDispatchRequestRequiresScopedGrantSets(t *testing.T) {
+	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	if err := host.ValidateDispatchRequest(request); err == nil {
+		t.Fatal("ValidateDispatchRequest accepted a request without effects and resources")
 	}
 }

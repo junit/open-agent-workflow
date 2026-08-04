@@ -42,6 +42,15 @@ Claude、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot 仍是
 中的 project identity 优先，二者不一致会被拒绝。现有 Bash installer 仍是权威实现，
 不会为 Policy-only adapter 安装 Runtime claim。
 
+每次 Codex dispatch 都会收到已提交 Grant 的 effects 与 resources。不含
+`write-project` 或 `git-local` 的 Grant 会被强制放入 Codex
+`--sandbox read-only`；包含任一写 effect 的 Grant 使用
+`--sandbox workspace-write`。Runner 永远不会选择 `danger-full-access`。收到 interrupt
+或 termination signal 时，`oaw` 会先请求 Host cancel，再提交
+`EXECUTION_UNCERTAIN` / `PAUSED`，并给出 `RECONCILE_INVOCATION` recovery。无法捕获的
+`SIGKILL` 不能执行最后的状态转换，因此设置 deadline 的调用方必须先优雅取消，之后才能
+使用 hard-kill fallback。
+
 ## OAW 路径
 
 Canonical OAW policy 安装在

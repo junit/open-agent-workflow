@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -27,6 +28,10 @@ func (fake *fakeHostExchange) Exchange(frame oawruntime.RunFrame) (oawruntime.Ru
 	}
 	fake.step++
 	snapshot := oawruntime.RunSnapshot{SchemaVersion: "oaw.runtime-snapshot/v1", RunID: "run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Revision: uint64(fake.step), RequestMode: classification.RequestModeBounded, Status: oawruntime.RunGranted, Grants: []admission.CapabilityGrant{fake.grant}}
+	if frame.Continue != nil && frame.Continue.Signal == oawruntime.SignalExecutionUncertain {
+		snapshot.Status = oawruntime.RunPaused
+		return oawruntime.RunReply{SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.ReplyPaused, RunID: snapshot.RunID, Revision: uint64(fake.step), Snapshot: snapshot, Reason: oawruntime.ReasonExecutionUncertain, Diagnostics: []oawruntime.Diagnostic{}, RecoveryActions: []string{oawruntime.RecoveryReconcileInvocation}}, nil
+	}
 	switch fake.step {
 	case 1:
 		return oawruntime.RunReply{SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.ReplyGrantIssued, RunID: snapshot.RunID, Revision: 1, Snapshot: snapshot, Diagnostics: []oawruntime.Diagnostic{}, RecoveryActions: []string{}}, nil
@@ -40,26 +45,40 @@ func (fake *fakeHostExchange) Exchange(frame oawruntime.RunFrame) (oawruntime.Ru
 }
 
 type fakeHostDriver struct {
-	prepared host.DispatchRequest
-	invoked  int
-	result   host.DispatchResult
-	err      error
+	prepared  host.DispatchRequest
+	invoked   int
+	cancelled int
+	result    host.DispatchResult
+	err       error
+	started   chan struct{}
+	release   chan struct{}
 }
 
-func (fake *fakeHostDriver) Prepare(request host.DispatchRequest) error {
+func (fake *fakeHostDriver) Prepare(_ context.Context, request host.DispatchRequest) error {
 	fake.prepared = request
 	return nil
 }
 
-func (fake *fakeHostDriver) Invoke(request host.DispatchRequest) (host.DispatchResult, error) {
+func (fake *fakeHostDriver) Invoke(ctx context.Context, request host.DispatchRequest) (host.DispatchResult, error) {
 	fake.invoked++
+	if fake.started != nil {
+		close(fake.started)
+		<-fake.release
+		return host.DispatchResult{}, ctx.Err()
+	}
 	if fake.err != nil {
 		return host.DispatchResult{}, fake.err
 	}
 	return fake.result, nil
 }
 
-func (fake *fakeHostDriver) Cancel(string) error { return nil }
+func (fake *fakeHostDriver) Cancel(_ context.Context, _ string) error {
+	fake.cancelled++
+	if fake.release != nil {
+		close(fake.release)
+	}
+	return nil
+}
 
 type replayedInFlightExchange struct {
 	frames []oawruntime.RunFrame
@@ -81,12 +100,12 @@ func (fake *replayedInFlightExchange) Exchange(frame oawruntime.RunFrame) (oawru
 }
 
 func TestRunHostLoopUsesRuntimeExchangeForOrderedDispatch(t *testing.T) {
-	grant := admission.CapabilityGrant{ID: "grant", InvocationID: "invocation", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	grant := admission.CapabilityGrant{ID: "grant", InvocationID: "invocation", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}, Effects: []string{"write-project"}, Resources: []string{"project-worktree"}}
 	engine := &fakeHostExchange{grant: grant}
 	driver := &fakeHostDriver{result: host.DispatchResult{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", ExecutionID: "execution", Outcome: host.DispatchSucceeded, Evidence: []host.DispatchEvidence{{Reference: "evidence://codex/invocation", Digest: strings.Repeat("a", 64)}}}}
 	input := `{"schema_version":"oaw.runtime/v1","kind":"CONTINUE","message_id":"m","idempotency_key":"k","run_id":"run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expected_revision":1,"continue":{"signal":"REQUEST_STAGE_GRANT"}}`
 	var output bytes.Buffer
-	if err := runHostLoop(strings.NewReader(input), engine, driver, &output); err != nil {
+	if err := runHostLoop(context.Background(), strings.NewReader(input), engine, driver, &output); err != nil {
 		t.Fatal(err)
 	}
 	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte{'\n'})
@@ -109,6 +128,9 @@ func TestRunHostLoopUsesRuntimeExchangeForOrderedDispatch(t *testing.T) {
 	if driver.prepared.Binding != grant.Binding || driver.prepared.InvocationID != grant.InvocationID {
 		t.Fatalf("driver request = %#v", driver.prepared)
 	}
+	if len(driver.prepared.Effects) != 1 || driver.prepared.Effects[0] != "write-project" || len(driver.prepared.Resources) != 1 || driver.prepared.Resources[0] != "project-worktree" {
+		t.Fatalf("driver grant scope = %#v", driver.prepared)
+	}
 }
 
 func TestRunRejectsUnsupportedHostWithoutInvokingAnything(t *testing.T) {
@@ -120,12 +142,12 @@ func TestRunRejectsUnsupportedHostWithoutInvokingAnything(t *testing.T) {
 }
 
 func TestRunHostLoopPausesReplayedInFlightGrantWithoutInvoking(t *testing.T) {
-	grant := admission.CapabilityGrant{ID: "grant-replayed", InvocationID: "invocation-replayed", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	grant := admission.CapabilityGrant{ID: "grant-replayed", InvocationID: "invocation-replayed", RegistryDigest: strings.Repeat("a", 64), Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}, Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}, Effects: []string{"read-project"}, Resources: []string{"project"}}
 	exchanger := &replayedInFlightExchange{grant: grant}
 	driver := &fakeHostDriver{}
 	input := `{"schema_version":"oaw.runtime/v1","kind":"CONTINUE","message_id":"m","idempotency_key":"k","run_id":"run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expected_revision":1,"continue":{"signal":"REQUEST_DISPATCH"}}`
 	var output bytes.Buffer
-	if err := runHostLoop(strings.NewReader(input), exchanger, driver, &output); err != nil {
+	if err := runHostLoop(context.Background(), strings.NewReader(input), exchanger, driver, &output); err != nil {
 		t.Fatal(err)
 	}
 	if driver.invoked != 0 || len(exchanger.frames) != 3 || exchanger.frames[2].Continue == nil || exchanger.frames[2].Continue.Signal != oawruntime.SignalExecutionUncertain {
@@ -138,6 +160,54 @@ func TestRunHostLoopPausesReplayedInFlightGrantWithoutInvoking(t *testing.T) {
 	var paused oawruntime.RunReply
 	if err := json.Unmarshal(lines[1], &paused); err != nil || paused.Kind != oawruntime.ReplyPaused || paused.Snapshot.Status != oawruntime.RunPaused {
 		t.Fatalf("paused reply = %#v, %v", paused, err)
+	}
+}
+
+func TestRunHostLoopCancelsInvocationAndPersistsUncertainPause(t *testing.T) {
+	grant := admission.CapabilityGrant{
+		ID: "grant-cancelled", InvocationID: "invocation-cancelled", RegistryDigest: strings.Repeat("a", 64),
+		Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated},
+		Binding:  catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "review"},
+		Effects:  []string{"read-project"}, Resources: []string{"project"},
+	}
+	exchanger := &fakeHostExchange{grant: grant}
+	driver := &fakeHostDriver{started: make(chan struct{}), release: make(chan struct{})}
+	input := `{"schema_version":"oaw.runtime/v1","kind":"CONTINUE","message_id":"m","idempotency_key":"k","run_id":"run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","expected_revision":1,"continue":{"signal":"REQUEST_STAGE_GRANT"}}`
+	ctx, cancel := context.WithCancel(context.Background())
+	var output bytes.Buffer
+	done := make(chan error, 1)
+	go func() {
+		done <- runHostLoop(ctx, strings.NewReader(input), exchanger, driver, &output)
+	}()
+	<-driver.started
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if driver.cancelled != 1 || len(exchanger.frames) != 4 || exchanger.frames[3].Continue == nil || exchanger.frames[3].Continue.Signal != oawruntime.SignalExecutionUncertain {
+		t.Fatalf("cancelled=%d frames=%#v", driver.cancelled, exchanger.frames)
+	}
+	lines := bytes.Split(bytes.TrimSpace(output.Bytes()), []byte{'\n'})
+	var paused oawruntime.RunReply
+	if len(lines) != 3 || json.Unmarshal(lines[2], &paused) != nil || paused.Kind != oawruntime.ReplyPaused || paused.Snapshot.Status != oawruntime.RunPaused {
+		t.Fatalf("output=%q paused=%#v", output.String(), paused)
+	}
+}
+
+func TestInvokeAuthorizedDispatchDoesNotObserveSuccessAfterCancellation(t *testing.T) {
+	grant := admission.CapabilityGrant{ID: "grant-deadline", InvocationID: "invocation-deadline", Executor: admission.ExecutorRegistration{ID: "executor", Kind: admission.ExecutorIsolated}}
+	authorized := oawruntime.RunReply{RunID: "run-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Revision: 2}
+	request := host.DispatchRequest{InvocationID: grant.InvocationID}
+	exchanger := &fakeHostExchange{grant: grant, step: 2}
+	driver := &fakeHostDriver{result: host.DispatchResult{Outcome: host.DispatchSucceeded}}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var output bytes.Buffer
+	if err := invokeAuthorizedDispatch(ctx, authorized, grant, request, exchanger, driver, &output); err != nil {
+		t.Fatal(err)
+	}
+	if driver.invoked != 0 || driver.cancelled != 1 || len(exchanger.frames) != 1 || exchanger.frames[0].Continue == nil || exchanger.frames[0].Continue.Signal != oawruntime.SignalExecutionUncertain {
+		t.Fatalf("invoked=%d cancelled=%d frames=%#v", driver.invoked, driver.cancelled, exchanger.frames)
 	}
 }
 

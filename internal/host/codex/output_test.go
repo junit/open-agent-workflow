@@ -1,15 +1,13 @@
 package codex
 
 import (
-	"strings"
 	"testing"
 
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
 func TestNormalizeCodexJSONLSuccess(t *testing.T) {
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	request := testDispatchRequest()
 	result, err := normalizeJSONL(request, []byte(`{"type":"thread.started","id":"thread-1"}
 {"type":"turn.started"}
 {"type":"turn.completed","id":"turn-1"}
@@ -23,7 +21,7 @@ func TestNormalizeCodexJSONLSuccess(t *testing.T) {
 }
 
 func TestNormalizeCodexJSONLRejectsMalformedUnknownAndOversizedEventStreams(t *testing.T) {
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
+	request := testDispatchRequest()
 	for _, test := range []struct {
 		name string
 		raw  []byte

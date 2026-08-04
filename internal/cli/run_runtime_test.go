@@ -180,9 +180,11 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "runtime")
 	binRoot := t.TempDir()
 	counterPath := filepath.Join(t.TempDir(), "codex-count")
+	argsPath := filepath.Join(t.TempDir(), "codex-args")
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", configBase)
 	t.Setenv("OAW_CODEX_FIXTURE_COUNT", counterPath)
+	t.Setenv("OAW_CODEX_FIXTURE_ARGS", argsPath)
 	t.Setenv("PATH", binRoot+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	configRoot := filepath.Join(configBase, "open-agent-workflow")
@@ -212,7 +214,7 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte("[agents.code-reviewer]\nconfig_file = \""+eccAgent+"\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	fixture := "#!/bin/sh\nprintf x >> \"$OAW_CODEX_FIXTURE_COUNT\"\nprintf '%s\\n' '{\"type\":\"turn.completed\",\"id\":\"fixture-turn\"}'\n"
+	fixture := "#!/bin/sh\nprintf x >> \"$OAW_CODEX_FIXTURE_COUNT\"\nprintf '%s\\n' \"$@\" > \"$OAW_CODEX_FIXTURE_ARGS\"\nprintf '%s\\n' '{\"type\":\"turn.completed\",\"id\":\"fixture-turn\"}'\n"
 	if err := os.WriteFile(filepath.Join(binRoot, "codex"), []byte(fixture), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -260,6 +262,14 @@ func TestRunCodexFixtureDispatchIsDeduplicatedAcrossCLIReplay(t *testing.T) {
 	}
 	if string(count) != "x" {
 		t.Fatalf("Codex fixture invocation count = %q, want one call", count)
+	}
+	argsRaw, err := os.ReadFile(argsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	processArgs := strings.Split(strings.TrimSpace(string(argsRaw)), "\n")
+	if len(processArgs) < 5 || processArgs[3] != "--sandbox" || processArgs[4] != "read-only" {
+		t.Fatalf("Codex fixture args = %#v, want read-only sandbox", processArgs)
 	}
 }
 

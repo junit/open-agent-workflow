@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
@@ -13,16 +16,22 @@ import (
 type catalogLoader func() (catalog.Catalog, error)
 
 func Run(args []string, stdout io.Writer, stderr io.Writer) int {
-	return RunWithInput(args, os.Stdin, stdout, stderr)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	return RunWithContext(ctx, args, os.Stdin, stdout, stderr)
 }
 
 func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	return RunWithContext(context.Background(), args, stdin, stdout, stderr)
+}
+
+func RunWithContext(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) != 0 {
 		switch args[0] {
 		case "runtime":
 			return runRuntimeExchange(args[1:], stdin, stdout, stderr)
 		case "run":
-			return runCodex(args[1:], stdin, stdout, stderr)
+			return runCodexContext(ctx, args[1:], stdin, stdout, stderr)
 		case "providers":
 			return runProviders(args[1:], stdout, stderr)
 		case "check":

@@ -78,9 +78,9 @@ type Driver interface {
 ```
 
 `DispatchRequest` contains only the committed Grant identity, Invocation ID,
-Executor ID, Bundle digest, and exact `catalog.HostBinding`. `DispatchResult`
-contains a closed `SUCCEEDED`/`FAILED` outcome and sorted evidence references;
-it never carries raw Host output.
+Executor ID, Bundle digest, exact `catalog.HostBinding`, and immutable Grant
+effect/resource sets. `DispatchResult` contains a closed `SUCCEEDED`/`FAILED`
+outcome and sorted evidence references; it never carries raw Host output.
 
 ## Task 1: Freeze selection evidence and Host asset contracts
 
@@ -220,9 +220,10 @@ it never carries raw Host output.
 
   Resolve the executable from an explicit option or `PATH`; do not execute
   shell strings. Invoke the exact process with argument slices and a bounded
-  writer. Use `--json`, `--ephemeral`, `--sandbox workspace-write`, and a
-  deterministic prompt envelope containing the Binding reference and OAW
-  Invocation ID. Parse JSONL into a closed final outcome; hash canonical
+  writer. Use `--json`, `--ephemeral`, the Grant-derived `read-only` or
+  `workspace-write` sandbox, and a deterministic prompt envelope containing
+  the Binding reference and OAW Invocation ID. Never select
+  `danger-full-access`. Parse JSONL into a closed final outcome; hash canonical
   normalized event evidence, and send stderr diagnostics only to the caller's
   stderr. Never return raw output to Runtime.
 

@@ -7,6 +7,8 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"slices"
+	"strings"
 	"sync"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
@@ -21,7 +23,6 @@ const (
 
 type Runner struct {
 	command        string
-	sandbox        string
 	maxOutputBytes int64
 	maxEvents      int
 	diagnostics    io.Writer
@@ -45,10 +46,6 @@ func New(options Options) *Runner {
 	if command == "" {
 		command = defaultCommand
 	}
-	sandbox := options.Sandbox
-	if sandbox == "" {
-		sandbox = defaultSandbox
-	}
 	maxOutputBytes := options.MaxOutputBytes
 	if maxOutputBytes <= 0 {
 		maxOutputBytes = defaultOutputBytes
@@ -58,7 +55,7 @@ func New(options Options) *Runner {
 		maxEvents = defaultEventLimit
 	}
 	return &Runner{
-		command: command, sandbox: sandbox, maxOutputBytes: maxOutputBytes, maxEvents: maxEvents,
+		command: command, maxOutputBytes: maxOutputBytes, maxEvents: maxEvents,
 		diagnostics: options.Diagnostics, run: runCommand,
 		prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), attempts: make(map[string]*invocationAttempt), active: make(map[string]context.CancelFunc),
 	}
@@ -66,32 +63,42 @@ func New(options Options) *Runner {
 
 type Options struct {
 	Command        string
-	Sandbox        string
 	MaxOutputBytes int64
 	MaxEvents      int
 	Diagnostics    io.Writer
 }
 
-func (runner *Runner) Prepare(request host.DispatchRequest) error {
+func (runner *Runner) Prepare(ctx context.Context, request host.DispatchRequest) error {
+	if ctx == nil {
+		return errors.New("CODEX_CONTEXT_REQUIRED: Prepare context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("CODEX_PREPARE_CANCELLED: %w", err)
+	}
 	if err := host.ValidateDispatchRequest(request); err != nil {
 		return err
 	}
+	request = host.CloneDispatchRequest(request)
 	if request.Binding.Host != "codex" {
 		return errors.New("CODEX_BINDING_UNSUPPORTED: Binding Host is not codex")
 	}
 	runner.mu.Lock()
 	defer runner.mu.Unlock()
-	if existing, found := runner.prepared[request.InvocationID]; found && existing != request {
+	if existing, found := runner.prepared[request.InvocationID]; found && !host.EqualDispatchRequest(existing, request) {
 		return errors.New("CODEX_INVOCATION_CONFLICT: Invocation ID was reused")
 	}
-	runner.prepared[request.InvocationID] = request
+	runner.prepared[request.InvocationID] = host.CloneDispatchRequest(request)
 	return nil
 }
 
-func (runner *Runner) Invoke(request host.DispatchRequest) (host.DispatchResult, error) {
+func (runner *Runner) Invoke(ctx context.Context, request host.DispatchRequest) (host.DispatchResult, error) {
+	if ctx == nil {
+		return host.DispatchResult{}, errors.New("CODEX_CONTEXT_REQUIRED: Invoke context is required")
+	}
 	if err := host.ValidateDispatchRequest(request); err != nil {
 		return host.DispatchResult{}, err
 	}
+	request = host.CloneDispatchRequest(request)
 	runner.mu.Lock()
 	if existing, found := runner.results[request.InvocationID]; found {
 		runner.mu.Unlock()
@@ -100,25 +107,30 @@ func (runner *Runner) Invoke(request host.DispatchRequest) (host.DispatchResult,
 	if attempt, found := runner.attempts[request.InvocationID]; found {
 		done := attempt.done
 		runner.mu.Unlock()
-		<-done
-		return cloneResult(attempt.result), attempt.err
+		select {
+		case <-done:
+			return cloneResult(attempt.result), attempt.err
+		case <-ctx.Done():
+			return host.DispatchResult{}, fmt.Errorf("CODEX_INVOCATION_CANCELLED: %w", ctx.Err())
+		}
 	}
 	prepared, found := runner.prepared[request.InvocationID]
-	if !found || prepared != request {
+	if !found || !host.EqualDispatchRequest(prepared, request) {
 		runner.mu.Unlock()
 		return host.DispatchResult{}, errors.New("CODEX_INVOCATION_NOT_PREPARED: Prepare is required before Invoke")
 	}
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if runner.attempts == nil {
 		runner.attempts = make(map[string]*invocationAttempt)
+	}
+	if runner.active == nil {
+		runner.active = make(map[string]context.CancelFunc)
 	}
 	runner.attempts[request.InvocationID] = &invocationAttempt{done: make(chan struct{})}
 	runner.active[request.InvocationID] = cancel
 	runner.mu.Unlock()
-	sandbox := runner.sandbox
-	if sandbox == "" {
-		sandbox = defaultSandbox
-	}
+	sandbox := sandboxFor(request)
 	maximum := runner.maxOutputBytes
 	if maximum <= 0 {
 		maximum = defaultOutputBytes
@@ -162,7 +174,10 @@ func (runner *Runner) finishInvocation(invocationID string, result host.Dispatch
 	return cloneResult(result), err
 }
 
-func (runner *Runner) Cancel(invocationID string) error {
+func (runner *Runner) Cancel(ctx context.Context, invocationID string) error {
+	if ctx == nil {
+		return errors.New("CODEX_CONTEXT_REQUIRED: Cancel context is required")
+	}
 	runner.mu.Lock()
 	cancel := runner.active[invocationID]
 	runner.mu.Unlock()
@@ -172,13 +187,22 @@ func (runner *Runner) Cancel(invocationID string) error {
 	return nil
 }
 
+func sandboxFor(request host.DispatchRequest) string {
+	if !slices.Contains(request.Effects, "write-project") && !slices.Contains(request.Effects, "git-local") {
+		return "read-only"
+	}
+	return defaultSandbox
+}
+
 func BuildArgs(sandbox string, request host.DispatchRequest) []string {
 	return []string{
 		"exec", "--json", "--ephemeral", "--sandbox", sandbox, "--",
 		"OAW Runtime invocation " + request.InvocationID + "\n" +
 			"Binding: " + request.Binding.Host + "/" + request.Binding.Kind + "/" + request.Binding.Reference + "\n" +
 			"Grant: " + request.GrantID + "\n" +
-			"Bundle: " + request.BundleDigest,
+			"Bundle: " + request.BundleDigest + "\n" +
+			"Effects: " + strings.Join(request.Effects, ",") + "\n" +
+			"Resources: " + strings.Join(request.Resources, ","),
 	}
 }
 

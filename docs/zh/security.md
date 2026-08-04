@@ -115,6 +115,19 @@ admission、Bundle 或 Runtime State。Active decoder 会拒绝
 `HOST_PROVIDER_SCOPE_MISMATCH`；Runtime 只暴露稳定原因和不包含路径的明确 inspection
 入口提示。
 
+## Runtime Dispatch Containment
+
+Codex Host Driver 会收到不可变的 Grant effect 与 resource set。只读 Grant 在
+`--sandbox read-only` 下运行；只有包含 `write-project` 或 `git-local` 的 Grant 才能使用
+`--sandbox workspace-write`。`danger-full-access` 不是 OAW Runtime dispatch mode。
+这样可以防止逻辑只读的 Capability 仅因为 Host 支持写入就获得 project-write 权限。
+
+CLI 会把可优雅处理的 interrupt 与 termination cancellation 传入活动 Host invocation。
+请求 Host cancel 后，Runtime 记录 `EXECUTION_UNCERTAIN` / `PAUSED` 并要求
+`RECONCILE_INVOCATION`，绝不会伪造成功 observation。任何进程都无法在不可捕获的
+`SIGKILL` 后持久化最终转换，因此 deadline controller 必须在 hard kill 前预留优雅取消
+时间。
+
 ## 范围之外
 
 安装器不能防御：

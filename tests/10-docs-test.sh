@@ -925,6 +925,18 @@ for adapter_contract in \
   '实验性的嵌套 `AGENTS.md` 行为未被采用'; do
   assert_contains docs/zh/adapters.md "$adapter_contract"
 done
+for runtime_containment_contract in \
+  '--sandbox read-only' \
+  '--sandbox workspace-write' \
+  'danger-full-access' \
+  'EXECUTION_UNCERTAIN' \
+  'RECONCILE_INVOCATION' \
+  'SIGKILL'; do
+  assert_contains docs/en/adapters.md "$runtime_containment_contract"
+  assert_contains docs/zh/adapters.md "$runtime_containment_contract"
+  assert_contains docs/en/security.md "$runtime_containment_contract"
+  assert_contains docs/zh/security.md "$runtime_containment_contract"
+done
 pass "adapter documents preserve paths, scopes, source evidence, loading behavior, and caveats"
 
 for operations_document in \

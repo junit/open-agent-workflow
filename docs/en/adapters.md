@@ -45,6 +45,15 @@ is loaded explicitly; a START frame's project identity takes precedence and a
 mismatch is rejected. The existing Bash installer remains authoritative and
 does not install a Runtime claim for a Policy-only adapter.
 
+Every Codex dispatch receives the committed Grant effects and resources. A
+Grant without `write-project` or `git-local` is forced into Codex
+`--sandbox read-only`; a Grant containing either write effect uses
+`--sandbox workspace-write`. The runner never selects `danger-full-access`.
+On an interrupt or termination signal, `oaw` asks the Host to cancel and then
+commits `EXECUTION_UNCERTAIN` / `PAUSED` with `RECONCILE_INVOCATION` recovery.
+An uncatchable `SIGKILL` cannot run that final state transition, so callers
+that impose deadlines must cancel gracefully before a hard-kill fallback.
+
 ## OAW Paths
 
 The canonical OAW policy is installed at

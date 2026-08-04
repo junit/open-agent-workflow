@@ -31,15 +31,15 @@ func TestRunnerUsesExactBindingAndDeduplicatesInvocation(t *testing.T) {
 			return []byte(`{"type":"turn.completed","id":"turn-1"}` + "\n"), nil, nil
 		},
 	}
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
-	if err := runner.Prepare(request); err != nil {
+	request := testDispatchRequest()
+	if err := runner.Prepare(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	first, err := runner.Invoke(request)
+	first, err := runner.Invoke(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := runner.Invoke(request)
+	second, err := runner.Invoke(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,10 +48,39 @@ func TestRunnerUsesExactBindingAndDeduplicatesInvocation(t *testing.T) {
 	}
 }
 
+func TestRunnerUsesReadOnlySandboxForReadOnlyGrant(t *testing.T) {
+	runner := &Runner{
+		command:        "codex",
+		maxOutputBytes: 1 << 20,
+		maxEvents:      16,
+		prepared:       make(map[string]host.DispatchRequest),
+		results:        make(map[string]host.DispatchResult),
+		active:         make(map[string]context.CancelFunc),
+		run: func(_ context.Context, _ string, args []string, _ int64) ([]byte, []byte, error) {
+			if len(args) < 7 || args[3] != "--sandbox" || args[4] != "read-only" {
+				t.Fatalf("Codex args = %#v, want read-only sandbox", args)
+			}
+			return []byte(`{"type":"turn.completed","id":"turn-1"}` + "\n"), nil, nil
+		},
+	}
+	request := host.DispatchRequest{
+		GrantID: "grant-read", InvocationID: "invocation-read", ExecutorID: "executor-read",
+		BundleDigest: strings.Repeat("a", 64),
+		Binding:      catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "review"},
+		Effects:      []string{"read-project"}, Resources: []string{"project"},
+	}
+	if err := runner.Prepare(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runner.Invoke(context.Background(), request); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRunnerRejectsInvocationWithoutPreparation(t *testing.T) {
 	runner := &Runner{prepared: make(map[string]host.DispatchRequest), results: make(map[string]host.DispatchResult), active: make(map[string]context.CancelFunc)}
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
-	if _, err := runner.Invoke(request); err == nil {
+	request := testDispatchRequest()
+	if _, err := runner.Invoke(context.Background(), request); err == nil {
 		t.Fatal("Invoke accepted an unprepared request")
 	}
 }
@@ -73,15 +102,15 @@ func TestRunnerDeduplicatesConcurrentInvocation(t *testing.T) {
 			return []byte(`{"type":"turn.completed","id":"turn-1"}` + "\n"), nil, nil
 		},
 	}
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
-	if err := runner.Prepare(request); err != nil {
+	request := testDispatchRequest()
+	if err := runner.Prepare(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
 	results := make(chan host.DispatchResult, 2)
 	errors := make(chan error, 2)
 	for range 2 {
 		go func() {
-			result, err := runner.Invoke(request)
+			result, err := runner.Invoke(context.Background(), request)
 			results <- result
 			errors <- err
 		}()
@@ -111,11 +140,11 @@ func TestRunnerUsesFixtureExecutableAndSeparatesDiagnostics(t *testing.T) {
 		t.Fatal(err)
 	}
 	runner := New(Options{Command: path, MaxOutputBytes: 1024, MaxEvents: 4})
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
-	if err := runner.Prepare(request); err != nil {
+	request := testDispatchRequest()
+	if err := runner.Prepare(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	result, err := runner.Invoke(request)
+	result, err := runner.Invoke(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,10 +153,10 @@ func TestRunnerUsesFixtureExecutableAndSeparatesDiagnostics(t *testing.T) {
 	}
 	var diagnostics bytes.Buffer
 	runner = New(Options{Command: path, MaxOutputBytes: 1024, MaxEvents: 4, Diagnostics: &diagnostics})
-	if err := runner.Prepare(request); err != nil {
+	if err := runner.Prepare(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := runner.Invoke(request); err != nil {
+	if _, err := runner.Invoke(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(diagnostics.String(), "fixture diagnostic secret") {
@@ -146,17 +175,26 @@ func TestRunnerCancelStopsActiveInvocation(t *testing.T) {
 			return nil, nil, ctx.Err()
 		},
 	}
-	request := host.DispatchRequest{GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor", BundleDigest: strings.Repeat("a", 64), Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"}}
-	if err := runner.Prepare(request); err != nil {
+	request := testDispatchRequest()
+	if err := runner.Prepare(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan error, 1)
-	go func() { _, err := runner.Invoke(request); done <- err }()
+	go func() { _, err := runner.Invoke(context.Background(), request); done <- err }()
 	<-started
-	if err := runner.Cancel(request.InvocationID); err != nil {
+	if err := runner.Cancel(context.Background(), request.InvocationID); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err == nil {
 		t.Fatal("cancelled invocation unexpectedly succeeded")
+	}
+}
+
+func testDispatchRequest() host.DispatchRequest {
+	return host.DispatchRequest{
+		GrantID: "grant", InvocationID: "invocation", ExecutorID: "executor",
+		BundleDigest: strings.Repeat("a", 64),
+		Binding:      catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "to-spec"},
+		Effects:      []string{"write-project"}, Resources: []string{"project-worktree"},
 	}
 }

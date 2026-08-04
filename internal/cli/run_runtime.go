@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -50,6 +52,13 @@ func runRuntimeExchange(args []string, stdin io.Reader, stdout, stderr io.Writer
 }
 
 func runCodex(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	return runCodexContext(context.Background(), args, stdin, stdout, stderr)
+}
+
+func runCodexContext(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	if ctx == nil {
+		return writeRuntimeDenial("RUNTIME_RUN_INVALID", fmt.Errorf("run context is required"), 65, stdout, stderr)
+	}
 	parsed, err := parseRunCommand(args)
 	if err != nil {
 		return writeRuntimeDenial("INVALID_ARGUMENT", err, 64, stdout, stderr)
@@ -77,7 +86,7 @@ func runCodex(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
 	driver := codex.New(codex.Options{Diagnostics: stderr})
-	if err := runHostLoop(bytes.NewReader(raw), engine, driver, stdout); err != nil {
+	if err := runHostLoop(ctx, bytes.NewReader(raw), engine, driver, stdout); err != nil {
 		return writeRuntimeDenial(runtimeReason(err), err, 65, stdout, stderr)
 	}
 	return 0
@@ -211,8 +220,8 @@ type runtimeExchanger interface {
 	Exchange(oawruntime.RunFrame) (oawruntime.RunReply, error)
 }
 
-func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
-	if input == nil || exchanger == nil || driver == nil || output == nil {
+func runHostLoop(ctx context.Context, input io.Reader, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
+	if ctx == nil || input == nil || exchanger == nil || driver == nil || output == nil {
 		return fmt.Errorf("RUNTIME_RUN_INVALID: runner dependencies are required")
 	}
 	raw, err := io.ReadAll(io.LimitReader(input, oawruntime.MaximumProtocolFrameBytes+1))
@@ -233,10 +242,10 @@ func runHostLoop(input io.Reader, exchanger runtimeExchanger, driver host.Driver
 	if reply.Kind != oawruntime.ReplyGrantIssued {
 		return nil
 	}
-	return dispatchGranted(frame, reply, exchanger, driver, output)
+	return dispatchGranted(ctx, frame, reply, exchanger, driver, output)
 }
 
-func dispatchGranted(frame oawruntime.RunFrame, reply oawruntime.RunReply, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
+func dispatchGranted(ctx context.Context, frame oawruntime.RunFrame, reply oawruntime.RunReply, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
 	grant, err := latestGrant(reply.Snapshot.Grants)
 	if err != nil {
 		return err
@@ -249,15 +258,15 @@ func dispatchGranted(frame oawruntime.RunFrame, reply oawruntime.RunReply, excha
 	if err != nil {
 		return err
 	}
-	request := host.DispatchRequest{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID, BundleDigest: bundleDigest, Binding: grant.Binding}
-	if err := driver.Prepare(request); err != nil {
+	request := host.DispatchRequest{GrantID: grant.ID, InvocationID: grant.InvocationID, ExecutorID: grant.Executor.ID, BundleDigest: bundleDigest, Binding: grant.Binding, Effects: append([]string{}, grant.Effects...), Resources: append([]string{}, grant.Resources...)}
+	if err := driver.Prepare(ctx, request); err != nil {
 		return err
 	}
 	authorized, err := authorizeDispatch(exchanger, output, reply, grant)
 	if err != nil {
 		return err
 	}
-	return invokeAuthorizedDispatch(authorized, grant, request, exchanger, driver, output)
+	return invokeAuthorizedDispatch(ctx, authorized, grant, request, exchanger, driver, output)
 }
 
 func inspectCommittedDispatch(exchanger runtimeExchanger, output io.Writer, reply oawruntime.RunReply, grant admission.CapabilityGrant) (bool, error) {
@@ -294,30 +303,56 @@ func authorizeDispatch(exchanger runtimeExchanger, output io.Writer, reply oawru
 	return authorized, nil
 }
 
-func invokeAuthorizedDispatch(authorized oawruntime.RunReply, grant admission.CapabilityGrant, request host.DispatchRequest, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
-	result, invokeErr := driver.Invoke(request)
-	if invokeErr != nil {
-		uncertain := oawruntime.RunFrame{
-			SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue,
-			MessageID: derivedRunnerID("execution-uncertain", grant), IdempotencyKey: derivedRunnerID("execution-uncertain", grant),
-			RunID: authorized.RunID, ExpectedRevision: authorized.Revision,
-			Continue: &oawruntime.ContinueInput{Signal: oawruntime.SignalExecutionUncertain},
-		}
-		paused, pauseErr := exchanger.Exchange(uncertain)
-		if pauseErr != nil {
-			return pauseErr
-		}
-		if writeErr := writeReplyLine(output, paused); writeErr != nil {
-			return writeErr
-		}
-		return nil
+func invokeAuthorizedDispatch(ctx context.Context, authorized oawruntime.RunReply, grant admission.CapabilityGrant, request host.DispatchRequest, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
+	if ctx.Err() != nil {
+		return cancelAndPauseUncertainExecution(ctx, authorized, grant, request.InvocationID, exchanger, driver, output)
 	}
-	continueFrame := observationFrame(authorized, grant, result)
-	observed, err := exchanger.Exchange(continueFrame)
+	type invocationResult struct {
+		result host.DispatchResult
+		err    error
+	}
+	done := make(chan invocationResult, 1)
+	go func() {
+		result, err := driver.Invoke(ctx, request)
+		done <- invocationResult{result: result, err: err}
+	}()
+	select {
+	case invocation := <-done:
+		if ctx.Err() != nil {
+			return cancelAndPauseUncertainExecution(ctx, authorized, grant, request.InvocationID, exchanger, driver, output)
+		}
+		if invocation.err != nil {
+			return pauseUncertainExecution(authorized, grant, exchanger, output)
+		}
+		continueFrame := observationFrame(authorized, grant, invocation.result)
+		observed, err := exchanger.Exchange(continueFrame)
+		if err != nil {
+			return err
+		}
+		return writeReplyLine(output, observed)
+	case <-ctx.Done():
+		return cancelAndPauseUncertainExecution(ctx, authorized, grant, request.InvocationID, exchanger, driver, output)
+	}
+}
+
+func cancelAndPauseUncertainExecution(ctx context.Context, authorized oawruntime.RunReply, grant admission.CapabilityGrant, invocationID string, exchanger runtimeExchanger, driver host.Driver, output io.Writer) error {
+	cancelErr := driver.Cancel(context.WithoutCancel(ctx), invocationID)
+	pauseErr := pauseUncertainExecution(authorized, grant, exchanger, output)
+	return errors.Join(cancelErr, pauseErr)
+}
+
+func pauseUncertainExecution(authorized oawruntime.RunReply, grant admission.CapabilityGrant, exchanger runtimeExchanger, output io.Writer) error {
+	uncertain := oawruntime.RunFrame{
+		SchemaVersion: oawruntime.RuntimeSchemaV1, Kind: oawruntime.FrameContinue,
+		MessageID: derivedRunnerID("execution-uncertain", grant), IdempotencyKey: derivedRunnerID("execution-uncertain", grant),
+		RunID: authorized.RunID, ExpectedRevision: authorized.Revision,
+		Continue: &oawruntime.ContinueInput{Signal: oawruntime.SignalExecutionUncertain},
+	}
+	paused, err := exchanger.Exchange(uncertain)
 	if err != nil {
 		return err
 	}
-	return writeReplyLine(output, observed)
+	return writeReplyLine(output, paused)
 }
 
 func dispatchInspectFrame(reply oawruntime.RunReply, grant admission.CapabilityGrant) oawruntime.RunFrame {

@@ -1,9 +1,11 @@
 package host
 
 import (
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -24,6 +26,8 @@ type DispatchRequest struct {
 	ExecutorID   string              `json:"executor_id"`
 	BundleDigest string              `json:"bundle_digest"`
 	Binding      catalog.HostBinding `json:"binding"`
+	Effects      []string            `json:"effects"`
+	Resources    []string            `json:"resources"`
 }
 
 type DispatchEvidence struct {
@@ -41,9 +45,9 @@ type DispatchResult struct {
 }
 
 type Driver interface {
-	Prepare(DispatchRequest) error
-	Invoke(DispatchRequest) (DispatchResult, error)
-	Cancel(string) error
+	Prepare(context.Context, DispatchRequest) error
+	Invoke(context.Context, DispatchRequest) (DispatchResult, error)
+	Cancel(context.Context, string) error
 }
 
 func ValidateDispatchRequest(value DispatchRequest) error {
@@ -53,7 +57,20 @@ func ValidateDispatchRequest(value DispatchRequest) error {
 	if value.Binding.Host == "" || value.Binding.Reference == "" || (value.Binding.Kind != "agent" && value.Binding.Kind != "skill" && value.Binding.Kind != "tool") || strings.IndexFunc(value.Binding.Host, unicode.IsControl) >= 0 || strings.IndexFunc(value.Binding.Reference, unicode.IsControl) >= 0 {
 		return errors.New("HOST_DISPATCH_REQUEST_INVALID: Binding is invalid")
 	}
+	if !validDriverSet(value.Effects) || !validDriverSet(value.Resources) {
+		return errors.New("HOST_DISPATCH_REQUEST_INVALID: effects and resources must be non-empty sorted sets")
+	}
 	return nil
+}
+
+func CloneDispatchRequest(value DispatchRequest) DispatchRequest {
+	value.Effects = append([]string{}, value.Effects...)
+	value.Resources = append([]string{}, value.Resources...)
+	return value
+}
+
+func EqualDispatchRequest(left, right DispatchRequest) bool {
+	return left.GrantID == right.GrantID && left.InvocationID == right.InvocationID && left.ExecutorID == right.ExecutorID && left.BundleDigest == right.BundleDigest && left.Binding == right.Binding && slices.Equal(left.Effects, right.Effects) && slices.Equal(left.Resources, right.Resources)
 }
 
 func NormalizeDispatchResult(request DispatchRequest, value DispatchResult) (DispatchResult, error) {
@@ -92,6 +109,18 @@ func NormalizeDispatchResult(request DispatchRequest, value DispatchResult) (Dis
 
 func safeDriverIdentifier(value string) bool {
 	return value != "" && len(value) <= 256 && strings.TrimSpace(value) == value && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
+func validDriverSet(values []string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for index, value := range values {
+		if !safeDriverIdentifier(value) || index > 0 && values[index-1] >= value {
+			return false
+		}
+	}
+	return true
 }
 
 func isDigest(value string) bool {

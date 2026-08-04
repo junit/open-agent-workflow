@@ -139,6 +139,22 @@ conditions use `HOST_BINDING_EVIDENCE_REQUIRED`,
 only the stable reason and a path-free pointer to the explicit inspection
 surface.
 
+## Runtime Dispatch Containment
+
+The Codex Host Driver receives the immutable Grant effect and resource sets.
+Read-only Grants run under `--sandbox read-only`; only Grants containing
+`write-project` or `git-local` may use `--sandbox workspace-write`.
+`danger-full-access` is not an OAW Runtime dispatch mode. This prevents a
+logically read-only Capability from receiving project-write authority merely
+because the Host supports it.
+
+The CLI propagates graceful interrupt and termination cancellation into the
+active Host invocation. After requesting Host cancellation, Runtime records
+`EXECUTION_UNCERTAIN` / `PAUSED` and requires `RECONCILE_INVOCATION`; it never
+fabricates a successful observation. No process can persist a final transition
+after an uncatchable `SIGKILL`, so deadline controllers must provide a graceful
+cancellation interval before hard kill.
+
 ## Out of Scope
 
 The installer cannot protect against:
