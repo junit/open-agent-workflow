@@ -43,8 +43,8 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	valid := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV2, valid); err != nil {
+	valid := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV3, valid); err != nil {
 		t.Fatalf("Validate(valid) error = %v", err)
 	}
 	if err := registry.Validate("oaw.capability-input/v1", valid); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
@@ -52,25 +52,46 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestRegistryValidatesHostScopedProviderDescriptorV2(t *testing.T) {
+func TestRegistryUsesProviderV3AndRecipeV2Only(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[{"id":"codex","hosts":["codex"],"surface":"codex-skills","distribution":"acme","kind":"path-exists","root":"user-home","candidate_path":".agents/skills/acme","evidence_path":"review/SKILL.md"}],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV2, raw); err != nil {
-		t.Fatalf("Validate(v2 descriptor) error = %v", err)
+	provider := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV3, provider); err != nil {
+		t.Fatalf("Validate(provider v3) error = %v", err)
+	}
+	recipe := []byte(`{"schema_version":"oaw.profile-recipe/v2","recipe_version":"2.0.0","id":"oaw/test","display_name":"Test","required_responsibilities":[],"nodes":[],"incident_routes":[],"entry":"start","terminal_gates":[],"stable_boundaries":[],"environment_requirements":[]}`)
+	if err := registry.Validate(ProfileRecipeV2, recipe); err != nil {
+		t.Fatalf("Validate(recipe v2) error = %v", err)
+	}
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v2/provider-descriptor.schema.json", provider); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Provider v2) error = %v", err)
+	}
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json", recipe); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Recipe v1) error = %v", err)
 	}
 }
 
-func TestRegistryRejectsV1ProviderDescriptorFromActiveV2Schema(t *testing.T) {
+func TestRegistryValidatesHostScopedProviderDescriptorV3(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v1","descriptor_version":"1.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV2, raw); err == nil {
-		t.Fatal("v1 descriptor unexpectedly validated against v2")
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[{"id":"codex","hosts":["codex"],"surface":"codex-skills","distribution":"acme","kind":"path-exists","root":"user-home","candidate_path":".agents/skills/acme","evidence_path":"review/SKILL.md"}],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV3, raw); err != nil {
+		t.Fatalf("Validate(v3 descriptor) error = %v", err)
+	}
+}
+
+func TestRegistryRejectsV2ProviderDescriptorFromActiveV3Schema(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV3, raw); err == nil {
+		t.Fatal("v2 descriptor unexpectedly validated against v3")
 	}
 }
 
@@ -90,8 +111,8 @@ func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]} {}`)
-	if err := registry.Validate(ProviderDescriptorV2, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_INPUT_INVALID") {
+	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]} {}`)
+	if err := registry.Validate(ProviderDescriptorV3, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_INPUT_INVALID") {
 		t.Fatalf("Validate(trailing) error = %v", err)
 	}
 }
@@ -101,12 +122,12 @@ func TestRegistryRejectsSchemaViolations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	unknownField := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
-	if err := registry.Validate(ProviderDescriptorV2, unknownField); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	unknownField := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
+	if err := registry.Validate(ProviderDescriptorV3, unknownField); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(unknown field) error = %v", err)
 	}
-	unsafePath := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"p","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":".agents/../secret","evidence_path":"SKILL.md"}],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV2, unsafePath); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	unsafePath := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"p","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":".agents/../secret","evidence_path":"SKILL.md"}],"capabilities":[]}`)
+	if err := registry.Validate(ProviderDescriptorV3, unsafePath); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(unsafe path) error = %v", err)
 	}
 }

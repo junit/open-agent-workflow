@@ -3,13 +3,15 @@ package catalog
 import (
 	"errors"
 	"fmt"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 func validateCatalog(catalog *Catalog) error {
 	providerIndex := make(map[string]ProviderDescriptorRecord, len(catalog.providers))
 	for i := range catalog.providers {
 		provider := &catalog.providers[i]
-		if provider.SchemaVersion != ProviderDescriptorSchemaV2 {
+		if provider.SchemaVersion != ProviderDescriptorSchemaV3 {
 			return fmt.Errorf("UNSUPPORTED_PROVIDER_SCHEMA: %q", provider.SchemaVersion)
 		}
 		if _, err := ParseQualifiedID(provider.ID); err != nil {
@@ -35,6 +37,17 @@ func validateCatalog(catalog *Catalog) error {
 	recipeIndex := make(map[string]ProfileRecipeRecord, len(catalog.recipes))
 	for i := range catalog.recipes {
 		recipe := &catalog.recipes[i]
+		if recipe.SchemaVersion != ProfileRecipeSchemaV2 {
+			return fmt.Errorf("UNSUPPORTED_RECIPE_SCHEMA: %q", recipe.SchemaVersion)
+		}
+		if recipe.EnvironmentRequirements == nil {
+			return errors.New("INVALID_PROFILE_RECIPE: environment requirements are required")
+		}
+		requirements, err := execution.NormalizeRequirements(recipe.EnvironmentRequirements)
+		if err != nil {
+			return fmt.Errorf("INVALID_PROFILE_RECIPE: %w", err)
+		}
+		recipe.EnvironmentRequirements = requirements
 		if _, exists := recipeIndex[recipe.ID]; exists {
 			return errors.New("DUPLICATE_RECIPE_ID: duplicate recipe id")
 		}

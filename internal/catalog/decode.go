@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"unicode"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 func strictDecode(data []byte, destination any) error {
@@ -31,7 +33,7 @@ func DecodeProvider(data []byte) (ProviderDescriptorRecord, error) {
 	if err := strictDecode(data, &record); err != nil {
 		return ProviderDescriptorRecord{}, fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 	}
-	if record.SchemaVersion != ProviderDescriptorSchemaV2 {
+	if record.SchemaVersion != ProviderDescriptorSchemaV3 {
 		return ProviderDescriptorRecord{}, fmt.Errorf("UNSUPPORTED_PROVIDER_SCHEMA: %q", record.SchemaVersion)
 	}
 	if record.DescriptorVersion == "" || record.ID == "" || record.DisplayName == "" || record.Discovery == nil || record.Capabilities == nil {
@@ -54,10 +56,10 @@ func DecodeRecipe(data []byte) (ProfileRecipeRecord, error) {
 	if err := strictDecode(data, &record); err != nil {
 		return ProfileRecipeRecord{}, fmt.Errorf("INVALID_PROFILE_RECIPE: %w", err)
 	}
-	if record.SchemaVersion != ProfileRecipeSchemaV1 {
+	if record.SchemaVersion != ProfileRecipeSchemaV2 {
 		return ProfileRecipeRecord{}, fmt.Errorf("UNSUPPORTED_RECIPE_SCHEMA: %q", record.SchemaVersion)
 	}
-	if record.RecipeVersion == "" || record.ID == "" || record.DisplayName == "" || record.RequiredResponsibilities == nil || record.Nodes == nil || record.IncidentRoutes == nil || record.TerminalGates == nil || record.StableBoundaries == nil || record.Entry == "" {
+	if record.RecipeVersion == "" || record.ID == "" || record.DisplayName == "" || record.RequiredResponsibilities == nil || record.Nodes == nil || record.IncidentRoutes == nil || record.TerminalGates == nil || record.StableBoundaries == nil || record.EnvironmentRequirements == nil || record.Entry == "" {
 		return ProfileRecipeRecord{}, errors.New("INVALID_PROFILE_RECIPE: required field missing")
 	}
 	if _, err := ParseContentVersion(record.RecipeVersion); err != nil {
@@ -169,6 +171,11 @@ func validateProviderMembers(record *ProviderDescriptorRecord) error {
 		if capability.InputSchema == "" || capability.OutcomeSchema == "" || len(capability.RequestModes) == 0 || len(capability.HostBindings) == 0 {
 			return errors.New("INVALID_PROVIDER_DESCRIPTOR: capability contract is incomplete")
 		}
+		topologies, err := execution.NormalizeTopologies(capability.SupportedTopologies)
+		if err != nil {
+			return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
+		}
+		capability.SupportedTopologies = topologies
 		for _, effect := range capability.MaximumEffects {
 			if effect != "read-project" && effect != "write-project" && effect != "run-process" && effect != "git-local" && effect != "network-read" {
 				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid effect %q", effect)
@@ -179,11 +186,9 @@ func validateProviderMembers(record *ProviderDescriptorRecord) error {
 				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid resource %q", resource)
 			}
 		}
-		if capability.ExecutorTopology != MainAgentAllowed && capability.ExecutorTopology != IsolatedRequired {
-			return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid executor topology %q", capability.ExecutorTopology)
-		}
 		bindingKeys := make(map[string]struct{}, len(capability.HostBindings))
-		for _, binding := range capability.HostBindings {
+		for bindingIndex := range capability.HostBindings {
+			binding := &capability.HostBindings[bindingIndex]
 			if _, err := ParseLocalID(binding.Host); err != nil || binding.Reference == "" || (binding.Kind != "skill" && binding.Kind != "agent" && binding.Kind != "tool") {
 				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid host binding")
 			}
@@ -195,12 +200,29 @@ func validateProviderMembers(record *ProviderDescriptorRecord) error {
 				return errors.New("DUPLICATE_HOST_BINDING: duplicate host binding")
 			}
 			bindingKeys[key] = struct{}{}
+			bindingTopologies, err := execution.NormalizeTopologies(binding.Topologies)
+			if err != nil {
+				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid binding topology: %w", err)
+			}
+			eligible, err := execution.IntersectTopologies(topologies, bindingTopologies)
+			if err != nil {
+				return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid binding topology: %w", err)
+			}
+			if len(eligible) != len(bindingTopologies) {
+				return errors.New("INVALID_PROVIDER_DESCRIPTOR: binding topology is outside capability topology set")
+			}
+			binding.Topologies = bindingTopologies
 		}
 	}
 	return nil
 }
 
 func validateRecipeMembers(record *ProfileRecipeRecord) error {
+	requirements, err := execution.NormalizeRequirements(record.EnvironmentRequirements)
+	if err != nil {
+		return fmt.Errorf("INVALID_PROFILE_RECIPE: %w", err)
+	}
+	record.EnvironmentRequirements = requirements
 	if err := uniqueStrings(record.RequiredResponsibilities, "DUPLICATE_RECIPE_RESPONSIBILITY"); err != nil {
 		return err
 	}
@@ -329,8 +351,12 @@ func cloneProvider(record ProviderDescriptorRecord) ProviderDescriptorRecord {
 		record.Capabilities[i].Resources = cloneSlice(record.Capabilities[i].Resources)
 		record.Capabilities[i].RequestModes = cloneSlice(record.Capabilities[i].RequestModes)
 		record.Capabilities[i].Responsibilities = cloneSlice(record.Capabilities[i].Responsibilities)
+		record.Capabilities[i].SupportedTopologies = cloneSlice(record.Capabilities[i].SupportedTopologies)
 		record.Capabilities[i].DelegationAllowList = cloneSlice(record.Capabilities[i].DelegationAllowList)
 		record.Capabilities[i].HostBindings = cloneSlice(record.Capabilities[i].HostBindings)
+		for bindingIndex := range record.Capabilities[i].HostBindings {
+			record.Capabilities[i].HostBindings[bindingIndex].Topologies = cloneSlice(record.Capabilities[i].HostBindings[bindingIndex].Topologies)
+		}
 	}
 	return record
 }
@@ -341,6 +367,10 @@ func cloneRecipe(record ProfileRecipeRecord) ProfileRecipeRecord {
 	record.IncidentRoutes = cloneSlice(record.IncidentRoutes)
 	record.TerminalGates = cloneSlice(record.TerminalGates)
 	record.StableBoundaries = cloneSlice(record.StableBoundaries)
+	record.EnvironmentRequirements = cloneSlice(record.EnvironmentRequirements)
+	for requirementIndex := range record.EnvironmentRequirements {
+		record.EnvironmentRequirements[requirementIndex].AcceptedDispositions = cloneSlice(record.EnvironmentRequirements[requirementIndex].AcceptedDispositions)
+	}
 	for i := range record.Nodes {
 		record.Nodes[i].Transitions = cloneSlice(record.Nodes[i].Transitions)
 	}

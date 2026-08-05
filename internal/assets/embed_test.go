@@ -8,9 +8,9 @@ import (
 
 func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 	want := map[string]string{
-		"schemas/v2/provider-descriptor.schema.json":  "https://open-agent-workflow.dev/schemas/v2/provider-descriptor.schema.json",
+		"schemas/v3/provider-descriptor.schema.json":  "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json",
 		"schemas/v2/user-config.schema.json":          "https://open-agent-workflow.dev/schemas/v2/user-config.schema.json",
-		"schemas/v1/profile-recipe.schema.json":       "https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json",
+		"schemas/v2/profile-recipe.schema.json":       "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json",
 		"schemas/v1/profile-alias-set.schema.json":    "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json",
 		"schemas/v1/host-manifest.schema.json":        "https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json",
 		"schemas/v1/host-integration.schema.json":     "https://open-agent-workflow.dev/schemas/v1/host-integration.schema.json",

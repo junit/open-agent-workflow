@@ -1,8 +1,10 @@
 package catalog
 
+import "github.com/wifibaby4u/open-agent-workflow/internal/execution"
+
 const (
-	ProviderDescriptorSchemaV2 = "oaw.provider-descriptor/v2"
-	ProfileRecipeSchemaV1      = "oaw.profile-recipe/v1"
+	ProviderDescriptorSchemaV3 = "oaw.provider-descriptor/v3"
+	ProfileRecipeSchemaV2      = "oaw.profile-recipe/v2"
 	ProfileAliasSetSchemaV1    = "oaw.profile-alias-set/v1"
 )
 
@@ -11,13 +13,6 @@ type RequestMode string
 const (
 	RequestModeBounded  RequestMode = "BOUNDED"
 	RequestModeWorkflow RequestMode = "WORKFLOW"
-)
-
-type ExecutorTopology string
-
-const (
-	MainAgentAllowed ExecutorTopology = "main-agent-allowed"
-	IsolatedRequired ExecutorTopology = "isolated-required"
 )
 
 type NodeKind string
@@ -52,35 +47,37 @@ type DiscoveryProbe struct {
 }
 
 type CapabilityRecord struct {
-	ID                  string           `json:"id" toml:"id"`
-	InputSchema         string           `json:"input_schema" toml:"input_schema"`
-	OutcomeSchema       string           `json:"outcome_schema" toml:"outcome_schema"`
-	MaximumEffects      []string         `json:"maximum_effects" toml:"maximum_effects"`
-	Resources           []string         `json:"resources" toml:"resources"`
-	RequestModes        []RequestMode    `json:"request_modes" toml:"request_modes"`
-	Responsibilities    []string         `json:"responsibilities" toml:"responsibilities"`
-	ExecutorTopology    ExecutorTopology `json:"executor_topology" toml:"executor_topology"`
-	DelegationAllowList []string         `json:"delegation_allow_list" toml:"delegation_allow_list"`
-	HostBindings        []HostBinding    `json:"host_bindings" toml:"host_bindings"`
+	ID                  string               `json:"id" toml:"id"`
+	InputSchema         string               `json:"input_schema" toml:"input_schema"`
+	OutcomeSchema       string               `json:"outcome_schema" toml:"outcome_schema"`
+	MaximumEffects      []string             `json:"maximum_effects" toml:"maximum_effects"`
+	Resources           []string             `json:"resources" toml:"resources"`
+	RequestModes        []RequestMode        `json:"request_modes" toml:"request_modes"`
+	Responsibilities    []string             `json:"responsibilities" toml:"responsibilities"`
+	SupportedTopologies []execution.Topology `json:"supported_topologies" toml:"supported_topologies"`
+	DelegationAllowList []string             `json:"delegation_allow_list" toml:"delegation_allow_list"`
+	HostBindings        []HostBinding        `json:"host_bindings" toml:"host_bindings"`
 }
 
 type HostBinding struct {
-	Host      string `json:"host" toml:"host"`
-	Kind      string `json:"kind" toml:"kind"`
-	Reference string `json:"reference" toml:"reference"`
+	Host       string               `json:"host" toml:"host"`
+	Kind       string               `json:"kind" toml:"kind"`
+	Reference  string               `json:"reference" toml:"reference"`
+	Topologies []execution.Topology `json:"topologies" toml:"topologies"`
 }
 
 type ProfileRecipeRecord struct {
-	SchemaVersion            string          `json:"schema_version" toml:"schema_version"`
-	RecipeVersion            string          `json:"recipe_version" toml:"recipe_version"`
-	ID                       string          `json:"id" toml:"id"`
-	DisplayName              string          `json:"display_name" toml:"display_name"`
-	RequiredResponsibilities []string        `json:"required_responsibilities" toml:"required_responsibilities"`
-	Nodes                    []RecipeNode    `json:"nodes" toml:"nodes"`
-	IncidentRoutes           []IncidentRoute `json:"incident_routes" toml:"incident_routes"`
-	Entry                    string          `json:"entry" toml:"entry"`
-	TerminalGates            []string        `json:"terminal_gates" toml:"terminal_gates"`
-	StableBoundaries         []string        `json:"stable_boundaries" toml:"stable_boundaries"`
+	SchemaVersion            string                             `json:"schema_version" toml:"schema_version"`
+	RecipeVersion            string                             `json:"recipe_version" toml:"recipe_version"`
+	ID                       string                             `json:"id" toml:"id"`
+	DisplayName              string                             `json:"display_name" toml:"display_name"`
+	RequiredResponsibilities []string                           `json:"required_responsibilities" toml:"required_responsibilities"`
+	Nodes                    []RecipeNode                       `json:"nodes" toml:"nodes"`
+	IncidentRoutes           []IncidentRoute                    `json:"incident_routes" toml:"incident_routes"`
+	Entry                    string                             `json:"entry" toml:"entry"`
+	TerminalGates            []string                           `json:"terminal_gates" toml:"terminal_gates"`
+	StableBoundaries         []string                           `json:"stable_boundaries" toml:"stable_boundaries"`
+	EnvironmentRequirements  []execution.EnvironmentRequirement `json:"environment_requirements" toml:"environment_requirements"`
 }
 
 type RecipeNode struct {

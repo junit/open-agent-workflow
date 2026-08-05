@@ -3,6 +3,8 @@ package catalog
 import (
 	"strings"
 	"testing"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 func TestNewCatalogOrdersAndCopiesRecords(t *testing.T) {
@@ -116,6 +118,16 @@ func TestNewCatalogRejectsNodeAndBindingErrors(t *testing.T) {
 		{"duplicate binding", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
 			p.Capabilities[0].HostBindings = append(p.Capabilities[0].HostBindings, p.Capabilities[0].HostBindings[0])
 		}, "DUPLICATE_HOST_BINDING"},
+		{"empty supported topology", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
+			p.Capabilities[0].SupportedTopologies = []execution.Topology{}
+		}, "EXECUTION_TOPOLOGY_INVALID"},
+		{"binding topology outside capability", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
+			p.Capabilities[0].SupportedTopologies = []execution.Topology{execution.TopologyCurrent}
+			p.Capabilities[0].HostBindings[0].Topologies = []execution.Topology{execution.TopologySubagent}
+		}, "binding topology is outside capability"},
+		{"missing environment requirements", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
+			r.EnvironmentRequirements = nil
+		}, "environment requirements are required"},
 		{"duplicate node", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) { r.Nodes = append(r.Nodes, r.Nodes[0]) }, "DUPLICATE_RECIPE_NODE_ID"},
 		{"procedure phase invalid", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
 			r.Nodes[0].Kind = ProcedureNode
@@ -141,9 +153,28 @@ func TestNewCatalogRejectsNodeAndBindingErrors(t *testing.T) {
 }
 
 func testProvider(id, capabilityID, responsibility string) ProviderDescriptorRecord {
-	return ProviderDescriptorRecord{SchemaVersion: ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: id, DisplayName: id, Discovery: []DiscoveryProbe{{ID: "probe", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "test", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/test", EvidencePath: "SKILL.md"}}, Capabilities: []CapabilityRecord{{ID: capabilityID, InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, RequestModes: []RequestMode{RequestModeWorkflow}, Responsibilities: []string{responsibility, "completion"}, ExecutorTopology: IsolatedRequired, HostBindings: []HostBinding{{Host: "codex", Kind: "skill", Reference: "test"}}}}}
+	return ProviderDescriptorRecord{
+		SchemaVersion:     ProviderDescriptorSchemaV3,
+		DescriptorVersion: "3.0.0",
+		ID:                id,
+		DisplayName:       id,
+		Discovery: []DiscoveryProbe{{
+			ID: "probe", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "test",
+			Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/test", EvidencePath: "SKILL.md",
+		}},
+		Capabilities: []CapabilityRecord{{
+			ID: capabilityID, InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"},
+			Resources: []string{"project"}, RequestModes: []RequestMode{RequestModeWorkflow},
+			Responsibilities:    []string{responsibility, "completion"},
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+			HostBindings: []HostBinding{{
+				Host: "codex", Kind: "skill", Reference: "test",
+				Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+			}},
+		}},
+	}
 }
 
 func testRecipe(id, providerID, capabilityID string) ProfileRecipeRecord {
-	return ProfileRecipeRecord{SchemaVersion: ProfileRecipeSchemaV1, RecipeVersion: "1.0.0", ID: id, DisplayName: id, RequiredResponsibilities: []string{"implementation", "completion"}, Nodes: []RecipeNode{{ID: "implementation", Kind: PhaseNode, Responsibility: "implementation", Selector: CapabilitySelector{ProviderID: providerID, CapabilityID: capabilityID}, Transitions: []RecipeTransition{{Signal: "succeeded", Target: "completion"}}}, {ID: "completion", Kind: GateNode, Responsibility: "completion", Selector: CapabilitySelector{ProviderID: providerID, CapabilityID: capabilityID}, Transitions: []RecipeTransition{}}}, Entry: "implementation", TerminalGates: []string{"completion"}, StableBoundaries: []string{"complete"}}
+	return ProfileRecipeRecord{SchemaVersion: ProfileRecipeSchemaV2, RecipeVersion: "2.0.0", ID: id, DisplayName: id, RequiredResponsibilities: []string{"implementation", "completion"}, Nodes: []RecipeNode{{ID: "implementation", Kind: PhaseNode, Responsibility: "implementation", Selector: CapabilitySelector{ProviderID: providerID, CapabilityID: capabilityID}, Transitions: []RecipeTransition{{Signal: "succeeded", Target: "completion"}}}, {ID: "completion", Kind: GateNode, Responsibility: "completion", Selector: CapabilitySelector{ProviderID: providerID, CapabilityID: capabilityID}, Transitions: []RecipeTransition{}}}, Entry: "implementation", TerminalGates: []string{"completion"}, StableBoundaries: []string{"complete"}, EnvironmentRequirements: []execution.EnvironmentRequirement{}}
 }
