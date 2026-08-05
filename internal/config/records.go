@@ -1,7 +1,7 @@
 package config
 
 const (
-	UserConfigSchemaV2    = "oaw.user-config/v2"
+	UserConfigSchemaV3    = "oaw.user-config/v3"
 	ProjectConfigSchemaV1 = "oaw.project-config/v1"
 )
 

@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://open-agent-workflow.dev/schemas/v2/user-config.schema.json",
+  "$id": "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "denied_providers", "provider_descriptors", "profile_recipes", "host_integrations", "provider_installations", "provider_pins", "binding_preferences", "bounded_capability_defaults", "project_trust"],
   "properties": {
-    "schema_version": {"const": "oaw.user-config/v2"},
+    "schema_version": {"const": "oaw.user-config/v3"},
     "denied_providers": {"type": "array", "maxItems": 1024, "uniqueItems": true, "items": {"$ref": "#/$defs/qualified_id"}},
     "provider_descriptors": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/content_reference"}},
     "profile_recipes": {"type": "array", "maxItems": 1024, "items": {"$ref": "#/$defs/content_reference"}},

@@ -14,16 +14,35 @@ import (
 
 func TestDecodeUserRejectsUnknownFields(t *testing.T) {
 	registry := testRegistry(t)
-	_, err := DecodeUser([]byte("schema_version = \"oaw.user-config/v2\"\nunknown = true\n"), registry)
+	_, err := DecodeUser([]byte("schema_version = \"oaw.user-config/v3\"\nunknown = true\n"), registry)
 	if err == nil || !strings.Contains(err.Error(), "CONFIG_UNKNOWN_FIELD") {
 		t.Fatalf("DecodeUser() error = %v", err)
+	}
+}
+
+func TestDecodeUserRequiresV3WithoutMigrationOutput(t *testing.T) {
+	registry := testRegistry(t)
+	decoded, err := DecodeUser([]byte("schema_version = \"oaw.user-config/v3\"\n"), registry)
+	if err != nil {
+		t.Fatalf("DecodeUser(v3) error = %v", err)
+	}
+	if decoded.Record.SchemaVersion != "oaw.user-config/v3" || decoded.Digest == "" || len(decoded.CanonicalJSON) == 0 {
+		t.Fatalf("DecodeUser(v3) = %#v", decoded)
+	}
+
+	retired, err := DecodeUser([]byte("schema_version = \"oaw.user-config/v2\"\n"), registry)
+	if err == nil || !strings.Contains(err.Error(), "CONFIG_SCHEMA_UNSUPPORTED") {
+		t.Fatalf("DecodeUser(v2) error = %v", err)
+	}
+	if retired.Record.SchemaVersion != "" || retired.Digest != "" || len(retired.CanonicalJSON) != 0 {
+		t.Fatalf("DecodeUser(v2) produced migration output: %#v", retired)
 	}
 }
 
 func TestDecodeUserNormalizesEquivalentTOML(t *testing.T) {
 	registry := testRegistry(t)
 	first := []byte(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 denied_providers = ["zeta/suite", "acme/suite"]
 
 [[provider_pins]]
@@ -40,7 +59,7 @@ installation_key = "installation-acme"
 evidence_digest = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 location = "/opt/acme"
 `)
-	second := []byte(`schema_version="oaw.user-config/v2"
+	second := []byte(`schema_version="oaw.user-config/v3"
 denied_providers=["acme/suite","zeta/suite"]
 [[provider_pins]]
 provider_id="acme/suite"
@@ -112,8 +131,8 @@ capability_ids = ["review"]
 func TestDecodeProviderTOMLUsesCatalogContract(t *testing.T) {
 	registry := testRegistry(t)
 	raw := []byte(`
-schema_version = "oaw.provider-descriptor/v2"
-descriptor_version = "2.0.0"
+schema_version = "oaw.provider-descriptor/v3"
+descriptor_version = "3.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
@@ -135,13 +154,14 @@ maximum_effects = ["read-project"]
 resources = ["project"]
 request_modes = ["BOUNDED"]
 responsibilities = ["review"]
-executor_topology = "main-agent-allowed"
+supported_topologies = ["CURRENT", "SUBAGENT"]
 delegation_allow_list = []
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "skill"
 reference = "acme:review"
+topologies = ["CURRENT", "SUBAGENT"]
 `)
 	decoded, err := DecodeProvider(raw, registry)
 	if err != nil {
@@ -153,7 +173,7 @@ reference = "acme:review"
 }
 
 func TestDecodeUserAcceptsIndependentHostPins(t *testing.T) {
-	raw := []byte(`schema_version = "oaw.user-config/v2"
+	raw := []byte(`schema_version = "oaw.user-config/v3"
 
 [[provider_pins]]
 provider_id = "oaw/superpowers"
@@ -177,7 +197,7 @@ evidence_digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 }
 
 func TestDecodeUserRejectsV1Schema(t *testing.T) {
-	if _, err := DecodeUser([]byte(`schema_version = "oaw.user-config/v1"`), testRegistry(t)); err == nil || !strings.Contains(err.Error(), "UNSUPPORTED_USER_CONFIG_SCHEMA") {
+	if _, err := DecodeUser([]byte(`schema_version = "oaw.user-config/v1"`), testRegistry(t)); err == nil || !strings.Contains(err.Error(), "CONFIG_SCHEMA_UNSUPPORTED") {
 		t.Fatalf("DecodeUser(v1) error = %v", err)
 	}
 }
@@ -187,7 +207,7 @@ func TestSnapshotSeparatesHostSettingsAndCopiesInstallations(t *testing.T) {
 	codexLocation := filepath.Join(t.TempDir(), "codex-superpowers")
 	claudeLocation := filepath.Join(t.TempDir(), "claude-superpowers")
 	writeUserConfig(t, root, fmt.Sprintf(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 
 [[provider_installations]]
 provider_id = "oaw/superpowers"
@@ -243,7 +263,7 @@ func TestDecodeUserRejectsInvalidHostScopedProviderRecords(t *testing.T) {
 	}{
 		{
 			name: "duplicate same-host pins",
-			raw: `schema_version = "oaw.user-config/v2"
+			raw: `schema_version = "oaw.user-config/v3"
 [[provider_pins]]
 provider_id = "oaw/superpowers"
 host_id = "codex"
@@ -259,7 +279,7 @@ evidence_digest = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 		},
 		{
 			name: "missing evidence digest",
-			raw: `schema_version = "oaw.user-config/v2"
+			raw: `schema_version = "oaw.user-config/v3"
 [[provider_pins]]
 provider_id = "oaw/superpowers"
 host_id = "codex"
@@ -269,7 +289,7 @@ installation_key = "installation-one"
 		},
 		{
 			name: "unsafe installation location",
-			raw: `schema_version = "oaw.user-config/v2"
+			raw: `schema_version = "oaw.user-config/v3"
 [[provider_installations]]
 provider_id = "oaw/superpowers"
 host_id = "codex"
@@ -281,7 +301,7 @@ discovery_probe_id = "codex-direct"
 		},
 		{
 			name: "duplicate installation identity",
-			raw: fmt.Sprintf(`schema_version = "oaw.user-config/v2"
+			raw: fmt.Sprintf(`schema_version = "oaw.user-config/v3"
 [[provider_installations]]
 provider_id = "oaw/superpowers"
 host_id = "codex"
@@ -299,7 +319,7 @@ discovery_probe_id = "codex-direct"
 		},
 		{
 			name: "legacy binding host",
-			raw: `schema_version = "oaw.user-config/v2"
+			raw: `schema_version = "oaw.user-config/v3"
 [[binding_preferences]]
 provider_id = "oaw/superpowers"
 capability_id = "review"
@@ -322,8 +342,8 @@ reference = "superpowers:requesting-code-review"
 func TestDecodeRecipeTOMLUsesCatalogContract(t *testing.T) {
 	registry := testRegistry(t)
 	raw := []byte(`
-schema_version = "oaw.profile-recipe/v1"
-recipe_version = "1.0.0"
+schema_version = "oaw.profile-recipe/v2"
+recipe_version = "2.0.0"
 id = "acme/review"
 display_name = "Acme Review"
 required_responsibilities = ["review"]
@@ -331,6 +351,7 @@ incident_routes = []
 entry = "review"
 terminal_gates = ["review"]
 stable_boundaries = ["complete"]
+environment_requirements = []
 
 [[nodes]]
 id = "review"
@@ -354,7 +375,7 @@ capability_id = "review"
 func TestDecodeUserRejectsUnsafeContentReferencePaths(t *testing.T) {
 	registry := testRegistry(t)
 	for _, path := range []string{"../provider.toml", "/tmp/provider.toml", `providers\provider.toml`, "providers/./provider.toml"} {
-		raw := []byte("schema_version = \"oaw.user-config/v2\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"" + strings.ReplaceAll(path, `\`, `\\`) + "\"\n")
+		raw := []byte("schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"" + strings.ReplaceAll(path, `\`, `\\`) + "\"\n")
 		if _, err := DecodeUser(raw, registry); err == nil || !strings.Contains(err.Error(), "CONFIG_PATH_INVALID") {
 			t.Fatalf("DecodeUser(path=%q) error = %v", path, err)
 		}
@@ -364,7 +385,7 @@ func TestDecodeUserRejectsUnsafeContentReferencePaths(t *testing.T) {
 func TestDecodeUserRejectsDuplicateStableIdentities(t *testing.T) {
 	registry := testRegistry(t)
 	raw := []byte(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_descriptors]]
 id = "acme/suite"
 path = "providers/one.toml"
@@ -508,7 +529,7 @@ func TestLoadBuildsBuiltInOnlySnapshotWithoutFiles(t *testing.T) {
 
 func TestSnapshotRecordIsDigestPinnedAndDefensive(t *testing.T) {
 	userRoot := t.TempDir()
-	writeUserConfig(t, userRoot, `schema_version = "oaw.user-config/v2"
+	writeUserConfig(t, userRoot, `schema_version = "oaw.user-config/v3"
 
 [[bounded_capability_defaults]]
 id = "review"
@@ -540,7 +561,7 @@ func TestLoadMergesUserRecordsAndAppliesDeny(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeUserConfig(t, root, `
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 denied_providers = ["oaw/matt", "acme/suite"]
 [[provider_descriptors]]
 id = "acme/suite"
@@ -618,7 +639,7 @@ replace = true
 		t.Fatal(err)
 	}
 	writeUserConfig(t, userRoot, fmt.Sprintf(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_descriptors]]
 id = "acme/suite"
 path = "providers/acme.toml"
@@ -670,7 +691,7 @@ func TestLoadRejectsImplicitProjectReplacement(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeUserConfig(t, userRoot, fmt.Sprintf(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_descriptors]]
 id = "acme/suite"
 path = "providers/acme.toml"
@@ -691,7 +712,7 @@ func TestLoadRejectsReservedUserProviderNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeUserConfig(t, root, `
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_descriptors]]
 id = "oaw/replacement"
 path = "providers/replacement.toml"
@@ -712,7 +733,7 @@ func TestLoadRejectsReservedUserRecipeNamespace(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeUserConfig(t, root, `
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[profile_recipes]]
 id = "oaw/replacement"
 path = "profiles/replacement.toml"
@@ -748,7 +769,7 @@ func TestLoadDoesNotShadowTrustedProviderWithUntrustedReplacement(t *testing.T) 
 		t.Fatal(err)
 	}
 	writeUserConfig(t, userRoot, `
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_descriptors]]
 id = "acme/suite"
 path = "providers/acme.toml"
@@ -808,7 +829,7 @@ func TestSnapshotIsImmutableAcrossSourceChanges(t *testing.T) {
 	if err := os.WriteFile(path, []byte(testProviderTOML), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	writeUserConfig(t, root, "schema_version = \"oaw.user-config/v2\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.toml\"\n")
+	writeUserConfig(t, root, "schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.toml\"\n")
 	first, err := Load(LoadOptions{UserConfigRoot: root})
 	if err != nil {
 		t.Fatal(err)
@@ -872,7 +893,7 @@ func projectTrustTOML(fingerprint ProjectFingerprint, denied []string) string {
 	for i, value := range denied {
 		quotedDenied[i] = fmt.Sprintf("%q", value)
 	}
-	return fmt.Sprintf("schema_version = \"oaw.user-config/v2\"\ndenied_providers = [%s]\n%s", strings.Join(quotedDenied, ","), projectTrustTableTOML(fingerprint))
+	return fmt.Sprintf("schema_version = \"oaw.user-config/v3\"\ndenied_providers = [%s]\n%s", strings.Join(quotedDenied, ","), projectTrustTableTOML(fingerprint))
 }
 
 func projectTrustTableTOML(fingerprint ProjectFingerprint) string {
@@ -888,8 +909,8 @@ func projectTrustTableTOML(fingerprint ProjectFingerprint) string {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v2"
-descriptor_version = "2.0.0"
+schema_version = "oaw.provider-descriptor/v3"
+descriptor_version = "3.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 discovery = []
@@ -897,8 +918,8 @@ capabilities = []
 `
 
 const testReviewProviderTOML = `
-schema_version = "oaw.provider-descriptor/v2"
-descriptor_version = "2.0.0"
+schema_version = "oaw.provider-descriptor/v3"
+descriptor_version = "3.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
@@ -920,18 +941,19 @@ maximum_effects = ["read-project"]
 resources = ["project"]
 request_modes = ["BOUNDED"]
 responsibilities = ["review"]
-executor_topology = "main-agent-allowed"
+supported_topologies = ["CURRENT", "SUBAGENT"]
 delegation_allow_list = []
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "skill"
 reference = "acme:review"
+topologies = ["CURRENT", "SUBAGENT"]
 `
 
 const testReviewRecipeTOML = `
-schema_version = "oaw.profile-recipe/v1"
-recipe_version = "1.0.0"
+schema_version = "oaw.profile-recipe/v2"
+recipe_version = "2.0.0"
 id = "acme/review"
 display_name = "Acme Review"
 required_responsibilities = ["review"]
@@ -939,6 +961,7 @@ incident_routes = []
 entry = "review"
 terminal_gates = ["review"]
 stable_boundaries = ["complete"]
+environment_requirements = []
 
 [[nodes]]
 id = "review"

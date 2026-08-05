@@ -21,8 +21,8 @@ func DecodeUser(raw []byte, registry *schema.Registry) (Decoded[UserConfigRecord
 	if err := strictTOML(raw, &record); err != nil {
 		return Decoded[UserConfigRecord]{}, err
 	}
-	if record.SchemaVersion != UserConfigSchemaV2 {
-		return Decoded[UserConfigRecord]{}, fmt.Errorf("UNSUPPORTED_USER_CONFIG_SCHEMA: %q", record.SchemaVersion)
+	if record.SchemaVersion != UserConfigSchemaV3 {
+		return Decoded[UserConfigRecord]{}, fmt.Errorf("CONFIG_SCHEMA_UNSUPPORTED: user configuration %q", record.SchemaVersion)
 	}
 	if err := normalizeUser(&record); err != nil {
 		return Decoded[UserConfigRecord]{}, err
@@ -31,7 +31,7 @@ func DecodeUser(raw []byte, registry *schema.Registry) (Decoded[UserConfigRecord
 	if err != nil {
 		return Decoded[UserConfigRecord]{}, err
 	}
-	if err := registry.Validate(schema.UserConfigV2, encoded); err != nil {
+	if err := registry.Validate(schema.UserConfigV3, encoded); err != nil {
 		return Decoded[UserConfigRecord]{}, fmt.Errorf("INVALID_USER_CONFIG: %w", err)
 	}
 	return Decoded[UserConfigRecord]{Record: record, CanonicalJSON: encoded, Digest: digest}, nil

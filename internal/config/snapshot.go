@@ -644,7 +644,7 @@ func cloneProviderSettings(value ProviderSettings) ProviderSettings {
 
 func emptyUserConfig() UserConfigRecord {
 	return UserConfigRecord{
-		SchemaVersion:             UserConfigSchemaV2,
+		SchemaVersion:             UserConfigSchemaV3,
 		DeniedProviders:           []string{},
 		ProviderDescriptors:       []ContentReference{},
 		ProfileRecipes:            []ContentReference{},

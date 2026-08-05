@@ -15,7 +15,7 @@ const (
 	ProviderDescriptorV3     = "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json"
 	ProfileRecipeV2          = "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json"
 	ProfileAliasSetV1        = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
-	UserConfigV2             = "https://open-agent-workflow.dev/schemas/v2/user-config.schema.json"
+	UserConfigV3             = "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json"
 	ProjectConfigV1          = "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json"
 	ClassificationProposalV1 = "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json"
 	HostManifestV1           = "https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json"
@@ -34,7 +34,7 @@ func New(files fs.FS) (*Registry, error) {
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	resources := []struct{ path, id string }{
 		{"schemas/v3/provider-descriptor.schema.json", ProviderDescriptorV3},
-		{"schemas/v2/user-config.schema.json", UserConfigV2},
+		{"schemas/v3/user-config.schema.json", UserConfigV3},
 		{"schemas/v2/profile-recipe.schema.json", ProfileRecipeV2},
 		{"schemas/v1/profile-alias-set.schema.json", ProfileAliasSetV1},
 		{"schemas/v1/project-config.schema.json", ProjectConfigV1},
