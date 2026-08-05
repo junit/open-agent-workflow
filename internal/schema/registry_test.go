@@ -178,6 +178,58 @@ func TestRegistryValidatesReceiptTranscriptAndReportV2(t *testing.T) {
 	}
 }
 
+func TestRegistryValidatesWorkflowCoordinatorSchemaFamily(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	command := []byte(`{"schema_version":"oaw.workflow-command/v1","kind":"INSPECT","message_id":"","idempotency_key":"","workflow_id":"workflow-1","expected_revision":0}`)
+	if err := registry.Validate(WorkflowCommandV1, command); err != nil {
+		t.Fatalf("Validate(WorkflowCommandV1) error = %v", err)
+	}
+	start := []byte(fmt.Sprintf(`{"schema_version":"oaw.workflow-command/v1","kind":"START","message_id":"message-1","idempotency_key":"start-1","workflow_id":"","expected_revision":0,"start":{"request_id":"request-1","deliverable_id":"deliverable-1","input_digest":"%s","active_ticket":"","proposal":{"schema_version":"oaw.classification-proposal/v1","traits":[],"resources":[],"evidence":[]},"selection":{"profile":"SP-FULL","profile_source":"user-selection","topology":"CURRENT","topology_source":"host-only-option","add_ons":[],"bindings":[]},"host_session":{"schema_version":"oaw.host-session/v2","host_id":"codex","integration_id":"acme/codex","integration_version":"2.0.0","session_id":"session-1","supported_topologies":["CURRENT"],"provider_inventory_digest":"%s","environment_report_digest":"%s","sandbox_policy_digest":"","approval_policy_digest":"","digest":"%s"},"environment":{"schema_version":"oaw.host-environment-report/v2","session_id":"session-1","parent_session_id":"","topology":"CURRENT","observations":[],"digest":"%s"}}}`, digest, digest, digest, digest, digest))
+	if err := registry.Validate(WorkflowCommandV1, start); err != nil {
+		t.Fatalf("Validate(START) error = %v", err)
+	}
+	invalidStart := []byte(strings.Replace(string(start), `"message_id":"message-1"`, `"message_id":""`, 1))
+	if err := registry.Validate(WorkflowCommandV1, invalidStart); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(empty START message_id) error = %v", err)
+	}
+	invalidInspect := []byte(strings.Replace(string(command), `"workflow_id":"workflow-1"`, `"workflow_id":""`, 1))
+	if err := registry.Validate(WorkflowCommandV1, invalidInspect); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(empty INSPECT workflow_id) error = %v", err)
+	}
+	mixed := []byte(`{"schema_version":"oaw.workflow-command/v1","kind":"INSPECT","message_id":"","idempotency_key":"","workflow_id":"workflow-1","expected_revision":0,"cancel":{"reason":"stop","invocation_terminal":true}}`)
+	if err := registry.Validate(WorkflowCommandV1, mixed); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(mixed Workflow Command) error = %v", err)
+	}
+	legacy := []byte(`{"schema_version":"oaw.runtime/v1","kind":"INSPECT","message_id":"","idempotency_key":"","workflow_id":"workflow-1","expected_revision":0}`)
+	if err := registry.Validate(WorkflowCommandV1, legacy); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(legacy Runtime Command) error = %v", err)
+	}
+	snapshot := `{"schema_version":"oaw.workflow-snapshot/v1","workflow_id":"workflow-1","request_id":"request-1","deliverable_id":"deliverable-1","revision":1,"status":"READY","classification":{"request_mode":"WORKFLOW","workflow_complexity":"complex","risk_class":"normal","evidence_requirements":[],"escalation_reasons":[]},"bundles":[],"active_generation":0,"active_node_id":"","active_ticket":"","grant_history":[],"receipts":[],"resource_leases":[],"last_stable_boundary":"","processed_messages":[],"projection_lag":[]}`
+	if err := registry.Validate(WorkflowSnapshotV1, []byte(snapshot)); err != nil {
+		t.Fatalf("Validate(WorkflowSnapshotV1) error = %v", err)
+	}
+	result := fmt.Sprintf(`{"schema_version":"oaw.workflow-result/v1","kind":"STATE","workflow_id":"workflow-1","revision":1,"revision_digest":"%s","snapshot":%s,"diagnostics":[],"replayed":false,"digest":"%s"}`, digest, snapshot, digest)
+	if err := registry.Validate(WorkflowResultV1, []byte(result)); err != nil {
+		t.Fatalf("Validate(WorkflowResultV1) error = %v", err)
+	}
+	persistedRejected := fmt.Sprintf(`{"schema_version":"oaw.workflow-result/v1","kind":"REJECTED","workflow_id":"workflow-1","revision":2,"revision_digest":"%s","diagnostics":[{"code":"WORKFLOW_DENIED","detail":"selection is not eligible"}],"replayed":false,"digest":"%s"}`, digest, digest)
+	if err := registry.Validate(WorkflowResultV1, []byte(persistedRejected)); err != nil {
+		t.Fatalf("Validate(persisted REJECTED) error = %v", err)
+	}
+	revision := fmt.Sprintf(`{"schema_version":"oaw.workflow-revision/v1","workflow_id":"workflow-1","revision":1,"predecessor_digest":"","message_id":"message-1","idempotency_key":"start-1","message_digest":"%s","event":"WORKFLOW_STARTED","snapshot":%s,"result":%s,"digest":"%s"}`, digest, snapshot, result, digest)
+	if err := registry.Validate(WorkflowRevisionV1, []byte(revision)); err != nil {
+		t.Fatalf("Validate(WorkflowRevisionV1) error = %v", err)
+	}
+	head := []byte(fmt.Sprintf(`{"schema_version":"oaw.workflow-head/v1","workflow_id":"workflow-1","revision":1,"revision_digest":"%s","digest":"%s"}`, digest, digest))
+	if err := registry.Validate(WorkflowHeadV1, head); err != nil {
+		t.Fatalf("Validate(WorkflowHeadV1) error = %v", err)
+	}
+}
+
 func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {

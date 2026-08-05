@@ -18,6 +18,11 @@ func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 		"schemas/v2/host-invocation-receipt.schema.json":     "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json",
 		"schemas/v2/host-conformance-transcript.schema.json": "https://open-agent-workflow.dev/schemas/v2/host-conformance-transcript.schema.json",
 		"schemas/v2/host-conformance-report.schema.json":     "https://open-agent-workflow.dev/schemas/v2/host-conformance-report.schema.json",
+		"schemas/v1/workflow-command.schema.json":            "https://open-agent-workflow.dev/schemas/v1/workflow-command.schema.json",
+		"schemas/v1/workflow-result.schema.json":             "https://open-agent-workflow.dev/schemas/v1/workflow-result.schema.json",
+		"schemas/v1/workflow-snapshot.schema.json":           "https://open-agent-workflow.dev/schemas/v1/workflow-snapshot.schema.json",
+		"schemas/v1/workflow-revision.schema.json":           "https://open-agent-workflow.dev/schemas/v1/workflow-revision.schema.json",
+		"schemas/v1/workflow-head.schema.json":               "https://open-agent-workflow.dev/schemas/v1/workflow-head.schema.json",
 	}
 	for path, id := range want {
 		data, err := fs.ReadFile(FS(), path)

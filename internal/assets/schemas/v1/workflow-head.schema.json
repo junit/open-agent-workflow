@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v1/workflow-head.schema.json",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "revision", "revision_digest", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.workflow-head/v1"}, "workflow_id": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^\\S(?:.*\\S)?$"}, "revision": {"type": "integer", "minimum": 1}, "revision_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}, "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
