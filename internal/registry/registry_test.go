@@ -34,7 +34,7 @@ func TestResolveReportsEveryProviderState(t *testing.T) {
 		{"verified", "", writeSuperpowersDirect, "verified", registry.Verified, "PROVIDER_VERIFIED"},
 		{"ambiguous", "", writeSuperpowersDirectAndVersion, "none", registry.Ambiguous, "PROVIDER_CANDIDATE_AMBIGUOUS"},
 		{"incompatible", `
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_pins]]
 provider_id = "oaw/superpowers"
 host_id = "codex"
@@ -44,7 +44,7 @@ version = "9.9.9"
 `, writeSuperpowersDirect, "none", registry.Incompatible, "PROVIDER_PIN_INCOMPATIBLE"},
 		{"binding unavailable", "", writeSuperpowersDirect, "empty", registry.CandidateState, "HOST_BINDING_EVIDENCE_REQUIRED"},
 		{"disabled", `
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 denied_providers = ["oaw/superpowers"]
 `, writeSuperpowersDirect, "verified", registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
 	}
@@ -158,7 +158,7 @@ func TestResolveReportsUntrustedAndUserDenyWins(t *testing.T) {
 		reason     string
 	}{
 		{"untrusted", "", registry.Untrusted, "PROVIDER_PROJECT_CONTENT_UNTRUSTED"},
-		{"denied", "schema_version = \"oaw.user-config/v2\"\ndenied_providers = [\"acme/suite\"]\n", registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
+		{"denied", "schema_version = \"oaw.user-config/v3\"\ndenied_providers = [\"acme/suite\"]\n", registry.Disabled, "PROVIDER_DISABLED_BY_USER"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			userRoot := writeUserConfig(t, tt.userConfig)
@@ -211,7 +211,7 @@ func TestResolveUsesExactPinToDisambiguate(t *testing.T) {
 		t.Fatal(err)
 	}
 	userConfig := fmt.Sprintf(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_pins]]
 provider_id = "oaw/superpowers"
 host_id = "codex"
@@ -482,7 +482,7 @@ reference = "acme:zeta-review"
 	userRoot := t.TempDir()
 	writeFile(t, userRoot, "providers/acme.toml", testProviderTOML)
 	writeFile(t, userRoot, "config.toml", fmt.Sprintf(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 [[provider_descriptors]]
 id = "acme/suite"
 path = "providers/acme.toml"
