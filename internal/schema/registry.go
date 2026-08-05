@@ -21,6 +21,8 @@ const (
 	HostManifestV1           = "https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json"
 	HostIntegrationV1        = "https://open-agent-workflow.dev/schemas/v1/host-integration.schema.json"
 	HostIntegrationSetV1     = "https://open-agent-workflow.dev/schemas/v1/host-integration-set.schema.json"
+	HostSessionV2            = "https://open-agent-workflow.dev/schemas/v2/host-session.schema.json"
+	HostEnvironmentReportV2  = "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"
 	RuntimeFrameV1           = "https://open-agent-workflow.dev/schemas/v1/runtime-frame.schema.json"
 	RuntimeReplyV1           = "https://open-agent-workflow.dev/schemas/v1/runtime-reply.schema.json"
 )
@@ -42,6 +44,8 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v1/host-manifest.schema.json", HostManifestV1},
 		{"schemas/v1/host-integration.schema.json", HostIntegrationV1},
 		{"schemas/v1/host-integration-set.schema.json", HostIntegrationSetV1},
+		{"schemas/v2/host-session.schema.json", HostSessionV2},
+		{"schemas/v2/host-environment-report.schema.json", HostEnvironmentReportV2},
 		{"schemas/v1/runtime-frame.schema.json", RuntimeFrameV1},
 		{"schemas/v1/runtime-reply.schema.json", RuntimeReplyV1},
 	}

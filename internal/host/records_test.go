@@ -9,8 +9,130 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
+
+func TestNewSessionSnapshotPinsCurrentSession(t *testing.T) {
+	manifest := runnerManifest(t)
+	manifest.ControlSurface = host.SurfaceHostNative
+	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+	topologies := []execution.Topology{execution.TopologyCurrent}
+	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion:           host.HostSessionSchemaV2,
+		HostID:                  "codex",
+		IntegrationID:           "acme/codex-runtime",
+		IntegrationVersion:      "1.0.0",
+		SessionID:               "session-current-1",
+		SupportedTopologies:     topologies,
+		ProviderInventoryDigest: strings.Repeat("a", 64),
+		EnvironmentReportDigest: strings.Repeat("b", 64),
+		SandboxPolicyDigest:     strings.Repeat("c", 64),
+		ApprovalPolicyDigest:    strings.Repeat("d", 64),
+	})
+	if err != nil {
+		t.Fatalf("NewSessionSnapshot() error = %v", err)
+	}
+	if session.Digest == "" || session.SessionID != "session-current-1" || !slices.Equal(session.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
+		t.Fatalf("SessionSnapshot = %#v", session)
+	}
+
+	topologies[0] = execution.TopologySubagent
+	cloned := host.CloneSessionSnapshot(session)
+	cloned.SupportedTopologies[0] = execution.TopologySubagent
+	if session.SupportedTopologies[0] != execution.TopologyCurrent {
+		t.Fatal("SessionSnapshot shares topology storage")
+	}
+}
+
+func TestSessionSnapshotRejectsSubagentWithoutManifestSupport(t *testing.T) {
+	manifest := runnerManifest(t)
+	manifest.ControlSurface = host.SurfaceHostNative
+	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent}
+	_, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion:           host.HostSessionSchemaV2,
+		HostID:                  "codex",
+		IntegrationID:           "acme/codex-runtime",
+		IntegrationVersion:      "1.0.0",
+		SessionID:               "session-current-1",
+		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		ProviderInventoryDigest: strings.Repeat("a", 64),
+		EnvironmentReportDigest: strings.Repeat("b", 64),
+	})
+	if host.ErrorCode(err) != "HOST_SESSION_INVALID" {
+		t.Fatalf("NewSessionSnapshot() error = %v", err)
+	}
+}
+
+func TestSessionSnapshotRejectsPolicyManifest(t *testing.T) {
+	manifest := runnerManifest(t)
+	manifest.ControlSurface = host.SurfacePolicy
+	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent}
+	_, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion:           host.HostSessionSchemaV2,
+		HostID:                  "codex",
+		IntegrationID:           "acme/codex-runtime",
+		IntegrationVersion:      "1.0.0",
+		SessionID:               "session-current-1",
+		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
+		ProviderInventoryDigest: strings.Repeat("a", 64),
+		EnvironmentReportDigest: strings.Repeat("b", 64),
+	})
+	if host.ErrorCode(err) != "HOST_SESSION_INVALID" {
+		t.Fatalf("NewSessionSnapshot(policy) error = %v", err)
+	}
+}
+
+func TestEnvironmentReportUsesClosedDispositions(t *testing.T) {
+	observations := []execution.EnvironmentObservation{
+		{Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-session", Digest: strings.Repeat("a", 64)},
+		{Surface: "mcp", Disposition: execution.DispositionHostConfigured, Source: "codex-session", Digest: strings.Repeat("b", 64)},
+	}
+	report, err := host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion: host.HostEnvironmentReportSchemaV2,
+		SessionID:     "session-current-1",
+		Topology:      execution.TopologyCurrent,
+		Observations:  observations,
+	})
+	if err != nil {
+		t.Fatalf("NewEnvironmentReport() error = %v", err)
+	}
+	if report.Digest == "" || report.ParentSessionID != "" || report.Observations[0].Surface != "mcp" {
+		t.Fatalf("EnvironmentReport = %#v", report)
+	}
+	observations[0].Surface = "changed"
+	cloned := host.CloneEnvironmentReport(report)
+	cloned.Observations[0].Surface = "changed-again"
+	if report.Observations[0].Surface != "mcp" {
+		t.Fatal("EnvironmentReport shares observation storage")
+	}
+
+	_, err = host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion: host.HostEnvironmentReportSchemaV2,
+		SessionID:     "session-current-1",
+		Topology:      execution.TopologyCurrent,
+		Observations: []execution.EnvironmentObservation{{
+			Surface: "skills", Disposition: execution.EnvironmentDisposition("invented"), Source: "codex-session", Digest: strings.Repeat("a", 64),
+		}},
+	})
+	if host.ErrorCode(err) != "HOST_ENVIRONMENT_REPORT_INVALID" {
+		t.Fatalf("invalid disposition error = %v", err)
+	}
+
+	for _, invalid := range []string{"skills\nprivate", string([]byte{'s', 'k', 0xff})} {
+		_, err = host.NewEnvironmentReport(host.EnvironmentReport{
+			SchemaVersion: host.HostEnvironmentReportSchemaV2,
+			SessionID:     "session-current-1",
+			Topology:      execution.TopologyCurrent,
+			Observations: []execution.EnvironmentObservation{{
+				Surface: invalid, Disposition: execution.DispositionInherited, Source: "codex-session", Digest: strings.Repeat("a", 64),
+			}},
+		})
+		if host.ErrorCode(err) != "HOST_ENVIRONMENT_REPORT_INVALID" {
+			t.Fatalf("invalid surface %q error = %v", invalid, err)
+		}
+	}
+}
 
 func TestNewManifestNormalizesAndDefendsCollections(t *testing.T) {
 	features := []host.Feature{

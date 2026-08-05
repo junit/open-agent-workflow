@@ -109,6 +109,26 @@ func TestRegistryUsesUserConfigV3Only(t *testing.T) {
 	}
 }
 
+func TestRegistryValidatesHostSessionAndEnvironmentV2(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	session := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-session/v2","host_id":"codex","integration_id":"acme/codex-native","integration_version":"1.0.0","session_id":"session-current-1","supported_topologies":["CURRENT","SUBAGENT"],"provider_inventory_digest":"%s","environment_report_digest":"%s","sandbox_policy_digest":"","approval_policy_digest":"%s","digest":"%s"}`, digest, digest, digest, digest))
+	if err := registry.Validate(HostSessionV2, session); err != nil {
+		t.Fatalf("Validate(HostSessionV2) error = %v", err)
+	}
+	report := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-environment-report/v2","session_id":"session-current-1","parent_session_id":"","topology":"CURRENT","observations":[{"surface":"skills","disposition":"inherited","source":"codex-session","digest":"%s"}],"digest":"%s"}`, digest, digest))
+	if err := registry.Validate(HostEnvironmentReportV2, report); err != nil {
+		t.Fatalf("Validate(HostEnvironmentReportV2) error = %v", err)
+	}
+	invalid := []byte(strings.Replace(string(report), `"disposition":"inherited"`, `"disposition":"copied"`, 1))
+	if err := registry.Validate(HostEnvironmentReportV2, invalid); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(invalid disposition) error = %v", err)
+	}
+}
+
 func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {

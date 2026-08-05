@@ -6,14 +6,17 @@ import (
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 const (
-	HostManifestSchemaV1      = "oaw.host-manifest/v1"
-	HostIntegrationSchemaV1   = "oaw.host-integration/v1"
-	ConformanceReportSchemaV1 = "oaw.host-conformance-report/v1"
-	ConformanceSuiteV1        = "oaw.host-conformance/v1"
-	RuntimeProtocolV1         = "oaw.runtime/v1"
+	HostManifestSchemaV1          = "oaw.host-manifest/v1"
+	HostIntegrationSchemaV1       = "oaw.host-integration/v1"
+	HostSessionSchemaV2           = "oaw.host-session/v2"
+	HostEnvironmentReportSchemaV2 = "oaw.host-environment-report/v2"
+	ConformanceReportSchemaV1     = "oaw.host-conformance-report/v1"
+	ConformanceSuiteV1            = "oaw.host-conformance/v1"
+	RuntimeProtocolV1             = "oaw.runtime/v1"
 )
 
 type IntegrationLevel string
@@ -22,6 +25,13 @@ const (
 	InstructionOnly IntegrationLevel = "instruction-only"
 	RunnerManaged   IntegrationLevel = "runner-managed"
 	NativeManaged   IntegrationLevel = "native-managed"
+)
+
+type ControlSurface string
+
+const (
+	SurfacePolicy     ControlSurface = "policy"
+	SurfaceHostNative ControlSurface = "host-native"
 )
 
 type Feature string
@@ -40,13 +50,38 @@ const (
 )
 
 type Manifest struct {
-	SchemaVersion    string           `json:"schema_version" toml:"schema_version"`
-	ManifestVersion  string           `json:"manifest_version" toml:"manifest_version"`
-	HostID           string           `json:"host_id" toml:"host_id"`
-	IntegrationLevel IntegrationLevel `json:"integration_level" toml:"integration_level"`
-	Protocols        []string         `json:"protocols" toml:"protocols"`
-	BindingKinds     []string         `json:"binding_kinds" toml:"binding_kinds"`
-	Features         []Feature        `json:"features" toml:"features"`
+	SchemaVersion       string               `json:"schema_version" toml:"schema_version"`
+	ManifestVersion     string               `json:"manifest_version" toml:"manifest_version"`
+	HostID              string               `json:"host_id" toml:"host_id"`
+	IntegrationLevel    IntegrationLevel     `json:"integration_level" toml:"integration_level"`
+	ControlSurface      ControlSurface       `json:"control_surface" toml:"control_surface"`
+	Protocols           []string             `json:"protocols" toml:"protocols"`
+	BindingKinds        []string             `json:"binding_kinds" toml:"binding_kinds"`
+	SupportedTopologies []execution.Topology `json:"supported_topologies" toml:"supported_topologies"`
+	Features            []Feature            `json:"features" toml:"features"`
+}
+
+type SessionSnapshot struct {
+	SchemaVersion           string               `json:"schema_version"`
+	HostID                  string               `json:"host_id"`
+	IntegrationID           string               `json:"integration_id"`
+	IntegrationVersion      string               `json:"integration_version"`
+	SessionID               string               `json:"session_id"`
+	SupportedTopologies     []execution.Topology `json:"supported_topologies"`
+	ProviderInventoryDigest string               `json:"provider_inventory_digest"`
+	EnvironmentReportDigest string               `json:"environment_report_digest"`
+	SandboxPolicyDigest     string               `json:"sandbox_policy_digest"`
+	ApprovalPolicyDigest    string               `json:"approval_policy_digest"`
+	Digest                  string               `json:"digest"`
+}
+
+type EnvironmentReport struct {
+	SchemaVersion   string                             `json:"schema_version"`
+	SessionID       string                             `json:"session_id"`
+	ParentSessionID string                             `json:"parent_session_id"`
+	Topology        execution.Topology                 `json:"topology"`
+	Observations    []execution.EnvironmentObservation `json:"observations"`
+	Digest          string                             `json:"digest"`
 }
 
 type AuditStatus string
@@ -154,7 +189,18 @@ func (value Manifest) ContentDigest() string {
 func CloneManifest(value Manifest) Manifest {
 	value.Protocols = append([]string{}, value.Protocols...)
 	value.BindingKinds = append([]string{}, value.BindingKinds...)
+	value.SupportedTopologies = append([]execution.Topology{}, value.SupportedTopologies...)
 	value.Features = append([]Feature{}, value.Features...)
+	return value
+}
+
+func CloneSessionSnapshot(value SessionSnapshot) SessionSnapshot {
+	value.SupportedTopologies = append([]execution.Topology{}, value.SupportedTopologies...)
+	return value
+}
+
+func CloneEnvironmentReport(value EnvironmentReport) EnvironmentReport {
+	value.Observations = append([]execution.EnvironmentObservation{}, value.Observations...)
 	return value
 }
 

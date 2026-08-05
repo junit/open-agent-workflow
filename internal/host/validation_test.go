@@ -6,8 +6,101 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
+
+func TestValidateEnvironmentReportPinsSessionAndRequirements(t *testing.T) {
+	report, err := host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion: host.HostEnvironmentReportSchemaV2,
+		SessionID:     "session-current-1",
+		Topology:      execution.TopologyCurrent,
+		Observations: []execution.EnvironmentObservation{{
+			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-session", Digest: strings.Repeat("a", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := runnerManifest(t)
+	manifest.ControlSurface = host.SurfaceHostNative
+	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion:           host.HostSessionSchemaV2,
+		HostID:                  "codex",
+		IntegrationID:           "acme/codex-runtime",
+		IntegrationVersion:      "1.0.0",
+		SessionID:               "session-current-1",
+		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		ProviderInventoryDigest: strings.Repeat("b", 64),
+		EnvironmentReportDigest: report.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ValidateEnvironmentReport(session, report); err != nil {
+		t.Fatalf("ValidateEnvironmentReport() error = %v", err)
+	}
+	accepted := []execution.EnvironmentRequirement{{
+		Surface: "skills", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionInherited},
+	}}
+	if err := host.ValidateRequirements(accepted, report); err != nil {
+		t.Fatalf("ValidateRequirements() error = %v", err)
+	}
+	rejected := []execution.EnvironmentRequirement{{
+		Surface: "skills", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionHostConfigured},
+	}}
+	if err := host.ValidateRequirements(rejected, report); host.ErrorCode(err) != "HOST_ENVIRONMENT_REQUIREMENT_UNMET" {
+		t.Fatalf("ValidateRequirements(rejected) error = %v", err)
+	}
+
+	changed, err := host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion: host.HostEnvironmentReportSchemaV2,
+		SessionID:     "session-current-2",
+		Topology:      execution.TopologyCurrent,
+		Observations:  report.Observations,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ValidateEnvironmentReport(session, changed); host.ErrorCode(err) != "HOST_SESSION_CHANGED" {
+		t.Fatalf("ValidateEnvironmentReport(changed) error = %v", err)
+	}
+}
+
+func TestValidateEnvironmentReportPinsSubagentParent(t *testing.T) {
+	report, err := host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion:   host.HostEnvironmentReportSchemaV2,
+		SessionID:       "session-child-1",
+		ParentSessionID: "session-current-1",
+		Topology:        execution.TopologySubagent,
+		Observations: []execution.EnvironmentObservation{{
+			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-subagent", Digest: strings.Repeat("a", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifest := runnerManifest(t)
+	manifest.ControlSurface = host.SurfaceHostNative
+	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion:           host.HostSessionSchemaV2,
+		HostID:                  "codex",
+		IntegrationID:           "acme/codex-runtime",
+		IntegrationVersion:      "1.0.0",
+		SessionID:               "session-current-1",
+		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		ProviderInventoryDigest: strings.Repeat("b", 64),
+		EnvironmentReportDigest: report.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := host.ValidateEnvironmentReport(session, report); err != nil {
+		t.Fatalf("ValidateEnvironmentReport(SUBAGENT) error = %v", err)
+	}
+}
 
 func TestNewManifestRejectsInvalidRecords(t *testing.T) {
 	for _, test := range []struct {
