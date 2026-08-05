@@ -36,7 +36,8 @@ for test_script in \
   11-check-parity-test.sh \
   12-install-parity-test.sh \
   13-mutation-parity-test.sh \
-  14-cutover-release-test.sh; do
+  14-cutover-release-test.sh \
+  15-host-execution-boundary-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 
