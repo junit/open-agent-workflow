@@ -3,6 +3,7 @@ package host_test
 import (
 	"encoding/json"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -102,42 +103,47 @@ func TestValidateEnvironmentReportPinsSubagentParent(t *testing.T) {
 	}
 }
 
-func TestNewManifestRejectsInvalidRecords(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		mutate func(*host.Manifest)
-	}{
-		{"schema", func(value *host.Manifest) { value.SchemaVersion = "oaw.host-manifest/v2" }},
-		{"version", func(value *host.Manifest) { value.ManifestVersion = "latest" }},
-		{"Host ID", func(value *host.Manifest) { value.HostID = "Bad Host" }},
-		{"level", func(value *host.Manifest) { value.IntegrationLevel = "invented" }},
-		{"duplicate protocol", func(value *host.Manifest) { value.Protocols = append(value.Protocols, host.RuntimeProtocolV1) }},
-		{"no protocol", func(value *host.Manifest) { value.Protocols = nil }},
-		{"no binding", func(value *host.Manifest) { value.BindingKinds = nil }},
-		{"bad binding", func(value *host.Manifest) { value.BindingKinds = append(value.BindingKinds, "command") }},
-		{"duplicate binding", func(value *host.Manifest) { value.BindingKinds = append(value.BindingKinds, "skill") }},
-		{"missing feature", func(value *host.Manifest) { value.Features = value.Features[1:] }},
-		{"unknown feature", func(value *host.Manifest) { value.Features = append(value.Features, "invented") }},
-		{"duplicate feature", func(value *host.Manifest) { value.Features = append(value.Features, host.FeaturePause) }},
-		{"runner native feature", func(value *host.Manifest) { value.Features = append(value.Features, host.FeatureNativeInvocation) }},
-		{"native missing feature", func(value *host.Manifest) { value.IntegrationLevel = host.NativeManaged }},
-		{"instruction capabilities", func(value *host.Manifest) { value.IntegrationLevel = host.InstructionOnly }},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			value := runnerManifest(t)
-			test.mutate(&value)
-			if _, err := host.NewManifest(value); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
-				t.Fatalf("NewManifest() error = %v", err)
-			}
-		})
+func TestManifestV2ValidatesPolicyAndHostNativeSurfaces(t *testing.T) {
+	policy, err := host.NewManifest(policyManifestValue("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if policy.ControlSurface != host.SurfacePolicy || !slices.Equal(policy.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
+		t.Fatalf("policy Manifest = %#v", policy)
+	}
+	hostNative, err := host.NewManifest(hostNativeManifestValue("codex"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hostNative.ControlSurface != host.SurfaceHostNative || !slices.Equal(hostNative.SupportedTopologies, []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}) {
+		t.Fatalf("host-native Manifest = %#v", hostNative)
+	}
+
+	invalidSubagent := hostNativeManifestValue("codex")
+	invalidSubagent.Features = []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory}
+	if _, err := host.NewManifest(invalidSubagent); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
+		t.Fatalf("NewManifest(SUBAGENT without environment reporting) error = %v", err)
 	}
 }
 
-func TestInstructionOnlyManifestAndIntegrationRemainPolicyOnly(t *testing.T) {
-	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV1, ManifestVersion: "1.0.0", HostID: "codex",
-		IntegrationLevel: host.InstructionOnly,
-	})
+func TestHostV2RejectsRetiredSchemasAndControlSurfaces(t *testing.T) {
+	retiredManifest := policyManifestValue("codex")
+	retiredManifest.SchemaVersion = "oaw.host-manifest/v1"
+	if _, err := host.NewManifest(retiredManifest); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewManifest(v1) error = %v", err)
+	}
+	retiredSurface := policyManifestValue("codex")
+	retiredSurface.ControlSurface = host.ControlSurface("runner-managed")
+	if _, err := host.NewManifest(retiredSurface); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewManifest(runner-managed) error = %v", err)
+	}
+	retiredLevel := policyManifestValue("codex")
+	retiredLevel.IntegrationLevel = host.RunnerManaged
+	if _, err := host.NewManifest(retiredLevel); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewManifest(IntegrationLevel) error = %v", err)
+	}
+
+	manifest, err := host.NewManifest(policyManifestValue("codex"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,12 +151,76 @@ func TestInstructionOnlyManifestAndIntegrationRemainPolicyOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV1, IntegrationVersion: "1.0.0", ID: "oaw/codex-instruction",
+	_, err = host.NewIntegration(host.IntegrationRecord{
+		SchemaVersion: "oaw.host-integration/v1", IntegrationVersion: "1.0.0", ID: "oaw/codex-policy",
 		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit,
 	})
-	if err != nil || integration.Conformance != nil || integration.Digest == "" {
-		t.Fatalf("NewIntegration() = %#v, %v", integration, err)
+	if host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewIntegration(v1) error = %v", err)
+	}
+	legacyManifest := policyManifestValue("codex")
+	legacyManifest.SchemaVersion = "oaw.host-manifest/v1"
+	_, err = host.NewIntegration(host.IntegrationRecord{
+		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "oaw/codex-policy",
+		Manifest: legacyManifest, ManifestDigest: legacyManifest.ContentDigest(), Audit: audit,
+	})
+	if host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewIntegration(legacy Manifest) error = %v", err)
+	}
+	if _, err := host.DecodeIntegrationSetJSON([]byte(`{"schema_version":"oaw.host-integration-set/v1","integrations":[]}`)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("DecodeIntegrationSetJSON(v1) error = %v", err)
+	}
+
+	for _, test := range []struct {
+		name string
+		json string
+		toml string
+	}{
+		{
+			name: "Integration v1",
+			json: `{"schema_version":"oaw.host-integration/v1"}`,
+			toml: `schema_version = "oaw.host-integration/v1"`,
+		},
+		{
+			name: "Manifest v1",
+			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v1"}}`,
+			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v1\"",
+		},
+		{
+			name: "Integration Level",
+			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v2","integration_level":"runner-managed"}}`,
+			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v2\"\nintegration_level = \"runner-managed\"",
+		},
+		{
+			name: "retired control surface",
+			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v2","control_surface":"runner-managed"}}`,
+			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v2\"\ncontrol_surface = \"runner-managed\"",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := host.DecodeIntegrationJSON([]byte(test.json)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+				t.Fatalf("DecodeIntegrationJSON() error = %v", err)
+			}
+			if _, err := host.DecodeIntegrationTOML([]byte(test.toml)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+				t.Fatalf("DecodeIntegrationTOML() error = %v", err)
+			}
+		})
+	}
+}
+
+func policyManifestValue(hostID string) host.Manifest {
+	return host.Manifest{
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: hostID,
+		ControlSurface: host.SurfacePolicy, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+	}
+}
+
+func hostNativeManifestValue(hostID string) host.Manifest {
+	return host.Manifest{
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: hostID,
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		Features:            []host.Feature{host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
 	}
 }
 

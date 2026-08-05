@@ -10,6 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
@@ -21,7 +22,7 @@ func TestLoadPinsUserTrustedHostIntegration(t *testing.T) {
 schema_version = "oaw.user-config/v3"
 
 [[host_integrations]]
-id = "acme/codex-runtime"
+id = "acme/codex-policy"
 path = "integrations/codex.toml"
 replace = false
 `), 0o600); err != nil {
@@ -32,16 +33,16 @@ replace = false
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	loaded, found := snapshot.HostIntegration("acme/codex-runtime")
+	loaded, found := snapshot.HostIntegration("acme/codex-policy")
 	if !found || loaded.Digest != integration.Digest {
 		t.Fatalf("HostIntegration() = %#v, %t", loaded, found)
 	}
 	if got := len(snapshot.HostIntegrations()); got != 10 {
 		t.Fatalf("HostIntegrations() count = %d, want 10", got)
 	}
-	loaded.Manifest.Features[0] = host.FeatureNativeInvocation
-	fresh, found := snapshot.HostIntegration("acme/codex-runtime")
-	if !found || fresh.Manifest.Features[0] == host.FeatureNativeInvocation {
+	loaded.Manifest.SupportedTopologies[0] = execution.TopologySubagent
+	fresh, found := snapshot.HostIntegration("acme/codex-policy")
+	if !found || fresh.Manifest.SupportedTopologies[0] != execution.TopologyCurrent {
 		t.Fatal("HostIntegration() exposed Snapshot storage")
 	}
 	if snapshot.Record().HostIntegrations[9].Digest == "" || snapshot.Digest() == "" {
@@ -60,7 +61,7 @@ func TestLoadRejectsUntrustedHostIntegrationInputs(t *testing.T) {
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
-id = "oaw/codex-runner"
+id = "oaw/codex-policy"
 path = "integrations/codex.toml"
 replace = true
 `)
@@ -75,7 +76,7 @@ replace = true
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
-id = "acme/other-runtime"
+id = "acme/other-policy"
 path = "integrations/codex.toml"
 replace = false
 `)
@@ -92,7 +93,7 @@ replace = false
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
-id = "acme/codex-runtime"
+id = "acme/codex-policy"
 path = "integrations/codex.toml"
 replace = false
 `)
@@ -106,11 +107,11 @@ replace = false
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
-id = "acme/codex-runtime"
+id = "acme/codex-policy"
 path = "integrations/one.toml"
 replace = false
 [[host_integrations]]
-id = "acme/codex-runtime"
+id = "acme/codex-policy"
 path = "integrations/two.toml"
 replace = false
 `)
@@ -124,7 +125,7 @@ replace = false
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
-id = "acme/codex-runtime"
+id = "acme/codex-policy"
 path = "../codex.toml"
 replace = false
 `)
@@ -147,7 +148,7 @@ replace = false
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
-id = "acme/codex-runtime"
+id = "acme/codex-policy"
 path = "integrations/codex.toml"
 replace = false
 `)
@@ -159,7 +160,7 @@ replace = false
 
 func TestEquivalentHostIntegrationOrderProducesSameSnapshot(t *testing.T) {
 	first := configTestHostIntegration(t)
-	second := configTestHostIntegrationWithID(t, first, "acme/second-runtime")
+	second := configTestHostIntegrationWithID(t, first, "acme/second-policy")
 	load := func(order []host.IntegrationRecord) Snapshot {
 		t.Helper()
 		root := t.TempDir()
@@ -190,41 +191,22 @@ func TestEquivalentHostIntegrationOrderProducesSameSnapshot(t *testing.T) {
 
 func configTestHostIntegration(t *testing.T) host.IntegrationRecord {
 	t.Helper()
-	features := []host.Feature{
-		host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn,
-		host.FeatureExactBindingInvocation, host.FeatureInvocationDedup,
-		host.FeatureIsolatedExecutor, host.FeatureNormalizedObservation, host.FeaturePause, host.FeatureProviderBindingInventory,
-	}
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV1, ManifestVersion: "1.0.0", HostID: "codex",
-		IntegrationLevel: host.RunnerManaged, Protocols: []string{host.RuntimeProtocolV1},
-		BindingKinds: []string{"agent", "skill", "tool"}, Features: features,
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		ControlSurface: host.SurfacePolicy, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	audit, err := host.NewAuditEvidence(host.AuditEvidence{
-		Status:     host.AuditPassed,
-		References: []host.AuditEvidenceReference{{Reference: "https://example.test/codex/audit", Digest: strings.Repeat("a", 64)}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	checks := make([]host.ConformanceCheck, len(features))
-	for index, feature := range features {
-		checks[index] = host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789"[index]), 64)}
-	}
-	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion: host.ConformanceReportSchemaV1, SuiteVersion: host.ConformanceSuiteV1,
-		IntegrationID: "acme/codex-runtime", ManifestDigest: manifest.ContentDigest(), Checks: checks,
-		TranscriptDigest: strings.Repeat("f", 64), Passed: true,
+		Status: host.AuditPending,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV1, IntegrationVersion: "1.0.0", ID: "acme/codex-runtime",
-		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
+		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "acme/codex-policy",
+		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -250,15 +232,7 @@ func writeConfigTestHostIntegration(t *testing.T, root, relative string, integra
 func configTestHostIntegrationWithID(t *testing.T, value host.IntegrationRecord, id string) host.IntegrationRecord {
 	t.Helper()
 	value = host.CloneIntegration(value)
-	report := host.CloneConformanceReport(*value.Conformance)
-	report.IntegrationID = id
-	report.Digest = ""
-	validatedReport, err := host.NewConformanceReport(report)
-	if err != nil {
-		t.Fatal(err)
-	}
 	value.ID = id
-	value.Conformance = &validatedReport
 	value.Digest = ""
 	integration, err := host.NewIntegration(value)
 	if err != nil {

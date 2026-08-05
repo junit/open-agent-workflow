@@ -10,42 +10,50 @@ import (
 	"unicode"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 var versionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
-var workflowFeatures = []Feature{
-	FeatureBundleInheritance,
+var hostNativeFeatures = []Feature{
 	FeatureCancellation,
-	FeatureEvidenceReturn,
-	FeatureExactBindingInvocation,
+	FeatureEnvironmentReporting,
 	FeatureInvocationDedup,
-	FeatureIsolatedExecutor,
-	FeatureNormalizedObservation,
+	FeatureNormalizedReceipts,
 	FeaturePause,
 	FeatureProviderBindingInventory,
 }
 
-var knownFeatures = append(append([]Feature{}, workflowFeatures...), FeatureNativeInvocation)
+var knownFeatures = append([]Feature{}, hostNativeFeatures...)
 
 var knownChecks = []CheckID{
-	CheckBundleInheritance,
 	CheckCancellation,
-	CheckEvidenceReturn,
-	CheckExactBindingInvocation,
+	CheckID(FeatureEnvironmentReporting),
 	CheckInvocationDedup,
-	CheckIsolatedExecutor,
-	CheckNativeInvocation,
-	CheckNormalizedObservation,
+	CheckID(FeatureNormalizedReceipts),
 	CheckPause,
 	CheckProviderBindingInventory,
 }
 
 func NewManifest(value Manifest) (Manifest, error) {
 	value = CloneManifest(value)
+	if value.SchemaVersion != HostManifestSchemaV2 {
+		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Manifest schema", nil)
+	}
+	if value.IntegrationLevel != "" {
+		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "Integration Level is retired", nil)
+	}
+	if isRetiredControlSurface(value.ControlSurface) {
+		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "retired Host control surface", nil)
+	}
 	sort.Strings(value.Protocols)
 	sort.Strings(value.BindingKinds)
+	topologies, err := execution.NormalizeTopologies(value.SupportedTopologies)
+	if err != nil {
+		return Manifest{}, hostError("HOST_MANIFEST_INVALID", "invalid supported topologies", err)
+	}
+	value.SupportedTopologies = topologies
 	sort.Slice(value.Features, func(left, right int) bool { return value.Features[left] < value.Features[right] })
 	if err := validateManifest(value); err != nil {
 		return Manifest{}, err
@@ -54,9 +62,6 @@ func NewManifest(value Manifest) (Manifest, error) {
 }
 
 func validateManifest(value Manifest) error {
-	if value.SchemaVersion != HostManifestSchemaV1 {
-		return hostError("HOST_MANIFEST_INVALID", "unsupported schema version", nil)
-	}
 	if !versionPattern.MatchString(value.ManifestVersion) {
 		return hostError("HOST_MANIFEST_INVALID", "invalid manifest version", nil)
 	}
@@ -72,14 +77,15 @@ func validateManifest(value Manifest) error {
 	if err := uniqueFeatures(value.Features); err != nil {
 		return err
 	}
-	switch value.IntegrationLevel {
-	case InstructionOnly:
-		if len(value.Protocols) != 0 || len(value.BindingKinds) != 0 || len(value.Features) != 0 {
-			return hostError("HOST_MANIFEST_INVALID", "instruction-only integration declares Runtime capabilities", nil)
+	switch value.ControlSurface {
+	case SurfacePolicy:
+		if len(value.Protocols) != 0 || len(value.BindingKinds) != 0 || len(value.Features) != 0 ||
+			!slices.Equal(value.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
+			return hostError("HOST_MANIFEST_INVALID", "policy integration declares Host-native capabilities", nil)
 		}
-	case RunnerManaged, NativeManaged:
-		if !slices.Equal(value.Protocols, []string{RuntimeProtocolV1}) {
-			return hostError("HOST_MANIFEST_INVALID", "managed integration must support Runtime Protocol v1", nil)
+	case SurfaceHostNative:
+		if !slices.Equal(value.Protocols, []string{WorkflowProtocolV1}) {
+			return hostError("HOST_MANIFEST_INVALID", "host-native integration must support Workflow Protocol v1", nil)
 		}
 		for _, kind := range value.BindingKinds {
 			if kind != "agent" && kind != "skill" && kind != "tool" {
@@ -87,23 +93,27 @@ func validateManifest(value Manifest) error {
 			}
 		}
 		if len(value.BindingKinds) == 0 {
-			return hostError("HOST_MANIFEST_INVALID", "managed integration has no binding kinds", nil)
+			return hostError("HOST_MANIFEST_INVALID", "host-native integration has no binding kinds", nil)
 		}
-		for _, feature := range workflowFeatures {
+		if !slices.Contains(value.SupportedTopologies, execution.TopologyCurrent) {
+			return hostError("HOST_MANIFEST_INVALID", "host-native integration must support CURRENT", nil)
+		}
+		for _, feature := range []Feature{FeatureProviderBindingInventory, FeatureNormalizedReceipts} {
 			if !slices.Contains(value.Features, feature) {
 				return hostError("HOST_MANIFEST_INVALID", fmt.Sprintf("missing required feature %q", feature), nil)
 			}
 		}
-		if value.IntegrationLevel == NativeManaged && !slices.Contains(value.Features, FeatureNativeInvocation) {
-			return hostError("HOST_MANIFEST_INVALID", "native integration lacks native invocation", nil)
-		}
-		if value.IntegrationLevel == RunnerManaged && slices.Contains(value.Features, FeatureNativeInvocation) {
-			return hostError("HOST_MANIFEST_INVALID", "runner integration claims native invocation", nil)
+		if slices.Contains(value.SupportedTopologies, execution.TopologySubagent) && !slices.Contains(value.Features, FeatureEnvironmentReporting) {
+			return hostError("HOST_MANIFEST_INVALID", "SUBAGENT support requires environment reporting", nil)
 		}
 	default:
-		return hostError("HOST_MANIFEST_INVALID", "unknown integration level", nil)
+		return hostError("HOST_MANIFEST_INVALID", "unknown control surface", nil)
 	}
 	return nil
+}
+
+func isRetiredControlSurface(value ControlSurface) bool {
+	return value == ControlSurface(InstructionOnly) || value == ControlSurface(RunnerManaged) || value == ControlSurface(NativeManaged)
 }
 
 func uniqueStrings(values []string, kind string) error {
@@ -172,20 +182,23 @@ func validateConformanceReport(value ConformanceReport) error {
 }
 
 func validateIntegration(value IntegrationRecord) error {
-	if value.SchemaVersion != HostIntegrationSchemaV1 || !versionPattern.MatchString(value.IntegrationVersion) {
-		return hostError("HOST_INTEGRATION_INVALID", "unsupported Integration schema or version", nil)
+	if value.SchemaVersion != HostIntegrationSchemaV2 {
+		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Integration schema", nil)
+	}
+	if !versionPattern.MatchString(value.IntegrationVersion) {
+		return hostError("HOST_INTEGRATION_INVALID", "invalid Integration version", nil)
 	}
 	if _, err := catalog.ParseQualifiedID(value.ID); err != nil {
 		return hostError("HOST_INTEGRATION_INVALID", "invalid Integration ID", err)
 	}
-	switch value.Manifest.IntegrationLevel {
-	case InstructionOnly:
+	switch value.Manifest.ControlSurface {
+	case SurfacePolicy:
 		if value.Audit.Status != AuditPending || value.Conformance != nil {
-			return hostError("HOST_INTEGRATION_INVALID", "instruction-only Integration claims Runtime proof", nil)
+			return hostError("HOST_INTEGRATION_INVALID", "policy Integration claims Host-native proof", nil)
 		}
-	case RunnerManaged, NativeManaged:
+	case SurfaceHostNative:
 		if value.Audit.Status != AuditPassed || value.Conformance == nil || !value.Conformance.Passed {
-			return hostError("HOST_INTEGRATION_INVALID", "managed Integration lacks passed audit or Conformance", nil)
+			return hostError("HOST_INTEGRATION_INVALID", "host-native Integration lacks passed audit or Conformance", nil)
 		}
 		if value.Conformance.IntegrationID != value.ID || value.Conformance.ManifestDigest != value.ManifestDigest {
 			return hostError("HOST_INTEGRATION_INVALID", "Conformance identity mismatch", nil)
@@ -203,7 +216,7 @@ func validateIntegration(value IntegrationRecord) error {
 			return hostError("HOST_INTEGRATION_INVALID", "Conformance checks do not match Manifest Features", nil)
 		}
 	default:
-		return hostError("HOST_INTEGRATION_INVALID", "unknown Integration level", nil)
+		return hostError("HOST_INTEGRATION_INVALID", "unknown control surface", nil)
 	}
 	return nil
 }

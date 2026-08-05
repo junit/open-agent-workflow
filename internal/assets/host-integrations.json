@@ -1,275 +1,203 @@
 {
-  "schema_version": "oaw.host-integration-set/v1",
+  "schema_version": "oaw.host-integration-set/v2",
   "integrations": [
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/claude-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/claude-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "claude",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "95943a5ec3b14dc4f2981309d712a31eb078431cc531e115d97b95136413d430",
+      "manifest_digest": "673220f3db0b3bbceb021a7297a9fd2ae97352d117ccb467c7d813859310b535",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "b67d467f895110a9a278758c1e19406207f90ef49cfe76e14045abe196419089"
+      "digest": "44970fb31877084ad8ec0a5b4c9ce9d292e119b8e024117b61e1ad8528027a50"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/cline-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/cline-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "cline",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "9450cc119a78cc0269025cc0984d3da7bc6456178663420aa5c7b2a0eb60a882",
+      "manifest_digest": "22d56a58fdfa15f380c7797a4aed5db2c04610621ef7c0c27063ebd0ccbe7bc3",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "3c0d82c6a9ad7a8ee21a050b76372838358c15c3096ae6bcc70033834d02c1ee"
+      "digest": "2ff0c15f27e67e84ec44d7f799779805446eb1d81771a8283843835629e7b6ed"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/codex-runner",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/codex-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "codex",
-        "integration_level": "runner-managed",
-        "protocols": [
-          "oaw.runtime/v1"
-        ],
-        "binding_kinds": [
-          "agent",
-          "skill",
-          "tool"
-        ],
-        "features": [
-          "bundle-inheritance",
-          "cancellation",
-          "evidence-return",
-          "exact-binding-invocation",
-          "invocation-deduplication",
-          "isolated-executor",
-          "normalized-observation",
-          "pause",
-          "provider-binding-inventory"
-        ]
+        "control_surface": "policy",
+        "protocols": [],
+        "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
+        "features": []
       },
-      "manifest_digest": "62ab43df9e567588c1f981ff6da6f7ab8da9c293f0cb99a376bca88902837112",
+      "manifest_digest": "c20a8730e9240d164a1ea07d373ec648db2a3c6cb8fa9997a828aca4235be3a2",
       "audit": {
-        "status": "passed",
-        "references": [
-          {
-            "reference": "https://developers.openai.com/codex/agent-approvals-security",
-            "digest": "dccefbfc624107f9bc0e8952cf426eb648856ea6f0cb49fdeda85d7543bf2a5f"
-          },
-          {
-            "reference": "https://developers.openai.com/codex/non-interactive-mode",
-            "digest": "041202ee4e4036b4fa1ea2e6a653d9ea81c2f315534d6f1d2646ee7f41af45b9"
-          }
-        ],
-        "digest": "2e0e3c9e74bae4a8d249507ac1573596f5ad06964c19b8c739b2ef1e093052ec"
+        "status": "pending",
+        "references": [],
+        "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "conformance": {
-        "schema_version": "oaw.host-conformance-report/v1",
-        "suite_version": "oaw.host-conformance/v1",
-        "integration_id": "oaw/codex-runner",
-        "manifest_digest": "62ab43df9e567588c1f981ff6da6f7ab8da9c293f0cb99a376bca88902837112",
-        "checks": [
-          {
-            "id": "bundle-inheritance",
-            "passed": true,
-            "evidence": "91f8a6a00fbfdb4baa7e7ddca70045ef15d3481ac58025d3ff06588bfa235022"
-          },
-          {
-            "id": "cancellation",
-            "passed": true,
-            "evidence": "4a0204571becd75bba2ed94715485ad282d357915c7d96a27449890c90e1528c"
-          },
-          {
-            "id": "evidence-return",
-            "passed": true,
-            "evidence": "8b1f16d4e134d57ce033cef623545528a0eeabba130bd012ba479fe5abf19257"
-          },
-          {
-            "id": "exact-binding-invocation",
-            "passed": true,
-            "evidence": "47acb01679113ec088c88732a28b625c7b1f8232f91ecc3bcd9611070d06a54f"
-          },
-          {
-            "id": "invocation-deduplication",
-            "passed": true,
-            "evidence": "5aa84cdd4351d1ca87f0d56d3d2a6dbee102fcecb55ac72860029222a9d9e99c"
-          },
-          {
-            "id": "isolated-executor",
-            "passed": true,
-            "evidence": "80f2596f78b01d4422f1a857bcf51857d83f47060827ec503ede530ce7703e26"
-          },
-          {
-            "id": "normalized-observation",
-            "passed": true,
-            "evidence": "ba6d9cb990c8aa7da44a71a310a241f5197fba7a7e77ecaa60d59daa3e68127e"
-          },
-          {
-            "id": "pause",
-            "passed": true,
-            "evidence": "3c8943ebf95e1cb488a5869a172ebde000a7a7b03936066cbfa74e366064bca4"
-          },
-          {
-            "id": "provider-binding-inventory",
-            "passed": true,
-            "evidence": "66663dee641d13217afb13125fc6d941a8aa65aade45fbca0f8e2b5a79e309e4"
-          }
-        ],
-        "transcript_digest": "8adc256e439eb038fcb087832195c46d76005b7b6cba5ae9f8863ceb86607b21",
-        "passed": true,
-        "digest": "d9698c6f49bb5df8b8051b85490a56dfaf425fd3c36f54d80152b96e0c7593be"
-      },
-      "digest": "4ccefc9fafd1802fe90638eab4c2b84fc7be234f28bee71e5bb5cc5cec86c317"
+      "digest": "ff0d3f78e69caa272ca05fcfa525b9fa8e226a097373cc6a1457adfa1a97061e"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/copilot-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/copilot-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "copilot",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "8a26eb86caf3e49e3f87b53f6e300bad69edd2684fd91751493a28f5ee05940e",
+      "manifest_digest": "85331976854723fead4a0e68f33ffb5a4219decb58e98c1a68901771425c79d1",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "bf2355788e19aa061679693699bf9bd30985cb03ac3c0d10e8d5c0ff2851b172"
+      "digest": "bae6adc51767addfec895012815cd944b154a3a0d72f9269e27382fa10bed946"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/cursor-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/cursor-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "cursor",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "505ec24f89bbb5e219f79c8eeb048282518903b11d71228ac2799ab63ec9bb0e",
+      "manifest_digest": "46e45fff28ca0109c0369c011f2a54bfa2743176c6bf04cf726bf2e6939e1f74",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "8e223c4e68bdb05a339b9538c842bdb1690a424347a26a825732f7a3e617fcbc"
+      "digest": "6272b91406bb2c6e0be2d509e0f30dbae149a49fe7607c3ef6840b9288768498"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/gemini-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/gemini-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "gemini",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "1aab6af283d1ff761f8d00d844cb0296a544f6002f1e20fe3603ce925cd2b00a",
+      "manifest_digest": "9037a7100e8faa4df5c6b76c626ffa6b2edf0132d81bf3be04ee3502c6d02232",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "a927b72855192bcda57987a8964b7233ca36059b9c225e8d0c2e3b0d0630ac9e"
+      "digest": "336e0a36281767cf50e300e884100f08da56e8fde094f5b69e0064a8b84d9f23"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/opencode-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/opencode-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "opencode",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "18f2a32b48a9fb0d622a73b26540b36b36133b7e974d746c02c58e07aef4b7bb",
+      "manifest_digest": "6b4c0eaf4556045ee802ebbf7ad54bae7905be346164aca405f8b433e9931c07",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "d14e2a107cca5b745219e5a09396488bdb59ab01fa99c14ff0bbe673b44173a7"
+      "digest": "9daffaddaebdbd2d50e8d66526a3452fcbd5509162ac1a199e039971ef3829eb"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/roo-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/roo-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "roo",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "a04ef665af0070908c8c52fed8d768a06ab5b61035337ea17cbaf1bffdb2374d",
+      "manifest_digest": "4e24840799e494beeefd14b69e468bbfda1d5368c9212c2cb5260f8f37a1be4d",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "e9b96c741f4375cccab6c5e80e3fd7c2777f57a7cfa50bee9e538269653e2c81"
+      "digest": "4609c93f46a683cca0c2fedfdeab050c384030d1067c1b1fae977e2e9480b6a4"
     },
     {
-      "schema_version": "oaw.host-integration/v1",
-      "integration_version": "1.0.0",
-      "id": "oaw/windsurf-instruction",
+      "schema_version": "oaw.host-integration/v2",
+      "integration_version": "2.0.0",
+      "id": "oaw/windsurf-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v1",
-        "manifest_version": "1.0.0",
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "2.0.0",
         "host_id": "windsurf",
-        "integration_level": "instruction-only",
+        "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
+        "supported_topologies": ["CURRENT"],
         "features": []
       },
-      "manifest_digest": "8403cf01f86342743c27d1d3fd010a9a9f0d81c2495159437cb4a8aa9967f306",
+      "manifest_digest": "c9d25d1968a6b776ec14f9534435792ccfb6dbb62d97d116e33973ab2cdff40f",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "e5fafc16673b658b63882fafb8a90041f3efd0cb0a8df0f1571149cb22b01495"
+      "digest": "f3449a4983cec18f7544bcfc5bdd5aa1dbba88c6f4de8729ac20d68d05729efc"
     }
   ]
 }

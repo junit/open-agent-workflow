@@ -12,11 +12,14 @@ import (
 const (
 	HostManifestSchemaV1          = "oaw.host-manifest/v1"
 	HostIntegrationSchemaV1       = "oaw.host-integration/v1"
+	HostManifestSchemaV2          = "oaw.host-manifest/v2"
+	HostIntegrationSchemaV2       = "oaw.host-integration/v2"
 	HostSessionSchemaV2           = "oaw.host-session/v2"
 	HostEnvironmentReportSchemaV2 = "oaw.host-environment-report/v2"
 	ConformanceReportSchemaV1     = "oaw.host-conformance-report/v1"
 	ConformanceSuiteV1            = "oaw.host-conformance/v1"
 	RuntimeProtocolV1             = "oaw.runtime/v1"
+	WorkflowProtocolV1            = "oaw.workflow/v1"
 )
 
 type IntegrationLevel string
@@ -47,13 +50,15 @@ const (
 	FeatureNormalizedObservation    Feature = "normalized-observation"
 	FeatureProviderBindingInventory Feature = "provider-binding-inventory"
 	FeatureNativeInvocation         Feature = "native-invocation"
+	FeatureNormalizedReceipts       Feature = "normalized-receipts"
+	FeatureEnvironmentReporting     Feature = "environment-reporting"
 )
 
 type Manifest struct {
 	SchemaVersion       string               `json:"schema_version" toml:"schema_version"`
 	ManifestVersion     string               `json:"manifest_version" toml:"manifest_version"`
 	HostID              string               `json:"host_id" toml:"host_id"`
-	IntegrationLevel    IntegrationLevel     `json:"integration_level" toml:"integration_level"`
+	IntegrationLevel    IntegrationLevel     `json:"integration_level,omitempty" toml:"integration_level"`
 	ControlSurface      ControlSurface       `json:"control_surface" toml:"control_surface"`
 	Protocols           []string             `json:"protocols" toml:"protocols"`
 	BindingKinds        []string             `json:"binding_kinds" toml:"binding_kinds"`
@@ -255,10 +260,16 @@ func CloneConformanceReport(value ConformanceReport) ConformanceReport {
 }
 
 func NewIntegration(value IntegrationRecord) (IntegrationRecord, error) {
+	if value.SchemaVersion != HostIntegrationSchemaV2 {
+		return IntegrationRecord{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Integration schema", nil)
+	}
 	providedDigest := value.Digest
 	value.Digest = ""
 	manifest, err := NewManifest(value.Manifest)
 	if err != nil {
+		if ErrorCode(err) == "HOST_SCHEMA_UNSUPPORTED" {
+			return IntegrationRecord{}, err
+		}
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_INVALID", "invalid Manifest", err)
 	}
 	value.Manifest = manifest

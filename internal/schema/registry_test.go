@@ -23,18 +23,24 @@ func TestRegistryValidatesClosedHostSchemas(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := []byte(`{"schema_version":"oaw.host-manifest/v1","manifest_version":"1.0.0","host_id":"codex","integration_level":"instruction-only","protocols":[],"binding_kinds":[],"features":[]}`)
-	if err := registry.Validate(HostManifestV1, manifest); err != nil {
+	manifest := []byte(`{"schema_version":"oaw.host-manifest/v2","manifest_version":"2.0.0","host_id":"codex","control_surface":"policy","protocols":[],"binding_kinds":[],"supported_topologies":["CURRENT"],"features":[]}`)
+	if err := registry.Validate(HostManifestV2, manifest); err != nil {
 		t.Fatalf("Validate(Manifest) error = %v", err)
 	}
 	digest := strings.Repeat("a", 64)
-	integration := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-integration/v1","integration_version":"1.0.0","id":"oaw/codex-instruction","manifest":%s,"manifest_digest":"%s","audit":{"status":"pending","references":[],"digest":"%s"},"digest":"%s"}`, manifest, digest, digest, digest))
-	if err := registry.Validate(HostIntegrationV1, integration); err != nil {
+	integration := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-integration/v2","integration_version":"2.0.0","id":"oaw/codex-policy","manifest":%s,"manifest_digest":"%s","audit":{"status":"pending","references":[],"digest":"%s"},"digest":"%s"}`, manifest, digest, digest, digest))
+	if err := registry.Validate(HostIntegrationV2, integration); err != nil {
 		t.Fatalf("Validate(Integration) error = %v", err)
 	}
-	invalid := []byte(strings.Replace(string(integration), `"features":[]`, `"features":["isolated-executor"]`, 1))
-	if err := registry.Validate(HostIntegrationV1, invalid); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
-		t.Fatalf("Validate(instruction-only feature) error = %v", err)
+	invalid := []byte(strings.Replace(string(integration), `"features":[]`, `"features":["native-invocation"]`, 1))
+	if err := registry.Validate(HostIntegrationV2, invalid); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(policy feature) error = %v", err)
+	}
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v1/host-manifest.schema.json", manifest); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Host Manifest v1) error = %v", err)
+	}
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v1/host-integration.schema.json", integration); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Host Integration v1) error = %v", err)
 	}
 }
 
