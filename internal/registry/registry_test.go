@@ -102,13 +102,14 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 		t.Fatalf("Host-scoped resolution = %#v / %#v", resolution, effective)
 	}
 	capability, found := effective.Capability("oaw/superpowers", "review")
-	if !found || capability.BindingEvidenceDigest == "" || !slices.Equal(capability.SupportedTopologies, dualTopologies()) || !slices.Equal(capability.Binding.Topologies, dualTopologies()) {
+	currentOnly := []execution.Topology{execution.TopologyCurrent}
+	if !found || capability.BindingEvidenceDigest == "" || !slices.Equal(capability.SupportedTopologies, currentOnly) || !slices.Equal(capability.Binding.Topologies, currentOnly) {
 		t.Fatalf("verified Capability = %#v, %v", capability, found)
 	}
 	capability.SupportedTopologies[0] = execution.TopologySubagent
 	capability.Binding.Topologies[0] = execution.TopologySubagent
 	freshCapability, _ := effective.Capability("oaw/superpowers", "review")
-	if !slices.Equal(freshCapability.SupportedTopologies, dualTopologies()) || !slices.Equal(freshCapability.Binding.Topologies, dualTopologies()) {
+	if !slices.Equal(freshCapability.SupportedTopologies, currentOnly) || !slices.Equal(freshCapability.Binding.Topologies, currentOnly) {
 		t.Fatalf("Capability() exposed topology storage: %#v", freshCapability)
 	}
 
@@ -134,8 +135,9 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 	candidates := discovered.Candidates("oaw/superpowers")
 	wrongInstallation, err := host.NewBindingInventory("codex", []host.BindingObservation{{
 		HostID: "codex", InstallationKey: "installation-wrong",
-		Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review", Topologies: dualTopologies()},
-		Source:  "host-filesystem", EvidenceReference: reviewPath, Digest: strings.Repeat("a", 64),
+		Binding:    catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review", Topologies: dualTopologies()},
+		Topologies: currentOnly,
+		Source:     "host-filesystem", EvidenceReference: reviewPath, Digest: strings.Repeat("a", 64),
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +148,35 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 	}
 	if resolution = requireResolution(t, report, "oaw/superpowers"); resolution.State != registry.BindingUnavailable || resolution.Reason != "PROVIDER_BINDING_UNAVAILABLE" || resolution.Candidates[0].InstallationKey != candidates[0].InstallationKey {
 		t.Fatalf("wrong Installation resolution = %#v", resolution)
+	}
+}
+
+func TestResolvePinsOnlyObservedBindingTopologies(t *testing.T) {
+	snapshot, evidence := builtInInputs(t, "", writeSuperpowersDirect)
+	candidates := evidence.Candidates("oaw/superpowers")
+	if len(candidates) != 1 {
+		t.Fatalf("Superpowers candidates = %#v", candidates)
+	}
+	binding := catalog.HostBinding{
+		Host: "codex", Kind: "skill", Reference: "superpowers:verification-before-completion",
+		Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+	}
+	inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
+		HostID: "codex", InstallationKey: candidates[0].InstallationKey, Binding: binding,
+		Topologies: []execution.Topology{execution.TopologyCurrent},
+		Source:     "native-probe", EvidenceReference: "evidence://registry/current-binding", Digest: strings.Repeat("a", 64),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, effective, err := registry.Resolve(snapshot, "codex", evidence, &inventory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capability, found := effective.Capability("oaw/superpowers", "verification")
+	want := []execution.Topology{execution.TopologyCurrent}
+	if !found || !slices.Equal(capability.SupportedTopologies, want) || !slices.Equal(capability.Binding.Topologies, want) {
+		t.Fatalf("verified Capability = %#v, found=%v", capability, found)
 	}
 }
 
@@ -417,7 +448,8 @@ func inventoryForCandidate(t *testing.T, candidates []discovery.Candidate, bindi
 		}
 		observations = append(observations, host.BindingObservation{
 			HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
-			Source: "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat(string(rune('a'+index)), 64),
+			Topologies: append([]execution.Topology{}, binding.Topologies...),
+			Source:     "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat(string(rune('a'+index)), 64),
 		})
 	}
 	inventory, err := host.NewBindingInventory("codex", observations)

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -58,7 +60,7 @@ func TestProvidersInspectV2SeparatesCurrentAuthorityFromForeignDiagnostics(t *te
 		t.Fatalf("current Host = %#v", output)
 	}
 	for _, observation := range output.CurrentHost.ObservedBindings {
-		if observation.HostID != "codex" {
+		if observation.HostID != "codex" || !slices.Equal(observation.Topologies, []execution.Topology{execution.TopologyCurrent}) {
 			t.Fatalf("current observation = %#v", observation)
 		}
 	}
@@ -114,6 +116,9 @@ func TestProvidersInspectSupportsPolicyOnlyHost(t *testing.T) {
 	if output.CurrentHost.HostID != "claude" || output.CurrentHost.RuntimeManaged || output.CurrentHost.BindingInventoryDigest != "" || output.CurrentHost.RegistryDigest == "" {
 		t.Fatalf("policy-only current Host = %#v", output.CurrentHost)
 	}
+	if len(output.CurrentHost.ObservedBindings) != 0 {
+		t.Fatalf("Claude current Host contains foreign observations: %#v", output.CurrentHost.ObservedBindings)
+	}
 	provider := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
 	if provider.State != registry.CandidateState || provider.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || provider.Instance != nil || len(provider.Candidates) != 1 || provider.Candidates[0].ProviderPin != nil {
 		t.Fatalf("policy-only Provider = %#v", provider)
@@ -134,7 +139,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	if firstText.String() != secondText.String() {
 		t.Fatal("text inspection is not deterministic")
 	}
-	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v2\"") {
+	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v3\"") || !strings.Contains(firstText.String(), "topologies=CURRENT") {
 		t.Fatalf("text output = %q", firstText.String())
 	}
 	for _, field := range []string{"provider_id =", "host_id =", "installation_key =", "evidence_digest ="} {
@@ -261,7 +266,8 @@ type providerInspectionV2Document struct {
 }
 
 type providerInspectionObservation struct {
-	HostID string `json:"host_id"`
+	HostID     string               `json:"host_id"`
+	Topologies []execution.Topology `json:"topologies"`
 }
 
 type providerInspectionV2Provider struct {
@@ -315,7 +321,7 @@ func newProviderInspectionFixture(t *testing.T, existingConfig bool) providerIns
 	t.Helper()
 	fixture := newProviderInspectionHostsFixture(t, []string{"6.0.3", "6.1.1", `11c74d6b"quoted`}, false)
 	if existingConfig {
-		if err := os.WriteFile(fixture.configPath, []byte("schema_version = \"oaw.user-config/v2\"\n"), 0o640); err != nil {
+		if err := os.WriteFile(fixture.configPath, []byte("schema_version = \"oaw.user-config/v3\"\n"), 0o640); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -366,7 +372,7 @@ func pinDocumentsFromText(value string) []string {
 	documents := make([]string, 0)
 	current := make([]string, 0)
 	for _, line := range lines {
-		if line == "schema_version = \"oaw.user-config/v2\"" || line == "[[provider_pins]]" || strings.HasPrefix(line, "  id = ") || strings.HasPrefix(line, "  location = ") || strings.HasPrefix(line, "  version = ") {
+		if line == "schema_version = \"oaw.user-config/v3\"" || line == "[[provider_pins]]" || strings.HasPrefix(line, "  id = ") || strings.HasPrefix(line, "  location = ") || strings.HasPrefix(line, "  version = ") {
 			if line == "[[provider_pins]]" && len(current) != 0 && strings.Contains(strings.Join(current, "\n"), "[[provider_pins]]") {
 				documents = append(documents, strings.Join(current, "\n"))
 				current = make([]string, 0)

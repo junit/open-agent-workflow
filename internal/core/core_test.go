@@ -58,6 +58,16 @@ func TestResolvePinsHostScopedInputs(t *testing.T) {
 		Inventory:     &foreignInventory,
 	})
 	requireCoreCode(t, err, "HOST_PROVIDER_SCOPE_MISMATCH")
+
+	retiredInventory := fixture.inventory
+	retiredInventory.SchemaVersion = "oaw.host-binding-inventory/v1"
+	_, err = core.Resolve(core.ResolutionRequest{
+		Configuration: fixture.request.Configuration,
+		HostID:        "codex",
+		Discovery:     fixture.discovery,
+		Inventory:     &retiredInventory,
+	})
+	requireCoreCode(t, err, "HOST_BINDING_INVENTORY_INVALID")
 }
 
 func TestCompileReportsBuiltInAndUserDefinedEligibilityWithoutSelection(t *testing.T) {
@@ -408,7 +418,8 @@ func inventoryForCatalog(t *testing.T, available catalog.Catalog, discovered dis
 					seen[key] = struct{}{}
 					observations = append(observations, host.BindingObservation{
 						HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
-						Source: "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("inventory-%d", len(observations))),
+						Topologies: append([]execution.Topology{}, binding.Topologies...),
+						Source:     "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("inventory-%d", len(observations))),
 						Digest: strings.Repeat("a", 64),
 					})
 				}

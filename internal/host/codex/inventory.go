@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -16,6 +17,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
@@ -77,6 +79,9 @@ func ObserveBindings(value catalog.Catalog, report discovery.Report, options Inv
 }
 
 func observeBinding(candidate discovery.Candidate, binding catalog.HostBinding, agents map[string]string, maximum int64) (host.BindingObservation, bool, error) {
+	if !slices.Contains(binding.Topologies, execution.TopologyCurrent) {
+		return host.BindingObservation{}, false, nil
+	}
 	switch binding.Kind {
 	case "skill":
 		return observeSkill(candidate, binding, maximum)
@@ -114,7 +119,8 @@ func observeSkill(candidate discovery.Candidate, binding catalog.HostBinding, ma
 	}
 	return host.BindingObservation{
 		HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
-		Source: "host-filesystem", EvidenceReference: physical, Digest: canonicaljson.DigestBytes(data),
+		Topologies: []execution.Topology{execution.TopologyCurrent},
+		Source:     "host-filesystem", EvidenceReference: physical, Digest: canonicaljson.DigestBytes(data),
 	}, true, nil
 }
 
@@ -133,7 +139,8 @@ func observeAgent(candidate discovery.Candidate, binding catalog.HostBinding, ag
 	}
 	return host.BindingObservation{
 		HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
-		Source: "host-index", EvidenceReference: physical, Digest: canonicaljson.DigestBytes(data),
+		Topologies: []execution.Topology{execution.TopologyCurrent},
+		Source:     "host-index", EvidenceReference: physical, Digest: canonicaljson.DigestBytes(data),
 	}, true, nil
 }
 

@@ -129,6 +129,25 @@ func TestRegistryValidatesHostSessionAndEnvironmentV2(t *testing.T) {
 	}
 }
 
+func TestRegistryUsesHostBindingInventoryV2Only(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	inventory := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-binding-inventory/v2","host_id":"codex","observations":[{"host_id":"codex","installation_key":"installation-acme","binding":{"host":"codex","kind":"skill","reference":"acme:review","topologies":["CURRENT","SUBAGENT"]},"topologies":["CURRENT"],"source":"native-probe","evidence_reference":"evidence://binding/acme-review","digest":"%s"}],"digest":"%s"}`, digest, digest))
+	if err := registry.Validate(HostBindingInventoryV2, inventory); err != nil {
+		t.Fatalf("Validate(HostBindingInventoryV2) error = %v", err)
+	}
+	invalid := []byte(strings.Replace(string(inventory), `"topologies":["CURRENT"]`, `"topologies":[]`, 1))
+	if err := registry.Validate(HostBindingInventoryV2, invalid); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(empty observed topologies) error = %v", err)
+	}
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v1/host-binding-inventory.schema.json", inventory); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Host Binding Inventory v1) error = %v", err)
+	}
+}
+
 func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {

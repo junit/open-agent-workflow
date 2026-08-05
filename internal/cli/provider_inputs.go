@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
@@ -83,7 +84,12 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 		}
 		inventory = &observed
 	}
-	resolutions, effective, err := registry.Resolve(snapshot, options.HostID, evidence, inventory)
+	resolved, err := core.Resolve(core.ResolutionRequest{
+		Configuration: snapshot,
+		HostID:        options.HostID,
+		Discovery:     evidence,
+		Inventory:     inventory,
+	})
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_REGISTRY_REQUIRED: %w", err)
 	}
@@ -111,7 +117,7 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 	}
 	return providerInputs{
 		HostID: options.HostID, RuntimeManaged: runtimeManaged,
-		Configuration: snapshot, Discovery: evidence, Inventory: inventory, Resolutions: resolutions, Registry: effective, Foreign: foreign,
+		Configuration: snapshot, Discovery: evidence, Inventory: inventory, Resolutions: resolved.Report, Registry: resolved.Registry, Foreign: foreign,
 		UserConfigPath: configPath, UserConfigExists: exists,
 	}, nil
 }

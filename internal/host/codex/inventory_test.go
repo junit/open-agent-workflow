@@ -3,11 +3,13 @@ package codex_test
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 )
 
@@ -27,7 +29,9 @@ func TestObserveBindingsRequiresPhysicalCodexEvidence(t *testing.T) {
 	}
 	observation := inventory.Observations[0]
 	if observation.InstallationKey != fixture.InstallationKey ||
-		observation.Binding != (catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review"}) ||
+		observation.Binding.Host != "codex" || observation.Binding.Kind != "skill" || observation.Binding.Reference != "acme:review" ||
+		!slices.Equal(observation.Binding.Topologies, []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}) ||
+		!slices.Equal(observation.Topologies, []execution.Topology{execution.TopologyCurrent}) ||
 		observation.Source != "host-filesystem" ||
 		observation.Digest == "" {
 		t.Fatalf("observation = %#v", observation)
@@ -51,6 +55,23 @@ func TestObserveBindingsDoesNotTrustDescriptorDeclarations(t *testing.T) {
 	inventory, err = codex.ObserveBindings(fixture.Catalog, fixture.Discovery, codex.InventoryOptions{UserHome: fixture.Home, CodexConfigRoot: fixture.CodexRoot})
 	if err != nil || len(inventory.Observations) != 0 {
 		t.Fatalf("outside Candidate inventory = %#v, %v", inventory, err)
+	}
+}
+
+func TestObserveBindingsDoesNotInferSubagentFromParentVisibleBinding(t *testing.T) {
+	fixture := newCodexInventoryFixtureWithTopologies(t, "skill", "acme:review", []execution.Topology{execution.TopologySubagent})
+	writeInventoryFile(t, fixture.Home, ".codex/plugins/acme/skills/review/SKILL.md", "---\nname: review\n---\n")
+
+	inventory, err := codex.ObserveBindings(
+		fixture.Catalog,
+		fixture.Discovery,
+		codex.InventoryOptions{UserHome: fixture.Home, CodexConfigRoot: fixture.CodexRoot},
+	)
+	if err != nil {
+		t.Fatalf("ObserveBindings() error = %v", err)
+	}
+	if len(inventory.Observations) != 0 {
+		t.Fatalf("parent-visible binding produced SUBAGENT evidence: %#v", inventory.Observations)
 	}
 }
 
@@ -155,19 +176,25 @@ type codexInventoryFixture struct {
 
 func newCodexInventoryFixture(t *testing.T, kind, reference string) codexInventoryFixture {
 	t.Helper()
+	return newCodexInventoryFixtureWithTopologies(t, kind, reference, []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent})
+}
+
+func newCodexInventoryFixtureWithTopologies(t *testing.T, kind, reference string, topologies []execution.Topology) codexInventoryFixture {
+	t.Helper()
 	home := t.TempDir()
 	codexRoot := filepath.Join(home, ".codex")
 	writeInventoryFile(t, home, ".codex/plugins/acme/marker.txt", "acme")
 	descriptor := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		SchemaVersion: catalog.ProviderDescriptorSchemaV3, DescriptorVersion: "3.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
 		Discovery: []catalog.DiscoveryProbe{{
 			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", Distribution: "acme",
 			Kind: "path-exists", Root: "user-home", CandidatePath: ".codex/plugins/acme", EvidencePath: "marker.txt",
 		}},
 		Capabilities: []catalog.CapabilityRecord{{
 			ID: "review", InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
-			RequestModes: []catalog.RequestMode{catalog.RequestModeBounded}, Responsibilities: []string{"review"}, ExecutorTopology: catalog.IsolatedRequired,
-			DelegationAllowList: []string{}, HostBindings: []catalog.HostBinding{{Host: "codex", Kind: kind, Reference: reference}},
+			RequestModes: []catalog.RequestMode{catalog.RequestModeBounded}, Responsibilities: []string{"review"},
+			SupportedTopologies: append([]execution.Topology{}, topologies...), DelegationAllowList: []string{},
+			HostBindings: []catalog.HostBinding{{Host: "codex", Kind: kind, Reference: reference, Topologies: append([]execution.Topology{}, topologies...)}},
 		}},
 	}
 	value, err := catalog.New([]catalog.ProviderDescriptorRecord{descriptor}, []catalog.ProfileRecipeRecord{}, []catalog.ProfileAliasRecord{})

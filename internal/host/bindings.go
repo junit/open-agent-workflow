@@ -3,40 +3,46 @@ package host
 import (
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"unicode"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
-const BindingInventorySchemaV1 = "oaw.host-binding-inventory/v1"
+const BindingInventorySchemaV2 = "oaw.host-binding-inventory/v2"
 
 type BindingObservation struct {
-	HostID            string              `json:"host_id"`
-	InstallationKey   string              `json:"installation_key"`
-	Binding           catalog.HostBinding `json:"binding"`
-	Source            string              `json:"source"`
-	EvidenceReference string              `json:"evidence_reference"`
-	Digest            string              `json:"digest"`
+	HostID            string               `json:"host_id"`
+	InstallationKey   string               `json:"installation_key"`
+	Binding           catalog.HostBinding  `json:"binding"`
+	Topologies        []execution.Topology `json:"topologies"`
+	Source            string               `json:"source"`
+	EvidenceReference string               `json:"evidence_reference"`
+	Digest            string               `json:"digest"`
 }
 
 type BindingInventory struct {
-	HostID       string               `json:"host_id"`
-	Observations []BindingObservation `json:"observations"`
-	Digest       string               `json:"digest"`
+	SchemaVersion string               `json:"schema_version"`
+	HostID        string               `json:"host_id"`
+	Observations  []BindingObservation `json:"observations"`
+	Digest        string               `json:"digest"`
 }
 
 func NewBindingInventory(hostID string, observations []BindingObservation) (BindingInventory, error) {
 	if _, err := catalog.ParseLocalID(hostID); err != nil {
 		return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid Host ID", err)
 	}
-	values := append([]BindingObservation{}, observations...)
-	for _, observation := range values {
-		if err := validateBindingObservation(hostID, observation); err != nil {
+	values := make([]BindingObservation, len(observations))
+	for index, observation := range observations {
+		normalized, err := normalizeBindingObservation(hostID, observation)
+		if err != nil {
 			return BindingInventory{}, err
 		}
+		values[index] = normalized
 	}
 	sort.Slice(values, func(i, j int) bool {
 		return bindingObservationSortKey(values[i]) < bindingObservationSortKey(values[j])
@@ -50,17 +56,49 @@ func NewBindingInventory(hostID string, observations []BindingObservation) (Bind
 		SchemaVersion string               `json:"schema_version"`
 		HostID        string               `json:"host_id"`
 		Observations  []BindingObservation `json:"observations"`
-	}{BindingInventorySchemaV1, hostID, values}
+	}{BindingInventorySchemaV2, hostID, values}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "inventory cannot be canonicalized", err)
 	}
-	return BindingInventory{HostID: hostID, Observations: values, Digest: digest}, nil
+	return BindingInventory{SchemaVersion: BindingInventorySchemaV2, HostID: hostID, Observations: values, Digest: digest}, nil
 }
 
 func CloneBindingInventory(value BindingInventory) BindingInventory {
-	value.Observations = append([]BindingObservation{}, value.Observations...)
+	value.Observations = cloneBindingObservations(value.Observations)
 	return value
+}
+
+func cloneBindingObservations(values []BindingObservation) []BindingObservation {
+	result := make([]BindingObservation, len(values))
+	for index, value := range values {
+		result[index] = value
+		result[index].Binding.Topologies = append([]execution.Topology{}, value.Binding.Topologies...)
+		result[index].Topologies = append([]execution.Topology{}, value.Topologies...)
+	}
+	return result
+}
+
+func normalizeBindingObservation(hostID string, value BindingObservation) (BindingObservation, error) {
+	declared, err := execution.NormalizeTopologies(value.Binding.Topologies)
+	if err != nil {
+		return BindingObservation{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid declared Binding topologies", err)
+	}
+	observed, err := execution.NormalizeTopologies(value.Topologies)
+	if err != nil {
+		return BindingObservation{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid observed Binding topologies", err)
+	}
+	for _, topology := range observed {
+		if !slices.Contains(declared, topology) {
+			return BindingObservation{}, hostError("HOST_BINDING_INVENTORY_INVALID", "observed topology is not declared by the Binding", nil)
+		}
+	}
+	value.Binding.Topologies = declared
+	value.Topologies = observed
+	if err := validateBindingObservation(hostID, value); err != nil {
+		return BindingObservation{}, err
+	}
+	return value, nil
 }
 
 func validateBindingObservation(hostID string, value BindingObservation) error {

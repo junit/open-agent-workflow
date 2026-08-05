@@ -192,9 +192,11 @@ func resolveCapabilities(descriptor catalog.ProviderDescriptorRecord, settings c
 				}
 			}
 		}
+		verifiedBinding := cloneBinding(selected.binding)
+		verifiedBinding.Topologies = append([]execution.Topology{}, selected.observation.Topologies...)
 		result = append(result, VerifiedCapability{
-			ID: capability.ID, Binding: cloneBinding(selected.binding),
-			SupportedTopologies:   append([]execution.Topology{}, selected.binding.Topologies...),
+			ID: capability.ID, Binding: verifiedBinding,
+			SupportedTopologies:   append([]execution.Topology{}, selected.observation.Topologies...),
 			BindingEvidenceDigest: selected.observation.Digest,
 		})
 	}

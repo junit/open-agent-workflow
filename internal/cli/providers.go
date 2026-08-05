@@ -231,7 +231,7 @@ func providerInspectionProjection(inputs providerInputs) providerInspectionOutpu
 	inventoryDigest := ""
 	if inputs.Inventory != nil {
 		inventoryDigest = inputs.Inventory.Digest
-		observations = append(observations, inputs.Inventory.Observations...)
+		observations = host.CloneBindingInventory(*inputs.Inventory).Observations
 	}
 	foreignHosts := make([]providerInspectionForeignHost, 0, len(inputs.Foreign))
 	for _, foreign := range inputs.Foreign {
@@ -274,8 +274,19 @@ func inspectionCandidate(candidate discovery.Candidate, pin *config.ProviderPin)
 }
 
 func writeProviderInspectionText(inputs providerInputs, output providerInspectionOutput, stdout, stderr io.Writer) int {
-	sections := make([]string, 0, len(output.CurrentHost.Providers)+len(output.ForeignHosts))
+	sections := make([]string, 0, len(output.CurrentHost.ObservedBindings)+len(output.CurrentHost.Providers)+len(output.ForeignHosts))
 	includeSchema := !inputs.UserConfigExists
+	for _, observation := range output.CurrentHost.ObservedBindings {
+		topologies := make([]string, len(observation.Topologies))
+		for index, topology := range observation.Topologies {
+			topologies[index] = string(topology)
+		}
+		sections = append(sections, fmt.Sprintf(
+			"observed_binding host_id=%s installation_key=%s kind=%s reference=%s topologies=%s source=%s evidence_digest=%s",
+			observation.HostID, observation.InstallationKey, observation.Binding.Kind, observation.Binding.Reference,
+			strings.Join(topologies, ","), observation.Source, observation.Digest,
+		))
+	}
 	for _, provider := range output.CurrentHost.Providers {
 		lines := []string{fmt.Sprintf("provider %s state=%s reason=%s", provider.ProviderID, provider.State, provider.Reason)}
 		for _, candidate := range provider.Candidates {
@@ -312,7 +323,7 @@ func writeProviderInspectionText(inputs providerInputs, output providerInspectio
 func encodeProviderPin(pin config.ProviderPin, includeSchema bool) (string, error) {
 	document := providerPinDocument{ProviderPins: []config.ProviderPin{pin}}
 	if includeSchema {
-		document.SchemaVersion = config.UserConfigSchemaV2
+		document.SchemaVersion = config.UserConfigSchemaV3
 	}
 	var buffer bytes.Buffer
 	if err := toml.NewEncoder(&buffer).Encode(document); err != nil {

@@ -71,7 +71,7 @@ func TestLoadProviderInputsScopesConfiguredInstallationsToTheirHost(t *testing.T
 	if err := os.MkdirAll(configRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	configContents := "schema_version = \"oaw.user-config/v2\"\n\n" +
+	configContents := "schema_version = \"oaw.user-config/v3\"\n\n" +
 		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\nsurface_id = \"codex-plugin\"\nlocation = \"" + codexInstallation + "\"\ndiscovery_probe_id = \"codex-direct\"\n\n" +
 		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"claude\"\nsurface_id = \"claude-plugin\"\nlocation = \"" + claudeInstallation + "\"\ndiscovery_probe_id = \"claude-direct\"\n"
 	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte(configContents), 0o600); err != nil {

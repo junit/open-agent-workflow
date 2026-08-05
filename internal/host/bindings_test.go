@@ -2,18 +2,62 @@ package host_test
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
+
+func TestNewBindingInventoryPinsObservedTopologySubset(t *testing.T) {
+	for _, observed := range [][]execution.Topology{
+		{execution.TopologyCurrent},
+		{execution.TopologySubagent},
+		{execution.TopologyCurrent, execution.TopologySubagent},
+	} {
+		t.Run(string(observed[0]), func(t *testing.T) {
+			declared := []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+			inputTopologies := append([]execution.Topology{}, observed...)
+			inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
+				HostID:          "codex",
+				InstallationKey: "installation-acme",
+				Binding: catalog.HostBinding{
+					Host: "codex", Kind: "skill", Reference: "acme:review", Topologies: declared,
+				},
+				Topologies:        inputTopologies,
+				Source:            "native-probe",
+				EvidenceReference: "evidence://binding/acme-review",
+				Digest:            strings.Repeat("a", 64),
+			}})
+			if err != nil {
+				t.Fatalf("NewBindingInventory(%v) error = %v", observed, err)
+			}
+			if inventory.SchemaVersion != host.BindingInventorySchemaV2 {
+				t.Fatalf("SchemaVersion = %q", inventory.SchemaVersion)
+			}
+			if !slices.Equal(inventory.Observations[0].Topologies, observed) {
+				t.Fatalf("observed topologies = %#v, want %#v", inventory.Observations[0].Topologies, observed)
+			}
+			declared[0] = execution.TopologySubagent
+			inputTopologies[0] = execution.Topology("changed")
+			cloned := host.CloneBindingInventory(inventory)
+			cloned.Observations[0].Binding.Topologies[0] = execution.TopologySubagent
+			cloned.Observations[0].Topologies[0] = execution.Topology("changed-again")
+			if !slices.Equal(inventory.Observations[0].Binding.Topologies, []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}) || !slices.Equal(inventory.Observations[0].Topologies, observed) {
+				t.Fatalf("BindingInventory shares topology storage: %#v", inventory)
+			}
+		})
+	}
+}
 
 func TestNewBindingInventoryPinsHostInstallationAndEvidence(t *testing.T) {
 	observations := []host.BindingObservation{{
 		HostID:            "codex",
 		InstallationKey:   "installation-acme",
-		Binding:           catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review"},
+		Binding:           catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review", Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}},
+		Topologies:        []execution.Topology{execution.TopologyCurrent},
 		Source:            "host-filesystem",
 		EvidenceReference: filepath.Join(t.TempDir(), "review", "SKILL.md"),
 		Digest:            strings.Repeat("a", 64),
@@ -38,8 +82,9 @@ func TestNewBindingInventoryPinsHostInstallationAndEvidence(t *testing.T) {
 func TestNewBindingInventoryRejectsInvalidObservations(t *testing.T) {
 	valid := host.BindingObservation{
 		HostID: "codex", InstallationKey: "installation-acme",
-		Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review"},
-		Source:  "host-filesystem", EvidenceReference: filepath.Join(t.TempDir(), "SKILL.md"), Digest: strings.Repeat("a", 64),
+		Binding:    catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review", Topologies: []execution.Topology{execution.TopologyCurrent}},
+		Topologies: []execution.Topology{execution.TopologyCurrent},
+		Source:     "host-filesystem", EvidenceReference: filepath.Join(t.TempDir(), "SKILL.md"), Digest: strings.Repeat("a", 64),
 	}
 	tests := []struct {
 		name        string
@@ -53,6 +98,13 @@ func TestNewBindingInventoryRejectsInvalidObservations(t *testing.T) {
 		{"unsupported source", "codex", withObservation(valid, func(value *host.BindingObservation) { value.Source = "descriptor" })},
 		{"relative evidence", "codex", withObservation(valid, func(value *host.BindingObservation) { value.EvidenceReference = "SKILL.md" })},
 		{"invalid digest", "codex", withObservation(valid, func(value *host.BindingObservation) { value.Digest = "bad" })},
+		{"empty topology", "codex", withObservation(valid, func(value *host.BindingObservation) { value.Topologies = nil })},
+		{"duplicate topology", "codex", withObservation(valid, func(value *host.BindingObservation) {
+			value.Topologies = []execution.Topology{execution.TopologyCurrent, execution.TopologyCurrent}
+		})},
+		{"topology outside Binding", "codex", withObservation(valid, func(value *host.BindingObservation) {
+			value.Topologies = []execution.Topology{execution.TopologySubagent}
+		})},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -25,7 +25,7 @@ func Resolve(request ResolutionRequest) (ResolutionResult, error) {
 			return ResolutionResult{}, coreError("HOST_PROVIDER_SCOPE_MISMATCH", "Binding Inventory does not match Host %q", request.HostID)
 		}
 		rebuilt, err := host.NewBindingInventory(request.Inventory.HostID, request.Inventory.Observations)
-		if err != nil || rebuilt.Digest != request.Inventory.Digest {
+		if request.Inventory.SchemaVersion != host.BindingInventorySchemaV2 || err != nil || rebuilt.Digest != request.Inventory.Digest {
 			return ResolutionResult{}, coreError("HOST_BINDING_INVENTORY_INVALID", "Binding Inventory digest is invalid")
 		}
 		inventoryDigest = request.Inventory.Digest

@@ -37,18 +37,18 @@ func TestRunCatalogTextOutputMatchesContract(t *testing.T) {
 		{
 			name: "providers",
 			args: []string{"catalog", "list", "providers"},
-			want: "provider oaw/ecc version=2.0.0 capabilities=11\n" +
-				"provider oaw/matt version=2.0.0 capabilities=9\n" +
-				"provider oaw/superpowers version=2.0.0 capabilities=10\n",
+			want: "provider oaw/ecc version=3.0.0 capabilities=11\n" +
+				"provider oaw/matt version=3.0.0 capabilities=9\n" +
+				"provider oaw/superpowers version=3.0.0 capabilities=10\n",
 		},
 		{
 			name: "recipes",
 			args: []string{"catalog", "list", "recipes"},
-			want: "recipe oaw/delivery version=1.0.0\n" +
-				"recipe oaw/domain-engineering version=1.0.0\n" +
-				"recipe oaw/ecc-engineering version=1.0.0\n" +
-				"recipe oaw/hardening version=1.0.0\n" +
-				"recipe oaw/reliable-feature version=1.0.0\n",
+			want: "recipe oaw/delivery version=2.0.0\n" +
+				"recipe oaw/domain-engineering version=2.0.0\n" +
+				"recipe oaw/ecc-engineering version=2.0.0\n" +
+				"recipe oaw/hardening version=2.0.0\n" +
+				"recipe oaw/reliable-feature version=2.0.0\n",
 		},
 		{
 			name: "aliases",
