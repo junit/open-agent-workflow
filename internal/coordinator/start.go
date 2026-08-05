@@ -138,7 +138,7 @@ func verifyStartCompilation(request core.CompilationRequest, result core.Compila
 
 func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleBundle) error {
 	if bundle.SchemaVersion != lifecycleBundleSchemaV3 || !validText(bundle.ID, 512) || bundle.DeliverableID != request.DeliverableID ||
-		bundle.InputDigest != request.InputDigest || bundle.Generation != 1 || bundle.ClassificationDigest != request.Classification.Digest() ||
+		bundle.InputDigest != request.InputDigest || bundle.Generation != request.Generation || bundle.ClassificationDigest != request.Classification.Digest() ||
 		bundle.HostID != request.HostID || bundle.HostSessionDigest != request.HostSessionDigest || bundle.EnvironmentReportDigest != request.HostEnvironmentReportDigest ||
 		bundle.ProviderInventoryDigest != request.HostProviderInventoryDigest ||
 		bundle.Topology != request.Selection.Topology || bundle.ResolutionDigest != request.Resolutions.Digest() || bundle.RegistryDigest != request.Registry.Digest() {

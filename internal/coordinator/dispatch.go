@@ -1,7 +1,6 @@
 package coordinator
 
 import (
-	"path/filepath"
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
@@ -47,6 +46,11 @@ func (engine *Engine) receipt(command Command) (Result, error) {
 		}
 		nextRevision := current.Revision + 1
 		snapshot.Revision = nextRevision
+		if snapshot.ActiveGrant == nil {
+			if releaseErr := releaseResourceLeases(&snapshot, nextRevision); releaseErr != nil {
+				return releaseErr
+			}
+		}
 		snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{
 			IdempotencyKey: command.IdempotencyKey, ContentDigest: messageDigest, Revision: nextRevision,
 		})
@@ -330,37 +334,43 @@ func (engine *Engine) prepare(command Command) (Result, error) {
 			}
 			return coordinatorError(code, "PREPARE Grant admission failed", err)
 		}
-		nextRevision := current.Revision + 1
-		leases, err := prepareProjectLease(engine.options.PhysicalProjectRoot, current.Snapshot, grant, nextRevision)
-		if err != nil {
-			return err
+		commitPrepared := func() error {
+			nextRevision := current.Revision + 1
+			leases, err := engine.prepareProjectLease(current.Snapshot, grant, nextRevision)
+			if err != nil {
+				return err
+			}
+			packet, err := newDispatchPacket(current.Snapshot, bundle, node, grant, *command.Prepare)
+			if err != nil {
+				return err
+			}
+			snapshot := cloneSnapshot(current.Snapshot)
+			snapshot.Revision = nextRevision
+			snapshot.Status = StatusPrepared
+			snapshot.ActiveGrant = &grant
+			snapshot.GrantHistory = append(snapshot.GrantHistory, admission.CloneGrant(grant))
+			snapshot.ResourceLeases = leases
+			snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{IdempotencyKey: command.IdempotencyKey, ContentDigest: messageDigest, Revision: nextRevision})
+			sort.Slice(snapshot.ProcessedMessages, func(left, right int) bool {
+				return snapshot.ProcessedMessages[left].IdempotencyKey < snapshot.ProcessedMessages[right].IdempotencyKey
+			})
+			candidate := revisionRecord{
+				SchemaVersion: WorkflowRevisionSchemaV1, WorkflowID: command.WorkflowID, Revision: nextRevision,
+				PredecessorDigest: current.Digest, MessageID: command.MessageID, IdempotencyKey: command.IdempotencyKey,
+				MessageDigest: messageDigest, Event: "WORKFLOW_PREPARED", Snapshot: snapshot,
+				Result: Result{SchemaVersion: WorkflowResultSchemaV1, Kind: ResultDispatch, WorkflowID: command.WorkflowID, Revision: nextRevision, Dispatch: &packet, Diagnostics: []Diagnostic{}},
+			}
+			committed, err := engine.journal.commit(candidate)
+			if err != nil {
+				return err
+			}
+			result = committed.Result
+			return nil
 		}
-		packet, err := newDispatchPacket(current.Snapshot, bundle, node, grant, *command.Prepare)
-		if err != nil {
-			return err
+		if grantRequiresResourceLease(grant.Effects) {
+			return engine.journal.withResourceLeaseLock(commitPrepared)
 		}
-		snapshot := cloneSnapshot(current.Snapshot)
-		snapshot.Revision = nextRevision
-		snapshot.Status = StatusPrepared
-		snapshot.ActiveGrant = &grant
-		snapshot.GrantHistory = append(snapshot.GrantHistory, admission.CloneGrant(grant))
-		snapshot.ResourceLeases = leases
-		snapshot.ProcessedMessages = append(snapshot.ProcessedMessages, ProcessedMessage{IdempotencyKey: command.IdempotencyKey, ContentDigest: messageDigest, Revision: nextRevision})
-		sort.Slice(snapshot.ProcessedMessages, func(left, right int) bool {
-			return snapshot.ProcessedMessages[left].IdempotencyKey < snapshot.ProcessedMessages[right].IdempotencyKey
-		})
-		candidate := revisionRecord{
-			SchemaVersion: WorkflowRevisionSchemaV1, WorkflowID: command.WorkflowID, Revision: nextRevision,
-			PredecessorDigest: current.Digest, MessageID: command.MessageID, IdempotencyKey: command.IdempotencyKey,
-			MessageDigest: messageDigest, Event: "WORKFLOW_PREPARED", Snapshot: snapshot,
-			Result: Result{SchemaVersion: WorkflowResultSchemaV1, Kind: ResultDispatch, WorkflowID: command.WorkflowID, Revision: nextRevision, Dispatch: &packet, Diagnostics: []Diagnostic{}},
-		}
-		committed, err := engine.journal.commit(candidate)
-		if err != nil {
-			return err
-		}
-		result = committed.Result
-		return nil
+		return commitPrepared()
 	})
 	if err != nil {
 		return Result{}, err
@@ -434,30 +444,6 @@ func newDispatchPacket(snapshot Snapshot, bundle core.LifecycleBundle, node prof
 		return DispatchPacket{}, coordinatorError("WORKFLOW_DISPATCH_INVALID", "digest Dispatch Packet", err)
 	}
 	return packet, nil
-}
-
-func prepareProjectLease(physicalRoot string, snapshot Snapshot, grant admission.CapabilityGrant, revision uint64) ([]ResourceLease, error) {
-	leases := append([]ResourceLease{}, snapshot.ResourceLeases...)
-	if !grantRequiresResourceLease(grant.Effects) {
-		return leases, nil
-	}
-	if physicalRoot == "" || !filepath.IsAbs(physicalRoot) || filepath.Clean(physicalRoot) != physicalRoot {
-		return nil, coordinatorError("RESOURCE_LEASE_REQUIRED", "write-capable PREPARE requires a physical project root", nil)
-	}
-	lease := ResourceLease{SchemaVersion: "oaw.resource-lease/v1", WorkflowID: snapshot.WorkflowID, GrantID: grant.ID, BundleID: grant.BundleID, BundleGeneration: grant.BundleGeneration, Resource: "project-worktree", PhysicalRoot: physicalRoot, AcquiredRevision: revision}
-	seed := lease
-	seed.ID, seed.Digest = "", ""
-	digest, _, err := canonicaljson.Digest(seed)
-	if err != nil {
-		return nil, coordinatorError("RESOURCE_LEASE_INVALID", "digest project-worktree lease identity", err)
-	}
-	lease.ID = "lease-" + digest[:32]
-	lease.Digest, _, err = canonicaljson.Digest(lease)
-	if err != nil {
-		return nil, coordinatorError("RESOURCE_LEASE_INVALID", "digest project-worktree lease", err)
-	}
-	leases = append(leases, lease)
-	return leases, nil
 }
 
 func grantRequiresResourceLease(effects []string) bool {

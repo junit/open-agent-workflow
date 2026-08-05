@@ -100,7 +100,7 @@ func TestPrepareReplayAndSingleActiveGrant(t *testing.T) {
 
 func TestPrepareWriteRequiresAndCommitsProjectLease(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "state")
-	projectRoot := filepath.Join(t.TempDir(), "project")
+	projectRoot := t.TempDir()
 	start := startTestCommand(t, "prepare-write")
 	compiler := &startTestCore{
 		t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(start.IdempotencyKey),
@@ -125,7 +125,11 @@ func TestPrepareWriteRequiresAndCommitsProjectLease(t *testing.T) {
 	if err != nil {
 		t.Fatalf("write PREPARE error = %v", err)
 	}
-	if result.Snapshot == nil || len(result.Snapshot.ResourceLeases) != 1 || result.Snapshot.ResourceLeases[0].PhysicalRoot != projectRoot || result.Snapshot.ResourceLeases[0].GrantID != result.Snapshot.ActiveGrant.ID {
+	physicalProjectRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Snapshot == nil || len(result.Snapshot.ResourceLeases) != 1 || result.Snapshot.ResourceLeases[0].PhysicalRoot != physicalProjectRoot || result.Snapshot.ResourceLeases[0].GrantID != result.Snapshot.ActiveGrant.ID {
 		t.Fatalf("write PREPARE lease = %#v", result.Snapshot.ResourceLeases)
 	}
 }

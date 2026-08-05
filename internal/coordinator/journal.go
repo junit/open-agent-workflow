@@ -243,6 +243,11 @@ func (value *journal) commit(candidate revisionRecord) (revisionRecord, error) {
 	case record.Revision > 1 && (current.Revision+1 != record.Revision || current.Digest != record.PredecessorDigest):
 		return revisionRecord{}, coordinatorError("WORKFLOW_REVISION_CONFLICT", "expected revision does not match committed Workflow state", nil)
 	}
+	if record.Revision > 1 {
+		if err := validateRevisionTransition(current, record); err != nil {
+			return revisionRecord{}, err
+		}
+	}
 
 	if record.Result.Kind != ResultRejected {
 		record.Result.Snapshot, err = snapshotPointer(record.Snapshot)
@@ -379,6 +384,21 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Workflow Grant history", err)
 		}
 	}
+	if err := validateResourceLeases(snapshot, revision); err != nil {
+		return err
+	}
+	if len(snapshot.Bundles) > 0 {
+		bundle, err := activeBundle(snapshot)
+		if err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Bundle generation is unavailable", err)
+		}
+		if _, found := graphNode(bundle.Graph, snapshot.ActiveNodeID); !found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active graph node is unavailable", nil)
+		}
+		if snapshot.LastStableBoundary != "" && !containsString(bundle.Graph.StableBoundaries, snapshot.LastStableBoundary) {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "last stable boundary is not declared by the active Bundle", nil)
+		}
+	}
 	receiptDigests := make(map[string]struct{}, len(snapshot.Receipts))
 	for _, receipt := range snapshot.Receipts {
 		normalized, err := host.NewInvocationReceipt(receipt)
@@ -417,6 +437,49 @@ func validateRevisionTransition(previous, current revisionRecord) error {
 	for _, message := range previous.Snapshot.ProcessedMessages {
 		if currentMessages[message.IdempotencyKey] != message {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "processed message history was rewritten", nil)
+		}
+	}
+	if err := validateAppendOnlyHistory(previous.Snapshot.Bundles, current.Snapshot.Bundles, "Lifecycle Bundle"); err != nil {
+		return err
+	}
+	if err := validateAppendOnlyHistory(previous.Snapshot.GrantHistory, current.Snapshot.GrantHistory, "Grant"); err != nil {
+		return err
+	}
+	if err := validateAppendOnlyHistory(previous.Snapshot.Receipts, current.Snapshot.Receipts, "Host Receipt"); err != nil {
+		return err
+	}
+	if err := validateResourceLeaseTransition(previous.Snapshot.ResourceLeases, current.Snapshot.ResourceLeases, current.Revision); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateAppendOnlyHistory[T any](previous, current []T, name string) error {
+	if len(current) < len(previous) || len(current) > len(previous)+1 {
+		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", name+" history changed by more than one append", nil)
+	}
+	for index := range previous {
+		if !sameCanonicalValue(previous[index], current[index]) {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", name+" history was rewritten", nil)
+		}
+	}
+	return nil
+}
+
+func validateResourceLeaseTransition(previous, current []ResourceLease, revision uint64) error {
+	if len(current) < len(previous) || len(current) > len(previous)+1 {
+		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Resource Lease history changed by more than one append", nil)
+	}
+	for index, before := range previous {
+		after := current[index]
+		if sameCanonicalValue(before, after) {
+			continue
+		}
+		normalized := after
+		normalized.ReleasedRevision = before.ReleasedRevision
+		normalized.Digest = before.Digest
+		if before.ReleasedRevision != 0 || after.ReleasedRevision != revision || !sameCanonicalValue(before, normalized) {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Resource Lease history was rewritten", nil)
 		}
 	}
 	return nil

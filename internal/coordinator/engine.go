@@ -89,18 +89,30 @@ func (engine *Engine) Exchange(command Command) (Result, error) {
 	if err := validateCommand(normalized); err != nil {
 		return Result{}, err
 	}
+	var result Result
 	switch normalized.Kind {
 	case CommandStart:
-		return engine.start(normalized)
+		result, err = engine.start(normalized)
 	case CommandInspect:
 		return engine.inspect(normalized.WorkflowID)
 	case CommandPrepare:
-		return engine.prepare(normalized)
+		result, err = engine.prepare(normalized)
 	case CommandReceipt:
-		return engine.receipt(normalized)
+		result, err = engine.receipt(normalized)
+	case CommandSwitch:
+		result, err = engine.switchWorkflow(normalized)
+	case CommandCancel:
+		result, err = engine.cancel(normalized)
 	default:
 		return Result{}, coordinatorError("WORKFLOW_COMMAND_UNSUPPORTED", "Workflow command is not implemented in this Coordinator transition", nil)
 	}
+	if err != nil {
+		return Result{}, err
+	}
+	if !result.Replayed {
+		engine.projectResult(result)
+	}
+	return result, nil
 }
 
 func (engine *Engine) inspect(workflowID string) (Result, error) {
