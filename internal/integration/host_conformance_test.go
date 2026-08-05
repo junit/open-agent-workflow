@@ -102,7 +102,7 @@ func conformanceIntegrationFixture(t *testing.T, extraFeatures []host.Feature) (
 		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
 		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("3", 64), NodeID: "implementation",
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-		EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		DispatchDigest: strings.Repeat("8", 64), EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("4", 64)}},
 	})
 	if err != nil {

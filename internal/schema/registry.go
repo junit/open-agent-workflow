@@ -34,8 +34,6 @@ const (
 	WorkflowSnapshotV1          = "https://open-agent-workflow.dev/schemas/v1/workflow-snapshot.schema.json"
 	WorkflowRevisionV1          = "https://open-agent-workflow.dev/schemas/v1/workflow-revision.schema.json"
 	WorkflowHeadV1              = "https://open-agent-workflow.dev/schemas/v1/workflow-head.schema.json"
-	RuntimeFrameV1              = "https://open-agent-workflow.dev/schemas/v1/runtime-frame.schema.json"
-	RuntimeReplyV1              = "https://open-agent-workflow.dev/schemas/v1/runtime-reply.schema.json"
 )
 
 type Registry struct {
@@ -68,8 +66,6 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v1/workflow-snapshot.schema.json", WorkflowSnapshotV1},
 		{"schemas/v1/workflow-revision.schema.json", WorkflowRevisionV1},
 		{"schemas/v1/workflow-head.schema.json", WorkflowHeadV1},
-		{"schemas/v1/runtime-frame.schema.json", RuntimeFrameV1},
-		{"schemas/v1/runtime-reply.schema.json", RuntimeReplyV1},
 	}
 	for _, resource := range resources {
 		data, err := fs.ReadFile(files, resource.path)
