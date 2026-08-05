@@ -1,10 +1,13 @@
 package profile
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
+	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
 func CompileProfile(available CatalogSource, verified EffectiveRegistry, request CompileRequest) (ExecutionGraph, error) {
@@ -17,18 +20,33 @@ func CompileProfile(available CatalogSource, verified EffectiveRegistry, request
 	}
 	for _, recipe := range available.Recipes() {
 		if recipe.ID == recipeID {
-			return CompileRecipe(available, verified, recipe, request.Bindings)
+			return CompileRecipe(available, verified, recipe, request)
 		}
 	}
 	return ExecutionGraph{}, compileError("PROFILE_NOT_FOUND", "profile %q is not declared", request.Profile)
 }
 
-func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe catalog.ProfileRecipeRecord, bindings []ProfileBinding) (ExecutionGraph, error) {
+func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe catalog.ProfileRecipeRecord, request CompileRequest) (ExecutionGraph, error) {
 	hostID := verified.HostID()
 	if _, err := catalog.ParseLocalID(hostID); err != nil {
 		return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Registry has invalid Host %q", hostID)
 	}
-	bindingIndex, normalizedBindings, err := indexBindings(bindings)
+	hostTopologies, err := execution.NormalizeTopologies(request.HostTopologies)
+	if err != nil {
+		return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%v", err)
+	}
+	requirements, err := execution.NormalizeRequirements(recipe.EnvironmentRequirements)
+	if err != nil {
+		return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%v", err)
+	}
+	if err := execution.RequirementsSatisfied(requirements, request.EnvironmentObservations); err != nil {
+		return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%v", err)
+	}
+	addOns, err := indexAddOns(request.AddOns, recipe.Nodes)
+	if err != nil {
+		return ExecutionGraph{}, err
+	}
+	bindingIndex, normalizedBindings, err := indexBindings(request.Bindings)
 	if err != nil {
 		return ExecutionGraph{}, err
 	}
@@ -49,16 +67,21 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 	nodes := make([]GraphNode, 0, len(recipe.Nodes))
 	providers := make(map[string]GraphProviderInstance)
 	omitted := make(map[string]bool)
+	eligibleTopologies := append([]execution.Topology{}, hostTopologies...)
 	for _, node := range recipe.Nodes {
+		selectedAddOn := addOns[node.ID]
+		if node.Optional && !selectedAddOn {
+			omitted[node.ID] = true
+			continue
+		}
 		providerID := node.Selector.ProviderID
 		if binding, found := bindingIndex[selectorKey(node.Selector)]; found {
 			providerID = binding.PreferredProviderID
 		}
 		instance, found := verified.Provider(providerID)
 		if !found {
-			if node.Optional {
-				omitted[node.ID] = true
-				continue
+			if selectedAddOn {
+				return ExecutionGraph{}, compileError("PROFILE_ADD_ON_INVALID", "add-on %q Provider %s is not verified", node.ID, providerID)
 			}
 			return ExecutionGraph{}, compileCapabilityError(providerID, node.Selector.CapabilityID, "%s/%s is not verified", providerID, node.Selector.CapabilityID)
 		}
@@ -70,9 +93,8 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 		}
 		verifiedCapability, found := verified.Capability(providerID, node.Selector.CapabilityID)
 		if !found {
-			if node.Optional {
-				omitted[node.ID] = true
-				continue
+			if selectedAddOn {
+				return ExecutionGraph{}, compileError("PROFILE_ADD_ON_INVALID", "add-on %q Capability %s/%s is not verified", node.ID, providerID, node.Selector.CapabilityID)
 			}
 			return ExecutionGraph{}, compileCapabilityError(providerID, node.Selector.CapabilityID, "%s/%s is not verified", providerID, node.Selector.CapabilityID)
 		}
@@ -90,8 +112,17 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 		if !found {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "capability descriptor %s/%s is not available", providerID, node.Selector.CapabilityID)
 		}
-		if !bindingDeclared(capability.HostBindings, verifiedCapability.Binding) {
+		declaredBinding, found := declaredBinding(capability.HostBindings, verifiedCapability.Binding)
+		if !found {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified binding for %s/%s is not declared", providerID, node.Selector.CapabilityID)
+		}
+		nodeTopologies, pinnedBinding, err := compileNodeTopologies(capability, declaredBinding, verifiedCapability)
+		if err != nil {
+			return ExecutionGraph{}, err
+		}
+		eligibleTopologies, err = execution.IntersectTopologies(eligibleTopologies, nodeTopologies)
+		if err != nil || len(eligibleTopologies) == 0 {
+			return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "node %q leaves no eligible topology", node.ID)
 		}
 		if node.Responsibility != "" && !stringPresent(capability.Responsibilities, node.Responsibility) {
 			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "%s/%s does not own %s", providerID, node.Selector.CapabilityID, node.Responsibility)
@@ -110,9 +141,9 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 		graphNode := GraphNode{
 			ID: node.ID, Kind: node.Kind, Responsibility: node.Responsibility, Phase: node.Phase, Optional: node.Optional,
 			ProviderID: providerID, ProviderInstanceDigest: instance.Digest, CapabilityID: capability.ID,
-			Binding: verifiedCapability.Binding, InputSchema: capability.InputSchema, OutcomeSchema: capability.OutcomeSchema,
+			Binding: pinnedBinding, InputSchema: capability.InputSchema, OutcomeSchema: capability.OutcomeSchema,
 			MaximumEffects: sortedStrings(capability.MaximumEffects), Resources: sortedStrings(capability.Resources),
-			RequestModes: sortedRequestModes(capability.RequestModes), ExecutorTopology: capability.ExecutorTopology,
+			RequestModes: sortedRequestModes(capability.RequestModes), SupportedTopologies: nodeTopologies,
 			DelegationAllowList: sortedStrings(capability.DelegationAllowList), Transitions: transitions,
 		}
 		nodes = append(nodes, graphNode)
@@ -140,10 +171,11 @@ func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe c
 	sort.Slice(incidentRoutes, func(i, j int) bool { return incidentRouteKey(incidentRoutes[i]) < incidentRouteKey(incidentRoutes[j]) })
 
 	graph := ExecutionGraph{
-		schemaVersion: ExecutionGraphSchemaV2, hostID: hostID, recipeID: recipe.ID, recipeVersion: recipe.RecipeVersion,
+		schemaVersion: ExecutionGraphSchemaV3, hostID: hostID, recipeID: recipe.ID, recipeVersion: recipe.RecipeVersion,
 		recipeDigest: recipeDigest, entry: recipe.Entry, bindings: normalizedBindings,
 		providerInstances: providerInstances, nodes: nodes, incidentRoutes: incidentRoutes,
 		terminalGates: sortedStrings(recipe.TerminalGates), stableBoundaries: sortedStrings(recipe.StableBoundaries),
+		eligibleTopologies: eligibleTopologies, environmentRequirements: requirements,
 	}
 	if err := validateExecutionGraph(graph, omitted); err != nil {
 		return ExecutionGraph{}, err
@@ -167,6 +199,28 @@ func validateBindingSelectors(bindings []ProfileBinding, nodes []catalog.RecipeN
 		}
 	}
 	return nil
+}
+
+func indexAddOns(values []string, nodes []catalog.RecipeNode) (map[string]bool, error) {
+	available := make(map[string]catalog.RecipeNode, len(nodes))
+	for _, node := range nodes {
+		available[node.ID] = node
+	}
+	selected := make(map[string]bool, len(values))
+	for _, id := range values {
+		if selected[id] {
+			return nil, compileError("PROFILE_ADD_ON_INVALID", "add-on %q is duplicated", id)
+		}
+		node, found := available[id]
+		if !found {
+			return nil, compileError("PROFILE_ADD_ON_INVALID", "add-on %q is not declared", id)
+		}
+		if !node.Optional {
+			return nil, compileError("PROFILE_ADD_ON_INVALID", "node %q is required and cannot be selected as an add-on", id)
+		}
+		selected[id] = true
+	}
+	return selected, nil
 }
 
 func indexBindings(values []ProfileBinding) (map[string]ProfileBinding, []ProfileBinding, error) {
@@ -202,13 +256,46 @@ func descriptorCapability(descriptor catalog.ProviderDescriptorRecord, id string
 	return catalog.CapabilityRecord{}, false
 }
 
-func bindingDeclared(values []catalog.HostBinding, wanted catalog.HostBinding) bool {
+func declaredBinding(values []catalog.HostBinding, wanted catalog.HostBinding) (catalog.HostBinding, bool) {
 	for _, value := range values {
-		if value == wanted {
-			return true
+		if value.Host == wanted.Host && value.Kind == wanted.Kind && value.Reference == wanted.Reference {
+			return value, true
 		}
 	}
-	return false
+	return catalog.HostBinding{}, false
+}
+
+func compileNodeTopologies(capability catalog.CapabilityRecord, declared catalog.HostBinding, verified registry.VerifiedCapability) ([]execution.Topology, catalog.HostBinding, error) {
+	capabilityTopologies, err := execution.NormalizeTopologies(capability.SupportedTopologies)
+	if err != nil {
+		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid Capability topologies: %v", capability.ID, err)
+	}
+	bindingTopologies, err := execution.NormalizeTopologies(declared.Topologies)
+	if err != nil {
+		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid binding topologies: %v", capability.ID, err)
+	}
+	verifiedTopologies, err := execution.NormalizeTopologies(verified.SupportedTopologies)
+	if err != nil {
+		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid verified topologies: %v", capability.ID, err)
+	}
+	verifiedBindingTopologies, err := execution.NormalizeTopologies(verified.Binding.Topologies)
+	if err != nil {
+		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid verified binding topologies: %v", capability.ID, err)
+	}
+	if !slices.Equal(bindingTopologies, verifiedTopologies) || !slices.Equal(bindingTopologies, verifiedBindingTopologies) {
+		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s verified binding topology evidence does not match its descriptor", capability.ID)
+	}
+	eligible, err := execution.IntersectTopologies(capabilityTopologies, bindingTopologies, verifiedTopologies, verifiedBindingTopologies)
+	if err != nil || len(eligible) == 0 {
+		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has no eligible binding topology", capability.ID)
+	}
+	declared.Topologies = bindingTopologies
+	return eligible, cloneHostBinding(declared), nil
+}
+
+func cloneHostBinding(value catalog.HostBinding) catalog.HostBinding {
+	value.Topologies = append([]execution.Topology{}, value.Topologies...)
+	return value
 }
 
 func normalizeRecipe(recipe catalog.ProfileRecipeRecord) catalog.ProfileRecipeRecord {
@@ -219,6 +306,8 @@ func normalizeRecipe(recipe catalog.ProfileRecipeRecord) catalog.ProfileRecipeRe
 	})
 	recipe.TerminalGates = sortedStrings(recipe.TerminalGates)
 	recipe.StableBoundaries = sortedStrings(recipe.StableBoundaries)
+	requirements, _ := execution.NormalizeRequirements(recipe.EnvironmentRequirements)
+	recipe.EnvironmentRequirements = requirements
 	recipe.Nodes = append([]catalog.RecipeNode{}, recipe.Nodes...)
 	for i := range recipe.Nodes {
 		recipe.Nodes[i].Transitions = append([]catalog.RecipeTransition{}, recipe.Nodes[i].Transitions...)

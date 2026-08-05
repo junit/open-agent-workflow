@@ -2,6 +2,7 @@ package profile
 
 import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 func validateOwnership(nodes []GraphNode, required []string) error {
@@ -78,6 +79,13 @@ func validateExecutionGraph(graph ExecutionGraph, omitted map[string]bool) error
 	if _, err := catalog.ParseLocalID(graph.hostID); err != nil {
 		return compileError("HOST_PROVIDER_SCOPE_MISMATCH", "Execution Graph has invalid Host %q", graph.hostID)
 	}
+	eligible, err := execution.NormalizeTopologies(graph.eligibleTopologies)
+	if err != nil {
+		return compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "Execution Graph has invalid eligible topologies: %v", err)
+	}
+	if _, err := execution.NormalizeRequirements(graph.environmentRequirements); err != nil {
+		return compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "Execution Graph has invalid environment requirements: %v", err)
+	}
 	for _, provider := range graph.providerInstances {
 		if provider.HostID != graph.hostID {
 			return compileError("HOST_PROVIDER_SCOPE_MISMATCH", "Graph Provider %s belongs to Host %q, not %q", provider.ProviderID, provider.HostID, graph.hostID)
@@ -87,6 +95,14 @@ func validateExecutionGraph(graph ExecutionGraph, omitted map[string]bool) error
 	for _, node := range graph.nodes {
 		if node.Binding.Host != graph.hostID {
 			return compileError("HOST_PROVIDER_SCOPE_MISMATCH", "Graph node %s Binding belongs to Host %q, not %q", node.ID, node.Binding.Host, graph.hostID)
+		}
+		nodeTopologies, err := execution.NormalizeTopologies(node.SupportedTopologies)
+		if err != nil {
+			return compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "Graph node %s has invalid topologies: %v", node.ID, err)
+		}
+		intersection, err := execution.IntersectTopologies(eligible, nodeTopologies)
+		if err != nil || len(intersection) != len(eligible) {
+			return compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "Graph node %s does not support every eligible topology", node.ID)
 		}
 		nodes[node.ID] = node
 	}

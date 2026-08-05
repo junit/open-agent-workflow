@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
@@ -100,8 +102,14 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 		t.Fatalf("Host-scoped resolution = %#v / %#v", resolution, effective)
 	}
 	capability, found := effective.Capability("oaw/superpowers", "review")
-	if !found || capability.BindingEvidenceDigest == "" {
+	if !found || capability.BindingEvidenceDigest == "" || !slices.Equal(capability.SupportedTopologies, dualTopologies()) || !slices.Equal(capability.Binding.Topologies, dualTopologies()) {
 		t.Fatalf("verified Capability = %#v, %v", capability, found)
+	}
+	capability.SupportedTopologies[0] = execution.TopologySubagent
+	capability.Binding.Topologies[0] = execution.TopologySubagent
+	freshCapability, _ := effective.Capability("oaw/superpowers", "review")
+	if !slices.Equal(freshCapability.SupportedTopologies, dualTopologies()) || !slices.Equal(freshCapability.Binding.Topologies, dualTopologies()) {
+		t.Fatalf("Capability() exposed topology storage: %#v", freshCapability)
 	}
 
 	if _, _, err := registry.Resolve(snapshot, "claude", discovered, &inventory); err == nil || !strings.Contains(err.Error(), "HOST_PROVIDER_SCOPE_MISMATCH") {
@@ -126,7 +134,7 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 	candidates := discovered.Candidates("oaw/superpowers")
 	wrongInstallation, err := host.NewBindingInventory("codex", []host.BindingObservation{{
 		HostID: "codex", InstallationKey: "installation-wrong",
-		Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review"},
+		Binding: catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review", Topologies: dualTopologies()},
 		Source:  "host-filesystem", EvidenceReference: reviewPath, Digest: strings.Repeat("a", 64),
 	}})
 	if err != nil {
@@ -285,9 +293,9 @@ func TestResolveAppliesPreferencesLimitsAndPartialCapabilities(t *testing.T) {
 		t.Fatal(err)
 	}
 	inventory := inventoryForCandidate(t, evidence.Candidates("acme/suite"),
-		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:alpha-review"},
-		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
-		catalog.HostBinding{Host: "codex", Kind: "tool", Reference: "acme:verify"},
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:alpha-review", Topologies: []execution.Topology{execution.TopologyCurrent}},
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:zeta-review", Topologies: []execution.Topology{execution.TopologySubagent}},
+		catalog.HostBinding{Host: "codex", Kind: "tool", Reference: "acme:verify", Topologies: dualTopologies()},
 	)
 	firstReport, firstRegistry, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
@@ -305,7 +313,7 @@ func TestResolveAppliesPreferencesLimitsAndPartialCapabilities(t *testing.T) {
 		t.Fatalf("resolution = %#v", resolution)
 	}
 	capability := resolution.Instance.Capabilities[0]
-	if capability.ID != "review" || capability.Binding.Reference != "acme:zeta-review" {
+	if capability.ID != "review" || capability.Binding.Reference != "acme:zeta-review" || !slices.Equal(capability.SupportedTopologies, []execution.Topology{execution.TopologySubagent}) {
 		t.Fatalf("verified capability = %#v", capability)
 	}
 	if got, found := firstRegistry.Capability("acme/suite", "review"); !found || got.Binding.Reference != "acme:zeta-review" {
@@ -316,12 +324,16 @@ func TestResolveAppliesPreferencesLimitsAndPartialCapabilities(t *testing.T) {
 	}
 
 	resolution.Instance.Capabilities[0].Binding.Reference = "changed"
+	resolution.Instance.Capabilities[0].SupportedTopologies[0] = execution.TopologyCurrent
+	resolution.Instance.Capabilities[0].Binding.Topologies[0] = execution.TopologyCurrent
 	resolution.Candidates[0].Evidence[0].Path = "changed"
 	provider, _ := firstRegistry.Provider("acme/suite")
 	provider.Capabilities[0].Binding.Reference = "changed"
+	provider.Capabilities[0].SupportedTopologies[0] = execution.TopologyCurrent
+	provider.Capabilities[0].Binding.Topologies[0] = execution.TopologyCurrent
 	freshResolution := requireResolution(t, firstReport, "acme/suite")
 	freshProvider, _ := firstRegistry.Provider("acme/suite")
-	if freshResolution.Instance.Capabilities[0].Binding.Reference != "acme:zeta-review" || freshResolution.Candidates[0].Evidence[0].Path == "changed" || freshProvider.Capabilities[0].Binding.Reference != "acme:zeta-review" {
+	if freshResolution.Instance.Capabilities[0].Binding.Reference != "acme:zeta-review" || !slices.Equal(freshResolution.Instance.Capabilities[0].SupportedTopologies, []execution.Topology{execution.TopologySubagent}) || !slices.Equal(freshResolution.Instance.Capabilities[0].Binding.Topologies, []execution.Topology{execution.TopologySubagent}) || freshResolution.Candidates[0].Evidence[0].Path == "changed" || freshProvider.Capabilities[0].Binding.Reference != "acme:zeta-review" || !slices.Equal(freshProvider.Capabilities[0].SupportedTopologies, []execution.Topology{execution.TopologySubagent}) || !slices.Equal(freshProvider.Capabilities[0].Binding.Topologies, []execution.Topology{execution.TopologySubagent}) {
 		t.Fatal("report or registry exposed mutable storage")
 	}
 }
@@ -335,15 +347,15 @@ func TestResolveUsesDeterministicBindingFallbackAndVerifiedSubset(t *testing.T) 
 		t.Fatal(err)
 	}
 	inventory := inventoryForCandidate(t, evidence.Candidates("acme/suite"),
-		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:zeta-review"},
-		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:alpha-review"},
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:zeta-review", Topologies: []execution.Topology{execution.TopologySubagent}},
+		catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:alpha-review", Topologies: []execution.Topology{execution.TopologyCurrent}},
 	)
 	report, effective, err := registry.Resolve(snapshot, "codex", evidence, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resolution := requireResolution(t, report, "acme/suite")
-	if resolution.State != registry.Verified || len(resolution.Instance.Capabilities) != 1 || resolution.Instance.Capabilities[0].Binding.Reference != "acme:alpha-review" {
+	if resolution.State != registry.Verified || len(resolution.Instance.Capabilities) != 1 || resolution.Instance.Capabilities[0].Binding.Reference != "acme:alpha-review" || !slices.Equal(resolution.Instance.Capabilities[0].SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
 		t.Fatalf("resolution = %#v", resolution)
 	}
 	providers := effective.Providers()
@@ -400,6 +412,9 @@ func inventoryForCandidate(t *testing.T, candidates []discovery.Candidate, bindi
 	candidate := candidates[0]
 	observations := make([]host.BindingObservation, 0, len(bindings))
 	for index, binding := range bindings {
+		if len(binding.Topologies) == 0 {
+			binding.Topologies = dualTopologies()
+		}
 		observations = append(observations, host.BindingObservation{
 			HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
 			Source: "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat(string(rune('a'+index)), 64),
@@ -410,6 +425,10 @@ func inventoryForCandidate(t *testing.T, candidates []discovery.Candidate, bindi
 		t.Fatal(err)
 	}
 	return &inventory
+}
+
+func dualTopologies() []execution.Topology {
+	return []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
 }
 
 func untrustedProject(t *testing.T) string {
@@ -509,8 +528,8 @@ func testSchemaRegistry(t *testing.T) *schema.Registry {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v2"
-descriptor_version = "2.0.0"
+schema_version = "oaw.provider-descriptor/v3"
+descriptor_version = "3.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
@@ -532,18 +551,20 @@ maximum_effects = ["read-project"]
 resources = ["project"]
 request_modes = ["BOUNDED", "WORKFLOW"]
 responsibilities = ["review"]
-executor_topology = "main-agent-allowed"
+supported_topologies = ["CURRENT", "SUBAGENT"]
 delegation_allow_list = []
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "skill"
 reference = "acme:zeta-review"
+topologies = ["SUBAGENT"]
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "skill"
 reference = "acme:alpha-review"
+topologies = ["CURRENT"]
 
 [[capabilities]]
 id = "verification"
@@ -553,11 +574,12 @@ maximum_effects = ["read-project"]
 resources = ["project"]
 request_modes = ["BOUNDED", "WORKFLOW"]
 responsibilities = ["verification"]
-executor_topology = "main-agent-allowed"
+supported_topologies = ["CURRENT", "SUBAGENT"]
 delegation_allow_list = []
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "tool"
 reference = "acme:verify"
+topologies = ["CURRENT", "SUBAGENT"]
 `

@@ -7,9 +7,10 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
-const resolutionReportSchemaV2 = "oaw.provider-resolution-report/v2"
+const resolutionReportSchemaV3 = "oaw.provider-resolution-report/v3"
 
 type ProviderState string
 
@@ -25,9 +26,10 @@ const (
 )
 
 type VerifiedCapability struct {
-	ID                    string              `json:"id"`
-	Binding               catalog.HostBinding `json:"binding"`
-	BindingEvidenceDigest string              `json:"binding_evidence_digest"`
+	ID                    string               `json:"id"`
+	Binding               catalog.HostBinding  `json:"binding"`
+	SupportedTopologies   []execution.Topology `json:"supported_topologies"`
+	BindingEvidenceDigest string               `json:"binding_evidence_digest"`
 }
 
 type ProviderInstance struct {
@@ -92,7 +94,7 @@ func newResolutionReport(hostID string, values []ProviderResolution) (Resolution
 		SchemaVersion string               `json:"schema_version"`
 		HostID        string               `json:"host_id"`
 		Resolutions   []ProviderResolution `json:"resolutions"`
-	}{resolutionReportSchemaV2, hostID, resolutions}
+	}{resolutionReportSchemaV3, hostID, resolutions}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return ResolutionReport{}, err
@@ -127,6 +129,16 @@ func cloneCandidates(values []discovery.Candidate) []discovery.Candidate {
 }
 
 func cloneProviderInstance(value ProviderInstance) ProviderInstance {
-	value.Capabilities = append([]VerifiedCapability{}, value.Capabilities...)
+	capabilities := value.Capabilities
+	value.Capabilities = make([]VerifiedCapability, len(capabilities))
+	for index, capability := range capabilities {
+		value.Capabilities[index] = cloneVerifiedCapability(capability)
+	}
+	return value
+}
+
+func cloneVerifiedCapability(value VerifiedCapability) VerifiedCapability {
+	value.Binding.Topologies = append([]execution.Topology{}, value.Binding.Topologies...)
+	value.SupportedTopologies = append([]execution.Topology{}, value.SupportedTopologies...)
 	return value
 }

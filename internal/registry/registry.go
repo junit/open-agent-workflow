@@ -8,7 +8,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 )
 
-const effectiveRegistrySchemaV2 = "oaw.effective-registry/v2"
+const effectiveRegistrySchemaV3 = "oaw.effective-registry/v3"
 
 type Registry struct {
 	hostID        string
@@ -41,7 +41,7 @@ func (registry Registry) Capability(providerID, capabilityID string) (VerifiedCa
 	if index == len(capabilities) || capabilities[index].ID != capabilityID {
 		return VerifiedCapability{}, false
 	}
-	return capabilities[index], true
+	return cloneVerifiedCapability(capabilities[index]), true
 }
 
 func (registry Registry) Digest() string { return registry.digest }
@@ -71,7 +71,7 @@ func newRegistry(hostID string, values []ProviderInstance) (Registry, error) {
 		SchemaVersion string             `json:"schema_version"`
 		HostID        string             `json:"host_id"`
 		Providers     []ProviderInstance `json:"providers"`
-	}{effectiveRegistrySchemaV2, hostID, providers}
+	}{effectiveRegistrySchemaV3, hostID, providers}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return Registry{}, err
