@@ -68,7 +68,7 @@ func DecodeProvider(raw []byte, registry *schema.Registry) (Decoded[catalog.Prov
 	if err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, err
 	}
-	if err := registry.Validate(schema.ProviderDescriptorV2, encoded); err != nil {
+	if err := registry.Validate(schema.ProviderDescriptorV3, encoded); err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 	}
 	validated, err := catalog.DecodeProvider(encoded)
@@ -89,7 +89,7 @@ func DecodeRecipe(raw []byte, registry *schema.Registry) (Decoded[catalog.Profil
 	if err != nil {
 		return Decoded[catalog.ProfileRecipeRecord]{}, err
 	}
-	if err := registry.Validate(schema.ProfileRecipeV1, encoded); err != nil {
+	if err := registry.Validate(schema.ProfileRecipeV2, encoded); err != nil {
 		return Decoded[catalog.ProfileRecipeRecord]{}, fmt.Errorf("INVALID_PROFILE_RECIPE: %w", err)
 	}
 	validated, err := catalog.DecodeRecipe(encoded)

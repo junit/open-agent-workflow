@@ -2,6 +2,7 @@ package builtin
 
 import (
 	"io/fs"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
 
@@ -38,7 +40,7 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		if err := registry.Validate(schema.ProviderDescriptorV2, raw); err != nil {
+		if err := registry.Validate(schema.ProviderDescriptorV3, raw); err != nil {
 			t.Fatalf("schema validation for %s: %v", path, err)
 		}
 		record, err := catalog.DecodeProvider(raw)
@@ -46,7 +48,7 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 			t.Fatalf("DecodeProvider(%s): %v", path, err)
 		}
 		gotIDs = append(gotIDs, record.ID)
-		if record.DescriptorVersion != "2.0.0" {
+		if record.DescriptorVersion != "3.0.0" {
 			t.Errorf("%s descriptor version = %q", record.ID, record.DescriptorVersion)
 		}
 		var capabilityIDs []string
@@ -60,8 +62,8 @@ func TestBuiltInProviderDescriptors(t *testing.T) {
 					t.Errorf("%s/%s has invalid mode %q", record.ID, capability.ID, mode)
 				}
 			}
-			if capability.ExecutorTopology == catalog.MainAgentAllowed {
-				t.Errorf("%s/%s permits main-agent execution", record.ID, capability.ID)
+			if !slices.Equal(capability.SupportedTopologies, []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}) {
+				t.Errorf("%s/%s topologies = %#v", record.ID, capability.ID, capability.SupportedTopologies)
 			}
 			gitLocal := false
 			worktree := false
@@ -111,7 +113,7 @@ func TestBuiltInRecipesAndAliases(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)
 		}
-		if err := registry.Validate(schema.ProfileRecipeV1, raw); err != nil {
+		if err := registry.Validate(schema.ProfileRecipeV2, raw); err != nil {
 			t.Fatalf("schema validation for %s: %v", path, err)
 		}
 		recipe, err := catalog.DecodeRecipe(raw)
@@ -119,7 +121,7 @@ func TestBuiltInRecipesAndAliases(t *testing.T) {
 			t.Fatalf("DecodeRecipe(%s): %v", path, err)
 		}
 		gotRecipes = append(gotRecipes, recipe.ID)
-		if recipe.RecipeVersion != "1.0.0" || recipe.Entry == "" || len(recipe.TerminalGates) != 1 {
+		if recipe.RecipeVersion != "2.0.0" || recipe.Entry == "" || len(recipe.TerminalGates) != 1 {
 			t.Errorf("%s has incomplete lifecycle metadata", recipe.ID)
 		}
 		responsibilityCounts := make(map[string]int)
