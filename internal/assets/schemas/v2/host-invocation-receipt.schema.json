@@ -3,7 +3,7 @@
   "$id": "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "kind", "workflow_id", "bundle_generation", "bundle_digest", "node_id", "topology", "host_session_digest", "invocation_handle", "context_freshness", "environment_report_digest", "outcome", "failure_code", "evidence", "digest"],
+  "required": ["schema_version", "kind", "workflow_id", "bundle_generation", "bundle_digest", "node_id", "topology", "host_session_digest", "dispatch_digest", "invocation_handle", "context_freshness", "environment_report_digest", "outcome", "failure_code", "evidence", "digest"],
   "properties": {
     "schema_version": {"const": "oaw.host-invocation-receipt/v2"},
     "kind": {"enum": ["STARTED", "PAUSED", "COMPLETED", "FAILED", "CANCELLED"]},
@@ -13,6 +13,7 @@
     "node_id": {"$ref": "#/$defs/text"},
     "topology": {"enum": ["CURRENT", "SUBAGENT"]},
     "host_session_digest": {"$ref": "#/$defs/digest"},
+    "dispatch_digest": {"$ref": "#/$defs/digest"},
     "invocation_handle": {"type": "string", "maxLength": 1024},
     "context_freshness": {"enum": ["shared", "fresh"]},
     "environment_report_digest": {"$ref": "#/$defs/digest"},

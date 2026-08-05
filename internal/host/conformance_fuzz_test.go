@@ -29,7 +29,7 @@ func FuzzInvocationReceiptFailsClosed(f *testing.F) {
 			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptKind(kind),
 			WorkflowID: "workflow-1", BundleGeneration: generation, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 			Topology: execution.Topology(topology), HostSessionDigest: strings.Repeat("b", 64), InvocationHandle: handle,
-			ContextFreshness: freshness, EnvironmentReportDigest: strings.Repeat("c", 64), Outcome: outcome,
+			ContextFreshness: freshness, EnvironmentReportDigest: strings.Repeat("c", 64), DispatchDigest: strings.Repeat("d", 64), Outcome: outcome,
 			FailureCode: failureCode, Evidence: evidence,
 		}
 		first, firstErr := host.NewInvocationReceipt(input)
@@ -87,7 +87,7 @@ func FuzzConformanceTranscriptFailsClosed(f *testing.F) {
 			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
 			WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 			Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-			EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+			EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
 			Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("e", 64)}},
 		})
 		if err != nil {

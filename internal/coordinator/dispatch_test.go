@@ -46,7 +46,7 @@ func TestPrepareIssuesTopologyBoundGrantAndDispatchPacket(t *testing.T) {
 	}
 	if packet.WorkflowID != grant.WorkflowID || packet.RequestID != grant.RequestID || packet.BundleID != grant.BundleID || packet.BundleGeneration != grant.BundleGeneration ||
 		packet.BundleDigest != grant.BundleDigest || packet.NodeID != grant.NodeID || packet.Topology != grant.Topology || packet.HostSessionDigest != grant.HostSessionDigest ||
-		!reflect.DeepEqual(packet.Grant, grant) || packet.Digest == "" {
+		packet.EnvironmentReportDigest != start.Start.Environment.Digest || !reflect.DeepEqual(packet.Grant, grant) || packet.Digest == "" {
 		t.Fatalf("Dispatch Packet pins = %#v", packet)
 	}
 	raw, err := json.Marshal(packet)

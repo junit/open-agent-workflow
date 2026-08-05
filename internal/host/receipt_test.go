@@ -21,6 +21,7 @@ func TestNewInvocationReceiptPinsCurrentCompletion(t *testing.T) {
 		NodeID:                  "implementation",
 		Topology:                execution.TopologyCurrent,
 		HostSessionDigest:       strings.Repeat("b", 64),
+		DispatchDigest:          strings.Repeat("d", 64),
 		ContextFreshness:        host.ContextShared,
 		EnvironmentReportDigest: strings.Repeat("c", 64),
 		Outcome:                 "succeeded",
@@ -46,6 +47,7 @@ func TestNewInvocationReceiptRequiresSubagentHandleAndFreshContext(t *testing.T)
 		NodeID:                  "implementation",
 		Topology:                execution.TopologySubagent,
 		HostSessionDigest:       strings.Repeat("b", 64),
+		DispatchDigest:          strings.Repeat("d", 64),
 		InvocationHandle:        "child-invocation-1",
 		ContextFreshness:        host.ContextFresh,
 		EnvironmentReportDigest: strings.Repeat("c", 64),
@@ -78,6 +80,7 @@ func TestNewInvocationReceiptAcceptsClosedKinds(t *testing.T) {
 		NodeID:                  "implementation",
 		Topology:                execution.TopologyCurrent,
 		HostSessionDigest:       strings.Repeat("b", 64),
+		DispatchDigest:          strings.Repeat("d", 64),
 		ContextFreshness:        host.ContextShared,
 		EnvironmentReportDigest: strings.Repeat("c", 64),
 	}
@@ -115,6 +118,12 @@ func TestNewInvocationReceiptAcceptsClosedKinds(t *testing.T) {
 	if _, err := host.NewInvocationReceipt(unknown); host.ErrorCode(err) != "HOST_INVOCATION_RECEIPT_INVALID" {
 		t.Fatalf("NewInvocationReceipt(unknown) error = %v", err)
 	}
+	missingDispatch := base
+	missingDispatch.Kind = host.ReceiptStarted
+	missingDispatch.DispatchDigest = ""
+	if _, err := host.NewInvocationReceipt(missingDispatch); host.ErrorCode(err) != "HOST_INVOCATION_RECEIPT_INVALID" {
+		t.Fatalf("NewInvocationReceipt(missing dispatch pin) error = %v", err)
+	}
 }
 
 func TestNewInvocationReceiptRejectsOversizedEvidence(t *testing.T) {
@@ -128,6 +137,7 @@ func TestNewInvocationReceiptRejectsOversizedEvidence(t *testing.T) {
 		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
 		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 		Topology: execution.TopologyCurrent, HostSessionDigest: strings.Repeat("b", 64), ContextFreshness: host.ContextShared,
+		DispatchDigest:          strings.Repeat("d", 64),
 		EnvironmentReportDigest: strings.Repeat("c", 64), Outcome: "succeeded", Evidence: evidence,
 	})
 	if host.ErrorCode(err) != "HOST_INVOCATION_RECEIPT_INVALID" {

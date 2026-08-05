@@ -37,7 +37,7 @@ func CloneInvocationReceipt(value InvocationReceipt) InvocationReceipt {
 func validateInvocationReceipt(value InvocationReceipt) error {
 	if value.SchemaVersion != HostInvocationReceiptSchemaV2 ||
 		!validHostText(value.WorkflowID, 512) || value.BundleGeneration == 0 || !digestPattern.MatchString(value.BundleDigest) ||
-		!validHostText(value.NodeID, 512) || !digestPattern.MatchString(value.HostSessionDigest) ||
+		!validHostText(value.NodeID, 512) || !digestPattern.MatchString(value.HostSessionDigest) || !digestPattern.MatchString(value.DispatchDigest) ||
 		!digestPattern.MatchString(value.EnvironmentReportDigest) {
 		return hostError("HOST_INVOCATION_RECEIPT_INVALID", "invalid invocation receipt identity", nil)
 	}

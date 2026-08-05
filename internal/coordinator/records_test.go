@@ -18,7 +18,7 @@ func TestDecodeCommandAcceptsClosedCommandKinds(t *testing.T) {
 		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
 		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-		EnvironmentReportDigest: environment.Digest,
+		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("d", 64),
 	})
 	if err != nil {
 		t.Fatal(err)

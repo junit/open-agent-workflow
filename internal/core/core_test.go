@@ -394,7 +394,7 @@ path = "recipes/reliable-delivery.toml"
 		request: core.CompilationRequest{
 			DeliverableID: "core-contracts", InputDigest: strings.Repeat("1", 64), Generation: 1,
 			Classification: decision, Configuration: snapshot, Resolutions: resolved.Report, Registry: resolved.Registry,
-			HostID: "codex", HostSessionDigest: strings.Repeat("2", 64), HostProviderInventoryDigest: inventory.Digest,
+			HostID: "codex", HostSessionDigest: strings.Repeat("2", 64), HostEnvironmentReportDigest: strings.Repeat("3", 64), HostProviderInventoryDigest: inventory.Digest,
 			HostTopologies: dualTopologies(), EnvironmentObservations: []execution.EnvironmentObservation{},
 		},
 	}

@@ -56,7 +56,7 @@ func validateCompilationRequest(request CompilationRequest) ([]execution.Topolog
 	if _, err := catalog.ParseLocalID(request.HostID); err != nil {
 		return nil, nil, coreError("HOST_PROVIDER_SCOPE_MISMATCH", "invalid Host %q", request.HostID)
 	}
-	if !validDigest(request.HostSessionDigest) || !validDigest(request.HostProviderInventoryDigest) {
+	if !validDigest(request.HostSessionDigest) || !validDigest(request.HostEnvironmentReportDigest) || !validDigest(request.HostProviderInventoryDigest) {
 		return nil, nil, coreError("CORE_INPUT_INVALID", "Host snapshot digests are invalid")
 	}
 	if err := validateClassification(request.Classification); err != nil {
@@ -305,8 +305,9 @@ func compileBundle(request CompilationRequest, candidates []profileCandidate, ho
 	bundle := LifecycleBundle{
 		SchemaVersion: lifecycleBundleSchemaV3, DeliverableID: request.DeliverableID, InputDigest: request.InputDigest, Generation: request.Generation,
 		Classification: cloneClassification(request.Classification), ClassificationDigest: request.Classification.Digest(), Selection: selection,
-		HostID: request.HostID, HostSessionDigest: request.HostSessionDigest, ProviderInventoryDigest: request.HostProviderInventoryDigest,
-		Configuration: request.Configuration.Record(), ResolutionDigest: request.Resolutions.Digest(), RegistryDigest: request.Registry.Digest(),
+		HostID: request.HostID, HostSessionDigest: request.HostSessionDigest, EnvironmentReportDigest: request.HostEnvironmentReportDigest,
+		ProviderInventoryDigest: request.HostProviderInventoryDigest,
+		Configuration:           request.Configuration.Record(), ResolutionDigest: request.Resolutions.Digest(), RegistryDigest: request.Registry.Digest(),
 		ProviderInstances: append([]profile.GraphProviderInstance{}, graphRecord.ProviderInstances...), Graph: graphRecord, Topology: selection.Topology,
 		EnvironmentRequirements: cloneRequirements(graphRecord.EnvironmentRequirements), EnvironmentObservations: append([]execution.EnvironmentObservation{}, observations...),
 		AddOns: append([]string{}, selection.AddOns...),

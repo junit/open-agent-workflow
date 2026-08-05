@@ -38,7 +38,7 @@ func TestValidateConformanceTranscriptVerifiesNormalizedCurrentReceipt(t *testin
 		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
 		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-		EnvironmentReportDigest: report.Digest, Outcome: "succeeded",
+		EnvironmentReportDigest: report.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
 	})
 	if err != nil {
@@ -102,7 +102,7 @@ func TestValidateConformanceTranscriptRequiresPinnedSubagentEnvironment(t *testi
 		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
 		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 		Topology: execution.TopologySubagent, HostSessionDigest: session.Digest, InvocationHandle: "child-invocation-1",
-		ContextFreshness: host.ContextFresh, EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		ContextFreshness: host.ContextFresh, EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
 	})
 	if err != nil {
@@ -147,7 +147,7 @@ func TestValidateConformanceTranscriptVerifiesCanonicalControlReceipts(t *testin
 			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: kind,
 			WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 			Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-			EnvironmentReportDigest: environment.Digest, Outcome: outcome, Evidence: evidence,
+			EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: outcome, Evidence: evidence,
 		}
 		receipt, err := host.NewInvocationReceipt(value)
 		if err != nil {
@@ -190,7 +190,7 @@ func TestNewConformanceTranscriptRejectsOversizedCollections(t *testing.T) {
 		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
 		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-		EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
 	})
 	if err != nil {

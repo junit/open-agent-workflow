@@ -68,7 +68,7 @@ func TestRegistryValidatesHostNeutralGrantAndDispatchSchemas(t *testing.T) {
 	if err := registry.Validate(CapabilityGrantV2, grant); err != nil {
 		t.Fatalf("Validate(CapabilityGrantV2) error = %v", err)
 	}
-	packet := []byte(fmt.Sprintf(`{"schema_version":"oaw.dispatch-packet/v1","id":"dispatch-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","ticket":"","topology":"CURRENT","host_session_digest":"%s","grant":%s,"input_references":[],"evidence_requirements":[],"environment_requirements":[],"digest":"%s"}`, digest, digest, grant, digest))
+	packet := []byte(fmt.Sprintf(`{"schema_version":"oaw.dispatch-packet/v1","id":"dispatch-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","ticket":"","topology":"CURRENT","host_session_digest":"%s","environment_report_digest":"%s","grant":%s,"input_references":[],"evidence_requirements":[],"environment_requirements":[],"digest":"%s"}`, digest, digest, digest, grant, digest))
 	if err := registry.Validate(DispatchPacketV1, packet); err != nil {
 		t.Fatalf("Validate(DispatchPacketV1) error = %v", err)
 	}
@@ -180,7 +180,7 @@ func TestRegistryValidatesReceiptTranscriptAndReportV2(t *testing.T) {
 		t.Fatal(err)
 	}
 	digest := strings.Repeat("a", 64)
-	receipt := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-invocation-receipt/v2","kind":"COMPLETED","workflow_id":"workflow-1","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","topology":"CURRENT","host_session_digest":"%s","invocation_handle":"","context_freshness":"shared","environment_report_digest":"%s","outcome":"succeeded","failure_code":"","evidence":[{"kind":"report","reference":"evidence://report","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, digest, digest))
+	receipt := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-invocation-receipt/v2","kind":"COMPLETED","workflow_id":"workflow-1","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","topology":"CURRENT","host_session_digest":"%s","dispatch_digest":"%s","invocation_handle":"","context_freshness":"shared","environment_report_digest":"%s","outcome":"succeeded","failure_code":"","evidence":[{"kind":"report","reference":"evidence://report","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, digest, digest, digest))
 	if err := registry.Validate(HostInvocationReceiptV2, receipt); err != nil {
 		t.Fatalf("Validate(HostInvocationReceiptV2) error = %v", err)
 	}

@@ -88,8 +88,9 @@ func compilationRequestFromStart(options Options, decision classification.Classi
 	return core.CompilationRequest{
 		DeliverableID: input.DeliverableID, InputDigest: input.InputDigest, Generation: 1, Classification: decision,
 		Configuration: options.Configuration, Resolutions: options.Resolutions, Registry: options.Registry,
-		HostID: input.HostSession.HostID, HostSessionDigest: input.HostSession.Digest, HostProviderInventoryDigest: input.HostSession.ProviderInventoryDigest,
-		HostTopologies: append([]execution.Topology{}, input.HostSession.SupportedTopologies...), EnvironmentObservations: append([]execution.EnvironmentObservation{}, input.Environment.Observations...),
+		HostID: input.HostSession.HostID, HostSessionDigest: input.HostSession.Digest, HostEnvironmentReportDigest: input.Environment.Digest,
+		HostProviderInventoryDigest: input.HostSession.ProviderInventoryDigest,
+		HostTopologies:              append([]execution.Topology{}, input.HostSession.SupportedTopologies...), EnvironmentObservations: append([]execution.EnvironmentObservation{}, input.Environment.Observations...),
 		Selection: &selection,
 	}
 }
@@ -138,7 +139,8 @@ func verifyStartCompilation(request core.CompilationRequest, result core.Compila
 func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleBundle) error {
 	if bundle.SchemaVersion != lifecycleBundleSchemaV3 || !validText(bundle.ID, 512) || bundle.DeliverableID != request.DeliverableID ||
 		bundle.InputDigest != request.InputDigest || bundle.Generation != 1 || bundle.ClassificationDigest != request.Classification.Digest() ||
-		bundle.HostID != request.HostID || bundle.HostSessionDigest != request.HostSessionDigest || bundle.ProviderInventoryDigest != request.HostProviderInventoryDigest ||
+		bundle.HostID != request.HostID || bundle.HostSessionDigest != request.HostSessionDigest || bundle.EnvironmentReportDigest != request.HostEnvironmentReportDigest ||
+		bundle.ProviderInventoryDigest != request.HostProviderInventoryDigest ||
 		bundle.Topology != request.Selection.Topology || bundle.ResolutionDigest != request.Resolutions.Digest() || bundle.RegistryDigest != request.Registry.Digest() {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle does not match trusted START inputs", nil)
 	}

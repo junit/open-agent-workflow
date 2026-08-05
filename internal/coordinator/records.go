@@ -171,6 +171,7 @@ type DispatchPacket struct {
 	Ticket                  string                             `json:"ticket,omitempty"`
 	Topology                execution.Topology                 `json:"topology"`
 	HostSessionDigest       string                             `json:"host_session_digest"`
+	EnvironmentReportDigest string                             `json:"environment_report_digest"`
 	Grant                   admission.CapabilityGrant          `json:"grant"`
 	InputReferences         []ArtifactReference                `json:"input_references"`
 	EvidenceRequirements    []EvidenceRequirement              `json:"evidence_requirements"`
@@ -556,7 +557,7 @@ func validateResult(value Result) error {
 		if err != nil || value.Dispatch.RequestID != value.Snapshot.RequestID || value.Dispatch.BundleID != bundle.ID ||
 			value.Dispatch.BundleGeneration != bundle.Generation || value.Dispatch.BundleDigest != bundle.Digest ||
 			value.Dispatch.NodeID != value.Snapshot.ActiveNodeID || value.Dispatch.Ticket != value.Snapshot.ActiveTicket ||
-			value.Dispatch.Topology != bundle.Topology || value.Dispatch.HostSessionDigest != bundle.HostSessionDigest ||
+			value.Dispatch.Topology != bundle.Topology || value.Dispatch.HostSessionDigest != bundle.HostSessionDigest || value.Dispatch.EnvironmentReportDigest != bundle.EnvironmentReportDigest ||
 			!sameCanonicalValue(value.Dispatch.EnvironmentRequirements, bundle.EnvironmentRequirements) {
 			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet does not match active Workflow state", err)
 		}
@@ -582,7 +583,7 @@ func validateDispatchPacket(value DispatchPacket) error {
 	if value.SchemaVersion != DispatchPacketSchemaV1 || !validStableID("dispatch-", value.ID) || !validWorkflowID(value.WorkflowID) ||
 		!validText(value.RequestID, 512) || !validStableID("bundle-", value.BundleID) || value.BundleGeneration == 0 ||
 		!validDigest(value.BundleDigest) || !validText(value.NodeID, 512) ||
-		(value.Topology != execution.TopologyCurrent && value.Topology != execution.TopologySubagent) || !validDigest(value.HostSessionDigest) ||
+		(value.Topology != execution.TopologyCurrent && value.Topology != execution.TopologySubagent) || !validDigest(value.HostSessionDigest) || !validDigest(value.EnvironmentReportDigest) ||
 		!validDigest(value.Digest) {
 		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "invalid Dispatch Packet identity", nil)
 	}

@@ -3,7 +3,7 @@
   "$id": "https://open-agent-workflow.dev/schemas/v1/dispatch-packet.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "id", "workflow_id", "request_id", "bundle_id", "bundle_generation", "bundle_digest", "node_id", "topology", "host_session_digest", "grant", "input_references", "evidence_requirements", "environment_requirements", "digest"],
+  "required": ["schema_version", "id", "workflow_id", "request_id", "bundle_id", "bundle_generation", "bundle_digest", "node_id", "topology", "host_session_digest", "environment_report_digest", "grant", "input_references", "evidence_requirements", "environment_requirements", "digest"],
   "properties": {
     "schema_version": {"const": "oaw.dispatch-packet/v1"},
     "id": {"type": "string", "pattern": "^dispatch-[0-9a-f]{32}$"},
@@ -16,6 +16,7 @@
     "ticket": {"$ref": "#/$defs/optional_text"},
     "topology": {"enum": ["CURRENT", "SUBAGENT"]},
     "host_session_digest": {"$ref": "#/$defs/digest"},
+    "environment_report_digest": {"$ref": "#/$defs/digest"},
     "grant": {"$ref": "https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json"},
     "input_references": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/artifact_reference"}},
     "evidence_requirements": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/evidence_requirement"}},

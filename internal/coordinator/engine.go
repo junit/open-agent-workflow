@@ -96,6 +96,8 @@ func (engine *Engine) Exchange(command Command) (Result, error) {
 		return engine.inspect(normalized.WorkflowID)
 	case CommandPrepare:
 		return engine.prepare(normalized)
+	case CommandReceipt:
+		return engine.receipt(normalized)
 	default:
 		return Result{}, coordinatorError("WORKFLOW_COMMAND_UNSUPPORTED", "Workflow command is not implemented in this Coordinator transition", nil)
 	}

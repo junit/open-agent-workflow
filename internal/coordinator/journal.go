@@ -16,6 +16,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
 const (
@@ -378,7 +379,20 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Workflow Grant history", err)
 		}
 	}
-	if snapshot.Status == StatusReady && snapshot.ActiveGrant != nil || snapshot.Status == StatusPrepared && snapshot.ActiveGrant == nil {
+	receiptDigests := make(map[string]struct{}, len(snapshot.Receipts))
+	for _, receipt := range snapshot.Receipts {
+		normalized, err := host.NewInvocationReceipt(receipt)
+		if err != nil || !sameCanonicalValue(normalized, receipt) || receipt.WorkflowID != workflowID {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Host Receipt history", err)
+		}
+		if _, found := receiptDigests[receipt.Digest]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Host Receipt history", nil)
+		}
+		receiptDigests[receipt.Digest] = struct{}{}
+	}
+	inactive := snapshot.Status == StatusReady || snapshot.Status == StatusFinished || snapshot.Status == StatusCancelled
+	requiresActive := snapshot.Status == StatusPrepared || snapshot.Status == StatusInFlight
+	if inactive && snapshot.ActiveGrant != nil || requiresActive && snapshot.ActiveGrant == nil {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Workflow status does not match active Grant", nil)
 	}
 	if snapshot.ActiveGrant != nil {

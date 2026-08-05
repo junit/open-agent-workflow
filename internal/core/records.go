@@ -38,6 +38,7 @@ type CompilationRequest struct {
 	Registry                    registry.Registry
 	HostID                      string
 	HostSessionDigest           string
+	HostEnvironmentReportDigest string
 	HostProviderInventoryDigest string
 	HostTopologies              []execution.Topology
 	EnvironmentObservations     []execution.EnvironmentObservation
@@ -94,6 +95,7 @@ type LifecycleBundle struct {
 	Selection               Selection                             `json:"selection"`
 	HostID                  string                                `json:"host_id"`
 	HostSessionDigest       string                                `json:"host_session_digest"`
+	EnvironmentReportDigest string                                `json:"environment_report_digest"`
 	ProviderInventoryDigest string                                `json:"provider_inventory_digest"`
 	Configuration           config.SnapshotRecord                 `json:"configuration"`
 	ResolutionDigest        string                                `json:"resolution_digest"`

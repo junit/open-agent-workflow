@@ -120,6 +120,7 @@ type InvocationReceipt struct {
 	NodeID                  string              `json:"node_id"`
 	Topology                execution.Topology  `json:"topology"`
 	HostSessionDigest       string              `json:"host_session_digest"`
+	DispatchDigest          string              `json:"dispatch_digest"`
 	InvocationHandle        string              `json:"invocation_handle"`
 	ContextFreshness        string              `json:"context_freshness"`
 	EnvironmentReportDigest string              `json:"environment_report_digest"`
