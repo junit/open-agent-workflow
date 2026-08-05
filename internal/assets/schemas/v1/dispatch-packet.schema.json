@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v1/dispatch-packet.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "workflow_id", "request_id", "bundle_id", "bundle_generation", "bundle_digest", "node_id", "topology", "host_session_digest", "grant", "input_references", "evidence_requirements", "environment_requirements", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.dispatch-packet/v1"},
+    "id": {"type": "string", "pattern": "^dispatch-[0-9a-f]{32}$"},
+    "workflow_id": {"type": "string", "pattern": "^workflow-[0-9a-f]{32}$"},
+    "request_id": {"$ref": "#/$defs/text"},
+    "bundle_id": {"type": "string", "pattern": "^bundle-[0-9a-f]{32}$"},
+    "bundle_generation": {"type": "integer", "minimum": 1},
+    "bundle_digest": {"$ref": "#/$defs/digest"},
+    "node_id": {"$ref": "#/$defs/local_id"},
+    "ticket": {"$ref": "#/$defs/optional_text"},
+    "topology": {"enum": ["CURRENT", "SUBAGENT"]},
+    "host_session_digest": {"$ref": "#/$defs/digest"},
+    "grant": {"$ref": "https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json"},
+    "input_references": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/artifact_reference"}},
+    "evidence_requirements": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/evidence_requirement"}},
+    "environment_requirements": {"type": "array", "items": {"$ref": "#/$defs/environment_requirement"}},
+    "digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^\\S(?:.*\\S)?$"},
+    "optional_text": {"type": "string", "maxLength": 512, "pattern": "^(?:|\\S(?:.*\\S)?)$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "local_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "artifact_reference": {"type": "object", "additionalProperties": false, "required": ["kind", "reference", "digest"], "properties": {"kind": {"$ref": "#/$defs/text"}, "reference": {"$ref": "#/$defs/text"}, "digest": {"$ref": "#/$defs/digest"}}},
+    "evidence_requirement": {"type": "object", "additionalProperties": false, "required": ["kind", "minimum", "description"], "properties": {"kind": {"$ref": "#/$defs/text"}, "minimum": {"type": "integer", "minimum": 1}, "description": {"$ref": "#/$defs/text"}}},
+    "environment_requirement": {"type": "object", "additionalProperties": false, "required": ["surface", "required", "accepted_dispositions"], "properties": {"surface": {"$ref": "#/$defs/text"}, "required": {"type": "boolean"}, "accepted_dispositions": {"type": "array", "uniqueItems": true, "items": {"enum": ["inherited", "host-configured", "restricted", "unknown", "unavailable"]}}}}
+  }
+}

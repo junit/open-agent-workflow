@@ -16,8 +16,8 @@
     "active_generation": {"type": "integer", "minimum": 0},
     "active_node_id": {"$ref": "#/$defs/optional_text"},
     "active_ticket": {"$ref": "#/$defs/optional_text"},
-    "active_grant": {"anyOf": [{"$ref": "#/$defs/grant"}, {"type": "null"}]},
-    "grant_history": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/grant"}},
+    "active_grant": {"anyOf": [{"$ref": "https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json"}, {"type": "null"}]},
+    "grant_history": {"type": "array", "maxItems": 128, "items": {"$ref": "https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json"}},
     "receipts": {"type": "array", "maxItems": 256, "items": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json"}},
     "resource_leases": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/resource_lease"}},
     "last_stable_boundary": {"$ref": "#/$defs/optional_text"},
@@ -160,40 +160,6 @@
       "required": ["schema_version", "id", "deliverable_id", "input_digest", "generation", "classification", "classification_digest", "selection", "host_id", "host_session_digest", "provider_inventory_digest", "configuration", "resolution_digest", "registry_digest", "provider_instances", "execution_graph", "topology", "environment_requirements", "environment_observations", "add_ons", "digest"],
       "properties": {
         "schema_version": {"const": "oaw.lifecycle-bundle/v3"}, "id": {"$ref": "#/$defs/text"}, "deliverable_id": {"$ref": "#/$defs/text"}, "input_digest": {"$ref": "#/$defs/digest"}, "generation": {"type": "integer", "minimum": 1}, "classification": {"$ref": "#/$defs/classification"}, "classification_digest": {"$ref": "#/$defs/digest"}, "selection": {"$ref": "#/$defs/selection"}, "host_id": {"$ref": "#/$defs/text"}, "host_session_digest": {"$ref": "#/$defs/digest"}, "provider_inventory_digest": {"$ref": "#/$defs/digest"}, "configuration": {"$ref": "#/$defs/configuration"}, "resolution_digest": {"$ref": "#/$defs/digest"}, "registry_digest": {"$ref": "#/$defs/digest"}, "provider_instances": {"type": "array", "items": {"$ref": "#/$defs/provider_instance"}}, "execution_graph": {"$ref": "#/$defs/execution_graph"}, "topology": {"enum": ["CURRENT", "SUBAGENT"]}, "environment_requirements": {"type": "array", "items": {"$ref": "#/$defs/environment_requirement"}}, "environment_observations": {"type": "array", "items": {"$ref": "#/$defs/environment_observation"}}, "add_ons": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}}, "digest": {"$ref": "#/$defs/digest"}
-      }
-    },
-    "grant_binding": {
-      "type": "object", "additionalProperties": false,
-      "required": ["host", "kind", "reference", "topologies"],
-      "properties": {"host": {"$ref": "#/$defs/text"}, "kind": {"$ref": "#/$defs/text"}, "reference": {"$ref": "#/$defs/text"}, "topologies": {"type": "array", "uniqueItems": true, "items": {"enum": ["CURRENT", "SUBAGENT"]}}}
-    },
-    "executor": {
-      "type": "object", "additionalProperties": false,
-      "required": ["id", "kind"],
-      "properties": {"id": {"$ref": "#/$defs/text"}, "kind": {"enum": ["main-agent", "isolated"]}}
-    },
-    "grant": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema_version", "id", "invocation_id", "run_id", "request_id", "deliverable_id", "input_digest", "issued_revision", "generation", "provider_id", "provider_instance_digest", "descriptor_digest", "registry_digest", "catalog_digest", "capability_id", "binding", "executor", "effects", "resources", "termination_condition", "delegation_allow_list", "digest"],
-      "properties": {
-        "schema_version": {"const": "oaw.capability-grant/v1"}, "id": {"$ref": "#/$defs/text"}, "invocation_id": {"$ref": "#/$defs/text"}, "run_id": {"$ref": "#/$defs/text"}, "request_id": {"$ref": "#/$defs/text"}, "deliverable_id": {"$ref": "#/$defs/text"}, "input_digest": {"$ref": "#/$defs/digest"}, "issued_revision": {"type": "integer", "minimum": 1}, "generation": {"type": "integer", "minimum": 1}, "bundle_id": {"$ref": "#/$defs/optional_text"}, "node_id": {"$ref": "#/$defs/optional_text"}, "graph_digest": {"$ref": "#/$defs/optional_digest"}, "provider_id": {"$ref": "#/$defs/qualified_id"}, "provider_instance_digest": {"$ref": "#/$defs/digest"}, "descriptor_digest": {"$ref": "#/$defs/digest"}, "registry_digest": {"$ref": "#/$defs/digest"}, "catalog_digest": {"$ref": "#/$defs/digest"}, "capability_id": {"$ref": "#/$defs/local_id"}, "binding": {"$ref": "#/$defs/grant_binding"}, "executor": {"$ref": "#/$defs/executor"}, "effects": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}}, "resources": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/text"}}, "termination_condition": {"$ref": "#/$defs/text"}, "delegation_allow_list": {"type": "array", "uniqueItems": true, "items": {"$ref": "#/$defs/qualified_id"}}, "parent_grant_id": {"$ref": "#/$defs/optional_text"}, "digest": {"$ref": "#/$defs/digest"}
-      }
-    },
-    "artifact_reference": {
-      "type": "object", "additionalProperties": false,
-      "required": ["kind", "reference", "digest"],
-      "properties": {"kind": {"$ref": "#/$defs/text"}, "reference": {"$ref": "#/$defs/text"}, "digest": {"$ref": "#/$defs/digest"}}
-    },
-    "evidence_requirement": {
-      "type": "object", "additionalProperties": false,
-      "required": ["kind", "minimum", "description"],
-      "properties": {"kind": {"$ref": "#/$defs/text"}, "minimum": {"type": "integer", "minimum": 1}, "description": {"$ref": "#/$defs/text"}}
-    },
-    "dispatch": {
-      "type": "object", "additionalProperties": false,
-      "required": ["schema_version", "id", "workflow_id", "request_id", "bundle_id", "bundle_generation", "bundle_digest", "node_id", "topology", "host_session_digest", "grant", "input_references", "evidence_requirements", "environment_requirements", "digest"],
-      "properties": {
-        "schema_version": {"const": "oaw.dispatch-packet/v1"}, "id": {"$ref": "#/$defs/text"}, "workflow_id": {"$ref": "#/$defs/text"}, "request_id": {"$ref": "#/$defs/text"}, "bundle_id": {"$ref": "#/$defs/text"}, "bundle_generation": {"type": "integer", "minimum": 1}, "bundle_digest": {"$ref": "#/$defs/digest"}, "node_id": {"$ref": "#/$defs/text"}, "ticket": {"$ref": "#/$defs/optional_text"}, "topology": {"enum": ["CURRENT", "SUBAGENT"]}, "host_session_digest": {"$ref": "#/$defs/digest"}, "grant": {"$ref": "#/$defs/grant"}, "input_references": {"type": "array", "items": {"$ref": "#/$defs/artifact_reference"}}, "evidence_requirements": {"type": "array", "items": {"$ref": "#/$defs/evidence_requirement"}}, "environment_requirements": {"type": "array", "items": {"$ref": "#/$defs/environment_requirement"}}, "digest": {"$ref": "#/$defs/digest"}
       }
     },
     "resource_lease": {

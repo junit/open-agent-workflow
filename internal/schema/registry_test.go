@@ -58,6 +58,26 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	}
 }
 
+func TestRegistryValidatesHostNeutralGrantAndDispatchSchemas(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	grant := []byte(fmt.Sprintf(`{"schema_version":"oaw.capability-grant/v2","id":"grant-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","topology":"CURRENT","host_session_digest":"%s","provider_id":"oaw/superpowers","provider_instance_digest":"%s","capability_id":"implementation","binding":{"host":"codex","kind":"skill","reference":"superpowers:executing-plans","topologies":["CURRENT"]},"effects":["read-project"],"resources":["project"],"termination_condition":"complete","digest":"%s"}`, digest, digest, digest, digest))
+	if err := registry.Validate(CapabilityGrantV2, grant); err != nil {
+		t.Fatalf("Validate(CapabilityGrantV2) error = %v", err)
+	}
+	packet := []byte(fmt.Sprintf(`{"schema_version":"oaw.dispatch-packet/v1","id":"dispatch-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","ticket":"","topology":"CURRENT","host_session_digest":"%s","grant":%s,"input_references":[],"evidence_requirements":[],"environment_requirements":[],"digest":"%s"}`, digest, digest, grant, digest))
+	if err := registry.Validate(DispatchPacketV1, packet); err != nil {
+		t.Fatalf("Validate(DispatchPacketV1) error = %v", err)
+	}
+	withExecutor := []byte(strings.Replace(string(grant), `"effects":`, `"executor":{"id":"agent-1","kind":"isolated"},"effects":`, 1))
+	if err := registry.Validate(CapabilityGrantV2, withExecutor); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(Grant with executor) error = %v", err)
+	}
+}
+
 func TestRegistryUsesProviderV3AndRecipeV2Only(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {

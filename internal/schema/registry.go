@@ -27,6 +27,8 @@ const (
 	HostInvocationReceiptV2     = "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json"
 	HostConformanceTranscriptV2 = "https://open-agent-workflow.dev/schemas/v2/host-conformance-transcript.schema.json"
 	HostConformanceReportV2     = "https://open-agent-workflow.dev/schemas/v2/host-conformance-report.schema.json"
+	CapabilityGrantV2           = "https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json"
+	DispatchPacketV1            = "https://open-agent-workflow.dev/schemas/v1/dispatch-packet.schema.json"
 	WorkflowCommandV1           = "https://open-agent-workflow.dev/schemas/v1/workflow-command.schema.json"
 	WorkflowResultV1            = "https://open-agent-workflow.dev/schemas/v1/workflow-result.schema.json"
 	WorkflowSnapshotV1          = "https://open-agent-workflow.dev/schemas/v1/workflow-snapshot.schema.json"
@@ -59,6 +61,8 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v2/host-invocation-receipt.schema.json", HostInvocationReceiptV2},
 		{"schemas/v2/host-conformance-transcript.schema.json", HostConformanceTranscriptV2},
 		{"schemas/v2/host-conformance-report.schema.json", HostConformanceReportV2},
+		{"schemas/v2/capability-grant.schema.json", CapabilityGrantV2},
+		{"schemas/v1/dispatch-packet.schema.json", DispatchPacketV1},
 		{"schemas/v1/workflow-command.schema.json", WorkflowCommandV1},
 		{"schemas/v1/workflow-result.schema.json", WorkflowResultV1},
 		{"schemas/v1/workflow-snapshot.schema.json", WorkflowSnapshotV1},

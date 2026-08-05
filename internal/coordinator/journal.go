@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/gofrs/flock"
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
@@ -369,6 +370,22 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 			persisted && !validDigest(message.ResultDigest) || !persisted && message.ResultDigest != "" && !validDigest(message.ResultDigest) ||
 			index > 0 && snapshot.ProcessedMessages[index-1].IdempotencyKey >= message.IdempotencyKey {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid processed message collection", nil)
+		}
+	}
+	for index, grant := range snapshot.GrantHistory {
+		if err := admission.ValidateGrant(grant); err != nil || grant.WorkflowID != workflowID ||
+			index > 0 && snapshot.GrantHistory[index-1].ID == grant.ID {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Workflow Grant history", err)
+		}
+	}
+	if snapshot.Status == StatusReady && snapshot.ActiveGrant != nil || snapshot.Status == StatusPrepared && snapshot.ActiveGrant == nil {
+		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Workflow status does not match active Grant", nil)
+	}
+	if snapshot.ActiveGrant != nil {
+		if err := admission.ValidateGrant(*snapshot.ActiveGrant); err != nil || snapshot.ActiveGrant.WorkflowID != workflowID ||
+			snapshot.ActiveGrant.BundleGeneration != snapshot.ActiveGeneration || snapshot.ActiveGrant.NodeID != snapshot.ActiveNodeID ||
+			len(snapshot.GrantHistory) == 0 || !sameCanonicalValue(snapshot.GrantHistory[len(snapshot.GrantHistory)-1], *snapshot.ActiveGrant) {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Grant does not match Workflow state", err)
 		}
 	}
 	return nil

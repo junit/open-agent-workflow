@@ -537,10 +537,36 @@ func validateResult(value Result) error {
 		if value.Snapshot == nil || value.Dispatch != nil || !validResultIdentity(value) || value.Snapshot.WorkflowID != value.WorkflowID || value.Snapshot.Revision != value.Revision {
 			return coordinatorError("WORKFLOW_RESULT_INVALID", "invalid STATE Result", nil)
 		}
+		if err := validateSnapshot(*value.Snapshot, value.WorkflowID, value.Revision, false); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid STATE Result snapshot", err)
+		}
 	case ResultDispatch:
 		if value.Snapshot == nil || value.Dispatch == nil || !validResultIdentity(value) || value.Snapshot.WorkflowID != value.WorkflowID ||
 			value.Snapshot.Revision != value.Revision || value.Dispatch.WorkflowID != value.WorkflowID {
 			return coordinatorError("WORKFLOW_RESULT_INVALID", "invalid DISPATCH Result", nil)
+		}
+		if err := validateDispatchPacket(*value.Dispatch); err != nil {
+			return err
+		}
+		if value.Snapshot.Status != StatusPrepared || value.Snapshot.ActiveGrant == nil ||
+			!sameCanonicalValue(*value.Snapshot.ActiveGrant, value.Dispatch.Grant) {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "DISPATCH Result active Grant does not match Packet Grant", nil)
+		}
+		bundle, err := activeBundle(*value.Snapshot)
+		if err != nil || value.Dispatch.RequestID != value.Snapshot.RequestID || value.Dispatch.BundleID != bundle.ID ||
+			value.Dispatch.BundleGeneration != bundle.Generation || value.Dispatch.BundleDigest != bundle.Digest ||
+			value.Dispatch.NodeID != value.Snapshot.ActiveNodeID || value.Dispatch.Ticket != value.Snapshot.ActiveTicket ||
+			value.Dispatch.Topology != bundle.Topology || value.Dispatch.HostSessionDigest != bundle.HostSessionDigest ||
+			!sameCanonicalValue(value.Dispatch.EnvironmentRequirements, bundle.EnvironmentRequirements) {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet does not match active Workflow state", err)
+		}
+		node, found := graphNode(bundle.Graph, value.Snapshot.ActiveNodeID)
+		if !found || value.Dispatch.Grant.ProviderID != node.ProviderID || value.Dispatch.Grant.ProviderInstanceDigest != node.ProviderInstanceDigest ||
+			value.Dispatch.Grant.CapabilityID != node.CapabilityID || !sameCanonicalValue(value.Dispatch.Grant.Binding, node.Binding) {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet Grant does not match active graph node", nil)
+		}
+		if err := validateSnapshot(*value.Snapshot, value.WorkflowID, value.Revision, false); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid DISPATCH Result snapshot", err)
 		}
 	default:
 		return coordinatorError("WORKFLOW_RESULT_INVALID", "unknown Workflow Result kind", nil)
@@ -550,6 +576,75 @@ func validateResult(value Result) error {
 
 func validResultIdentity(value Result) bool {
 	return validText(value.WorkflowID, 512) && value.Revision > 0 && validDigest(value.RevisionDigest)
+}
+
+func validateDispatchPacket(value DispatchPacket) error {
+	if value.SchemaVersion != DispatchPacketSchemaV1 || !validStableID("dispatch-", value.ID) || !validWorkflowID(value.WorkflowID) ||
+		!validText(value.RequestID, 512) || !validStableID("bundle-", value.BundleID) || value.BundleGeneration == 0 ||
+		!validDigest(value.BundleDigest) || !validText(value.NodeID, 512) ||
+		(value.Topology != execution.TopologyCurrent && value.Topology != execution.TopologySubagent) || !validDigest(value.HostSessionDigest) ||
+		!validDigest(value.Digest) {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "invalid Dispatch Packet identity", nil)
+	}
+	if err := admission.ValidateGrant(value.Grant); err != nil {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet Grant is invalid", err)
+	}
+	if value.Grant.WorkflowID != value.WorkflowID || value.Grant.RequestID != value.RequestID || value.Grant.BundleID != value.BundleID || value.Grant.BundleGeneration != value.BundleGeneration ||
+		value.Grant.BundleDigest != value.BundleDigest || value.Grant.NodeID != value.NodeID || value.Grant.Topology != value.Topology ||
+		value.Grant.HostSessionDigest != value.HostSessionDigest {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet identity does not match Grant", nil)
+	}
+	if value.Ticket != "" && !validText(value.Ticket, 512) {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "invalid Dispatch Packet ticket", nil)
+	}
+	for index, reference := range value.InputReferences {
+		if !validText(reference.Kind, 128) || !validText(reference.Reference, 2048) || !validDigest(reference.Digest) ||
+			index > 0 && artifactReferenceKey(value.InputReferences[index-1]) >= artifactReferenceKey(reference) {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet input references are not canonical", nil)
+		}
+	}
+	for index, requirement := range value.EvidenceRequirements {
+		if !validText(requirement.Kind, 128) || requirement.Minimum == 0 || !validText(requirement.Description, 2048) ||
+			index > 0 && evidenceRequirementKey(value.EvidenceRequirements[index-1]) >= evidenceRequirementKey(requirement) {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet evidence requirements are not canonical", nil)
+		}
+	}
+	normalizedRequirements, err := execution.NormalizeRequirements(value.EnvironmentRequirements)
+	if err != nil || !sameCanonicalValue(normalizedRequirements, value.EnvironmentRequirements) {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet environment requirements are not canonical", err)
+	}
+	seed := value
+	seed.ID, seed.Digest = "", ""
+	digest, _, err := canonicaljson.Digest(seed)
+	if err != nil || value.ID != "dispatch-"+digest[:32] {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet ID does not match content", err)
+	}
+	unsigned := value
+	unsigned.Digest = ""
+	digest, _, err = canonicaljson.Digest(unsigned)
+	if err != nil || digest != value.Digest {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet digest does not match content", err)
+	}
+	return nil
+}
+
+func validStableID(prefix, value string) bool {
+	if len(value) != len(prefix)+32 || !strings.HasPrefix(value, prefix) {
+		return false
+	}
+	return validHex(value[len(prefix):])
+}
+
+func validHex(value string) bool {
+	if len(value) == 0 {
+		return false
+	}
+	for _, character := range value {
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 func cloneCommand(value Command) Command {

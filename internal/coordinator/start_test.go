@@ -250,7 +250,7 @@ func compiledStartTestBundle(request core.CompilationRequest) core.LifecycleBund
 	}
 	graph.Digest = graph.ContentDigest()
 	bundle := core.LifecycleBundle{
-		SchemaVersion: "oaw.lifecycle-bundle/v3", ID: "bundle-start-test", DeliverableID: request.DeliverableID, InputDigest: request.InputDigest,
+		SchemaVersion: "oaw.lifecycle-bundle/v3", ID: "bundle-0123456789abcdef0123456789abcdef", DeliverableID: request.DeliverableID, InputDigest: request.InputDigest,
 		Generation: request.Generation, Classification: request.Classification, ClassificationDigest: request.Classification.Digest(), Selection: *request.Selection,
 		HostID: request.HostID, HostSessionDigest: request.HostSessionDigest, ProviderInventoryDigest: request.HostProviderInventoryDigest,
 		Configuration: request.Configuration.Record(), ResolutionDigest: request.Resolutions.Digest(), RegistryDigest: request.Registry.Digest(),
