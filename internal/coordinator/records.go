@@ -444,7 +444,10 @@ func normalizeResult(value Result) (Result, error) {
 	if err := validateResult(value); err != nil {
 		return Result{}, err
 	}
-	digest, _, err := canonicaljson.Digest(value)
+	if err := validateResultProcessedMessagePin(value, providedDigest); err != nil {
+		return Result{}, err
+	}
+	digest, _, err := canonicaljson.Digest(resultDigestProjection(value))
 	if err != nil {
 		return Result{}, coordinatorError("WORKFLOW_RESULT_ENCODE_FAILED", "Workflow Result cannot be canonicalized", err)
 	}
@@ -453,6 +456,55 @@ func normalizeResult(value Result) (Result, error) {
 	}
 	value.Digest = digest
 	return value, nil
+}
+
+func resultDigestProjection(value Result) Result {
+	value.Digest = ""
+	if value.Snapshot != nil {
+		snapshot := *value.Snapshot
+		snapshot.ProcessedMessages = clearResultPinForRevision(snapshot.ProcessedMessages, value.Revision)
+		value.Snapshot = &snapshot
+	}
+	return value
+}
+
+func validateResultProcessedMessagePin(value Result, providedDigest string) error {
+	if value.Kind != ResultState && value.Kind != ResultDispatch {
+		return nil
+	}
+	message, found := processedMessageForRevision(value.Snapshot.ProcessedMessages, value.Revision)
+	if !found {
+		return coordinatorError("WORKFLOW_RESULT_INVALID", "Result snapshot is missing the current processed message", nil)
+	}
+	if providedDigest == "" && message.ResultDigest != "" || providedDigest != "" && message.ResultDigest != providedDigest {
+		return coordinatorError("WORKFLOW_RESULT_INVALID", "Result processed message digest does not pin the Result", nil)
+	}
+	return nil
+}
+
+func clearResultPinForRevision(values []ProcessedMessage, revision uint64) []ProcessedMessage {
+	result := append([]ProcessedMessage{}, values...)
+	for index := range result {
+		if result[index].Revision == revision {
+			result[index].ResultDigest = ""
+		}
+	}
+	return result
+}
+
+func setResultProcessedMessagePin(value *Result, digest string) bool {
+	if value == nil || value.Snapshot == nil {
+		return false
+	}
+	updated := false
+	value.Snapshot.ProcessedMessages = append([]ProcessedMessage{}, value.Snapshot.ProcessedMessages...)
+	for index := range value.Snapshot.ProcessedMessages {
+		if value.Snapshot.ProcessedMessages[index].Revision == value.Revision {
+			value.Snapshot.ProcessedMessages[index].ResultDigest = digest
+			updated = true
+		}
+	}
+	return updated
 }
 
 func validateResult(value Result) error {
