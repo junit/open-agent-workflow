@@ -8,13 +8,16 @@ import (
 
 func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 	want := map[string]string{
-		"schemas/v3/provider-descriptor.schema.json":  "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json",
-		"schemas/v3/user-config.schema.json":          "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json",
-		"schemas/v2/profile-recipe.schema.json":       "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json",
-		"schemas/v1/profile-alias-set.schema.json":    "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json",
-		"schemas/v2/host-manifest.schema.json":        "https://open-agent-workflow.dev/schemas/v2/host-manifest.schema.json",
-		"schemas/v2/host-integration.schema.json":     "https://open-agent-workflow.dev/schemas/v2/host-integration.schema.json",
-		"schemas/v2/host-integration-set.schema.json": "https://open-agent-workflow.dev/schemas/v2/host-integration-set.schema.json",
+		"schemas/v3/provider-descriptor.schema.json":         "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json",
+		"schemas/v3/user-config.schema.json":                 "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json",
+		"schemas/v2/profile-recipe.schema.json":              "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json",
+		"schemas/v1/profile-alias-set.schema.json":           "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json",
+		"schemas/v2/host-manifest.schema.json":               "https://open-agent-workflow.dev/schemas/v2/host-manifest.schema.json",
+		"schemas/v2/host-integration.schema.json":            "https://open-agent-workflow.dev/schemas/v2/host-integration.schema.json",
+		"schemas/v2/host-integration-set.schema.json":        "https://open-agent-workflow.dev/schemas/v2/host-integration-set.schema.json",
+		"schemas/v2/host-invocation-receipt.schema.json":     "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json",
+		"schemas/v2/host-conformance-transcript.schema.json": "https://open-agent-workflow.dev/schemas/v2/host-conformance-transcript.schema.json",
+		"schemas/v2/host-conformance-report.schema.json":     "https://open-agent-workflow.dev/schemas/v2/host-conformance-report.schema.json",
 	}
 	for path, id := range want {
 		data, err := fs.ReadFile(FS(), path)

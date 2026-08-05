@@ -154,6 +154,30 @@ func TestRegistryUsesHostBindingInventoryV2Only(t *testing.T) {
 	}
 }
 
+func TestRegistryValidatesReceiptTranscriptAndReportV2(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	receipt := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-invocation-receipt/v2","kind":"COMPLETED","workflow_id":"workflow-1","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","topology":"CURRENT","host_session_digest":"%s","invocation_handle":"","context_freshness":"shared","environment_report_digest":"%s","outcome":"succeeded","failure_code":"","evidence":[{"kind":"report","reference":"evidence://report","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, digest, digest))
+	if err := registry.Validate(HostInvocationReceiptV2, receipt); err != nil {
+		t.Fatalf("Validate(HostInvocationReceiptV2) error = %v", err)
+	}
+	transcript := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-transcript/v2","session":{"schema_version":"oaw.host-session/v2","host_id":"codex","integration_id":"acme/codex-host","integration_version":"2.0.0","session_id":"session-current","supported_topologies":["CURRENT"],"provider_inventory_digest":"%s","environment_report_digest":"%s","sandbox_policy_digest":"","approval_policy_digest":"","digest":"%s"},"inventory":{"schema_version":"oaw.host-binding-inventory/v2","host_id":"codex","observations":[],"digest":"%s"},"environment_reports":[{"schema_version":"oaw.host-environment-report/v2","session_id":"session-current","parent_session_id":"","topology":"CURRENT","observations":[],"digest":"%s"}],"receipts":[],"invocations":[],"digest":"%s"}`, digest, digest, digest, digest, digest, digest))
+	if err := registry.Validate(HostConformanceTranscriptV2, transcript); err != nil {
+		t.Fatalf("Validate(HostConformanceTranscriptV2) error = %v", err)
+	}
+	report := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-report/v2","manifest_digest":"%s","transcript_digest":"%s","verified_features":["normalized-receipts"],"diagnostics":[],"digest":"%s"}`, digest, digest, digest))
+	if err := registry.Validate(HostConformanceReportV2, report); err != nil {
+		t.Fatalf("Validate(HostConformanceReportV2) error = %v", err)
+	}
+	legacyReport := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-report/v1","suite_version":"oaw.host-conformance/v1","integration_id":"acme/codex-host","manifest_digest":"%s","checks":[],"transcript_digest":"%s","passed":true,"digest":"%s"}`, digest, digest, digest))
+	if err := registry.Validate(HostConformanceReportV2, legacyReport); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("Validate(legacy report) error = %v", err)
+	}
+}
+
 func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {

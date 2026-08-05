@@ -12,20 +12,23 @@ import (
 )
 
 const (
-	ProviderDescriptorV3     = "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json"
-	ProfileRecipeV2          = "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json"
-	ProfileAliasSetV1        = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
-	UserConfigV3             = "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json"
-	ProjectConfigV1          = "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json"
-	ClassificationProposalV1 = "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json"
-	HostManifestV2           = "https://open-agent-workflow.dev/schemas/v2/host-manifest.schema.json"
-	HostIntegrationV2        = "https://open-agent-workflow.dev/schemas/v2/host-integration.schema.json"
-	HostIntegrationSetV2     = "https://open-agent-workflow.dev/schemas/v2/host-integration-set.schema.json"
-	HostSessionV2            = "https://open-agent-workflow.dev/schemas/v2/host-session.schema.json"
-	HostEnvironmentReportV2  = "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"
-	HostBindingInventoryV2   = "https://open-agent-workflow.dev/schemas/v2/host-binding-inventory.schema.json"
-	RuntimeFrameV1           = "https://open-agent-workflow.dev/schemas/v1/runtime-frame.schema.json"
-	RuntimeReplyV1           = "https://open-agent-workflow.dev/schemas/v1/runtime-reply.schema.json"
+	ProviderDescriptorV3        = "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json"
+	ProfileRecipeV2             = "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json"
+	ProfileAliasSetV1           = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
+	UserConfigV3                = "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json"
+	ProjectConfigV1             = "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json"
+	ClassificationProposalV1    = "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json"
+	HostManifestV2              = "https://open-agent-workflow.dev/schemas/v2/host-manifest.schema.json"
+	HostIntegrationV2           = "https://open-agent-workflow.dev/schemas/v2/host-integration.schema.json"
+	HostIntegrationSetV2        = "https://open-agent-workflow.dev/schemas/v2/host-integration-set.schema.json"
+	HostSessionV2               = "https://open-agent-workflow.dev/schemas/v2/host-session.schema.json"
+	HostEnvironmentReportV2     = "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"
+	HostBindingInventoryV2      = "https://open-agent-workflow.dev/schemas/v2/host-binding-inventory.schema.json"
+	HostInvocationReceiptV2     = "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json"
+	HostConformanceTranscriptV2 = "https://open-agent-workflow.dev/schemas/v2/host-conformance-transcript.schema.json"
+	HostConformanceReportV2     = "https://open-agent-workflow.dev/schemas/v2/host-conformance-report.schema.json"
+	RuntimeFrameV1              = "https://open-agent-workflow.dev/schemas/v1/runtime-frame.schema.json"
+	RuntimeReplyV1              = "https://open-agent-workflow.dev/schemas/v1/runtime-reply.schema.json"
 )
 
 type Registry struct {
@@ -48,6 +51,9 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v2/host-session.schema.json", HostSessionV2},
 		{"schemas/v2/host-environment-report.schema.json", HostEnvironmentReportV2},
 		{"schemas/v2/host-binding-inventory.schema.json", HostBindingInventoryV2},
+		{"schemas/v2/host-invocation-receipt.schema.json", HostInvocationReceiptV2},
+		{"schemas/v2/host-conformance-transcript.schema.json", HostConformanceTranscriptV2},
+		{"schemas/v2/host-conformance-report.schema.json", HostConformanceReportV2},
 		{"schemas/v1/runtime-frame.schema.json", RuntimeFrameV1},
 		{"schemas/v1/runtime-reply.schema.json", RuntimeReplyV1},
 	}

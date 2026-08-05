@@ -2,85 +2,154 @@ package host_test
 
 import (
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func FuzzConformanceReceiptFailsClosed(f *testing.F) {
-	f.Add("execution", "evidence://host-conformance", "SUCCEEDED", "binding", "raw")
-	f.Add("", "\n", "INVENTED", "", "secret")
-	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV1, ManifestVersion: "1.0.0", HostID: "codex",
-		IntegrationLevel: host.RunnerManaged, Protocols: []string{host.RuntimeProtocolV1},
-		BindingKinds: []string{"skill"}, Features: []host.Feature{
-			host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn,
-			host.FeatureExactBindingInvocation, host.FeatureInvocationDedup,
-			host.FeatureIsolatedExecutor, host.FeatureNormalizedObservation, host.FeaturePause, host.FeatureProviderBindingInventory,
-		},
-	})
-	if err != nil {
-		f.Fatal(err)
-	}
-	f.Fuzz(func(t *testing.T, executionID, evidenceReference, outcome, bindingReference, rawValue string) {
-		for _, value := range []string{executionID, evidenceReference, outcome, bindingReference, rawValue} {
-			if len(value) > 4096 {
-				t.Skip()
+func FuzzInvocationReceiptFailsClosed(f *testing.F) {
+	f.Add("COMPLETED", "CURRENT", "shared", "", "succeeded", "", "report", "evidence://result", uint64(1), true)
+	f.Add("FAILED", "SUBAGENT", "fresh", "child-1", "failed", "BUILD_FAILED", "diagnostic", "evidence://failure", uint64(2), true)
+	f.Add("INVENTED", "CURRENT", "fresh", "child-1", "raw", "secret", "", "\n", uint64(0), false)
+
+	f.Fuzz(func(t *testing.T, kind, topology, freshness, handle, outcome, failureCode, evidenceKind, evidenceReference string, generation uint64, withEvidence bool) {
+		if len(kind)+len(topology)+len(freshness)+len(handle)+len(outcome)+len(failureCode)+len(evidenceKind)+len(evidenceReference) > 16<<10 {
+			t.Skip()
+		}
+		evidence := []host.EvidenceReference(nil)
+		if withEvidence {
+			evidence = []host.EvidenceReference{{
+				Kind: evidenceKind, Reference: evidenceReference, Digest: strings.Repeat("e", 64),
+			}}
+		}
+		input := host.InvocationReceipt{
+			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptKind(kind),
+			WorkflowID: "workflow-1", BundleGeneration: generation, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+			Topology: execution.Topology(topology), HostSessionDigest: strings.Repeat("b", 64), InvocationHandle: handle,
+			ContextFreshness: freshness, EnvironmentReportDigest: strings.Repeat("c", 64), Outcome: outcome,
+			FailureCode: failureCode, Evidence: evidence,
+		}
+		first, firstErr := host.NewInvocationReceipt(input)
+		second, secondErr := host.NewInvocationReceipt(input)
+		if hostErrorText(firstErr) != hostErrorText(secondErr) || !reflect.DeepEqual(first, second) {
+			t.Fatalf("receipt construction is nondeterministic: %#v/%v %#v/%v", first, firstErr, second, secondErr)
+		}
+		if firstErr != nil {
+			if host.ErrorCode(firstErr) != "HOST_INVOCATION_RECEIPT_INVALID" {
+				t.Fatalf("receipt failed open with unstable error: %v", firstErr)
+			}
+			return
+		}
+		if first.Digest == "" {
+			t.Fatal("accepted receipt lacks a digest")
+		}
+		switch first.Topology {
+		case execution.TopologyCurrent:
+			if first.ContextFreshness != host.ContextShared || first.InvocationHandle != "" {
+				t.Fatalf("accepted invalid CURRENT receipt: %#v", first)
+			}
+		case execution.TopologySubagent:
+			if first.ContextFreshness != host.ContextFresh || first.InvocationHandle == "" {
+				t.Fatalf("accepted invalid SUBAGENT receipt: %#v", first)
+			}
+		default:
+			t.Fatalf("accepted unknown topology %q", first.Topology)
+		}
+		roundTrip, err := host.NewInvocationReceipt(first)
+		if err != nil || !reflect.DeepEqual(roundTrip, first) {
+			t.Fatalf("accepted receipt is not canonical: %#v, %v", roundTrip, err)
+		}
+		if len(evidence) > 0 {
+			evidence[0].Reference = "changed"
+			if first.Evidence[0].Reference == "changed" {
+				t.Fatal("accepted receipt aliases caller evidence")
 			}
 		}
-		rawSecret := "raw-secret:" + rawValue
-		adapter := fuzzReceiptAdapter{
-			executionID: executionID, evidenceReference: evidenceReference,
-			outcome: host.FixtureOutcome(outcome), bindingReference: bindingReference, raw: rawSecret,
-		}
-		report, runErr := host.RunConformance("acme/fuzz-host", manifest, adapter)
-		if runErr != nil {
-			t.Fatalf("RunConformance() error = %v", runErr)
-		}
-		if _, validateErr := host.NewConformanceReport(report); validateErr != nil {
-			t.Fatalf("generated Report is invalid: %v", validateErr)
-		}
-		encoded, marshalErr := json.Marshal(report)
-		if marshalErr != nil {
-			t.Fatal(marshalErr)
-		}
-		if strings.Contains(string(encoded), rawSecret) {
-			t.Fatalf("Report leaked raw receipt: %s", encoded)
-		}
 	})
 }
 
-type fuzzReceiptAdapter struct {
-	executionID       string
-	evidenceReference string
-	outcome           host.FixtureOutcome
-	bindingReference  string
-	raw               string
+func FuzzConformanceTranscriptFailsClosed(f *testing.F) {
+	f.Add("dedup-key", strings.Repeat("8", 64), "", false)
+	f.Add("\n", "bad", strings.Repeat("0", 64), true)
+
+	f.Fuzz(func(t *testing.T, idempotencyKey, dispatchDigest, receiptDigest string, duplicate bool) {
+		if len(idempotencyKey)+len(dispatchDigest)+len(receiptDigest) > 16<<10 {
+			t.Skip()
+		}
+		manifest := hostNativeManifest(t, []host.Feature{
+			host.FeatureInvocationDedup, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory,
+		})
+		inventory, environment, session := currentHostFacts(t, manifest)
+		receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
+			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
+			WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+			Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
+			EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+			Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("e", 64)}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if receiptDigest == "" {
+			receiptDigest = receipt.Digest
+		}
+		invocations := []host.InvocationRecord{{
+			IdempotencyKey: idempotencyKey, DispatchDigest: dispatchDigest, ReceiptDigest: receiptDigest,
+		}}
+		if duplicate {
+			invocations = append(invocations, invocations[0])
+		}
+		input := host.ConformanceTranscript{
+			SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
+			EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt},
+			Invocations: invocations,
+		}
+		first, firstErr := host.NewConformanceTranscript(input)
+		second, secondErr := host.NewConformanceTranscript(input)
+		if hostErrorText(firstErr) != hostErrorText(secondErr) || !reflect.DeepEqual(first, second) {
+			t.Fatalf("transcript construction is nondeterministic: %#v/%v %#v/%v", first, firstErr, second, secondErr)
+		}
+		if firstErr != nil {
+			if host.ErrorCode(firstErr) != "HOST_CONFORMANCE_TRANSCRIPT_INVALID" {
+				t.Fatalf("transcript failed open with unstable error: %v", firstErr)
+			}
+			return
+		}
+		roundTrip, err := host.NewConformanceTranscript(first)
+		if err != nil || !reflect.DeepEqual(roundTrip, first) {
+			t.Fatalf("accepted transcript is not canonical: %#v, %v", roundTrip, err)
+		}
+		report, err := host.ValidateConformanceTranscript(manifest, first)
+		if err != nil || report.TranscriptDigest != first.Digest {
+			t.Fatalf("accepted transcript cannot be validated: %#v, %v", report, err)
+		}
+		assertTranscriptFieldBoundary(t, first)
+	})
 }
 
-func (adapter fuzzReceiptAdapter) CreateExecutor(request host.ExecutorFixtureRequest) (host.ExecutorFixtureReceipt, error) {
-	return conformingAdapter{}.CreateExecutor(request)
+func assertTranscriptFieldBoundary(t *testing.T, transcript host.ConformanceTranscript) {
+	t.Helper()
+	raw, err := json.Marshal(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"raw_output", "command", "credentials", "process"} {
+		if _, exists := value[forbidden]; exists {
+			t.Fatalf("transcript exposes forbidden field %q", forbidden)
+		}
+	}
 }
 
-func (adapter fuzzReceiptAdapter) Invoke(request host.InvocationFixtureRequest) (host.ObservationFixtureReceipt, error) {
-	receipt, err := conformingAdapter{}.Invoke(request)
-	receipt.ExecutionID = adapter.executionID
-	receipt.Evidence[0].Reference = adapter.evidenceReference
-	receipt.Outcome = adapter.outcome
-	receipt.Binding.Reference = adapter.bindingReference
-	receipt.RawOutput = adapter.raw
-	return receipt, err
-}
-
-func (fuzzReceiptAdapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
-	return conformingAdapter{}.ObserveProviderBindings(request)
-}
-
-func (adapter fuzzReceiptAdapter) Pause(request host.PauseFixtureRequest) (host.PauseFixtureReceipt, error) {
-	return conformingAdapter{}.Pause(request)
-}
-
-func (adapter fuzzReceiptAdapter) Cancel(request host.CancelFixtureRequest) (host.CancelFixtureReceipt, error) {
-	return conformingAdapter{}.Cancel(request)
+func hostErrorText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
 }

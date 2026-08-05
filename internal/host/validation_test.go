@@ -3,6 +3,7 @@ package host_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -258,23 +259,29 @@ func TestConformanceReportRejectsInvalidRecords(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.ConformanceReport)
+		code   string
 	}{
-		{"schema", func(value *host.ConformanceReport) { value.SchemaVersion = "oaw.host-conformance-report/v2" }},
-		{"suite", func(value *host.ConformanceReport) { value.SuiteVersion = "oaw.host-conformance/v2" }},
-		{"Integration ID", func(value *host.ConformanceReport) { value.IntegrationID = "Bad" }},
-		{"Manifest digest", func(value *host.ConformanceReport) { value.ManifestDigest = "bad" }},
-		{"transcript", func(value *host.ConformanceReport) { value.TranscriptDigest = "bad" }},
-		{"empty checks", func(value *host.ConformanceReport) { value.Checks = nil }},
-		{"unknown check", func(value *host.ConformanceReport) { value.Checks[0].ID = "invented" }},
-		{"check digest", func(value *host.ConformanceReport) { value.Checks[0].Evidence = "bad" }},
-		{"duplicate check", func(value *host.ConformanceReport) { value.Checks = append(value.Checks, value.Checks[0]) }},
-		{"result", func(value *host.ConformanceReport) { value.Checks[0].Passed = false }},
-		{"record digest", func(value *host.ConformanceReport) { value.Digest = strings.Repeat("0", 64) }},
+		{"schema", func(value *host.ConformanceReport) { value.SchemaVersion = "oaw.host-conformance-report/v1" }, "HOST_SCHEMA_UNSUPPORTED"},
+		{"Manifest digest", func(value *host.ConformanceReport) { value.ManifestDigest = "bad" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"transcript", func(value *host.ConformanceReport) { value.TranscriptDigest = "bad" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"unknown feature", func(value *host.ConformanceReport) { value.VerifiedFeatures[0] = "invented" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"duplicate feature", func(value *host.ConformanceReport) {
+			value.VerifiedFeatures = append(value.VerifiedFeatures, value.VerifiedFeatures[0])
+		}, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"invalid diagnostic", func(value *host.ConformanceReport) { value.Diagnostics = []string{"bad\nsecret"} }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"duplicate diagnostic", func(value *host.ConformanceReport) { value.Diagnostics = []string{"missing", "missing"} }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"too many diagnostics", func(value *host.ConformanceReport) {
+			value.Diagnostics = make([]string, 33)
+			for index := range value.Diagnostics {
+				value.Diagnostics[index] = fmt.Sprintf("missing evidence %02d", index)
+			}
+		}, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"record digest", func(value *host.ConformanceReport) { value.Digest = strings.Repeat("0", 64) }, "HOST_CONFORMANCE_INVALID"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			value := host.CloneConformanceReport(base)
 			test.mutate(&value)
-			if _, err := host.NewConformanceReport(value); host.ErrorCode(err) != "HOST_CONFORMANCE_INVALID" {
+			if _, err := host.NewConformanceReport(value); host.ErrorCode(err) != test.code {
 				t.Fatalf("NewConformanceReport() error = %v", err)
 			}
 		})
@@ -286,32 +293,35 @@ func TestIntegrationRejectsInvalidRecords(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.IntegrationRecord)
+		code   string
 	}{
-		{"schema", func(value *host.IntegrationRecord) { value.SchemaVersion = "oaw.host-integration/v2" }},
-		{"version", func(value *host.IntegrationRecord) { value.IntegrationVersion = "latest" }},
-		{"ID", func(value *host.IntegrationRecord) { value.ID = "Bad" }},
-		{"Manifest", func(value *host.IntegrationRecord) { value.Manifest.SchemaVersion = "bad" }},
-		{"Manifest digest", func(value *host.IntegrationRecord) { value.ManifestDigest = strings.Repeat("0", 64) }},
-		{"audit", func(value *host.IntegrationRecord) { value.Audit.Status = "invented" }},
-		{"report", func(value *host.IntegrationRecord) { value.Conformance.Digest = strings.Repeat("0", 64) }},
-		{"pending", func(value *host.IntegrationRecord) { value.Audit = pendingAudit(t) }},
-		{"missing report", func(value *host.IntegrationRecord) { value.Conformance = nil }},
-		{"failed report", func(value *host.IntegrationRecord) { value.Conformance = failedReport(t, *value.Conformance) }},
-		{"report ID", func(value *host.IntegrationRecord) {
-			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.IntegrationID = "acme/other" })
-		}},
+		{"schema", func(value *host.IntegrationRecord) { value.SchemaVersion = "oaw.host-integration/v1" }, "HOST_SCHEMA_UNSUPPORTED"},
+		{"version", func(value *host.IntegrationRecord) { value.IntegrationVersion = "latest" }, "HOST_INTEGRATION_INVALID"},
+		{"ID", func(value *host.IntegrationRecord) { value.ID = "Bad" }, "HOST_INTEGRATION_INVALID"},
+		{"Manifest", func(value *host.IntegrationRecord) { value.Manifest.SchemaVersion = "oaw.host-manifest/v1" }, "HOST_SCHEMA_UNSUPPORTED"},
+		{"Manifest digest", func(value *host.IntegrationRecord) { value.ManifestDigest = strings.Repeat("0", 64) }, "HOST_INTEGRATION_INVALID"},
+		{"audit", func(value *host.IntegrationRecord) { value.Audit.Status = "invented" }, "HOST_INTEGRATION_INVALID"},
+		{"report schema", func(value *host.IntegrationRecord) {
+			value.Conformance.SchemaVersion = "oaw.host-conformance-report/v1"
+		}, "HOST_SCHEMA_UNSUPPORTED"},
+		{"report", func(value *host.IntegrationRecord) { value.Conformance.Digest = strings.Repeat("0", 64) }, "HOST_INTEGRATION_INVALID"},
+		{"pending", func(value *host.IntegrationRecord) { value.Audit = pendingAudit(t) }, "HOST_INTEGRATION_INVALID"},
+		{"missing report", func(value *host.IntegrationRecord) { value.Conformance = nil }, "HOST_INTEGRATION_INVALID"},
+		{"diagnostic report", func(value *host.IntegrationRecord) {
+			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.Diagnostics = []string{"missing evidence"} })
+		}, "HOST_INTEGRATION_INVALID"},
 		{"report Manifest", func(value *host.IntegrationRecord) {
 			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.ManifestDigest = strings.Repeat("0", 64) })
-		}},
-		{"report checks", func(value *host.IntegrationRecord) {
-			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.Checks = report.Checks[1:] })
-		}},
-		{"record digest", func(value *host.IntegrationRecord) { value.Digest = strings.Repeat("0", 64) }},
+		}, "HOST_INTEGRATION_INVALID"},
+		{"report features", func(value *host.IntegrationRecord) {
+			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.VerifiedFeatures = report.VerifiedFeatures[1:] })
+		}, "HOST_INTEGRATION_INVALID"},
+		{"record digest", func(value *host.IntegrationRecord) { value.Digest = strings.Repeat("0", 64) }, "HOST_INTEGRATION_INVALID"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			value := host.CloneIntegration(base)
 			test.mutate(&value)
-			if _, err := host.NewIntegration(value); host.ErrorCode(err) != "HOST_INTEGRATION_INVALID" {
+			if _, err := host.NewIntegration(value); host.ErrorCode(err) != test.code {
 				t.Fatalf("NewIntegration() error = %v", err)
 			}
 		})
@@ -376,19 +386,6 @@ func pendingAudit(t *testing.T) host.AuditEvidence {
 		t.Fatal(err)
 	}
 	return value
-}
-
-func failedReport(t *testing.T, value host.ConformanceReport) *host.ConformanceReport {
-	t.Helper()
-	value = host.CloneConformanceReport(value)
-	value.Digest = ""
-	value.Checks[0].Passed = false
-	value.Passed = false
-	report, err := host.NewConformanceReport(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &report
 }
 
 func rebuiltReport(t *testing.T, value host.ConformanceReport, mutate func(*host.ConformanceReport)) *host.ConformanceReport {

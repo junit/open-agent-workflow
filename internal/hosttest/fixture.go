@@ -10,6 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
@@ -33,17 +34,17 @@ func WriteManagedConfiguration(t testing.TB, userRoot, extra string) host.Integr
 	if err := toml.NewEncoder(&encoded).Encode(integration); err != nil {
 		t.Fatal(err)
 	}
-	integrationPath := filepath.Join(userRoot, "integrations", "codex-runtime.toml")
+	integrationPath := filepath.Join(userRoot, "integrations", "codex-host.toml")
 	if err := os.MkdirAll(filepath.Dir(integrationPath), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(integrationPath, encoded.Bytes(), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	configuration := "schema_version = \"oaw.user-config/v2\"\n" +
+	configuration := "schema_version = \"oaw.user-config/v3\"\n" +
 		"[[host_integrations]]\n" +
 		"id = \"" + ManagedIntegrationID + "\"\n" +
-		"path = \"integrations/codex-runtime.toml\"\n" +
+		"path = \"integrations/codex-host.toml\"\n" +
 		"replace = false\n" + extra
 	if err := os.WriteFile(filepath.Join(userRoot, "config.toml"), []byte(configuration), 0o600); err != nil {
 		t.Fatal(err)
@@ -54,14 +55,13 @@ func WriteManagedConfiguration(t testing.TB, userRoot, extra string) host.Integr
 func ManagedIntegration(t testing.TB) host.IntegrationRecord {
 	t.Helper()
 	features := []host.Feature{
-		host.FeatureBundleInheritance, host.FeatureCancellation, host.FeatureEvidenceReturn,
-		host.FeatureExactBindingInvocation, host.FeatureInvocationDedup, host.FeatureIsolatedExecutor,
-		host.FeatureNormalizedObservation, host.FeaturePause, host.FeatureProviderBindingInventory,
+		host.FeatureCancellation, host.FeatureInvocationDedup, host.FeatureNormalizedReceipts,
+		host.FeaturePause, host.FeatureProviderBindingInventory,
 	}
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV1, ManifestVersion: "1.0.0", HostID: "codex",
-		IntegrationLevel: host.RunnerManaged, Protocols: []string{host.RuntimeProtocolV1},
-		BindingKinds: []string{"agent", "skill", "tool"}, Features: features,
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
+		BindingKinds: []string{"agent", "skill", "tool"}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: features,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -70,20 +70,15 @@ func ManagedIntegration(t testing.TB) host.IntegrationRecord {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks := make([]host.ConformanceCheck, len(features))
-	for index, feature := range features {
-		checks[index] = host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789"[index]), 64)}
-	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion: host.ConformanceReportSchemaV1, SuiteVersion: host.ConformanceSuiteV1,
-		IntegrationID: ManagedIntegrationID, ManifestDigest: manifest.ContentDigest(), Checks: checks,
-		TranscriptDigest: strings.Repeat("f", 64), Passed: true,
+		SchemaVersion: host.HostConformanceReportSchemaV2, ManifestDigest: manifest.ContentDigest(),
+		TranscriptDigest: strings.Repeat("f", 64), VerifiedFeatures: manifest.Features,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV1, IntegrationVersion: "1.0.0", ID: ManagedIntegrationID,
+		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: ManagedIntegrationID,
 		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
 	})
 	if err != nil {

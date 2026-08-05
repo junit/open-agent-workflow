@@ -27,15 +27,6 @@ var hostNativeFeatures = []Feature{
 
 var knownFeatures = append([]Feature{}, hostNativeFeatures...)
 
-var knownChecks = []CheckID{
-	CheckCancellation,
-	CheckID(FeatureEnvironmentReporting),
-	CheckInvocationDedup,
-	CheckID(FeatureNormalizedReceipts),
-	CheckPause,
-	CheckProviderBindingInventory,
-}
-
 func NewManifest(value Manifest) (Manifest, error) {
 	value = CloneManifest(value)
 	if value.SchemaVersion != HostManifestSchemaV2 {
@@ -159,24 +150,24 @@ func validateAuditEvidence(value AuditEvidence) error {
 }
 
 func validateConformanceReport(value ConformanceReport) error {
-	if value.SchemaVersion != ConformanceReportSchemaV1 || value.SuiteVersion != ConformanceSuiteV1 {
-		return hostError("HOST_CONFORMANCE_INVALID", "unsupported Conformance Report schema or suite", nil)
+	if value.SchemaVersion != HostConformanceReportSchemaV2 {
+		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Conformance Report schema", nil)
 	}
-	if _, err := catalog.ParseQualifiedID(value.IntegrationID); err != nil {
-		return hostError("HOST_CONFORMANCE_INVALID", "invalid Integration ID", err)
+	if !digestPattern.MatchString(value.ManifestDigest) || !digestPattern.MatchString(value.TranscriptDigest) {
+		return hostError("HOST_CONFORMANCE_REPORT_INVALID", "missing Conformance Report identity", nil)
 	}
-	if !digestPattern.MatchString(value.ManifestDigest) || !digestPattern.MatchString(value.TranscriptDigest) || len(value.Checks) == 0 {
-		return hostError("HOST_CONFORMANCE_INVALID", "missing Conformance identity", nil)
+	if len(value.Diagnostics) > 32 {
+		return hostError("HOST_CONFORMANCE_REPORT_INVALID", "Conformance Report has too many diagnostics", nil)
 	}
-	allPassed := true
-	for index, check := range value.Checks {
-		if !slices.Contains(knownChecks, check.ID) || !digestPattern.MatchString(check.Evidence) || index > 0 && value.Checks[index-1].ID == check.ID {
-			return hostError("HOST_CONFORMANCE_INVALID", "unknown, duplicate, or unpinned check", nil)
+	for index, feature := range value.VerifiedFeatures {
+		if !slices.Contains(knownFeatures, feature) || index > 0 && value.VerifiedFeatures[index-1] == feature {
+			return hostError("HOST_CONFORMANCE_REPORT_INVALID", "unknown or duplicate verified feature", nil)
 		}
-		allPassed = allPassed && check.Passed
 	}
-	if value.Passed != allPassed {
-		return hostError("HOST_CONFORMANCE_INVALID", "Report result does not match checks", nil)
+	for index, diagnostic := range value.Diagnostics {
+		if !validHostText(diagnostic, 2048) || index > 0 && value.Diagnostics[index-1] == diagnostic {
+			return hostError("HOST_CONFORMANCE_REPORT_INVALID", "invalid or duplicate diagnostic", nil)
+		}
 	}
 	return nil
 }
@@ -197,23 +188,14 @@ func validateIntegration(value IntegrationRecord) error {
 			return hostError("HOST_INTEGRATION_INVALID", "policy Integration claims Host-native proof", nil)
 		}
 	case SurfaceHostNative:
-		if value.Audit.Status != AuditPassed || value.Conformance == nil || !value.Conformance.Passed {
+		if value.Audit.Status != AuditPassed || value.Conformance == nil || len(value.Conformance.Diagnostics) != 0 {
 			return hostError("HOST_INTEGRATION_INVALID", "host-native Integration lacks passed audit or Conformance", nil)
 		}
-		if value.Conformance.IntegrationID != value.ID || value.Conformance.ManifestDigest != value.ManifestDigest {
+		if value.Conformance.ManifestDigest != value.ManifestDigest {
 			return hostError("HOST_INTEGRATION_INVALID", "Conformance identity mismatch", nil)
 		}
-		expected := make([]CheckID, 0, len(value.Manifest.Features))
-		for _, feature := range value.Manifest.Features {
-			expected = append(expected, CheckID(feature))
-		}
-		sort.Slice(expected, func(left, right int) bool { return expected[left] < expected[right] })
-		actual := make([]CheckID, len(value.Conformance.Checks))
-		for index, check := range value.Conformance.Checks {
-			actual[index] = check.ID
-		}
-		if !slices.Equal(expected, actual) {
-			return hostError("HOST_INTEGRATION_INVALID", "Conformance checks do not match Manifest Features", nil)
+		if !slices.Equal(value.Manifest.Features, value.Conformance.VerifiedFeatures) {
+			return hostError("HOST_INTEGRATION_INVALID", "Conformance features do not match Manifest Features", nil)
 		}
 	default:
 		return hostError("HOST_INTEGRATION_INVALID", "unknown control surface", nil)

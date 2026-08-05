@@ -10,16 +10,19 @@ import (
 )
 
 const (
-	HostManifestSchemaV1          = "oaw.host-manifest/v1"
-	HostIntegrationSchemaV1       = "oaw.host-integration/v1"
-	HostManifestSchemaV2          = "oaw.host-manifest/v2"
-	HostIntegrationSchemaV2       = "oaw.host-integration/v2"
-	HostSessionSchemaV2           = "oaw.host-session/v2"
-	HostEnvironmentReportSchemaV2 = "oaw.host-environment-report/v2"
-	ConformanceReportSchemaV1     = "oaw.host-conformance-report/v1"
-	ConformanceSuiteV1            = "oaw.host-conformance/v1"
-	RuntimeProtocolV1             = "oaw.runtime/v1"
-	WorkflowProtocolV1            = "oaw.workflow/v1"
+	HostManifestSchemaV1              = "oaw.host-manifest/v1"
+	HostIntegrationSchemaV1           = "oaw.host-integration/v1"
+	HostManifestSchemaV2              = "oaw.host-manifest/v2"
+	HostIntegrationSchemaV2           = "oaw.host-integration/v2"
+	HostSessionSchemaV2               = "oaw.host-session/v2"
+	HostEnvironmentReportSchemaV2     = "oaw.host-environment-report/v2"
+	HostInvocationReceiptSchemaV2     = "oaw.host-invocation-receipt/v2"
+	HostConformanceTranscriptSchemaV2 = "oaw.host-conformance-transcript/v2"
+	HostConformanceReportSchemaV2     = "oaw.host-conformance-report/v2"
+	ConformanceReportSchemaV1         = "oaw.host-conformance-report/v1"
+	ConformanceSuiteV1                = "oaw.host-conformance/v1"
+	RuntimeProtocolV1                 = "oaw.runtime/v1"
+	WorkflowProtocolV1                = "oaw.workflow/v1"
 )
 
 type IntegrationLevel string
@@ -89,6 +92,59 @@ type EnvironmentReport struct {
 	Digest          string                             `json:"digest"`
 }
 
+type ReceiptKind string
+
+const (
+	ReceiptStarted   ReceiptKind = "STARTED"
+	ReceiptPaused    ReceiptKind = "PAUSED"
+	ReceiptCompleted ReceiptKind = "COMPLETED"
+	ReceiptFailed    ReceiptKind = "FAILED"
+	ReceiptCancelled ReceiptKind = "CANCELLED"
+
+	ContextShared = "shared"
+	ContextFresh  = "fresh"
+)
+
+type EvidenceReference struct {
+	Kind      string `json:"kind"`
+	Reference string `json:"reference"`
+	Digest    string `json:"digest"`
+}
+
+type InvocationReceipt struct {
+	SchemaVersion           string              `json:"schema_version"`
+	Kind                    ReceiptKind         `json:"kind"`
+	WorkflowID              string              `json:"workflow_id"`
+	BundleGeneration        uint64              `json:"bundle_generation"`
+	BundleDigest            string              `json:"bundle_digest"`
+	NodeID                  string              `json:"node_id"`
+	Topology                execution.Topology  `json:"topology"`
+	HostSessionDigest       string              `json:"host_session_digest"`
+	InvocationHandle        string              `json:"invocation_handle"`
+	ContextFreshness        string              `json:"context_freshness"`
+	EnvironmentReportDigest string              `json:"environment_report_digest"`
+	Outcome                 string              `json:"outcome"`
+	FailureCode             string              `json:"failure_code"`
+	Evidence                []EvidenceReference `json:"evidence"`
+	Digest                  string              `json:"digest"`
+}
+
+type InvocationRecord struct {
+	IdempotencyKey string `json:"idempotency_key"`
+	DispatchDigest string `json:"dispatch_digest"`
+	ReceiptDigest  string `json:"receipt_digest"`
+}
+
+type ConformanceTranscript struct {
+	SchemaVersion      string              `json:"schema_version"`
+	Session            SessionSnapshot     `json:"session"`
+	Inventory          BindingInventory    `json:"inventory"`
+	EnvironmentReports []EnvironmentReport `json:"environment_reports"`
+	Receipts           []InvocationReceipt `json:"receipts"`
+	Invocations        []InvocationRecord  `json:"invocations"`
+	Digest             string              `json:"digest"`
+}
+
 type AuditStatus string
 
 const (
@@ -107,36 +163,13 @@ type AuditEvidence struct {
 	Digest     string                   `json:"digest" toml:"digest"`
 }
 
-type CheckID string
-
-const (
-	CheckIsolatedExecutor         CheckID = "isolated-executor"
-	CheckExactBindingInvocation   CheckID = "exact-binding-invocation"
-	CheckPause                    CheckID = "pause"
-	CheckBundleInheritance        CheckID = "bundle-inheritance"
-	CheckEvidenceReturn           CheckID = "evidence-return"
-	CheckInvocationDedup          CheckID = "invocation-deduplication"
-	CheckCancellation             CheckID = "cancellation"
-	CheckNormalizedObservation    CheckID = "normalized-observation"
-	CheckProviderBindingInventory CheckID = "provider-binding-inventory"
-	CheckNativeInvocation         CheckID = "native-invocation"
-)
-
-type ConformanceCheck struct {
-	ID       CheckID `json:"id" toml:"id"`
-	Passed   bool    `json:"passed" toml:"passed"`
-	Evidence string  `json:"evidence" toml:"evidence"`
-}
-
 type ConformanceReport struct {
-	SchemaVersion    string             `json:"schema_version" toml:"schema_version"`
-	SuiteVersion     string             `json:"suite_version" toml:"suite_version"`
-	IntegrationID    string             `json:"integration_id" toml:"integration_id"`
-	ManifestDigest   string             `json:"manifest_digest" toml:"manifest_digest"`
-	Checks           []ConformanceCheck `json:"checks" toml:"checks"`
-	TranscriptDigest string             `json:"transcript_digest" toml:"transcript_digest"`
-	Passed           bool               `json:"passed" toml:"passed"`
-	Digest           string             `json:"digest" toml:"digest"`
+	SchemaVersion    string    `json:"schema_version" toml:"schema_version"`
+	ManifestDigest   string    `json:"manifest_digest" toml:"manifest_digest"`
+	TranscriptDigest string    `json:"transcript_digest" toml:"transcript_digest"`
+	VerifiedFeatures []Feature `json:"verified_features" toml:"verified_features"`
+	Diagnostics      []string  `json:"diagnostics" toml:"diagnostics"`
+	Digest           string    `json:"digest" toml:"digest"`
 }
 
 type IntegrationRecord struct {
@@ -238,8 +271,10 @@ func CloneAuditEvidence(value AuditEvidence) AuditEvidence {
 func NewConformanceReport(value ConformanceReport) (ConformanceReport, error) {
 	providedDigest := value.Digest
 	value.Digest = ""
-	value.Checks = append([]ConformanceCheck{}, value.Checks...)
-	sort.Slice(value.Checks, func(left, right int) bool { return value.Checks[left].ID < value.Checks[right].ID })
+	value.VerifiedFeatures = append([]Feature{}, value.VerifiedFeatures...)
+	value.Diagnostics = append([]string{}, value.Diagnostics...)
+	sort.Slice(value.VerifiedFeatures, func(left, right int) bool { return value.VerifiedFeatures[left] < value.VerifiedFeatures[right] })
+	sort.Strings(value.Diagnostics)
 	if err := validateConformanceReport(value); err != nil {
 		return ConformanceReport{}, err
 	}
@@ -255,7 +290,8 @@ func NewConformanceReport(value ConformanceReport) (ConformanceReport, error) {
 }
 
 func CloneConformanceReport(value ConformanceReport) ConformanceReport {
-	value.Checks = append([]ConformanceCheck{}, value.Checks...)
+	value.VerifiedFeatures = append([]Feature{}, value.VerifiedFeatures...)
+	value.Diagnostics = append([]string{}, value.Diagnostics...)
 	return value
 }
 
@@ -284,6 +320,9 @@ func NewIntegration(value IntegrationRecord) (IntegrationRecord, error) {
 	if value.Conformance != nil {
 		report, reportErr := NewConformanceReport(*value.Conformance)
 		if reportErr != nil {
+			if ErrorCode(reportErr) == "HOST_SCHEMA_UNSUPPORTED" {
+				return IntegrationRecord{}, reportErr
+			}
 			return IntegrationRecord{}, hostError("HOST_INTEGRATION_INVALID", "invalid Conformance Report", reportErr)
 		}
 		value.Conformance = &report

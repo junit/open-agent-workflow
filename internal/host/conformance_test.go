@@ -1,275 +1,266 @@
 package host_test
 
 import (
-	"encoding/json"
-	"errors"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-const conformanceRawSecret = "host-token-ticket08-raw"
-
-func TestRunConformancePassesRunnerManagedAdapter(t *testing.T) {
-	manifest := runnerManifest(t)
-	report, err := host.RunConformance("acme/codex-runtime", manifest, conformingAdapter{})
-	if err != nil {
-		t.Fatalf("RunConformance() error = %v", err)
-	}
-	if !report.Passed || len(report.Checks) != len(manifest.Features) || report.Digest == "" || report.TranscriptDigest == "" {
-		t.Fatalf("report = %#v", report)
-	}
-	for _, check := range report.Checks {
-		if !check.Passed || check.Evidence == "" {
-			t.Fatalf("check = %#v", check)
-		}
-	}
-	raw, err := json.Marshal(report)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), conformanceRawSecret) {
-		t.Fatalf("Conformance Report contains raw Adapter output: %s", raw)
-	}
-}
-
-type conformingAdapter struct {
-	native bool
-}
-
-func (adapter conformingAdapter) CreateExecutor(request host.ExecutorFixtureRequest) (host.ExecutorFixtureReceipt, error) {
-	return host.ExecutorFixtureReceipt{
-		ExecutorID: request.ExecutorID, Isolated: true, BundleDigest: request.BundleDigest,
-	}, nil
-}
-
-func (adapter conformingAdapter) Invoke(request host.InvocationFixtureRequest) (host.ObservationFixtureReceipt, error) {
-	return host.ObservationFixtureReceipt{
-		InvocationID: request.InvocationID, ExecutionID: "fixture-execution",
-		Binding: request.Binding, BundleDigest: request.BundleDigest,
-		Outcome:  host.FixtureSucceeded,
-		Evidence: []host.NormalizedEvidence{{Reference: "evidence://host-conformance", Digest: request.EvidenceChallengeDigest}},
-		Native:   adapter.native, RawOutput: conformanceRawSecret,
-	}, nil
-}
-
-func (conformingAdapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
-	return host.NewBindingInventory(request.HostID, []host.BindingObservation{{
-		HostID: request.HostID, InstallationKey: request.InstallationKey, Binding: request.Binding,
-		Source: "native-probe", EvidenceReference: "evidence://host-conformance/provider-binding", Digest: request.EvidenceChallengeDigest,
-	}})
-}
-
-func (conformingAdapter) Pause(request host.PauseFixtureRequest) (host.PauseFixtureReceipt, error) {
-	return host.PauseFixtureReceipt{RunID: request.RunID, Paused: true}, nil
-}
-
-func (conformingAdapter) Cancel(request host.CancelFixtureRequest) (host.CancelFixtureReceipt, error) {
-	return host.CancelFixtureReceipt{InvocationID: request.InvocationID, Cancelled: true}, nil
-}
-
-func TestRunConformanceRequiresNativeInvocationForNativeManaged(t *testing.T) {
-	manifest := nativeManifest(t)
-	passed, err := host.RunConformance("acme/codex-native", manifest, conformingAdapter{native: true})
-	if err != nil || !passed.Passed || !conformanceCheckPassed(passed, host.CheckNativeInvocation) {
-		t.Fatalf("native report = %#v, %v", passed, err)
-	}
-	failed, err := host.RunConformance("acme/codex-native", manifest, conformingAdapter{})
-	if err != nil || failed.Passed || conformanceCheckPassed(failed, host.CheckNativeInvocation) {
-		t.Fatalf("non-native report = %#v, %v", failed, err)
-	}
-}
-
-func TestRunConformanceChecksEveryDeclaredBindingKind(t *testing.T) {
-	adapter := &mutatingAdapter{observation: func(_ int, value *host.ObservationFixtureReceipt) {
-		if value.Binding.Kind == "skill" {
-			value.Binding.Reference = "substituted"
-		}
-	}}
-	report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
-	if err != nil || report.Passed || conformanceCheckPassed(report, host.CheckExactBindingInvocation) {
-		t.Fatalf("Report accepted a substituted declared Binding kind: %#v, %v", report, err)
-	}
-}
-
-func TestRunConformanceReportsEachBehavioralFailure(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		check  host.CheckID
-		mutate func(*mutatingAdapter)
-	}{
-		{"isolated Executor", host.CheckIsolatedExecutor, func(adapter *mutatingAdapter) {
-			adapter.executor = func(value *host.ExecutorFixtureReceipt) { value.Isolated = false }
-		}},
-		{"exact Binding", host.CheckExactBindingInvocation, func(adapter *mutatingAdapter) {
-			adapter.observation = func(_ int, value *host.ObservationFixtureReceipt) { value.Binding.Reference = "other" }
-		}},
-		{"Bundle inheritance", host.CheckBundleInheritance, func(adapter *mutatingAdapter) {
-			adapter.observation = func(_ int, value *host.ObservationFixtureReceipt) { value.BundleDigest = strings.Repeat("0", 64) }
-		}},
-		{"Evidence return", host.CheckEvidenceReturn, func(adapter *mutatingAdapter) {
-			adapter.observation = func(_ int, value *host.ObservationFixtureReceipt) { value.Evidence[0].Digest = strings.Repeat("0", 64) }
-		}},
-		{"normalized observation", host.CheckNormalizedObservation, func(adapter *mutatingAdapter) {
-			adapter.observation = func(_ int, value *host.ObservationFixtureReceipt) { value.Outcome = "INVENTED" }
-		}},
-		{"invocation deduplication", host.CheckInvocationDedup, func(adapter *mutatingAdapter) {
-			adapter.observation = func(call int, value *host.ObservationFixtureReceipt) {
-				if call == 2 {
-					value.ExecutionID = "second-execution"
-				}
-			}
-		}},
-		{"pause", host.CheckPause, func(adapter *mutatingAdapter) {
-			adapter.pause = func(value *host.PauseFixtureReceipt) { value.Paused = false }
-		}},
-		{"cancellation", host.CheckCancellation, func(adapter *mutatingAdapter) {
-			adapter.cancel = func(value *host.CancelFixtureReceipt) { value.Cancelled = false }
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			adapter := &mutatingAdapter{}
-			test.mutate(adapter)
-			report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
-			if err != nil || report.Passed || conformanceCheckPassed(report, test.check) {
-				t.Fatalf("report = %#v, %v", report, err)
-			}
-		})
-	}
-}
-
-func TestRunConformanceRejectsInvalidProviderBindingInventory(t *testing.T) {
-	for _, test := range []struct {
-		name   string
-		mutate func(*host.BindingInventory)
-	}{
-		{"wrong Host", func(value *host.BindingInventory) { value.HostID = "claude" }},
-		{"wrong Installation", func(value *host.BindingInventory) { value.Observations[0].InstallationKey = "installation-copied" }},
-		{"wrong Binding", func(value *host.BindingInventory) { value.Observations[0].Binding.Reference = "copied" }},
-		{"wrong evidence digest", func(value *host.BindingInventory) { value.Observations[0].Digest = strings.Repeat("0", 64) }},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			adapter := &mutatingAdapter{inventory: test.mutate}
-			report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
-			if err != nil || report.Passed || conformanceCheckPassed(report, host.CheckProviderBindingInventory) {
-				t.Fatalf("invalid inventory report = %#v, %v", report, err)
-			}
-		})
-	}
-}
-
-func TestRunConformanceRedactsAdapterErrors(t *testing.T) {
-	adapter := &mutatingAdapter{invokeError: errors.New(conformanceRawSecret)}
-	report, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), adapter)
-	if err != nil || report.Passed {
-		t.Fatalf("report = %#v, %v", report, err)
-	}
-	raw, err := json.Marshal(report)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(raw), conformanceRawSecret) {
-		t.Fatalf("Report leaked Adapter error: %s", raw)
-	}
-}
-
-func TestRunConformanceRejectsInstructionOnlyAndInvalidInputs(t *testing.T) {
-	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV1, ManifestVersion: "1.0.0", HostID: "codex",
-		IntegrationLevel: host.InstructionOnly,
+func TestNewConformanceTranscriptPinsCurrentHostFacts(t *testing.T) {
+	manifest := hostNativeManifest(t, []host.Feature{host.FeatureProviderBindingInventory, host.FeatureNormalizedReceipts})
+	inventory, report, session := currentHostFacts(t, manifest)
+	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
+		SchemaVersion:      host.HostConformanceTranscriptSchemaV2,
+		Session:            session,
+		Inventory:          inventory,
+		EnvironmentReports: []host.EnvironmentReport{report},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := host.RunConformance("oaw/codex-instruction", manifest, conformingAdapter{}); host.ErrorCode(err) != "HOST_CONFORMANCE_NOT_APPLICABLE" {
-		t.Fatalf("instruction-only error = %v", err)
-	}
-	if _, err := host.RunConformance("Bad", runnerManifest(t), conformingAdapter{}); host.ErrorCode(err) != "HOST_CONFORMANCE_INVALID" {
-		t.Fatalf("invalid ID error = %v", err)
-	}
-	if _, err := host.RunConformance("acme/codex-runtime", runnerManifest(t), nil); host.ErrorCode(err) != "HOST_CONFORMANCE_INVALID" {
-		t.Fatalf("nil Adapter error = %v", err)
-	}
-	invalid := runnerManifest(t)
-	invalid.SchemaVersion = "bad"
-	if _, err := host.RunConformance("acme/codex-runtime", invalid, conformingAdapter{}); host.ErrorCode(err) != "HOST_CONFORMANCE_INVALID" {
-		t.Fatalf("invalid Manifest error = %v", err)
+	inventory.Observations[0].Topologies[0] = execution.TopologySubagent
+	report.Observations[0].Surface = "changed"
+	if transcript.Digest == "" || transcript.Session.Digest != session.Digest ||
+		transcript.Inventory.Observations[0].Topologies[0] != execution.TopologyCurrent ||
+		transcript.EnvironmentReports[0].Observations[0].Surface != "skills" {
+		t.Fatalf("NewConformanceTranscript() = %#v", transcript)
 	}
 }
 
-type mutatingAdapter struct {
-	native      bool
-	calls       int
-	executor    func(*host.ExecutorFixtureReceipt)
-	observation func(int, *host.ObservationFixtureReceipt)
-	pause       func(*host.PauseFixtureReceipt)
-	cancel      func(*host.CancelFixtureReceipt)
-	invokeError error
-	inventory   func(*host.BindingInventory)
-}
-
-func (adapter *mutatingAdapter) ObserveProviderBindings(request host.BindingInventoryFixtureRequest) (host.BindingInventory, error) {
-	value, err := (conformingAdapter{}).ObserveProviderBindings(request)
-	if adapter.inventory != nil {
-		adapter.inventory(&value)
-	}
-	return value, err
-}
-
-func (adapter *mutatingAdapter) CreateExecutor(request host.ExecutorFixtureRequest) (host.ExecutorFixtureReceipt, error) {
-	value, err := (conformingAdapter{native: adapter.native}).CreateExecutor(request)
-	if adapter.executor != nil {
-		adapter.executor(&value)
-	}
-	return value, err
-}
-
-func (adapter *mutatingAdapter) Invoke(request host.InvocationFixtureRequest) (host.ObservationFixtureReceipt, error) {
-	adapter.calls++
-	value, err := (conformingAdapter{native: adapter.native}).Invoke(request)
-	if adapter.observation != nil {
-		adapter.observation(adapter.calls, &value)
-	}
-	if adapter.invokeError != nil {
-		return value, adapter.invokeError
-	}
-	return value, err
-}
-
-func (adapter *mutatingAdapter) Pause(request host.PauseFixtureRequest) (host.PauseFixtureReceipt, error) {
-	value, err := (conformingAdapter{}).Pause(request)
-	if adapter.pause != nil {
-		adapter.pause(&value)
-	}
-	return value, err
-}
-
-func (adapter *mutatingAdapter) Cancel(request host.CancelFixtureRequest) (host.CancelFixtureReceipt, error) {
-	value, err := (conformingAdapter{}).Cancel(request)
-	if adapter.cancel != nil {
-		adapter.cancel(&value)
-	}
-	return value, err
-}
-
-func nativeManifest(t *testing.T) host.Manifest {
-	t.Helper()
-	value := runnerManifest(t)
-	value.IntegrationLevel = host.NativeManaged
-	value.Features = append(value.Features, host.FeatureNativeInvocation)
-	manifest, err := host.NewManifest(value)
+func TestValidateConformanceTranscriptVerifiesNormalizedCurrentReceipt(t *testing.T) {
+	manifest := hostNativeManifest(t, []host.Feature{host.FeatureProviderBindingInventory, host.FeatureNormalizedReceipts})
+	inventory, report, session := currentHostFacts(t, manifest)
+	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
+		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
+		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
+		EnvironmentReportDigest: report.Digest, Outcome: "succeeded",
+		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return manifest
+	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
+		SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{report}, Receipts: []host.InvocationReceipt{receipt},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	conformance, err := host.ValidateConformanceTranscript(manifest, transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conformance.ManifestDigest != manifest.ContentDigest() || conformance.TranscriptDigest != transcript.Digest ||
+		len(conformance.Diagnostics) != 0 || !slices.Equal(conformance.VerifiedFeatures, manifest.Features) {
+		t.Fatalf("ValidateConformanceTranscript() = %#v", conformance)
+	}
 }
 
-func conformanceCheckPassed(report host.ConformanceReport, id host.CheckID) bool {
-	for _, check := range report.Checks {
-		if check.ID == id {
-			return check.Passed
+func TestValidateConformanceTranscriptRequiresPinnedSubagentEnvironment(t *testing.T) {
+	manifest, err := host.NewManifest(host.Manifest{
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		Features:            []host.Feature{host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
+		HostID: "codex", InstallationKey: "installation-codex", Binding: catalog.HostBinding{
+			Host: "codex", Kind: "skill", Reference: "acme:implementation",
+			Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		}, Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}, Source: "native-probe",
+		EvidenceReference: "evidence://codex/implementation", Digest: strings.Repeat("d", 64),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	environment, err := host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion: host.HostEnvironmentReportSchemaV2, SessionID: "session-child", ParentSessionID: "session-current",
+		Topology: execution.TopologySubagent, Observations: []execution.EnvironmentObservation{{
+			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-subagent", Digest: strings.Repeat("e", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "2.0.0",
+		SessionID: "session-current", SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: environment.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
+		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
+		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+		Topology: execution.TopologySubagent, HostSessionDigest: session.Digest, InvocationHandle: "child-invocation-1",
+		ContextFreshness: host.ContextFresh, EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newTranscript := func(value host.InvocationReceipt) host.ConformanceTranscript {
+		t.Helper()
+		transcript, transcriptErr := host.NewConformanceTranscript(host.ConformanceTranscript{
+			SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
+			EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{value},
+		})
+		if transcriptErr != nil {
+			t.Fatal(transcriptErr)
+		}
+		return transcript
+	}
+	conformance, err := host.ValidateConformanceTranscript(manifest, newTranscript(receipt))
+	if err != nil || !slices.Equal(conformance.VerifiedFeatures, manifest.Features) || len(conformance.Diagnostics) != 0 {
+		t.Fatalf("ValidateConformanceTranscript(SUBAGENT) = %#v, %v", conformance, err)
+	}
+	unpinned := receipt
+	unpinned.Digest = ""
+	unpinned.EnvironmentReportDigest = strings.Repeat("9", 64)
+	unpinned, err = host.NewInvocationReceipt(unpinned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := host.ValidateConformanceTranscript(manifest, newTranscript(unpinned)); host.ErrorCode(err) != "HOST_CONFORMANCE_INVALID" {
+		t.Fatalf("ValidateConformanceTranscript(unpinned SUBAGENT) error = %v", err)
+	}
+}
+
+func TestValidateConformanceTranscriptVerifiesCanonicalControlReceipts(t *testing.T) {
+	manifest := hostNativeManifest(t, []host.Feature{
+		host.FeatureCancellation, host.FeatureInvocationDedup, host.FeatureNormalizedReceipts,
+		host.FeaturePause, host.FeatureProviderBindingInventory,
+	})
+	inventory, environment, session := currentHostFacts(t, manifest)
+	newReceipt := func(kind host.ReceiptKind, outcome string, evidence []host.EvidenceReference) host.InvocationReceipt {
+		t.Helper()
+		value := host.InvocationReceipt{
+			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: kind,
+			WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+			Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
+			EnvironmentReportDigest: environment.Digest, Outcome: outcome, Evidence: evidence,
+		}
+		receipt, err := host.NewInvocationReceipt(value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return receipt
+	}
+	paused := newReceipt(host.ReceiptPaused, "paused", nil)
+	cancelled := newReceipt(host.ReceiptCancelled, "cancelled", nil)
+	completed := newReceipt(host.ReceiptCompleted, "succeeded", []host.EvidenceReference{{
+		Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64),
+	}})
+	dispatchDigest := strings.Repeat("8", 64)
+	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
+		SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{environment},
+		Receipts:           []host.InvocationReceipt{paused, cancelled, completed},
+		Invocations: []host.InvocationRecord{
+			{IdempotencyKey: "dedup-key", DispatchDigest: dispatchDigest, ReceiptDigest: completed.Digest},
+			{IdempotencyKey: "a-key", DispatchDigest: dispatchDigest, ReceiptDigest: completed.Digest},
+			{IdempotencyKey: "dedup-key", DispatchDigest: dispatchDigest, ReceiptDigest: completed.Digest},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transcript.Invocations[0].IdempotencyKey != "a-key" {
+		t.Fatalf("Invocation Records are not canonical: %#v", transcript.Invocations)
+	}
+	conformance, err := host.ValidateConformanceTranscript(manifest, transcript)
+	if err != nil || len(conformance.Diagnostics) != 0 || !slices.Equal(conformance.VerifiedFeatures, manifest.Features) {
+		t.Fatalf("ValidateConformanceTranscript(control receipts) = %#v, %v", conformance, err)
+	}
+}
+
+func TestNewConformanceTranscriptRejectsOversizedCollections(t *testing.T) {
+	manifest := hostNativeManifest(t, []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory})
+	inventory, environment, session := currentHostFacts(t, manifest)
+	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
+		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
+		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
+		EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := host.ConformanceTranscript{
+		SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{environment},
+	}
+	tooManyReceipts := base
+	tooManyReceipts.Receipts = make([]host.InvocationReceipt, 257)
+	for index := range tooManyReceipts.Receipts {
+		tooManyReceipts.Receipts[index] = receipt
+	}
+	if _, err := host.NewConformanceTranscript(tooManyReceipts); host.ErrorCode(err) != "HOST_CONFORMANCE_TRANSCRIPT_INVALID" {
+		t.Fatalf("NewConformanceTranscript(oversized receipts) error = %v", err)
+	}
+	tooManyInvocations := base
+	tooManyInvocations.Invocations = make([]host.InvocationRecord, 257)
+	for index := range tooManyInvocations.Invocations {
+		tooManyInvocations.Invocations[index] = host.InvocationRecord{
+			IdempotencyKey: "key", DispatchDigest: strings.Repeat("8", 64), ReceiptDigest: receipt.Digest,
 		}
 	}
-	return false
+	tooManyInvocations.Receipts = []host.InvocationReceipt{receipt}
+	if _, err := host.NewConformanceTranscript(tooManyInvocations); host.ErrorCode(err) != "HOST_CONFORMANCE_TRANSCRIPT_INVALID" {
+		t.Fatalf("NewConformanceTranscript(oversized invocations) error = %v", err)
+	}
+}
+
+func hostNativeManifest(t *testing.T, features []host.Feature) host.Manifest {
+	t.Helper()
+	value, err := host.NewManifest(host.Manifest{
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
+		BindingKinds: []string{"skill"}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: features,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value
+}
+
+func currentHostFacts(t *testing.T, manifest host.Manifest) (host.BindingInventory, host.EnvironmentReport, host.SessionSnapshot) {
+	t.Helper()
+	inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
+		HostID: "codex", InstallationKey: "installation-codex", Binding: catalog.HostBinding{
+			Host: "codex", Kind: "skill", Reference: "acme:implementation", Topologies: []execution.Topology{execution.TopologyCurrent},
+		}, Topologies: []execution.Topology{execution.TopologyCurrent}, Source: "native-probe",
+		EvidenceReference: "evidence://codex/implementation", Digest: strings.Repeat("d", 64),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := host.NewEnvironmentReport(host.EnvironmentReport{
+		SchemaVersion: host.HostEnvironmentReportSchemaV2, SessionID: "session-current",
+		Topology: execution.TopologyCurrent, Observations: []execution.EnvironmentObservation{{
+			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex", Digest: strings.Repeat("e", 64),
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
+		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "2.0.0",
+		SessionID: "session-current", SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: report.Digest,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inventory, report, session
 }

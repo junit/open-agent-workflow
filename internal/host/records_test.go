@@ -136,24 +136,18 @@ func TestEnvironmentReportUsesClosedDispositions(t *testing.T) {
 
 func TestNewManifestNormalizesAndDefendsCollections(t *testing.T) {
 	features := []host.Feature{
-		host.FeaturePause,
-		host.FeatureBundleInheritance,
 		host.FeatureCancellation,
-		host.FeatureEvidenceReturn,
-		host.FeatureExactBindingInvocation,
+		host.FeatureEnvironmentReporting,
 		host.FeatureInvocationDedup,
-		host.FeatureIsolatedExecutor,
-		host.FeatureNormalizedObservation,
+		host.FeatureNormalizedReceipts,
+		host.FeaturePause,
 		host.FeatureProviderBindingInventory,
 	}
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion:    host.HostManifestSchemaV1,
-		ManifestVersion:  "1.0.0",
-		HostID:           "codex",
-		IntegrationLevel: host.RunnerManaged,
-		Protocols:        []string{host.RuntimeProtocolV1},
-		BindingKinds:     []string{"tool", "agent", "skill"},
-		Features:         features,
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
+		BindingKinds:        []string{"tool", "agent", "skill"},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}, Features: features,
 	})
 	if err != nil {
 		t.Fatalf("NewManifest() error = %v", err)
@@ -166,10 +160,10 @@ func TestNewManifestNormalizesAndDefendsCollections(t *testing.T) {
 		t.Fatal("ContentDigest() is empty")
 	}
 
-	features[0] = host.FeatureNativeInvocation
+	features[0] = host.Feature("invented")
 	manifest.BindingKinds[0] = "changed"
 	fresh := host.CloneManifest(manifest)
-	if slices.Contains(fresh.Features, host.FeatureNativeInvocation) || fresh.BindingKinds[0] != "changed" {
+	if slices.Contains(fresh.Features, host.Feature("invented")) || fresh.BindingKinds[0] != "changed" {
 		t.Fatalf("CloneManifest() did not isolate caller mutation: %#v", fresh)
 	}
 	fresh.BindingKinds[0] = "mutated-again"
@@ -226,33 +220,20 @@ func TestNewIntegrationPinsManifestAuditAndConformance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks := []host.ConformanceCheck{
-		{ID: host.CheckPause, Passed: true, Evidence: strings.Repeat("3", 64)},
-		{ID: host.CheckBundleInheritance, Passed: true, Evidence: strings.Repeat("1", 64)},
-		{ID: host.CheckCancellation, Passed: true, Evidence: strings.Repeat("2", 64)},
-		{ID: host.CheckEvidenceReturn, Passed: true, Evidence: strings.Repeat("4", 64)},
-		{ID: host.CheckExactBindingInvocation, Passed: true, Evidence: strings.Repeat("5", 64)},
-		{ID: host.CheckInvocationDedup, Passed: true, Evidence: strings.Repeat("6", 64)},
-		{ID: host.CheckIsolatedExecutor, Passed: true, Evidence: strings.Repeat("7", 64)},
-		{ID: host.CheckNormalizedObservation, Passed: true, Evidence: strings.Repeat("8", 64)},
-		{ID: host.CheckProviderBindingInventory, Passed: true, Evidence: strings.Repeat("9", 64)},
-	}
+	features := append([]host.Feature{}, manifest.Features...)
 	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion:    host.ConformanceReportSchemaV1,
-		SuiteVersion:     host.ConformanceSuiteV1,
-		IntegrationID:    "acme/codex-runtime",
+		SchemaVersion:    host.HostConformanceReportSchemaV2,
 		ManifestDigest:   manifest.ContentDigest(),
-		Checks:           checks,
 		TranscriptDigest: strings.Repeat("f", 64),
-		Passed:           true,
+		VerifiedFeatures: features,
 	})
 	if err != nil {
 		t.Fatalf("NewConformanceReport() error = %v", err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion:      host.HostIntegrationSchemaV1,
-		IntegrationVersion: "1.0.0",
-		ID:                 "acme/codex-runtime",
+		SchemaVersion:      host.HostIntegrationSchemaV2,
+		IntegrationVersion: "2.0.0",
+		ID:                 "acme/codex-host",
 		Manifest:           manifest,
 		ManifestDigest:     manifest.ContentDigest(),
 		Audit:              audit,
@@ -264,14 +245,14 @@ func TestNewIntegrationPinsManifestAuditAndConformance(t *testing.T) {
 	if integration.Digest == "" || integration.Conformance == nil || integration.Conformance.Digest == "" {
 		t.Fatalf("integration = %#v", integration)
 	}
-	checks[0].Passed = false
-	report.Checks[0].Passed = false
-	if !integration.Conformance.Checks[0].Passed {
+	features[0] = host.Feature("changed")
+	report.VerifiedFeatures[0] = host.Feature("changed")
+	if integration.Conformance.VerifiedFeatures[0] == host.Feature("changed") {
 		t.Fatal("Integration shares caller conformance storage")
 	}
 	fresh := host.CloneIntegration(integration)
-	fresh.Conformance.Checks[0].Passed = false
-	if !integration.Conformance.Checks[0].Passed {
+	fresh.Conformance.VerifiedFeatures[0] = host.Feature("changed")
+	if integration.Conformance.VerifiedFeatures[0] == host.Feature("changed") {
 		t.Fatal("CloneIntegration() exposed source storage")
 	}
 
@@ -291,20 +272,15 @@ func TestNewIntegrationPinsManifestAuditAndConformance(t *testing.T) {
 func runnerManifest(t *testing.T) host.Manifest {
 	t.Helper()
 	value, err := host.NewManifest(host.Manifest{
-		SchemaVersion:    host.HostManifestSchemaV1,
-		ManifestVersion:  "1.0.0",
-		HostID:           "codex",
-		IntegrationLevel: host.RunnerManaged,
-		Protocols:        []string{host.RuntimeProtocolV1},
-		BindingKinds:     []string{"agent", "skill", "tool"},
+		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
+		BindingKinds:        []string{"agent", "skill", "tool"},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
 		Features: []host.Feature{
-			host.FeatureBundleInheritance,
 			host.FeatureCancellation,
-			host.FeatureEvidenceReturn,
-			host.FeatureExactBindingInvocation,
+			host.FeatureEnvironmentReporting,
 			host.FeatureInvocationDedup,
-			host.FeatureIsolatedExecutor,
-			host.FeatureNormalizedObservation,
+			host.FeatureNormalizedReceipts,
 			host.FeaturePause,
 			host.FeatureProviderBindingInventory,
 		},
@@ -401,20 +377,15 @@ func runnerIntegration(t *testing.T) host.IntegrationRecord {
 	if err != nil {
 		t.Fatal(err)
 	}
-	checks := make([]host.ConformanceCheck, 0, len(manifest.Features))
-	for index, feature := range manifest.Features {
-		checks = append(checks, host.ConformanceCheck{ID: host.CheckID(feature), Passed: true, Evidence: strings.Repeat(string("123456789"[index]), 64)})
-	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion: host.ConformanceReportSchemaV1, SuiteVersion: host.ConformanceSuiteV1,
-		IntegrationID: "acme/codex-runtime", ManifestDigest: manifest.ContentDigest(),
-		Checks: checks, TranscriptDigest: strings.Repeat("f", 64), Passed: true,
+		SchemaVersion: host.HostConformanceReportSchemaV2, ManifestDigest: manifest.ContentDigest(),
+		TranscriptDigest: strings.Repeat("f", 64), VerifiedFeatures: manifest.Features,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV1, IntegrationVersion: "1.0.0", ID: "acme/codex-runtime",
+		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "acme/codex-host",
 		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
 	})
 	if err != nil {
