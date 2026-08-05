@@ -208,6 +208,14 @@ func (value *journal) loadRevision(workflowID string, revision uint64) (revision
 	if err := decodeStrictState(raw, &record); err != nil {
 		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "decode immutable revision", err)
 	}
+	if err := restoreSnapshotDecisionDigests(&record.Snapshot); err != nil {
+		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "restore snapshot classification digest", err)
+	}
+	if record.Result.Snapshot != nil {
+		if err := restoreSnapshotDecisionDigests(record.Result.Snapshot); err != nil {
+			return revisionRecord{}, coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "restore Result classification digest", err)
+		}
+	}
 	if err := validateRevision(record, workflowID, revision); err != nil {
 		return revisionRecord{}, err
 	}
@@ -527,6 +535,10 @@ func cloneRevisionRecord(value revisionRecord) (revisionRecord, error) {
 	if err := decodeStrictState(raw, &cloned); err != nil {
 		return revisionRecord{}, err
 	}
+	restoreSnapshotPrivateFields(&cloned.Snapshot, value.Snapshot)
+	if value.Result.Snapshot != nil && cloned.Result.Snapshot != nil {
+		restoreSnapshotPrivateFields(cloned.Result.Snapshot, *value.Result.Snapshot)
+	}
 	return cloned, nil
 }
 
@@ -539,7 +551,56 @@ func snapshotPointer(value Snapshot) (*Snapshot, error) {
 	if err := decodeStrictState(raw, &cloned); err != nil {
 		return nil, err
 	}
+	restoreSnapshotPrivateFields(&cloned, value)
 	return &cloned, nil
+}
+
+func restoreSnapshotPrivateFields(destination *Snapshot, source Snapshot) {
+	if destination == nil {
+		return
+	}
+	destination.Classification = cloneClassificationDecision(source.Classification)
+	for index := range destination.Bundles {
+		if index < len(source.Bundles) {
+			destination.Bundles[index].Classification = cloneClassificationDecision(source.Bundles[index].Classification)
+		}
+	}
+}
+
+func cloneClassificationDecision(value classification.ClassificationDecision) classification.ClassificationDecision {
+	value.EvidenceRequirements = append([]classification.EvidenceRequirement{}, value.EvidenceRequirements...)
+	value.EscalationReasons = append([]string{}, value.EscalationReasons...)
+	if value.WorkflowComplexity != nil {
+		complexity := *value.WorkflowComplexity
+		value.WorkflowComplexity = &complexity
+	}
+	if value.CapabilitySelector != nil {
+		selector := *value.CapabilitySelector
+		value.CapabilitySelector = &selector
+	}
+	return value
+}
+
+func restoreSnapshotDecisionDigests(value *Snapshot) error {
+	if value == nil {
+		return nil
+	}
+	decision, err := classification.RecomputeDecisionDigest(value.Classification)
+	if err != nil {
+		return err
+	}
+	value.Classification = decision
+	for index := range value.Bundles {
+		decision, err := classification.RecomputeDecisionDigest(value.Bundles[index].Classification)
+		if err != nil {
+			return err
+		}
+		if decision.Digest() != value.Bundles[index].ClassificationDigest {
+			return coordinatorError("WORKFLOW_STATE_DIGEST_MISMATCH", "Bundle classification digest mismatch", nil)
+		}
+		value.Bundles[index].Classification = decision
+	}
+	return nil
 }
 
 func sameCanonicalValue(left, right any) bool {

@@ -31,6 +31,13 @@ func Classify(proposal *ClassificationProposal, rules ClassificationRules) (Clas
 	return classifyNormalized(value, traits, rules)
 }
 
+// RecomputeDecisionDigest restores the private digest after a decision has
+// crossed a JSON persistence boundary. The public decision fields remain the
+// source of truth; this helper does not alter their meaning.
+func RecomputeDecisionDigest(value ClassificationDecision) (ClassificationDecision, error) {
+	return withDecisionDigest(value)
+}
+
 type baseAssessment struct {
 	reasons      []string
 	requirements []EvidenceRequirement

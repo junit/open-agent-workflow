@@ -319,6 +319,9 @@ func validateStartInput(value StartInput) error {
 	if err := validateSelection(value.Selection); err != nil {
 		return err
 	}
+	if value.Environment.Topology != value.Selection.Topology {
+		return coordinatorError("WORKFLOW_COMMAND_INVALID", "START environment topology does not match Profile selection", nil)
+	}
 	return validateHostFacts(value.HostSession, value.Environment)
 }
 
