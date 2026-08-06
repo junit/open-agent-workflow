@@ -131,6 +131,80 @@ while IFS= read -r current_document; do
   done <"$CHECK_TEMP/stale-release-boundaries"
 done <"$CHECK_TEMP/current-user-documents"
 
+CHECK_VIOLATIONS="$CHECK_TEMP/forbidden-execution-vocabulary-violations"
+: >"$CHECK_VIOLATIONS"
+cat >"$CHECK_TEMP/forbidden-execution-vocabulary" <<'EOF'
+Runtime Plane
+Runtime-managed
+oaw runtime exchange
+oaw run --host codex
+oaw/codex-runner
+runner-managed
+native-managed
+INLINE
+NATIVE_SUBAGENT
+main-agent-allowed
+isolated-required
+private HOME
+Codex Runner
+EOF
+for current_document_path in \
+  "$REPOSITORY/policy/ENGINEERING.md" \
+  "$REPOSITORY/README.md" \
+  "$REPOSITORY/README-zh.md" \
+  "$REPOSITORY/SECURITY.md" \
+  "$REPOSITORY/SECURITY-zh.md" \
+  "$REPOSITORY"/docs/en/*.md \
+  "$REPOSITORY"/docs/zh/*.md; do
+  [ -f "$current_document_path" ] ||
+    fail "missing current documentation source: ${current_document_path#"$REPOSITORY"/}"
+  current_document=${current_document_path#"$REPOSITORY"/}
+  while IFS= read -r forbidden_literal; do
+    [ -n "$forbidden_literal" ] || continue
+    if grep -nF -- "$forbidden_literal" "$current_document_path" \
+      >"$CHECK_TEMP/forbidden-execution-vocabulary-matches"; then
+      while IFS=: read -r line_number ignored_match; do
+        printf '%s:%s:%s\n' "$current_document" "$line_number" \
+          "$forbidden_literal" >>"$CHECK_VIOLATIONS"
+      done <"$CHECK_TEMP/forbidden-execution-vocabulary-matches"
+    fi
+  done <"$CHECK_TEMP/forbidden-execution-vocabulary"
+done
+if [ -s "$CHECK_VIOLATIONS" ]; then
+  while IFS= read -r violation; do
+    printf 'docs: error: stale execution vocabulary: %s\n' "$violation" >&2
+  done <"$CHECK_VIOLATIONS"
+  exit 1
+fi
+
+cat >"$CHECK_TEMP/core-boundary-documents" <<'EOF'
+docs/en/architecture.md
+docs/zh/architecture.md
+docs/en/lifecycle.md
+docs/zh/lifecycle.md
+docs/en/security.md
+docs/zh/security.md
+EOF
+while IFS= read -r boundary_document; do
+  for boundary_literal in \
+    'OAW Core' \
+    'Workflow Coordinator' \
+    'Agent Host' \
+    'CURRENT' \
+    'SUBAGENT' \
+    'logical workflow authority'; do
+    require_literal "$boundary_document" "$boundary_literal"
+  done
+  case "$boundary_document" in
+    docs/en/*)
+      require_literal "$boundary_document" 'physical execution authority'
+      ;;
+    docs/zh/*)
+      require_literal "$boundary_document" 'Agent Host 拥有物理执行权限'
+      ;;
+  esac
+done <"$CHECK_TEMP/core-boundary-documents"
+
 cat >"$CHECK_TEMP/host-scope-documents" <<'EOF'
 README.md
 README-zh.md

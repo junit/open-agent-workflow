@@ -106,6 +106,9 @@ Agent Host 拥有物理执行权限。Host sandbox and approvals、model route�
 tool、MCP、Hook、Skill 与 Plugin 都由 Host 拥有。Capability Grant 或 Resource Lease 可以
 比 Host sandbox and approvals 更窄，但不能物理阻止 Host 执行协议外 action。
 
+`CURRENT` 使用当前 Host session，环境保持不变。只有该 Host session 暴露原生 child-agent
+facility 时，`SUBAGENT` 才可用。
+
 OAW never starts a model CLI。`policy` integration 只分发 instruction。`host-native`
 integration 可以报告 session fact 与 Receipt，但 OAW 绝不保证 MCP、Hook、Skill 或 Plugin
 inheritance 到 `SUBAGENT`；active Host 报告各 surface 为 `inherited`、`host-configured`、

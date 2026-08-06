@@ -135,6 +135,26 @@ EOF
     printf '%s\n' provider_id host_id installation_key evidence_digest \
       >>"$fixture_root/$document_path"
   done
+  for document_path in \
+    docs/en/architecture.md docs/en/lifecycle.md docs/en/security.md \
+    docs/zh/architecture.md docs/zh/lifecycle.md docs/zh/security.md; do
+    printf '%s\n' \
+      'OAW Core' \
+      'Workflow Coordinator' \
+      'Agent Host' \
+      'CURRENT' \
+      'SUBAGENT' \
+      'logical workflow authority' \
+      >>"$fixture_root/$document_path"
+    case "$document_path" in
+      docs/en/*)
+        printf '%s\n' 'physical execution authority' >>"$fixture_root/$document_path"
+        ;;
+      docs/zh/*)
+        printf '%s\n' 'Agent Host 拥有物理执行权限' >>"$fixture_root/$document_path"
+        ;;
+    esac
+  done
   for document_path in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
     printf '%s\n' \
       HOST_BINDING_EVIDENCE_REQUIRED \
@@ -359,6 +379,35 @@ case "$checker_output" in
   *) fail "documentation checker gives no missing reference-definition diagnostic" ;;
 esac
 pass "documentation checker rejects missing reference definitions"
+
+: >"$DOCS_TEST_TEMP/repository/docs/en/link-fixture.md"
+
+FORBIDDEN_EXECUTION_LITERAL='Runtime Plane'
+CURRENT_FIXTURE="$DOCS_TEST_TEMP/repository/docs/en/architecture.md"
+CURRENT_FIXTURE_BACKUP="$DOCS_TEST_TEMP/architecture.md.before-forbidden"
+cp "$CURRENT_FIXTURE" "$CURRENT_FIXTURE_BACKUP"
+printf '%s\n' "$FORBIDDEN_EXECUTION_LITERAL" >>"$CURRENT_FIXTURE"
+if checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  fail "documentation checker accepts a forbidden literal in a current source"
+fi
+printf '%s\n' "$checker_output" |
+  grep -E "docs/en/architecture\\.md:[0-9]+:Runtime Plane" >/dev/null ||
+  fail "documentation checker omits file, line, and literal for a current-source violation: $checker_output"
+cp "$CURRENT_FIXTURE_BACKUP" "$CURRENT_FIXTURE"
+
+HISTORICAL_FIXTURE="$DOCS_TEST_TEMP/repository/docs/adr/0003-add-optional-capability-admission-runtime.md"
+HISTORICAL_FIXTURE_BACKUP="$DOCS_TEST_TEMP/0003.before-forbidden"
+cp "$HISTORICAL_FIXTURE" "$HISTORICAL_FIXTURE_BACKUP"
+printf '%s\n' "$FORBIDDEN_EXECUTION_LITERAL" >>"$HISTORICAL_FIXTURE"
+if checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  checker_status=0
+else
+  checker_status=$?
+fi
+[ "$checker_status" -eq 0 ] ||
+  fail "documentation checker rejects a forbidden literal in a historical ADR: $checker_output"
+cp "$HISTORICAL_FIXTURE_BACKUP" "$HISTORICAL_FIXTURE"
+pass "documentation checker rejects stale current claims while allowing historical ADR text"
 
 for readme_file in README.md README-zh.md; do
   for command_example in \
@@ -655,13 +704,23 @@ for boundary_document in \
   docs/en/architecture.md \
   docs/zh/architecture.md \
   docs/en/lifecycle.md \
-  docs/zh/lifecycle.md; do
+  docs/zh/lifecycle.md \
+  docs/en/security.md \
+  docs/zh/security.md; do
   for boundary_contract in \
     'OAW Core' \
     'Workflow Coordinator' \
     'Agent Host' \
     'CURRENT' \
-    'SUBAGENT' \
+    'SUBAGENT'; do
+    assert_contains "$boundary_document" "$boundary_contract"
+  done
+  assert_contains "$boundary_document" 'logical workflow authority'
+done
+for lifecycle_boundary_document in \
+  docs/en/architecture.md docs/zh/architecture.md \
+  docs/en/lifecycle.md docs/zh/lifecycle.md; do
+  for lifecycle_boundary_contract in \
     'policy' \
     'host-native' \
     'Workflow State' \
@@ -670,8 +729,16 @@ for boundary_document in \
     'ECC-FULL' \
     'MATT-SP-HYBRID' \
     'USER-DEFINED'; do
-    assert_contains "$boundary_document" "$boundary_contract"
+    assert_contains "$lifecycle_boundary_document" "$lifecycle_boundary_contract"
   done
+done
+for english_boundary_document in \
+  docs/en/architecture.md docs/en/lifecycle.md docs/en/security.md; do
+  assert_contains "$english_boundary_document" 'physical execution authority'
+done
+for chinese_boundary_document in \
+  docs/zh/architecture.md docs/zh/lifecycle.md docs/zh/security.md; do
+  assert_contains "$chinese_boundary_document" 'Agent Host 拥有物理执行权限'
 done
 assert_contains docs/en/architecture.md 'Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt'
 assert_contains docs/en/architecture.md '+-> optional Workflow Coordinator'

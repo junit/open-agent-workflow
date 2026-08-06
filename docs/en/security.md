@@ -129,6 +129,9 @@ remain Host-owned. A Capability Grant or Resource Lease may be narrower than
 the Host sandbox and approvals, but it cannot physically stop an out-of-protocol
 Host action.
 
+`CURRENT` uses the active Host session unchanged. `SUBAGENT` is available only
+when that Host session exposes a native child-agent facility.
+
 OAW never starts a model CLI. A `policy` integration distributes instructions
 only. A `host-native` integration may report session facts and Receipts, but
 OAW never guarantees MCP, Hook, Skill, or Plugin inheritance into a `SUBAGENT`;
