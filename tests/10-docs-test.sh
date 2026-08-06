@@ -95,20 +95,20 @@ EOF
     'Public installation management is Go-authoritative.' \
     '`install.sh` is an offline sibling-binary compatibility wrapper.' \
     'Release archives contain precompiled binaries and perform no runtime executable download.' \
-    'Install State and Runtime State are disjoint; no automatic migration occurs.' \
-    'Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.' \
-    'Only the pinned Codex runner is currently Runtime-managed.' \
-    'Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.' \
+    'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
+    'OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
+    'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
+    '`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.' \
     'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.' \
     >>"$fixture_root/README.md"
   printf '%s\n' \
     '公开安装管理以 Go 为权威实现。' \
     '`install.sh` 是离线的同目录二进制兼容包装器。' \
     '发布归档包含预编译二进制，运行时不会下载可执行文件。' \
-    'Install State 与 Runtime State 相互独立，不会自动迁移。' \
-    '现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。' \
-    '目前只有固定版本的 Codex runner 是 Runtime-managed。' \
-    '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
+    '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
+    'OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
+    'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
+    '`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，' \
     '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
     >>"$fixture_root/README-zh.md"
   mkdir -p "$fixture_root/policy"
@@ -370,10 +370,10 @@ for release_boundary in \
   'Public installation management is Go-authoritative.' \
   '`install.sh` is an offline sibling-binary compatibility wrapper.' \
   'Release archives contain precompiled binaries and perform no runtime executable download.' \
-  'Install State and Runtime State are disjoint; no automatic migration occurs.' \
-  'Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.' \
-  'Only the pinned Codex runner is currently Runtime-managed.' \
-  'Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.' \
+  'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
+  'OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
+  'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
+  '`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.' \
   'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.'; do
   assert_contains README.md "$release_boundary"
 done
@@ -381,14 +381,14 @@ for release_boundary in \
   '公开安装管理以 Go 为权威实现。' \
   '`install.sh` 是离线的同目录二进制兼容包装器。' \
   '发布归档包含预编译二进制，运行时不会下载可执行文件。' \
-  'Install State 与 Runtime State 相互独立，不会自动迁移。' \
-  '现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。' \
-  '目前只有固定版本的 Codex runner 是 Runtime-managed。' \
-  '其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。' \
+  '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
+  'OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
+  'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
+  '`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，' \
   '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。'; do
   assert_contains README-zh.md "$release_boundary"
 done
-pass "bilingual README entrypoints publish the Go cutover and Runtime boundaries"
+pass "bilingual README entrypoints publish Core, Coordinator, and Host boundaries"
 
 for current_document in \
   README.md README-zh.md CHANGELOG.md CONTRIBUTING.md CONTRIBUTING-zh.md \
@@ -600,7 +600,35 @@ for lifecycle_contract in \
   assert_contains docs/zh/lifecycle.md "$lifecycle_contract"
 done
 assert_contains docs/zh/lifecycle.md '[English](../en/lifecycle.md)'
-pass "lifecycle documents explain Runtime vNext modes, extensible Profiles, locking, inheritance, add-ons, and switching"
+pass "lifecycle documents explain Request Modes, extensible Profiles, topology, locking, add-ons, and switching"
+
+for boundary_document in \
+  docs/en/architecture.md \
+  docs/zh/architecture.md \
+  docs/en/lifecycle.md \
+  docs/zh/lifecycle.md; do
+  for boundary_contract in \
+    'OAW Core' \
+    'Workflow Coordinator' \
+    'Agent Host' \
+    'CURRENT' \
+    'SUBAGENT' \
+    'policy' \
+    'host-native' \
+    'Workflow State' \
+    'SP-FULL' \
+    'MATT-FULL' \
+    'ECC-FULL' \
+    'MATT-SP-HYBRID' \
+    'USER-DEFINED'; do
+    assert_contains "$boundary_document" "$boundary_contract"
+  done
+done
+assert_contains docs/en/architecture.md 'Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt'
+assert_contains docs/en/architecture.md '+-> optional Workflow Coordinator'
+assert_contains docs/zh/architecture.md 'Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt'
+assert_contains docs/zh/architecture.md '+-> optional Workflow Coordinator'
+pass "bilingual architecture and lifecycle documents define Core, Coordinator, Host, topology, and Profile boundaries"
 
 for policy_contract in \
   'DIRECT' \
@@ -613,9 +641,13 @@ for policy_contract in \
   'third-party Providers' \
   'oaw/ecc-engineering' \
   'USER-DEFINED' \
-  'Runtime admission' \
+  'OAW Core' \
+  'Workflow Coordinator' \
+  'Agent Host' \
+  'CURRENT' \
+  'SUBAGENT' \
   'Resource Leases' \
-  'physical isolation'; do
+  'physical execution authority'; do
   assert_contains policy/ENGINEERING.md "$policy_contract"
 done
 assert_not_contains policy/ENGINEERING.md 'CUSTOM-LOCKED'
@@ -660,29 +692,29 @@ for architecture_file in docs/en/architecture.md docs/zh/architecture.md; do
 done
 assert_contains docs/en/architecture.md 'Marker comments do not establish model precedence'
 assert_contains docs/zh/architecture.md 'marker 注释不建立模型优先级'
-for runtime_boundary in \
-  '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime' \
-  'Only the pinned Codex runner is currently Runtime-managed' \
-  'Install State and Runtime State are disjoint; no automatic migration occurs' \
-  'Existing Policy-only tasks and profile locks remain Policy-only unless' \
+for workflow_boundary in \
+  '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows' \
+  'Install State and Workflow State use disjoint namespaces' \
+  'Project Workflow documents are one-way, non-authoritative projections' \
   'Capability Grant' \
   'Resource Lease' \
+  'The Agent Host owns physical execution authority' \
   'mutation journal' \
   'automatic recovery from a process or machine crash'; do
-  assert_contains docs/en/architecture.md "$runtime_boundary"
+  assert_contains docs/en/architecture.md "$workflow_boundary"
 done
-for runtime_boundary in \
-  '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime' \
-  '目前只有固定版本的 Codex runner 是 Runtime-managed' \
-  'Install State 与 Runtime State 相互独立，不会自动迁移' \
-  '现有 Policy-only task 和 profile' \
+for workflow_boundary in \
+  '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows' \
+  'Install State 与 Workflow State 使用相互独立的 namespace' \
+  '项目 Workflow 文档是 committed Workflow State 的单向、非权威 projection' \
   'Capability Grant' \
   'Resource Lease' \
+  'Agent Host 拥有物理执行权限' \
   'mutation journal' \
   'process 或 machine crash'; do
-  assert_contains docs/zh/architecture.md "$runtime_boundary"
+  assert_contains docs/zh/architecture.md "$workflow_boundary"
 done
-pass "architecture documents match management, Runtime, rendering, transaction, ownership, and state contracts"
+pass "architecture documents match management, Core, Coordinator, Host, rendering, transaction, ownership, and state contracts"
 
 for installer_file in docs/en/installer.md docs/zh/installer.md; do
   for command_contract in \

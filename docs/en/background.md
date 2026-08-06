@@ -4,8 +4,10 @@
 
 Open Agent Workflow (OAW) is a provider-neutral governance layer for developers
 who use more than one engineering workflow and more than one coding-agent
-client. It answers two separate questions: who owns this task's lifecycle, and
-how does the same decision reach each supported agent tool?
+client. OAW Core answers which contract applies and who owns each responsibility;
+the optional Workflow Coordinator records durable Workflow State; the Agent
+Host answers how work is physically executed in the current session or a native
+Subagent. These are separate authority boundaries.
 
 ## One Task, Several Automatic Triggers
 
@@ -69,19 +71,24 @@ This boundary matters for both trust and maintenance:
 Agent tools are independent too. OAW installs only its policy and adapters; it
 does not install the clients or mutate GUI-only global rule stores.
 
-## The Boundary OAW Owns
+## Core, Coordination, and Host Boundaries
 
-OAW owns the arbitration policy, target-specific entrypoints, checksummed
-installation state, and recoverable backups. That boundary is deliberately
-narrow:
+OAW owns the arbitration policy, target-specific entrypoints, OAW Core
+compilation, checksummed Install State, and recoverable backups. The optional
+Workflow Coordinator owns only cooperating-client Workflow State. The Agent
+Host owns physical execution authority. This boundary is deliberately narrow:
 
-1. Classify the task using the canonical ordinary/complex rules.
-2. Present all profiles and exact proposed add-ons.
+1. Classify the task as `DIRECT`, `BOUNDED`, or `WORKFLOW`.
+2. For Workflow Mode, present all Profiles, topologies, and exact proposed add-ons.
 3. Block until the user chooses; never use a timeout or silent default.
-4. Record and persist the bundle across follow-ups and delegated work.
+4. Compile the Bundle and persist it only when a Coordinator is enabled.
 5. Render the same policy into selected user or project targets.
 6. Fail closed on drift and back up before an explicitly forced mutation.
 7. Remove only OAW-owned artifacts during uninstall.
+
+`DIRECT` and `BOUNDED` do not create Workflow State. OAW never starts a model
+process. `CURRENT` uses the active session unchanged, while `SUBAGENT` is
+available only when the current Host can create a native child.
 
 OAW does not decide which methodology is universally best. Its initial
 three-family assessment is an experience-bounded design input, documented in

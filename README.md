@@ -7,9 +7,11 @@ lifecycle owner or one conflict-free stage map, then installs the same
 governance policy into the instruction surfaces used by supported coding
 agents.
 
-OAW is a provider-neutral policy, adapter layer, and Go runtime. It does not
-redistribute workflow families or replace the native configuration of an agent
-tool.
+OAW is a provider-neutral policy distribution and lifecycle coordination
+system. OAW Core compiles lifecycle contracts, the optional Workflow
+Coordinator persists Workflow State, and the external Agent Host performs
+every effect. OAW does not redistribute workflow families or replace the
+native configuration of an agent tool.
 
 ## Why OAW
 
@@ -40,9 +42,12 @@ canonical policy and renders thin target-native entrypoints around it.
 - Classifies a top-level engineering request as `DIRECT`, `BOUNDED`, or
   `WORKFLOW` before a family-specific lifecycle starts.
 - Presents every eligible built-in and user-defined lifecycle Profile for
-  Workflow Mode and waits for the user's explicit choice.
-- Locks the selected bundle across follow-ups, context compaction, tickets, and
-  delegated agents.
+  Workflow Mode, eligible `CURRENT` or native `SUBAGENT` execution, and waits
+  for the user's explicit choice.
+- Uses OAW Core to compile the selected Lifecycle Bundle and locks it across
+  follow-ups, context compaction, tickets, and delegated agents.
+- Optionally records Workflow revisions, cooperative Resource Leases, Receipts,
+  and evidence references in the Workflow Coordinator.
 - Supports full-family profiles, a predefined Matt-Superpowers hybrid, bounded
   specialist add-ons, and user-defined conflict-free stage maps.
 - Detects Superpowers, Matt Pocock skills, and Everything Claude Code (ECC)
@@ -67,12 +72,12 @@ Provider Family
 Codex and Claude Code are independent Hosts. Even when they reference the same
 physical files, OAW derives separate Host Installation identities. Provider
 Descriptor bindings and configured installation hints are declarations only;
-they cannot create Host Binding Evidence. A Policy-only Host may report
-Candidates, but it cannot verify a Runtime Provider Instance. Foreign-Host
-diagnostics never become a pin, Registry input, Profile owner, or Runtime
-authority.
+they cannot create Host Binding Evidence. A `policy` Host may report
+Candidates, but a Candidate cannot satisfy Profile compilation without a
+verified Provider Instance. Foreign-Host diagnostics never become a pin,
+Registry input, Profile owner, Capability Grant, or Workflow authority.
 
-The active Provider Descriptor and user configuration contracts are v2-only;
+The active Provider Descriptor and user configuration contracts are v3-only;
 `oaw.provider-descriptor/v1` and `oaw.user-config/v1` inputs are rejected rather
 than upgraded. An ambiguous current-Host candidate can be pinned only with the
 exact identity fields below; `location` and `version` are optional readable
@@ -92,7 +97,7 @@ Stable Host-scope diagnostics include `HOST_BINDING_EVIDENCE_REQUIRED`,
 `PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_FOREIGN_HOST_ONLY`,
 `PROVIDER_PIN_INCOMPATIBLE`, and `HOST_PROVIDER_SCOPE_MISMATCH`. Use
 `oaw providers inspect --host <host> --format json` for physical evidence;
-Runtime denials remain path-free.
+workflow denials remain path-free.
 
 ## Quick Start
 
@@ -133,7 +138,7 @@ Use `--target claude,codex` (or another comma-separated set of IDs) to narrow a
 command. Run `./oaw --help` or `./install.sh --help` for the management CLI
 surface.
 
-### Cutover and Runtime Boundaries
+### Core, Coordination, and Host Boundaries
 
 Public installation management is Go-authoritative.
 
@@ -141,13 +146,13 @@ Public installation management is Go-authoritative.
 
 Release archives contain precompiled binaries and perform no runtime executable download.
 
-Install State and Runtime State are disjoint; no automatic migration occurs.
+Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.
 
-Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.
+OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
 
-Only the pinned Codex runner is currently Runtime-managed.
+The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 
-Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.
+`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.
 
 Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness. On macOS, use `scripts/smoke-docker.sh` for the native Linux archive when Docker Desktop is available. WSL-specific checks are optional and a `SKIP` is recorded, never reported as a pass.
 
@@ -166,11 +171,12 @@ Provider Capability for one observable deliverable. Neither mode selects a
 lifecycle.
 
 Only Workflow Mode runs the Startup Gate. OAW then shows every eligible
-built-in and user-defined Profile, a recommendation, and any proposed bounded
-add-ons. The user must choose explicitly. There is no timeout or silent default.
-The compiled Lifecycle Bundle remains locked to the deliverable. Only the user
-may switch it, and only at a stable boundary such as an approved specification,
-a completed ticket, debugging cycle, review, or verification.
+built-in and user-defined Profile, eligible `CURRENT` or native `SUBAGENT`
+topologies, a recommendation, and any proposed bounded add-ons. The user must
+choose explicitly. There is no timeout or silent default. OAW Core compiles the
+Lifecycle Bundle, which remains locked to the deliverable. Only the user may
+switch it, and only at a stable boundary such as an approved specification, a
+completed ticket, debugging cycle, review, or verification.
 
 ## Lifecycle Profiles
 
@@ -185,9 +191,10 @@ a completed ticket, debugging cycle, review, or verification.
 A recommendation never becomes a default. Missing provider capability stops
 Workflow selection; it is never silently omitted or replaced. Superpowers,
 Matt, ECC, and third-party Providers use the same extensible Provider and
-Capability model. A delegated agent inherits the exact locked bundle and does
-not reopen family arbitration. A bounded add-on may produce only its declared
-specialist deliverable and cannot take over the lifecycle.
+Capability model. A Host-native Subagent inherits the exact locked bundle and
+does not reopen family arbitration. A bounded add-on may produce only its
+declared specialist deliverable and cannot take over the lifecycle. `DIRECT`
+and `BOUNDED` do not create Workflow State.
 
 ## Matt-Superpowers Hybrid
 
@@ -218,17 +225,17 @@ adapters support both user and project scope. Extension adapters are officially
 supported at project scope because their global surfaces are GUI-managed,
 platform-specific, experimental, or less stable.
 
-| Target ID | Agent tool | User scope | Project scope | Support level |
+| Target ID | Agent tool | User scope | Project scope | Control surface |
 | --- | --- | --- | --- | --- |
-| `claude` | Claude Code | Yes | Yes | Core |
-| `codex` | Codex CLI | Yes | Yes | Core |
-| `gemini` | Gemini CLI | Yes | Yes | Core |
-| `opencode` | OpenCode | Yes | Yes | Core |
-| `cursor` | Cursor | No | Yes | Project extension |
-| `windsurf` | Windsurf / Devin rules | No | Yes | Project extension |
-| `cline` | Cline | No | Yes | Project extension |
-| `roo` | Roo Code | No | Yes | Project extension |
-| `copilot` | GitHub Copilot | No | Yes | Project extension |
+| `claude` | Claude Code | Yes | Yes | `policy` |
+| `codex` | Codex CLI | Yes | Yes | `policy` |
+| `gemini` | Gemini CLI | Yes | Yes | `policy` |
+| `opencode` | OpenCode | Yes | Yes | `policy` |
+| `cursor` | Cursor | No | Yes | `policy` |
+| `windsurf` | Windsurf / Devin rules | No | Yes | `policy` |
+| `cline` | Cline | No | Yes | `policy` |
+| `roo` | Roo Code | No | Yes | `policy` |
+| `copilot` | GitHub Copilot | No | Yes | `policy` |
 
 User scope defaults to `claude,codex,gemini,opencode`. Project scope defaults
 to all rows in registry order. An unsupported target/scope combination or
@@ -239,6 +246,9 @@ diagnostics; neither chooses a lifecycle profile.
 
 - OAW does not install Superpowers, Matt Pocock skills, or ECC. Providers stay
   independently licensed, installed, configured, and updated.
+- The Agent Host retains physical authority. OAW Grants and Resource Leases
+  coordinate cooperating clients and never replace the Host sandbox and
+  approvals.
 - A selected local checkout or extracted release binary is executable code and
   must be reviewed and trusted. Management never downloads an executable at
   runtime.
@@ -288,7 +298,7 @@ tools themselves are also installed separately.
 Provider candidates and Host verification without changing configuration, run
 `oaw providers inspect --host codex --format text`. An ambiguous result lists
 every candidate and an exact location-and-version `[[provider_pins]]` fragment;
-OAW never selects or writes that pin. After adding a pin, start a new Run so it
+OAW never selects or writes that pin. After adding a pin, start a new Workflow so it
 captures the new Configuration Snapshot. See the [lifecycle guide](docs/en/lifecycle.md)
 and [troubleshooting guide](docs/en/troubleshooting.md) for the recovery sequence.
 

@@ -79,18 +79,18 @@ cat >"$CHECK_TEMP/release-boundaries" <<'EOF'
 README.md|Public installation management is Go-authoritative.
 README.md|`install.sh` is an offline sibling-binary compatibility wrapper.
 README.md|Release archives contain precompiled binaries and perform no runtime executable download.
-README.md|Install State and Runtime State are disjoint; no automatic migration occurs.
-README.md|Existing Policy-only tasks and profile locks remain Policy-only unless explicitly adopted at a Stable Boundary.
-README.md|Only the pinned Codex runner is currently Runtime-managed.
-README.md|Other installed adapters remain Policy-only and provide no Runtime admission, Capability Grant, Resource Lease, transition enforcement, or physical isolation guarantee.
+README.md|Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.
+README.md|OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
+README.md|The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
+README.md|`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.
 README.md|Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.
 README-zh.md|公开安装管理以 Go 为权威实现。
 README-zh.md|`install.sh` 是离线的同目录二进制兼容包装器。
 README-zh.md|发布归档包含预编译二进制，运行时不会下载可执行文件。
-README-zh.md|Install State 与 Runtime State 相互独立，不会自动迁移。
-README-zh.md|现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。
-README-zh.md|目前只有固定版本的 Codex runner 是 Runtime-managed。
-README-zh.md|其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。
+README-zh.md|安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。
+README-zh.md|OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
+README-zh.md|Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、
+README-zh.md|`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，
 README-zh.md|可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。
 EOF
 while IFS='|' read -r boundary_document boundary_text; do

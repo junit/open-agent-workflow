@@ -2,31 +2,38 @@
 
 [简体中文](../zh/architecture.md) | [README](../../README.md)
 
-Open Agent Workflow (OAW) installs one canonical engineering policy into the
-instruction surfaces of supported agent tools. It does not install those tools
-or their workflow providers. The installer owns only the policy, its recorded
-adapter output, and directories that it actually created.
+Open Agent Workflow (OAW) distributes one canonical engineering policy,
+compiles conflict-free lifecycle contracts, and optionally coordinates durable
+Workflow State. It never owns Agent execution. Agent tools and engineering
+Providers remain independently installed and versioned.
 
 ## Components and Boundaries
 
-The repository contains six cooperating layers:
+The product has four modules with separate authority:
 
-1. The checkout supplies `VERSION`, `policy/ENGINEERING.md`, the target
-   registry, and pure renderer functions.
-2. The public Go CLI parses management commands and selects user or project
-   scope; `install.sh` only executes the precompiled sibling binary.
-3. Path and state code derives canonical destinations and validates existing
-   installation records as inert data.
-4. Transaction code prepares every change, creates any required backup, and
-   then applies the prepared files.
-5. Adapter targets make the installed policy visible through each tool's own
-   instruction mechanism.
-6. The optional Runtime Plane provides the canonical Runtime Protocol,
-   `oaw runtime exchange`, and the selected `oaw run --host codex` Host driver.
+1. **Distribution** installs `policy/ENGINEERING.md` through target-native
+   instruction surfaces and manages checksummed Install State and backups.
+2. **OAW Core** is required and stateless. It classifies requests, resolves
+   verified Provider Instances, compiles Profile Recipes, and creates immutable
+   Lifecycle Bundles.
+3. **Workflow Coordinator** is optional and Workflow-only. It records revisions,
+   idempotency, cooperative Resource Leases, evidence, cancellation, switching,
+   and recovery for cooperating clients.
+4. **Agent Host** is external to OAW. It owns Agents, model calls, MCP, Hooks,
+   Skills, Plugins, authentication, tools, sandbox, approvals, and every
+   physical effect.
 
-The policy is the normative workflow source. Adapter files are transport
-layers, not independent policy copies. Agent tools, Superpowers, Matt Pocock
-skills, and ECC remain independently installed and versioned.
+The primary control flow is:
+
+```text
+Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt
+                          |
+                          +-> optional Workflow Coordinator
+```
+
+Distribution does not begin an engineering lifecycle. OAW Core does not retain
+Workflow State. The Workflow Coordinator does not execute work. The Agent Host
+does not gain authority to rewrite a Bundle.
 
 ## Canonical Storage
 
@@ -39,16 +46,19 @@ defaults:
 | User installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
 | Project installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state` |
 | Operation backups | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups` |
-| Runtime State | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime` |
+| Workflow State | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows` |
 
-`<crc>-<bytes>` is the `cksum` result for the physical project-root path bytes.
-This gives each resolved project root an isolated state record without placing
-installer metadata inside that repository. State paths are metadata locations;
-they do not change which repository files a project installation may own.
+Install State and Workflow State use disjoint namespaces. There is no migration
+or implicit adoption between them. `<crc>-<bytes>` is the `cksum` result for
+the physical project-root path bytes; it isolates installer metadata without
+placing that metadata inside the repository.
 
-## Data Flow
+Project Workflow documents are one-way, non-authoritative projections of
+committed Workflow State. They are never parsed back into authority.
 
-The mutation pipeline is:
+## Distribution Data Flow
+
+The management mutation pipeline is:
 
 ```text
 embedded checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> Install State/targets
@@ -57,10 +67,9 @@ embedded checkout policy -> pure renderer -> preflight/prepare -> required backu
 The Go binary embeds the Policy, Version, registry, and renderer behavior from
 the checkout used to build it. Release archives already contain that binary;
 a source checkout must build `./oaw` before execution. The arrows describe data
-and control flow, not simultaneous operation-wide atomicity. A renderer
-receives validated values and writes prospective content only to a
-caller-provided temporary path. Because it is a **pure renderer**, it does not
-inspect or mutate the eventual destination.
+and control flow, not simultaneous operation-wide atomicity. A **pure renderer**
+writes prospective content only to a caller-provided temporary path and never
+inspects or mutates the eventual destination.
 
 ## Host-Scoped Provider Authority
 
@@ -77,71 +86,102 @@ Provider Family
 Codex and Claude Code are independent Hosts. A physical Provider directory
 shared by both still yields different Host Installation keys because Host and
 surface identities participate in the digest. Descriptor bindings and
-configured installation hints are declarations only. The selected Host Adapter
-must observe the exact binding and associate it with the exact installation
-before the Registry can emit a Verified Provider Instance.
+configured installation hints are declarations only. A Host must report the
+exact binding and associate it with the exact installation before the registry
+can emit a Verified Provider Instance.
 
-Policy-only Hosts can produce Candidate reports without claiming Runtime
-verification. Optional foreign-Host discovery is rendered in a separate
-diagnostic projection and is never passed to pin matching, Registry resolution,
-Profile compilation, admission, Bundle creation, or Runtime State. The active
-schemas reject `oaw.provider-descriptor/v1` and `oaw.user-config/v1` rather than
-silently upgrading them. Scope failures retain the stable reasons
-`HOST_BINDING_EVIDENCE_REQUIRED`, `PROVIDER_BINDING_UNAVAILABLE`,
-`PROVIDER_FOREIGN_HOST_ONLY`, `PROVIDER_PIN_INCOMPATIBLE`, and
-`HOST_PROVIDER_SCOPE_MISMATCH`.
+A `policy` integration can distribute instructions and report Candidates, but
+static detection alone never verifies a Provider Instance. A `host-native`
+integration can report secret-free session facts and Host Binding Evidence.
+Foreign-Host diagnostics never enter pin matching, Profile compilation, or a
+Lifecycle Bundle. Active schemas reject `oaw.provider-descriptor/v1` and
+`oaw.user-config/v1` instead of silently upgrading them.
 
-## Runtime Plane
+## Core Compilation
 
-The Runtime Plane is optional and does not replace the Policy Plane. The
-canonical `oaw.runtime/v1` transport is available through `oaw runtime exchange`;
-`oaw run --host codex` uses the same `runtime.Engine.Exchange` seam and adds the
-ordered `GRANT_ISSUED`, `DISPATCH_PREPARED`, `DISPATCH_AUTHORIZED`, and
-`CAPABILITY_OBSERVED` handshake around a bounded Codex process.
+OAW Core accepts request evidence, trusted configuration, Host session facts,
+verified Provider Capabilities, and an explicit user selection. It returns
+eligible Profiles and topologies, reason-coded exclusions, recommendations,
+and the immutable Lifecycle Bundle. Callers never construct a Bundle.
 
-Only the pinned Codex runner is currently Runtime-managed. Runtime-aware execution is admitted
-only for the pinned `runner-managed` integration `oaw/codex-runner`. Other
-installed adapters remain Policy-only and provide no Runtime admission,
-Capability Grant, Resource Lease, transition enforcement, or physical isolation
-guarantee. Discovery, installation, and project configuration never promote
-them.
+Every built-in and user Provider follows the same descriptor, binding, and
+compiler path. A Provider brand does not fix its role; the selected Recipe
+assigns each responsibility exactly once. Built-in selections are:
 
-Install State and Runtime State are disjoint; no automatic migration occurs.
-Existing Policy-only tasks and profile locks remain Policy-only unless
-explicitly adopted at a Stable Boundary. Management reads and writes only the
-TSV installation namespace; Runtime reads and writes only the revisioned Run
-namespace.
+| Selection | Recipe |
+| --- | --- |
+| `SP-FULL` | `oaw/delivery` |
+| `MATT-FULL` | `oaw/domain-engineering` |
+| `ECC-FULL` | `oaw/ecc-engineering` |
+| `MATT-SP-HYBRID` | `oaw/reliable-feature` |
+| `USER-DEFINED` | A configured, versioned user Recipe |
 
-Host output is untrusted. The Codex driver bounds process output, keeps
-diagnostics on stderr, normalizes JSONL into closed outcomes, and returns only
-digest-pinned evidence references to Runtime state. A resumed run can provide
-an explicit project root so the trusted project Configuration Snapshot remains
-part of admission.
+`ECC-FULL` remains a complete lifecycle. The same ECC Provider may instead own
+one bounded specialist Capability in another Recipe.
 
-During the **prepare phase**, OAW resolves the source and destinations, renders
+## Execution Topologies and Host Integration
+
+OAW recognizes only two execution topologies:
+
+- `CURRENT` uses the active Agent session and its environment unchanged.
+- `SUBAGENT` asks the active Agent Host to create a child through its native
+  Subagent facility.
+
+There is no process or container fallback for an unavailable Subagent. The
+eligible set is the intersection of the selected Profile, every active
+Capability binding, integration metadata, and current Host session facts. The
+user selects a topology during the Workflow Startup Gate.
+
+All nine built-in integrations currently have the `policy` control surface and
+support `CURRENT`. A future `host-native` integration must support `CURRENT`;
+its `SUBAGENT` availability remains session-dependent. It reports facts,
+Dispatch Packet outcomes, and Receipts but never transfers a model command,
+credential, private Hook payload, or private MCP, Skill, or Plugin configuration
+to OAW.
+
+The Agent Host owns physical execution authority. Lifecycle Bundles,
+Capability Grants, and Resource Leases express logical workflow authority for
+cooperating clients. A Grant may be narrower than the Host sandbox and
+approvals, but it cannot physically stop out-of-protocol Host actions.
+
+## Workflow Coordination
+
+The optional Workflow Coordinator accepts only `WORKFLOW`. `DIRECT` and
+`BOUNDED` create no Workflow State. It commits immutable revisions, the Bundle
+generation and digest, current graph node, ticket, stable boundary, logical
+Capability Grant, Resource Lease, Receipt, and digest-pinned evidence
+references.
+
+Resource Leases coordinate cooperating Workflows that declare conflicting
+project resources. They do not lock the operating system, filesystem, Git, or
+another process. Policy-only use follows the same lifecycle ownership rules
+without claiming atomic revisions, idempotency, leases, or transition
+enforcement.
+
+## Management Transaction
+
+During the **prepare phase**, OAW resolves source and destinations, renders
 prospective files, checks containment and symlink rules, parses prior state,
-detects drift, and verifies all planned actions before any managed destination
+detects drift, and verifies every planned action before any managed destination
 is written. Target selection and shared-destination collisions are resolved at
-this point. Codex and OpenCode, for example, share one project `AGENTS.md`
-managed block instead of racing to produce separate files.
+this point.
 
 If forced mutation would replace drifted or foreign content, OAW creates and
 verifies an **operation-scoped backup** of every affected artifact before
-applying any prepared action. The resulting backup reference can be recorded
-in state.
+applying any prepared action. The backup reference can be recorded in Install
+State.
 
 During the **apply phase**, paths are validated again immediately before use.
 Each file is written beside its destination as a temporary file and moved into
 place, providing **atomic replacement per destination**. After every effect,
 the Go manager records an inverse in its mutation journal. A reported apply
 failure attempts reverse-order rollback; rollback failure is surfaced as an
-error rather than hidden. OAW does not claim simultaneous atomic replacement
-across destinations or automatic recovery from a process or machine crash.
-Verified backups remain the auditable recovery boundary for forced operations.
+error. OAW does not claim simultaneous atomic replacement across destinations
+or automatic recovery from a process or machine crash.
 
 ## Ownership Modes
 
-Every target declares one of two ownership modes:
+Every target declares one ownership mode:
 
 - `managed-block` inserts one marker-delimited OAW block while preserving
   surrounding user content. Claude, Codex, Gemini, and OpenCode use this mode.
@@ -149,22 +189,18 @@ Every target declares one of two ownership modes:
   Cline, Roo Code, and Copilot use this mode.
 
 Markers are an installer ownership boundary. **Marker comments do not establish model precedence**,
-override a tool's documented instruction hierarchy, or force a running agent
-session to reload. Each tool remains responsible for discovery, precedence,
-merging, and cache or session behavior.
+override a tool's documented instruction hierarchy, or force a running Agent
+session to reload.
 
 Drift means recorded OAW ownership no longer matches the current file. Without
-`--force`, mutation fails closed. On uninstall, a clean managed block is
-removed from its containing file, while a clean owned file is removed in full.
-Only empty directories that state proves OAW created are eligible for pruning.
+`--force`, mutation fails closed. Uninstall removes a clean managed block or a
+clean owned file and prunes only empty directories that state proves OAW
+created.
 
-## State Schema
+## Install State Schema
 
-The records below describe Install State only. They are tab-separated inert
-text and are never sourced or evaluated by the shell. Runtime State instead
-uses immutable Run revisions, `HEAD`, Grants, Resource Leases, and evidence
-references under its separate namespace; it never parses TSV Install State as
-Runtime authority.
+Install State is tab-separated inert text and is never sourced or evaluated by
+the shell. It is not Workflow State and cannot grant workflow authority.
 
 | Record | Cardinality | Meaning |
 | --- | --- | --- |
@@ -177,14 +213,14 @@ Runtime authority.
 | `directory` | zero or more | Directory created and therefore potentially removable by OAW. |
 | `target` | one or more | Target ID, absolute path, ownership mode, checksum, and origin. |
 
-Before an update or uninstall, OAW validates the record format, scope, project
+Before update or uninstall, OAW validates the record format, scope, project
 identity, target registry membership, paths, ownership modes, and checksums.
 Malformed or unsafe state is rejected rather than interpreted leniently.
 
 ## Trust Model
 
 `HOME`, `XDG_CONFIG_HOME`, `XDG_STATE_HOME`, project roots, checkout artifacts,
-existing target files, and state are all trust-boundary inputs. OAW requires
+existing target files, and state are trust-boundary inputs. OAW requires
 absolute safe roots, resolves project scope physically, rejects unsafe symlink
 or containment paths, and rechecks destinations during apply. The
 [installer guide](installer.md) documents commands and failures; the

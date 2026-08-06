@@ -2,7 +2,7 @@
 
 [English](../en/comparison.md) | [README 中文](../../README-zh.md)
 
-这份对比说明 Open Agent Workflow（OAW）为什么同时提供 full-family profile 和预定义的
+这份对比说明 Open Agent Workflow（OAW）为什么同时提供 full-family Profile 和预定义的
 Matt-Superpowers hybrid。它比较 Superpowers、Matt Pocock skills 与 Everything Claude
 Code（ECC）提供的 workflow 流程，不比较模型质量或 agent 工具质量。
 
@@ -13,7 +13,9 @@ Code（ECC）提供的 workflow 流程，不比较模型质量或 agent 工具�
 不是实证性能研究，也不承诺某个 family 在每个仓库和任务中都最好。
 
 分数范围为 1.0 到 5.0，按 **Superpowers / Matt / ECC** 顺序排列。它们帮助定义初始
-所有权映射，但不会静默选择 profile；用户的显式选择始终有效。
+所有权映射，但不会静默选择 Profile；用户的显式选择始终有效。Provider brand 不决定
+角色：OAW Core 编译 selected Recipe，为每项职责分配一个 owner。可选 Workflow
+Coordinator 记录 Workflow State，Agent Host 执行 `CURRENT` 或原生 `SUBAGENT`。
 
 ## 评分标准
 

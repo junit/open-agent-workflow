@@ -5,8 +5,9 @@
 Open Agent Workflow（OAW）负责协调多个 agent 工具中独立安装的 workflow provider。它为一个工程交付物指定一个明确的生命周期所有者，或一份无冲突的阶段
 映射，然后把同一套治理策略安装到受支持 coding agent 的指令入口中。
 
-OAW 是 provider-neutral 的策略、适配器层和 Go runtime。它不重新分发 workflow
-family，也不取代 agent 工具自身的配置。
+OAW 是 provider-neutral 的策略分发与生命周期协调系统。OAW Core 编译生命周期契约，
+可选 Workflow Coordinator 持久化 Workflow State，外部 Agent Host 执行所有 effect。
+它不重新分发 workflow family，也不取代 agent 工具自身的配置。
 
 ## 为什么需要 OAW
 
@@ -31,8 +32,12 @@ policy，并围绕它渲染轻量的 target-native 入口。
 
 - 在 family-specific 生命周期启动前，将顶层工程请求分类为 `DIRECT`、`BOUNDED` 或
   `WORKFLOW`。
-- 在 Workflow Mode 中展示所有可用的内置与用户自定义 Profile，并等待用户显式选择。
-- 让选定 bundle 跨后续请求、上下文压缩、ticket 和委派 agent 保持锁定。
+- 在 Workflow Mode 中展示所有可用的内置与用户自定义 Profile、`CURRENT` 与可用的
+  `SUBAGENT` 拓扑，并等待用户显式选择。
+- 由 OAW Core 编译选定 Lifecycle Bundle，并让它跨后续请求、上下文压缩、ticket 和
+  委派 agent 保持锁定。
+- 可选地由 Workflow Coordinator 记录 Workflow revision、协作式 Resource Lease、
+  Receipt 和 evidence reference。
 - 支持完整 family profile、预定义 Matt-Superpowers hybrid、有限 specialist add-on，
   以及用户自定义的无冲突阶段映射。
 - 独立检测 Superpowers、Matt Pocock skills 和 Everything Claude Code（ECC），检测
@@ -56,11 +61,11 @@ Provider Family
 
 Codex 与 Claude Code 是相互独立的 Host。即使它们引用同一组物理文件，OAW 也会推导出
 不同的 Host Installation 身份。Provider Descriptor binding 与配置的 installation hint
-都只是声明，不能创建 Host Binding Evidence。Policy-only Host 可以报告 Candidate，但不能
-验证 Runtime Provider Instance。foreign-Host 诊断绝不会成为 pin、Registry 输入、Profile
-owner 或 Runtime 权限。
+都只是声明，不能创建 Host Binding Evidence。`policy` Host 可以报告 Candidate，但
+Candidate 在没有 verified Provider Instance 时不能满足 Profile compilation。foreign-Host
+诊断绝不会成为 pin、Registry 输入、Profile owner、Capability Grant 或 Workflow 权限。
 
-当前 Provider Descriptor 和用户配置契约只接受 v2；
+当前 Provider Descriptor 和用户配置契约只接受 v3；
 `oaw.provider-descriptor/v1` 与 `oaw.user-config/v1` 输入会被拒绝，不会隐式升级。
 存在歧义的当前 Host candidate 只能使用下列精确身份字段固定；`location` 与 `version`
 是可选的可读断言：
@@ -78,7 +83,7 @@ evidence_digest = "<sha256>"
 稳定的 Host-scope 诊断原因包括 `HOST_BINDING_EVIDENCE_REQUIRED`、
 `PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_FOREIGN_HOST_ONLY`、
 `PROVIDER_PIN_INCOMPATIBLE` 与 `HOST_PROVIDER_SCOPE_MISMATCH`。使用
-`oaw providers inspect --host <host> --format json` 查看物理证据；Runtime denial
+`oaw providers inspect --host <host> --format json` 查看物理证据；workflow denial
 保持不包含路径。
 
 ## 快速开始
@@ -118,7 +123,7 @@ go build -o ./oaw ./cmd/oaw
 ID 集合）缩小命令范围。运行 `./oaw --help` 或 `./install.sh --help` 可查看 management
 CLI。
 
-### Cutover 与 Runtime 边界
+### Core、Coordination 与 Host 边界
 
 公开安装管理以 Go 为权威实现。
 
@@ -126,13 +131,18 @@ CLI。
 
 发布归档包含预编译二进制，运行时不会下载可执行文件。
 
-Install State 与 Runtime State 相互独立，不会自动迁移。
+安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。
 
-现有 Policy-only task 和 profile lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。
+OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
+Workflow State；Install State 与 Workflow State 相互独立，不迁移也不隐式接管。
 
-目前只有固定版本的 Codex runner 是 Runtime-managed。
+Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、
+approval 和全部物理 effect。OAW 绝不启动 model process。
 
-其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical isolation 保证。
+`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，
+`SUBAGENT` 才可用；不存在 process fallback。当前九个内置 integration 全部是 `policy`
+surface。未来的 `host-native` integration 可以报告 session fact 与 Receipt，但不会把执行
+权限转交 OAW。
 
 可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。在 macOS 上，如果 Docker Desktop 可用，应使用 `scripts/smoke-docker.sh` 验证 Linux 归档。WSL-specific 检查是可选项，`SKIP` 必须记录，绝不能报告为 pass。
 
@@ -149,10 +159,10 @@ OAW 通过足够的只读检查，把每个顶层工程请求分类为 `DIRECT`�
 一个可观察交付物准入一个精确 Provider Capability。这两种模式都不选择生命周期。
 
 只有 Workflow Mode 运行 Startup Gate。OAW 随后展示全部可用的内置与用户自定义
-Profile、一个推荐项和所有拟议 bounded add-on，由用户显式选择。
-没有超时自动选择，也没有静默默认项。
-编译后的 Lifecycle Bundle 会锁定到当前交付物。只有用户能切换它，而且只能在规格批准、
-已完成 ticket、调试周期、复核或验证等 stable boundary 上切换。
+Profile、可用的 `CURRENT` 或原生 `SUBAGENT` 拓扑、推荐项和所有拟议 bounded add-on，
+由用户显式选择。没有超时自动选择，也没有静默默认项。OAW Core 编译的 Lifecycle
+Bundle 会锁定到当前交付物。只有用户能切换它，而且只能在规格批准、已完成 ticket、
+调试周期、复核或验证等 stable boundary 上切换。
 
 ## 生命周期配置
 
@@ -166,8 +176,9 @@ Profile、一个推荐项和所有拟议 bounded add-on，由用户显式选择�
 
 推荐项永远不会变成默认项。缺少所需 provider capability 时，任务门禁会停止，不会
 静默省略或替代。Superpowers、Matt、ECC 和第三方 Provider 使用同一个可扩展 Provider
-与 Capability 模型。委派 agent 继承完全相同的 locked bundle，不重新进行 family
-arbitration。bounded add-on 只能产出声明的 specialist 交付物，不能接管生命周期。
+与 Capability 模型。Host-native Subagent 继承完全相同的 locked bundle，不重新进行
+family arbitration。bounded add-on 只能产出声明的 specialist 交付物，不能接管生命周期。
+`DIRECT` 和 `BOUNDED` 不会创建 Workflow State。
 
 ## Matt-Superpowers 混合配置
 
@@ -194,17 +205,17 @@ Target ID 是稳定的 CLI 输入，必须严格按下表书写。Core adapter �
 作用域。Extension adapter 在项目作用域获得正式支持，因为它们的全局入口可能由 GUI
 管理、依赖平台、仍属实验性，或稳定性较低。
 
-| Target ID | Agent 工具 | 用户作用域 | 项目作用域 | 支持级别 |
+| Target ID | Agent 工具 | 用户作用域 | 项目作用域 | Control surface |
 | --- | --- | --- | --- | --- |
-| `claude` | Claude Code | 是 | 是 | Core |
-| `codex` | Codex CLI | 是 | 是 | Core |
-| `gemini` | Gemini CLI | 是 | 是 | Core |
-| `opencode` | OpenCode | 是 | 是 | Core |
-| `cursor` | Cursor | 否 | 是 | Project extension |
-| `windsurf` | Windsurf / Devin rules | 否 | 是 | Project extension |
-| `cline` | Cline | 否 | 是 | Project extension |
-| `roo` | Roo Code | 否 | 是 | Project extension |
-| `copilot` | GitHub Copilot | 否 | 是 | Project extension |
+| `claude` | Claude Code | 是 | 是 | `policy` |
+| `codex` | Codex CLI | 是 | 是 | `policy` |
+| `gemini` | Gemini CLI | 是 | 是 | `policy` |
+| `opencode` | OpenCode | 是 | 是 | `policy` |
+| `cursor` | Cursor | 否 | 是 | `policy` |
+| `windsurf` | Windsurf / Devin rules | 否 | 是 | `policy` |
+| `cline` | Cline | 否 | 是 | `policy` |
+| `roo` | Roo Code | 否 | 是 | `policy` |
+| `copilot` | GitHub Copilot | 否 | 是 | `policy` |
 
 用户作用域默认选择 `claude,codex,gemini,opencode`；项目作用域按注册表顺序默认选择
 全部 target。不支持的 target/scope 组合或未知 ID 会在变更前失败。Provider 检测和
@@ -214,6 +225,8 @@ target readiness 都只是诊断信息，不会选择 lifecycle profile。
 
 - OAW 不安装 Superpowers、Matt Pocock skills 或 ECC。Provider 的许可、安装、配置和
   更新始终保持独立。
+- Agent Host 保留物理权限。OAW Grant 与 Resource Lease 只协调合作客户端，不会替代
+  Host sandbox 和 approval。
 - 选定的本地 checkout 或已解压 release binary 都是可执行代码，必须经过复核并可信。
   Management 在运行时不会下载可执行文件。
 - 第一次 managed write 前会准备并验证全部目标路径。
@@ -257,7 +270,7 @@ vendor、patch、更新、删除、许可或静默替换 provider 内容。Agent
 的 Provider candidate 与 Host 验证结果，请运行
 `oaw providers inspect --host codex --format text`。歧义结果会列出全部 candidate 以及精确
 的 location-and-version `[[provider_pins]]` 片段；OAW 不会选择 candidate，也不会写入 pin。
-写入 pin 后必须启动新的 Run，使其捕获新的 Configuration Snapshot。恢复步骤见[生命周期指南](docs/zh/lifecycle.md)
+写入 pin 后必须启动新的 Workflow，使其捕获新的 Configuration Snapshot。恢复步骤见[生命周期指南](docs/zh/lifecycle.md)
 和[故障排查指南](docs/zh/troubleshooting.md)。
 
 ## 文档

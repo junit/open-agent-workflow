@@ -3,8 +3,9 @@
 [English](../en/background.md) | [README 中文](../../README-zh.md)
 
 Open Agent Workflow（OAW）是 provider-neutral 的治理层，面向同时使用多个工程
-workflow 和多个 coding-agent 客户端的开发者。它分别回答两个问题：谁拥有本任务的
-生命周期，以及怎样把同一个决定传递给每个受支持的 agent 工具？
+workflow 和多个 coding-agent 客户端的开发者。OAW Core 决定使用什么契约以及每项职责
+由谁负责；可选 Workflow Coordinator 记录持久化 Workflow State；Agent Host 决定怎样在
+当前会话或原生 Subagent 中执行。这些是相互分离的权限边界。
 
 ## 一个任务，多个自动触发器
 
@@ -54,18 +55,22 @@ indicator，并在用户选择兼容 profile 后进行路由。它不安装、�
 Agent 工具同样保持独立。OAW 只安装自己的策略和 adapter；它不安装客户端，也不修改
 GUI-only 的全局规则存储。
 
-## OAW 拥有的边界
+## Core、Coordination 与 Host 边界
 
-OAW 拥有仲裁策略、target-specific 入口、带校验和的安装 state 和可恢复 backup。这个
-边界刻意保持有限：
+OAW 拥有仲裁策略、target-specific 入口、OAW Core 编译、带校验和的 Install State 和
+可恢复 backup。可选 Workflow Coordinator 只拥有合作客户端的 Workflow State。Agent Host
+拥有物理执行权限。这个边界刻意保持有限：
 
-1. 使用 canonical 的普通/复杂规则分类任务。
-2. 展示所有 profile 和精确的拟议 add-on。
+1. 将任务分类为 `DIRECT`、`BOUNDED` 或 `WORKFLOW`。
+2. 在 Workflow Mode 中展示所有 profile、topology 和精确的拟议 add-on。
 3. 阻塞等待用户选择，不使用超时或静默默认项。
-4. 记录 bundle，并让它跨后续请求和委派工作持续有效。
+4. 编译 Bundle；只有启用 Coordinator 时才持久化 Workflow State。
 5. 把同一策略渲染到选定的用户级或项目级 target。
 6. 遇到 drift 时关闭失败；只有用户显式 force 时才先备份再变更。
 7. uninstall 只删除 OAW-owned 构件。
+
+`DIRECT` 和 `BOUNDED` 不创建 Workflow State。OAW 绝不启动 model process。`CURRENT`
+原样使用当前会话，`SUBAGENT` 只有在当前 Host 能创建原生 child 时才可用。
 
 OAW 不判断哪种方法论普遍最好。它的初始三 family 评估只是受经验边界约束的设计输入，
 详见[对比文档](comparison.md)。规范性的所有权与切换规则仍位于

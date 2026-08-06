@@ -151,6 +151,16 @@ oaw/matt
 oaw/ecc
 ```
 
+Provider authority is resolved through one Host-scoped chain:
+
+```text
+Provider Family
+  -> Distribution
+  -> Host Installation
+  -> Host Binding Evidence
+  -> Verified Provider Instance
+```
+
 OAW ships declarative descriptors and built-in Recipes, not Provider code.
 Users may register trusted third-party descriptors, Profile Recipes, bindings,
 pins, and denials through configuration. Trusted project configuration may

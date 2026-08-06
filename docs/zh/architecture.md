@@ -2,30 +2,37 @@
 
 [English](../en/architecture.md) | [README 中文](../../README-zh.md)
 
-Open Agent Workflow（OAW）把一份 canonical 工程策略安装到受支持 agent 工具的指令
-入口中。它不安装这些工具或它们的 workflow provider。安装器只拥有 policy、已记录的
-adapter 输出，以及确实由它创建的目录。
+Open Agent Workflow（OAW）分发一份 canonical 工程策略、编译无冲突生命周期契约，并
+可选地协调持久化 Workflow State。它不拥有 Agent 执行权。Agent 工具和工程 Provider
+保持独立安装与版本管理。
 
 ## 组件与边界
 
-仓库包含六个协作层次：
+产品包含四个权限相互分离的模块：
 
-1. 当前 checkout 提供 `VERSION`、`policy/ENGINEERING.md`、target registry 和 pure
-   renderer 函数。
-2. 公开 Go CLI 解析 management command 并选择 user 或 project scope；`install.sh` 只执行
-   预编译的同目录二进制。
-3. 路径与 state 代码推导 canonical destination，并把现有安装记录作为 inert data 验证。
-4. Transaction 代码准备每项变更、创建所有必需 backup，再应用已准备文件。
-5. Adapter target 通过各工具自己的指令机制让已安装 policy 可见。
-6. 可选的 Runtime Plane 提供 canonical Runtime Protocol、`oaw runtime exchange`，
-   以及已选择的 `oaw run --host codex` Host driver。
+1. **Distribution** 通过 target-native 指令入口安装 `policy/ENGINEERING.md`，并管理带
+   checksum 的 Install State 与 backup。
+2. **OAW Core** 是必需且无状态的。它分类请求、解析 verified Provider Instance、编译
+   Profile Recipe，并创建 immutable Lifecycle Bundle。
+3. **Workflow Coordinator** 是可选且只服务 Workflow 的。它为合作客户端记录 revision、
+   idempotency、协作式 Resource Lease、evidence、cancel、switch 与 recovery。
+4. **Agent Host** 位于 OAW 外部。它拥有 Agent、model call、MCP、Hook、Skill、Plugin、
+   认证、工具、sandbox、approval 与所有物理 effect。
 
-Policy 是规范性的 workflow 来源。Adapter 文件是传输层，不是独立的 policy 副本。
-Agent 工具、Superpowers、Matt Pocock skills 和 ECC 都保持独立安装与版本管理。
+主要控制流为：
+
+```text
+Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt
+                          |
+                          +-> optional Workflow Coordinator
+```
+
+Distribution 不启动工程生命周期。OAW Core 不保留 Workflow State。Workflow
+Coordinator 不执行工作。Agent Host 也无权改写 Bundle。
 
 ## Canonical 存储位置
 
-OAW 遵循 XDG base-directory 约定，并明确保留默认值：
+OAW 遵循 XDG base-directory 约定，并保留明确默认值：
 
 | 构件 | Canonical 路径 |
 | --- | --- |
@@ -33,25 +40,27 @@ OAW 遵循 XDG base-directory 约定，并明确保留默认值：
 | User 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
 | Project 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state` |
 | 操作 backup | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups` |
-| Runtime State | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/runtime` |
+| Workflow State | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows` |
 
-`<crc>-<bytes>` 是物理 project root 路径字节的 `cksum` 结果。这样每个已解析 project
-root 都有隔离的 state record，同时不会把安装器元数据放进仓库。State 路径只是元数据
-位置，不会扩大 project 安装可以拥有的仓库文件范围。
+Install State 与 Workflow State 使用相互独立的 namespace；二者之间不迁移也不隐式接管。
+`<crc>-<bytes>` 是物理 project root 路径字节的 `cksum` 结果，它隔离安装器 metadata，
+同时不把这些 metadata 放入仓库。
 
-## 数据流
+项目 Workflow 文档是 committed Workflow State 的单向、非权威 projection，绝不会被
+解析回权限来源。
 
-变更 pipeline 是：
+## Distribution 数据流
+
+Management mutation pipeline 是：
 
 ```text
 embedded checkout policy -> pure renderer -> preflight/prepare -> required backup -> apply -> Install State/targets
 ```
 
-Go binary 嵌入用于构建它的 checkout 中的 Policy、Version、registry 与 renderer behavior。
-Release archive 已包含该二进制；源码 checkout 必须先构建 `./oaw`。这些箭头表达数据与
-控制流，不表示所有 destination 同时具备全局原子性。Renderer 接收已验证的值，只把
-prospective content 写入调用方提供的临时路径。作为 **pure renderer**，它不会检查或变更
-最终 destination。
+Go binary 嵌入构建它的 checkout 中的 Policy、Version、registry 与 renderer behavior。
+Release archive 已包含该二进制；源码 checkout 必须先构建 `./oaw`。这些箭头表示数据与
+控制流，不表示 operation-wide 同步原子性。**pure renderer** 只把 prospective content
+写入调用方提供的临时路径，不检查或修改最终 destination。
 
 ## Host-scoped Provider 权限
 
@@ -65,79 +74,104 @@ Provider Family
   -> Verified Provider Instance
 ```
 
-Codex 与 Claude Code 是独立 Host。即使二者共享同一个物理 Provider 目录，由于 Host 和
-surface 身份参与 digest，它们仍会得到不同的 Host Installation key。Descriptor binding
-和配置的 installation hint 只是声明。Registry 只有在所选 Host Adapter 观察到精确 binding
-并把它关联到精确 installation 后，才能产生 Verified Provider Instance。
+Codex 与 Claude Code 是独立 Host。即使共享物理 Provider 目录，由于 Host 和 surface
+身份参与 digest，它们仍会产生不同 Host Installation key。Descriptor binding 和配置的
+installation hint 只是声明。Host 必须报告精确 binding，并关联精确 installation，registry
+才可以产生 Verified Provider Instance。
 
-Policy-only Host 可以生成 Candidate report，但不能声称 Runtime verification。可选的
-foreign-Host discovery 会进入独立 diagnostic projection，绝不会传入 pin matching、
-Registry resolution、Profile compilation、admission、Bundle creation 或 Runtime State。
-当前 schema 会拒绝 `oaw.provider-descriptor/v1` 与 `oaw.user-config/v1`，不会静默升级。
-Scope failure 保持稳定原因 `HOST_BINDING_EVIDENCE_REQUIRED`、
-`PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_FOREIGN_HOST_ONLY`、
-`PROVIDER_PIN_INCOMPATIBLE` 与 `HOST_PROVIDER_SCOPE_MISMATCH`。
+`policy` integration 可以分发指令并报告 Candidate，但 static detection 不能验证 Provider
+Instance。`host-native` integration 可以报告无 secret 的 session fact 与 Host Binding
+Evidence。foreign-Host diagnostics 绝不会进入 pin matching、Profile compilation 或
+Lifecycle Bundle。active schema 会拒绝 `oaw.provider-descriptor/v1` 和
+`oaw.user-config/v1`，不会静默升级。
 
-## Runtime Plane
+## Core 编译
 
-Runtime Plane 是可选层，不会替代 Policy Plane。Canonical `oaw.runtime/v1` transport
-通过 `oaw runtime exchange` 提供；`oaw run --host codex` 使用同一个
-`runtime.Engine.Exchange` seam，并在有界 Codex process 外围驱动有序的
-`GRANT_ISSUED`、`DISPATCH_PREPARED`、`DISPATCH_AUTHORIZED` 与
-`CAPABILITY_OBSERVED` handshake。目前只有固定版本的 Codex runner 是 Runtime-managed。
-只有 pin 的 `runner-managed` integration `oaw/codex-runner` 可以通过 Runtime admission。
-其他已安装 adapter 仍为 Policy-only，不提供 Runtime admission、Capability Grant、
-Resource Lease、transition enforcement 或 physical isolation 保证。Discovery、
-installation 与 project configuration 都不会将其晋级。
+OAW Core 接收 request evidence、可信配置、Host session fact、verified Provider
+Capability 和用户显式选择，返回 eligible Profile 与 topology、reason-coded exclusion、
+recommendation 和 immutable Lifecycle Bundle。调用方绝不能自行构造 Bundle。
 
-Install State 与 Runtime State 相互独立，不会自动迁移。现有 Policy-only task 和 profile
-lock 仍保持 Policy-only，除非在 Stable Boundary 显式接管。Management 只读写 TSV
-installation namespace；Runtime 只读写 revisioned Run namespace。
+每个内置和用户 Provider 都使用相同 descriptor、binding 与 compiler 路径。Provider brand
+不固定角色；selected Recipe 为每项职责分配唯一 owner。内置选择为：
 
-Host output 不可信。Codex driver 限制 process output，把 diagnostics 保持在 stderr，
-把 JSONL 归一化为封闭的 outcome，并且只向 Runtime state 返回 digest-pinned evidence
-reference。恢复运行时可以显式提供 project root，使可信的 project Configuration
-Snapshot 继续参与 admission。
+| 选择 | Recipe |
+| --- | --- |
+| `SP-FULL` | `oaw/delivery` |
+| `MATT-FULL` | `oaw/domain-engineering` |
+| `ECC-FULL` | `oaw/ecc-engineering` |
+| `MATT-SP-HYBRID` | `oaw/reliable-feature` |
+| `USER-DEFINED` | 配置中版本化的用户 Recipe |
+
+`ECC-FULL` 仍是完整生命周期。同一个 ECC Provider 在其他 Recipe 中也可以只拥有一个
+bounded specialist Capability。
+
+## 执行拓扑与 Host Integration
+
+OAW 只识别两种执行拓扑：
+
+- `CURRENT` 原样使用 active Agent session 及其环境。
+- `SUBAGENT` 请求 active Agent Host 通过原生 Subagent facility 创建 child。
+
+Subagent 不可用时，没有 process 或 container fallback。可用集合取 selected Profile、
+所有 active Capability binding、integration metadata 与当前 Host session fact 的交集。
+用户在 Workflow Startup Gate 中选择 topology。
+
+当前九个内置 integration 都使用 `policy` control surface，并支持 `CURRENT`。未来的
+`host-native` integration 必须支持 `CURRENT`；其 `SUBAGENT` 可用性取决于当前 session。
+它报告 fact、Dispatch Packet outcome 和 Receipt，但绝不会向 OAW 交出 model command、
+credential、private Hook payload，或 private MCP、Skill、Plugin 配置。
+
+Agent Host 拥有物理执行权限。Lifecycle Bundle、Capability Grant 与 Resource Lease 为
+合作客户端表达 logical workflow authority。Grant 可以比 Host sandbox and approvals
+更窄，但不能物理阻止 Host 在协议外执行 action。
+
+## Workflow 协调
+
+可选 Workflow Coordinator 只接受 `WORKFLOW`。`DIRECT` 与 `BOUNDED` 不创建 Workflow
+State。它提交 immutable revision、Bundle generation 与 digest、current graph node、
+ticket、stable boundary、logical Capability Grant、Resource Lease、Receipt 和
+digest-pinned evidence reference。
+
+Resource Lease 协调声明了冲突 project resource 的合作 Workflow。它不会锁定操作系统、
+文件系统、Git 或其他 process。Policy-only 使用方式遵循相同 lifecycle ownership 规则，
+但不声称具备 atomic revision、idempotency、lease 或 transition enforcement。
+
+## Management Transaction
 
 在 **prepare phase**，OAW 解析 source 与 destination，渲染 prospective file，检查
 containment 与 symlink 规则，解析旧 state，检测 drift，并在写入任何 managed destination
-前验证所有 planned action。Target 选择与 shared-destination collision 也在这里解决。例如
-Codex 与 OpenCode 共用一个 project `AGENTS.md` managed block，不会竞争生成两个文件。
+前验证所有 planned action。Target selection 与 shared-destination collision 也在这里解决。
 
 如果 forced mutation 会替换 drifted 或 foreign content，OAW 会先创建并验证覆盖每个受
-影响构件的 **operation-scoped backup**，然后才应用任何 prepared action。对应 backup
-reference 可以写入 state。
+影响构件的 **operation-scoped backup**，然后才应用 prepared action。Backup reference
+可以记录到 Install State。
 
 在 **apply phase**，路径会在使用前再次验证。每个文件先在 destination 旁写为临时文件，
-再通过移动替换，因此提供 **atomic replacement per destination**。每个 effect 完成后，
-Go manager 都会在 mutation journal 中记录 inverse。发生已报告的 apply failure 时，会尝试
-逆序 rollback；rollback failure 会显式返回错误。OAW 不承诺跨 destination 的同步原子替换，
-也不承诺从 process 或 machine crash 自动恢复。对于 forced operation，已验证 backup 仍是
-可审计的恢复边界。
+再移动替换，因此提供 **atomic replacement per destination**。每个 effect 完成后，Go
+manager 会在 mutation journal 中记录 inverse。发生已报告 apply failure 时，会尝试逆序
+rollback；rollback failure 会显式返回。OAW 不承诺跨 destination 同步原子替换，也不
+承诺从 process 或 machine crash 自动恢复。
 
 ## 所有权模式
 
-每个 target 声明以下一种 ownership mode：
+每个 target 声明一种 ownership mode：
 
-- `managed-block` 在保留周围用户内容的同时，插入一个由 marker 分隔的 OAW block。
-  Claude、Codex、Gemini 和 OpenCode 使用此模式。
-- `owned-file` 为 OAW 保留一个 adapter 专用文件。Cursor、Windsurf、Cline、Roo Code
-  和 Copilot 使用此模式。
+- `managed-block` 在保留周围用户内容的同时，插入 marker 分隔的 OAW block。Claude、
+  Codex、Gemini 和 OpenCode 使用此模式。
+- `owned-file` 为 OAW 保留 adapter 专用文件。Cursor、Windsurf、Cline、Roo Code 和
+  Copilot 使用此模式。
 
-Marker 是安装器的 ownership boundary；**marker 注释不建立模型优先级**，不会覆盖工具
-文档规定的 instruction hierarchy，也不能强制正在运行的 agent session reload。发现、
-优先级、合并以及 cache 或 session 行为仍由每个工具负责。
+Marker 是安装器 ownership boundary；**marker 注释不建立模型优先级**，不会覆盖工具文档
+规定的 instruction hierarchy，也不能强制 active Agent session reload。
 
-Drift 表示已记录的 OAW ownership 不再匹配当前文件。没有 `--force` 时，变更会关闭失败。
-卸载时，干净的 managed block 从所在文件移除，干净的 owned file 则完整删除。只有 state
-能够证明由 OAW 创建、并且当前为空的目录才可能被清理。
+Drift 表示已记录 OAW ownership 不再匹配当前文件。没有 `--force` 时变更会关闭失败。
+Uninstall 删除干净的 managed block 或 owned file，只清理 state 能证明由 OAW 创建的
+空目录。
 
-## State Schema
+## Install State Schema
 
-下表只描述 Install State。它由 tab-separated inert text 构成，绝不会被 shell source 或
-evaluate。Runtime State 在独立 namespace 中使用 immutable Run revision、`HEAD`、Grant、
-Resource Lease 与 evidence reference；它绝不会把 TSV Install State 解析成 Runtime
-authority。
+Install State 是 tab-separated inert text，绝不会被 shell source 或 evaluate。它不是
+Workflow State，也不能授予 workflow 权限。
 
 | Record | 数量 | 含义 |
 | --- | --- | --- |
@@ -151,13 +185,12 @@ authority。
 | `target` | 一个或多个 | Target ID、绝对路径、ownership mode、checksum 与 origin。 |
 
 Update 或 uninstall 前，OAW 会验证 record format、scope、project identity、target registry
-membership、路径、ownership mode 和 checksum。Malformed 或不安全的 state 会被拒绝，
-不会宽松解释。
+membership、路径、ownership mode 与 checksum。Malformed 或不安全 state 会被拒绝。
 
 ## 信任模型
 
 `HOME`、`XDG_CONFIG_HOME`、`XDG_STATE_HOME`、project root、checkout artifact、现有
 target file 与 state 都是 trust-boundary input。OAW 要求绝对且安全的 root，以物理路径
-解析 project scope，拒绝不安全的 symlink 或 containment 路径，并在 apply 期间重新检查
-destination。[安装器指南](installer.md)记录命令与失败行为；[适配器指南](adapters.md)
-记录每个 client-facing surface。
+解析 project scope，拒绝不安全 symlink 或 containment 路径，并在 apply 期间重新检查
+destination。[安装器指南](installer.md)记录命令与失败；[适配器指南](adapters.md)记录每个
+client-facing surface。

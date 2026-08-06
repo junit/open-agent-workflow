@@ -3,7 +3,7 @@
 [简体中文](../zh/comparison.md) | [README](../../README.md)
 
 This comparison explains why Open Agent Workflow (OAW) offers full-family
-profiles as well as the predefined Matt-Superpowers hybrid. It compares the
+Profiles as well as the predefined Matt-Superpowers hybrid. It compares the
 workflow procedures available from Superpowers, Matt Pocock skills, and
 Everything Claude Code (ECC). It does not compare model quality or agent-tool
 quality.
@@ -18,7 +18,11 @@ one family wins every repository and task.
 
 Scores are on a 1.0 to 5.0 scale and appear in **Superpowers / Matt / ECC**
 order. They help define an initial ownership map; they do not silently choose a
-profile. The user's explicit selection remains authoritative.
+Profile. The user's explicit selection remains authoritative. A Provider's
+brand does not determine its role: OAW Core compiles the selected Recipe and
+assigns one owner to each responsibility. The optional Workflow Coordinator
+records Workflow State, while the Agent Host performs `CURRENT` or native
+`SUBAGENT` execution.
 
 ## Criteria
 
