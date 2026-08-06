@@ -31,6 +31,9 @@ LINUX_SMOKE_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-linux-smoke.XXXXXX") ||
 if tar -tzf "$ARCHIVE" | grep -E '(^/|(^|/)\.\.(/|$))' >/dev/null; then
   fail "release archive contains an unsafe path"
 fi
+if tar -tzf "$ARCHIVE" | grep -Ei '(^|/)[^/]*runner[^/]*(/|$)' >/dev/null; then
+  fail "release archive contains a Runner asset"
+fi
 tar -xzf "$ARCHIVE" -C "$LINUX_SMOKE_TEMP"
 PACKAGE=$(find "$LINUX_SMOKE_TEMP" -mindepth 1 -maxdepth 1 -type d -print -quit)
 [ -n "$PACKAGE" ] || fail "release archive has no package directory"
@@ -39,22 +42,59 @@ PACKAGE=$(find "$LINUX_SMOKE_TEMP" -mindepth 1 -maxdepth 1 -type d -print -quit)
 [ -x "$PACKAGE/oaw" ] || fail "release archive has no executable Linux oaw binary"
 [ -x "$PACKAGE/install.sh" ] || fail "release archive has no executable wrapper"
 
-"$PACKAGE/oaw" --help >"$LINUX_SMOKE_TEMP/help.stdout"
-bash "$PACKAGE/install.sh" --help >"$LINUX_SMOKE_TEMP/wrapper-help.stdout"
-cmp -s "$LINUX_SMOKE_TEMP/help.stdout" "$LINUX_SMOKE_TEMP/wrapper-help.stdout" ||
-  fail "wrapper help differs from binary help"
-"$PACKAGE/oaw" catalog validate >"$LINUX_SMOKE_TEMP/catalog.stdout"
-grep -F 'catalog valid' "$LINUX_SMOKE_TEMP/catalog.stdout" >/dev/null ||
-  fail "catalog validation failed"
-
 SMOKE_HOME=$LINUX_SMOKE_TEMP/home
 SMOKE_CONFIG=$LINUX_SMOKE_TEMP/config
 SMOKE_STATE=$LINUX_SMOKE_TEMP/state
 SMOKE_PROJECT=$LINUX_SMOKE_TEMP/policy-only-project
+SMOKE_TRAPS=$LINUX_SMOKE_TEMP/model-traps
+MODEL_SENTINEL=$LINUX_SMOKE_TEMP/model-executed
+WORKFLOW_STATE=$SMOKE_STATE/open-agent-workflow/workflows
 POLICY_ONLY=$SMOKE_PROJECT/.scratch/existing-task/workflow.md
-mkdir -p "$SMOKE_HOME" "$SMOKE_CONFIG" "$SMOKE_STATE" "$(dirname -- "$POLICY_ONLY")"
+mkdir -p "$SMOKE_HOME" "$SMOKE_CONFIG" "$SMOKE_STATE" "$SMOKE_TRAPS" "$(dirname -- "$POLICY_ONLY")"
 printf 'profile: ECC-FULL\nstage: implementation\n' >"$POLICY_ONLY"
 POLICY_ONLY_BEFORE=$(cksum <"$POLICY_ONLY")
+
+for model_command in codex claude gemini opencode; do
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'printf "%s\n" "$0" >>"$OAW_MODEL_SENTINEL"'
+    printf '%s\n' 'exit 99'
+  } >"$SMOKE_TRAPS/$model_command"
+  chmod 755 "$SMOKE_TRAPS/$model_command"
+done
+
+run_oaw() {
+  name=$1
+  expected_status=$2
+  input=$3
+  shift 3
+  set +e
+  HOME="$SMOKE_HOME" \
+    XDG_CONFIG_HOME="$SMOKE_CONFIG" \
+    XDG_STATE_HOME="$SMOKE_STATE" \
+    PATH="$SMOKE_TRAPS:$PATH" \
+    OAW_MODEL_SENTINEL="$MODEL_SENTINEL" \
+    "$PACKAGE/oaw" "$@" \
+    <"$input" >"$LINUX_SMOKE_TEMP/$name.stdout" 2>"$LINUX_SMOKE_TEMP/$name.stderr"
+  status=$?
+  set -e
+  [ "$status" -eq "$expected_status" ] ||
+    fail "$name exited $status, want $expected_status: $(cat "$LINUX_SMOKE_TEMP/$name.stderr")"
+}
+
+assert_no_workflow_state() {
+  [ ! -e "$WORKFLOW_STATE" ] || fail "non-Workflow command created Workflow State"
+}
+
+run_oaw help 0 /dev/null --help
+HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE" \
+  PATH="$SMOKE_TRAPS:$PATH" OAW_MODEL_SENTINEL="$MODEL_SENTINEL" \
+  bash "$PACKAGE/install.sh" --help >"$LINUX_SMOKE_TEMP/wrapper-help.stdout"
+cmp -s "$LINUX_SMOKE_TEMP/help.stdout" "$LINUX_SMOKE_TEMP/wrapper-help.stdout" ||
+  fail "wrapper help differs from binary help"
+run_oaw catalog 0 /dev/null catalog validate
+grep -F 'catalog valid' "$LINUX_SMOKE_TEMP/catalog.stdout" >/dev/null ||
+  fail "catalog validation failed"
 
 CODEX_PROVIDER=$SMOKE_HOME/.codex/plugins/superpowers
 CLAUDE_PROVIDER=$SMOKE_HOME/.claude/plugins/superpowers
@@ -66,10 +106,8 @@ printf '%s\n' 'codex-smoke-marker' \
 printf '%s\n' 'claude-smoke-marker' \
   >"$CLAUDE_PROVIDER/skills/using-superpowers/SKILL.md"
 
-HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE" \
-  "$PACKAGE/oaw" providers inspect --host codex --format json \
-  >"$LINUX_SMOKE_TEMP/provider-inspection.json"
-PROVIDER_INSPECTION=$(cat "$LINUX_SMOKE_TEMP/provider-inspection.json")
+run_oaw provider-inspection 0 /dev/null providers inspect --host codex --format json
+PROVIDER_INSPECTION=$(cat "$LINUX_SMOKE_TEMP/provider-inspection.stdout")
 case "$PROVIDER_INSPECTION" in
   *'"current_host":'*'"foreign_hosts":'*) ;;
   *) fail "Provider inspection omits current or foreign Host section" ;;
@@ -92,25 +130,43 @@ case "$FOREIGN_HOSTS" in
 esac
 [ ! -e "$SMOKE_CONFIG/open-agent-workflow/config.toml" ] ||
   fail "Provider inspection created user configuration"
-[ ! -e "$SMOKE_STATE/open-agent-workflow/runtime" ] ||
-  fail "Provider inspection created Runtime State"
+assert_no_workflow_state
+
+run_oaw removed-runtime 64 /dev/null runtime exchange
+run_oaw removed-run 64 /dev/null run --host codex
+assert_no_workflow_state
 
 HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE" \
+  PATH="$SMOKE_TRAPS:$PATH" OAW_MODEL_SENTINEL="$MODEL_SENTINEL" \
   bash "$PACKAGE/install.sh" install --project "$SMOKE_PROJECT" --target cursor \
   >"$LINUX_SMOKE_TEMP/install.stdout"
 find "$SMOKE_STATE/open-agent-workflow/installations/projects" -type f -name '*.state' \
   -print -quit | grep . >/dev/null || fail "install did not create project Install State"
-[ ! -e "$SMOKE_STATE/open-agent-workflow/runtime" ] ||
-  fail "management imported Install State into Runtime State"
+assert_no_workflow_state
 [ "$(cksum <"$POLICY_ONLY")" = "$POLICY_ONLY_BEFORE" ] ||
   fail "management changed the Policy-only task"
 
 HOME="$SMOKE_HOME" XDG_CONFIG_HOME="$SMOKE_CONFIG" XDG_STATE_HOME="$SMOKE_STATE" \
+  PATH="$SMOKE_TRAPS:$PATH" OAW_MODEL_SENTINEL="$MODEL_SENTINEL" \
   bash "$PACKAGE/install.sh" uninstall --project "$SMOKE_PROJECT" --target cursor \
   >"$LINUX_SMOKE_TEMP/uninstall.stdout"
 [ "$(cksum <"$POLICY_ONLY")" = "$POLICY_ONLY_BEFORE" ] ||
   fail "uninstall changed the Policy-only task"
-[ ! -e "$SMOKE_STATE/open-agent-workflow/runtime" ] ||
-  fail "uninstall created Runtime State"
+assert_no_workflow_state
 
-printf 'PASS: Linux release binary, Host-scoped Provider inspection, Install State, and Policy-only boundaries verified\n'
+# Generated through the production Go constructors; rejection is expected
+# because the release smoke does not install a trusted Host-native integration.
+cat >"$LINUX_SMOKE_TEMP/current-start.json" <<'EOF'
+{"schema_version":"oaw.workflow-command/v1","kind":"START","message_id":"message-linux-smoke-start","idempotency_key":"linux-smoke-workflow-start","workflow_id":"","expected_revision":0,"start":{"request_id":"request-linux-smoke","deliverable_id":"deliverable-linux-smoke","input_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","active_ticket":"","proposal":{"schema_version":"oaw.classification-proposal/v1","traits":[],"resources":[],"evidence":[]},"selection":{"profile":"SP-FULL","profile_source":"user-selection","topology":"CURRENT","topology_source":"host-only-option","add_ons":[],"bindings":[]},"host_session":{"schema_version":"oaw.host-session/v2","host_id":"codex","integration_id":"local/linux-smoke-host","integration_version":"2.0.0","session_id":"session-current-linux-smoke","supported_topologies":["CURRENT"],"provider_inventory_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","environment_report_digest":"15ebf31786fdfb78f7c959bf97e8990aa83890967f60f922b284dc64c8bb3445","sandbox_policy_digest":"","approval_policy_digest":"","digest":"1cee24205c9b1ec50aba746c0bfe9f71fb94e250d17af846a8c5655eeb42397f"},"environment":{"schema_version":"oaw.host-environment-report/v2","session_id":"session-current-linux-smoke","parent_session_id":"","topology":"CURRENT","observations":[],"digest":"15ebf31786fdfb78f7c959bf97e8990aa83890967f60f922b284dc64c8bb3445"}}}
+EOF
+run_oaw workflow-start 65 "$LINUX_SMOKE_TEMP/current-start.json" workflow exchange
+grep -F '"kind":"REJECTED"' "$LINUX_SMOKE_TEMP/workflow-start.stdout" >/dev/null ||
+  fail "CURRENT Workflow exchange did not return a canonical Result"
+[ -d "$WORKFLOW_STATE/records" ] || fail "CURRENT Workflow exchange did not create Workflow State"
+[ -n "$(find "$WORKFLOW_STATE" -type f -print -quit)" ] ||
+  fail "CURRENT Workflow exchange created no Workflow record"
+[ "$(cksum <"$POLICY_ONLY")" = "$POLICY_ONLY_BEFORE" ] ||
+  fail "Workflow exchange changed the Policy-only task"
+[ ! -e "$MODEL_SENTINEL" ] || fail "OAW launched a model process: $(cat "$MODEL_SENTINEL")"
+
+printf 'PASS: Linux release Core, Coordinator, Provider inspection, no-Runner archive, and no-model boundary verified\n'

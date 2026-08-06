@@ -21,6 +21,22 @@ esac
 [ -f "$ARCHIVE" ] || fail "release archive does not exist: $ARCHIVE"
 [ ! -L "$ARCHIVE" ] || fail "release archive must not be a symlink"
 
+CHECKSUMS=$(dirname -- "$ARCHIVE")/SHA256SUMS
+[ -f "$CHECKSUMS" ] || fail "release checksum manifest does not exist: $CHECKSUMS"
+[ ! -L "$CHECKSUMS" ] || fail "release checksum manifest must not be a symlink"
+ARCHIVE_NAME=${ARCHIVE##*/}
+EXPECTED_DIGEST=$(awk -v archive="$ARCHIVE_NAME" '$2 == archive { print $1 }' "$CHECKSUMS")
+printf '%s\n' "$EXPECTED_DIGEST" | grep -E '^[0-9a-f]{64}$' >/dev/null ||
+  fail "release checksum manifest has no digest for $ARCHIVE_NAME"
+if command -v shasum >/dev/null 2>&1; then
+  ACTUAL_DIGEST=$(shasum -a 256 "$ARCHIVE" | awk '{ print $1 }')
+elif command -v sha256sum >/dev/null 2>&1; then
+  ACTUAL_DIGEST=$(sha256sum "$ARCHIVE" | awk '{ print $1 }')
+else
+  fail "shasum or sha256sum is required"
+fi
+[ "$ACTUAL_DIGEST" = "$EXPECTED_DIGEST" ] || fail "release archive checksum mismatch: $ARCHIVE_NAME"
+
 command -v docker >/dev/null 2>&1 || skip "Docker CLI not found"
 set +e
 DOCKER_ARCH=$(docker version --format '{{.Server.Arch}}' 2>/dev/null)

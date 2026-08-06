@@ -267,6 +267,16 @@ run_release_contract() {
 }
 
 run_docker_contract() {
+  linux_smoke=$REPOSITORY/scripts/smoke-linux.sh
+  grep -F 'workflow exchange' "$linux_smoke" >/dev/null ||
+    fail "Linux smoke does not exercise CURRENT Workflow exchange"
+  grep -F 'model-executed' "$linux_smoke" >/dev/null ||
+    fail "Linux smoke has no model process PATH trap"
+  grep -F 'Runner asset' "$linux_smoke" >/dev/null ||
+    fail "Linux smoke does not reject Runner assets"
+  grep -F 'SHA256SUMS' "$REPOSITORY/scripts/smoke-docker.sh" >/dev/null ||
+    fail "Docker smoke does not verify the release checksum manifest"
+
   release_output=$CUTOVER_TEMP/docker-release-output
   bash "$REPOSITORY/scripts/build-release.sh" "$release_output" \
     >"$CUTOVER_TEMP/docker-release.stdout" \
@@ -274,6 +284,22 @@ run_docker_contract() {
     fail "Docker release build failed: $(cat "$CUTOVER_TEMP/docker-release.stderr")"
 
   version=$(cat "$REPOSITORY/VERSION")
+  tampered_release=$CUTOVER_TEMP/docker-tampered-release
+  mkdir -p "$tampered_release"
+  cp "$release_output/SHA256SUMS" "$tampered_release/SHA256SUMS"
+  tampered_archive=$tampered_release/open-agent-workflow_${version}_linux_arm64.tar.gz
+  cp "$release_output/open-agent-workflow_${version}_linux_arm64.tar.gz" "$tampered_archive"
+  printf '%s\n' 'tampered' >>"$tampered_archive"
+  set +e
+  bash "$REPOSITORY/scripts/smoke-docker.sh" "$tampered_archive" \
+    >"$CUTOVER_TEMP/docker-tampered.stdout" \
+    2>"$CUTOVER_TEMP/docker-tampered.stderr"
+  tampered_status=$?
+  set -e
+  [ "$tampered_status" -eq 1 ] || fail "tampered release archive returned $tampered_status instead of 1"
+  grep -F 'release archive checksum mismatch' "$CUTOVER_TEMP/docker-tampered.stderr" >/dev/null ||
+    fail "tampered release archive did not fail at the checksum boundary"
+
   set +e
   docker_arch=$(docker version --format '{{.Server.Arch}}' 2>/dev/null)
   docker_arch_status=$?
