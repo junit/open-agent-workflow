@@ -154,22 +154,7 @@ func TestCurrentWorkflowClosesThroughNormalizedReceipts(t *testing.T) {
 	facts := thirdPartyCutoverFacts(t)
 	stateRoot := filepath.Join(t.TempDir(), "workflow-state")
 	projectRoot := t.TempDir()
-	engine, err := coordinator.NewEngine(coordinator.Options{
-		StateRoot:           stateRoot,
-		PhysicalProjectRoot: projectRoot,
-		Configuration:       facts.snapshot,
-		Resolutions:         facts.resolution.Report,
-		Registry:            facts.resolution.Registry,
-		Authority: admission.AuthorityCeiling{
-			Effects:         []string{"read-project", "run-process", "write-project"},
-			Resources:       []string{"project-worktree"},
-			ResourceLeases:  true,
-			AllowDelegation: false,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+	engine := newCutoverEngine(t, facts, stateRoot, projectRoot)
 
 	startCommand := cutoverStartCommand(facts)
 	current := exchangeCutoverReplay(t, engine, startCommand)
@@ -258,6 +243,97 @@ func TestCurrentWorkflowClosesThroughNormalizedReceipts(t *testing.T) {
 	if !bytes.Equal(stableCutoverResultBytes(t, current), stableCutoverResultBytes(t, inspected)) ||
 		!reflect.DeepEqual(beforeInspect, afterInspect) {
 		t.Fatalf("INSPECT changed terminal state: current=%#v inspected=%#v", current, inspected)
+	}
+}
+
+func TestRecoveryAcrossEnginesPreservesLeasesAndUncertainty(t *testing.T) {
+	facts := thirdPartyCutoverFacts(t)
+	stateRoot := filepath.Join(t.TempDir(), "workflow-state")
+	projectRoot := t.TempDir()
+	first := newCutoverEngine(t, facts, stateRoot, projectRoot)
+	second := newCutoverEngine(t, facts, stateRoot, projectRoot)
+
+	start := cutoverStartCommand(facts)
+	ready := exchangeWorkflow(t, first, start)
+	prepared := exchangeWorkflow(t, first, cutoverPrepareCommand(ready, "recovery-first-prepare", "write-project"))
+	if prepared.Snapshot.Status != coordinator.StatusPrepared || len(prepared.Snapshot.ResourceLeases) != 1 {
+		t.Fatalf("first PREPARED Result = %#v", prepared)
+	}
+
+	secondStart := cloneCutoverCommand(t, start)
+	secondStart.MessageID = "message-recovery-second-start"
+	secondStart.IdempotencyKey = "recovery-second-start"
+	secondStart.Start.RequestID = "request-recovery-second"
+	secondStart.Start.DeliverableID = "deliverable-recovery-second"
+	secondReady := exchangeWorkflow(t, second, secondStart)
+	secondPrepare := cutoverPrepareCommand(secondReady, "recovery-second-prepare", "write-project")
+	if _, err := second.Exchange(secondPrepare); coordinator.ErrorCode(err) != "RESOURCE_LEASE_CONFLICT" {
+		t.Fatalf("second Workflow lease conflict = %v", err)
+	}
+
+	afterPrepare := newCutoverEngine(t, facts, stateRoot, projectRoot)
+	preparedInspection := exchangeWorkflow(t, afterPrepare, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: prepared.WorkflowID,
+	})
+	if preparedInspection.RevisionDigest != prepared.RevisionDigest || preparedInspection.Snapshot.Status != coordinator.StatusPrepared ||
+		preparedInspection.Dispatch == nil || preparedInspection.Snapshot.ActiveGrant == nil {
+		t.Fatalf("recovered PREPARED Result = %#v", preparedInspection)
+	}
+
+	identity := cutoverReceiptIdentity(*preparedInspection.Dispatch)
+	started := exchangeWorkflow(t, afterPrepare, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
+		MessageID: "message-recovery-started", IdempotencyKey: "recovery-started", WorkflowID: prepared.WorkflowID,
+		ExpectedRevision: preparedInspection.Revision,
+		Receipt:          &coordinator.ReceiptInput{Receipt: hosttest.StartedReceipt(t, identity, "")},
+	})
+	afterStarted := newCutoverEngine(t, facts, stateRoot, projectRoot)
+	startedInspection := exchangeWorkflow(t, afterStarted, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: started.WorkflowID,
+	})
+	if startedInspection.RevisionDigest != started.RevisionDigest || startedInspection.Snapshot.Status != coordinator.StatusInFlight ||
+		startedInspection.Snapshot.ActiveGrant == nil || len(startedInspection.Snapshot.Receipts) != 1 {
+		t.Fatalf("recovered IN_FLIGHT Result = %#v", startedInspection)
+	}
+
+	pending := exchangeWorkflow(t, afterStarted, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandCancel,
+		MessageID: "message-recovery-pending", IdempotencyKey: "recovery-pending", WorkflowID: started.WorkflowID,
+		ExpectedRevision: startedInspection.Revision,
+		Cancel:           &coordinator.CancelInput{Reason: "uncertain host termination", InvocationTerminal: false},
+	})
+	if pending.Snapshot.Status != coordinator.StatusPaused || pending.Snapshot.ActiveGrant == nil || pending.Snapshot.ResourceLeases[0].ReleasedRevision != 0 {
+		t.Fatalf("pending uncertainty Result = %#v", pending)
+	}
+	afterPending := newCutoverEngine(t, facts, stateRoot, projectRoot)
+	recoveredPending := exchangeWorkflow(t, afterPending, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: pending.WorkflowID,
+	})
+	if recoveredPending.RevisionDigest != pending.RevisionDigest || recoveredPending.Snapshot.Status != coordinator.StatusPaused || recoveredPending.Snapshot.ActiveGrant == nil {
+		t.Fatalf("recovered uncertainty Result = %#v", recoveredPending)
+	}
+	confirmed := exchangeWorkflow(t, afterPending, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandCancel,
+		MessageID: "message-recovery-confirmed", IdempotencyKey: "recovery-confirmed", WorkflowID: pending.WorkflowID,
+		ExpectedRevision: recoveredPending.Revision,
+		Cancel:           &coordinator.CancelInput{Reason: "host termination confirmed", InvocationTerminal: true},
+	})
+	if confirmed.Snapshot.Status != coordinator.StatusCancelled || confirmed.Snapshot.ActiveGrant != nil || confirmed.Snapshot.ResourceLeases[0].ReleasedRevision != confirmed.Revision {
+		t.Fatalf("confirmed uncertainty Result = %#v", confirmed)
+	}
+
+	secondPrepared := exchangeWorkflow(t, second, secondPrepare)
+	if secondPrepared.Snapshot.Status != coordinator.StatusPrepared || len(secondPrepared.Snapshot.ResourceLeases) != 1 {
+		t.Fatalf("second Workflow after release = %#v", secondPrepared)
+	}
+	secondCancelled := exchangeWorkflow(t, second, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandCancel,
+		MessageID: "message-recovery-second-cancel", IdempotencyKey: "recovery-second-cancel", WorkflowID: secondReady.WorkflowID,
+		ExpectedRevision: secondPrepared.Revision,
+		Cancel:           &coordinator.CancelInput{Reason: "release test Workflow", InvocationTerminal: true},
+	})
+	if secondCancelled.Snapshot.Status != coordinator.StatusCancelled || secondCancelled.Snapshot.ResourceLeases[0].ReleasedRevision != secondCancelled.Revision {
+		t.Fatalf("second Workflow cancellation = %#v", secondCancelled)
 	}
 }
 
@@ -387,6 +463,35 @@ func resolveCutoverFacts(t *testing.T, snapshot config.Snapshot, hostID string, 
 	return cutoverCoreFacts{
 		snapshot: snapshot, resolution: resolved, inventory: inventory,
 		session: session, environment: environment, decision: decision,
+	}
+}
+
+func newCutoverEngine(t *testing.T, facts cutoverCoreFacts, stateRoot, projectRoot string) *coordinator.Engine {
+	t.Helper()
+	engine, err := coordinator.NewEngine(coordinator.Options{
+		StateRoot: stateRoot, PhysicalProjectRoot: projectRoot,
+		Configuration: facts.snapshot, Resolutions: facts.resolution.Report, Registry: facts.resolution.Registry,
+		Authority: admission.AuthorityCeiling{
+			Effects: []string{"read-project", "run-process", "write-project"}, Resources: []string{"project-worktree"},
+			ResourceLeases: true, AllowDelegation: false,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return engine
+}
+
+func cutoverPrepareCommand(ready coordinator.Result, key, effect string) coordinator.Command {
+	nodeID := ready.Snapshot.ActiveNodeID
+	return coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandPrepare,
+		MessageID: "message-" + key, IdempotencyKey: key, WorkflowID: ready.WorkflowID, ExpectedRevision: ready.Revision,
+		Prepare: &coordinator.PrepareInput{
+			RequestedEffects: []string{effect}, RequestedResources: []string{"project-worktree"},
+			TerminationCondition: "complete " + nodeID, InputReferences: []coordinator.ArtifactReference{},
+			EvidenceRequirements: []coordinator.EvidenceRequirement{{Kind: "report", Minimum: 1, Description: "recovery report"}},
+		},
 	}
 }
 

@@ -31,9 +31,11 @@ func TestSwitchRecompilesNextBundleGenerationInsideWorkflowLock(t *testing.T) {
 		WorkflowID: ready.WorkflowID, ExpectedRevision: ready.Revision,
 		Switch: &SwitchInput{Boundary: "completion", Selection: start.Start.Selection, HostSession: start.Start.HostSession, Environment: start.Start.Environment},
 	}
+	command.Switch.Selection.Profile = "MATT-FULL"
 	switched := exchangeTask6(t, engine, command)
 	if switched.Snapshot.ActiveGeneration != 2 || len(switched.Snapshot.Bundles) != 2 || switched.Snapshot.ActiveNodeID != switched.Snapshot.Bundles[1].Graph.Entry ||
-		switched.Snapshot.LastStableBoundary != "" || switched.Snapshot.ActiveGrant != nil || compiler.compileCalls != 2 || !compiler.compileInsideLock {
+		switched.Snapshot.LastStableBoundary != "" || switched.Snapshot.ActiveGrant != nil || compiler.compileCalls != 2 || !compiler.compileInsideLock ||
+		switched.Snapshot.Bundles[1].Selection.Profile != "MATT-FULL" {
 		t.Fatalf("SWITCH result = %#v, compiler = %#v", switched, compiler)
 	}
 	command.MessageID = "message-switch-replay"

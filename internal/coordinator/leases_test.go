@@ -87,6 +87,54 @@ func TestConcurrentResourceLeaseAcquisitionAllowsOneWorkflow(t *testing.T) {
 	}
 }
 
+func TestConcurrentExpectedRevisionAllowsOneMutationAcrossEngines(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	projectRoot := t.TempDir()
+	start := startTestCommand(t, "concurrent-same-workflow")
+	first := newTask6Engine(t, stateRoot, projectRoot, start, nil)
+	second := newTask6Engine(t, stateRoot, projectRoot, start, nil)
+	ready := exchangeTask6(t, first, start)
+	commands := []struct {
+		engine  *Engine
+		command Command
+	}{
+		{engine: first, command: task6Prepare(start, "concurrent-same-first", []string{"read-project"})},
+		{engine: second, command: task6Prepare(start, "concurrent-same-second", []string{"read-project"})},
+	}
+
+	var wait sync.WaitGroup
+	errors := make(chan error, len(commands))
+	for _, item := range commands {
+		wait.Add(1)
+		go func(engine *Engine, command Command) {
+			defer wait.Done()
+			_, err := engine.Exchange(command)
+			errors <- err
+		}(item.engine, item.command)
+	}
+	wait.Wait()
+	close(errors)
+
+	succeeded, conflicted := 0, 0
+	for err := range errors {
+		switch ErrorCode(err) {
+		case "":
+			succeeded++
+		case "WORKFLOW_REVISION_CONFLICT":
+			conflicted++
+		default:
+			t.Fatalf("concurrent same-Workflow PREPARE error = %v", err)
+		}
+	}
+	if succeeded != 1 || conflicted != 1 {
+		t.Fatalf("concurrent same-Workflow outcomes = success %d, conflict %d", succeeded, conflicted)
+	}
+	inspected := exchangeTask6(t, second, Command{SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandInspect, WorkflowID: ready.WorkflowID})
+	if inspected.Revision != ready.Revision+1 || inspected.Snapshot.Status != StatusPrepared {
+		t.Fatalf("concurrent same-Workflow state = %#v", inspected)
+	}
+}
+
 func TestResourceLeaseIsNotRequiredForReadOnlyAndIsRetainedWhilePaused(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	projectRoot := t.TempDir()
