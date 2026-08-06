@@ -9,8 +9,6 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -29,10 +27,8 @@ type foreignProviderDiscovery struct {
 
 type providerInputs struct {
 	HostID           string
-	RuntimeManaged   bool
 	Configuration    config.Snapshot
 	Discovery        discovery.Report
-	Inventory        *host.BindingInventory
 	Resolutions      registry.ResolutionReport
 	Registry         registry.Registry
 	Foreign          []foreignProviderDiscovery
@@ -75,20 +71,10 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_DISCOVERY_REQUIRED: %w", err)
 	}
-	runtimeManaged := host.RuntimeEntrypointAllowed(snapshot.HostIntegrations(), options.HostID) == nil
-	var inventory *host.BindingInventory
-	if runtimeManaged && options.HostID == "codex" {
-		observed, observeErr := codex.ObserveBindings(snapshot.Catalog(), evidence, codex.InventoryOptions{UserHome: userHome, CodexConfigRoot: filepath.Join(userHome, ".codex")})
-		if observeErr != nil {
-			return providerInputs{}, fmt.Errorf("PROVIDER_BINDING_EVIDENCE_REQUIRED: %w", observeErr)
-		}
-		inventory = &observed
-	}
 	resolved, err := core.Resolve(core.ResolutionRequest{
 		Configuration: snapshot,
 		HostID:        options.HostID,
 		Discovery:     evidence,
-		Inventory:     inventory,
 	})
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_REGISTRY_REQUIRED: %w", err)
@@ -116,8 +102,8 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 		return providerInputs{}, fmt.Errorf("PROVIDER_CONFIGURATION_REQUIRED: %w", statErr)
 	}
 	return providerInputs{
-		HostID: options.HostID, RuntimeManaged: runtimeManaged,
-		Configuration: snapshot, Discovery: evidence, Inventory: inventory, Resolutions: resolved.Report, Registry: resolved.Registry, Foreign: foreign,
+		HostID:        options.HostID,
+		Configuration: snapshot, Discovery: evidence, Resolutions: resolved.Report, Registry: resolved.Registry, Foreign: foreign,
 		UserConfigPath: configPath, UserConfigExists: exists,
 	}, nil
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
@@ -89,11 +88,10 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := codex.ObserveBindings(snapshot.Catalog(), discovered, codex.InventoryOptions{UserHome: home, CodexConfigRoot: filepath.Join(home, ".codex")})
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, effective, err := registry.Resolve(snapshot, "codex", discovered, &inventory)
+	inventory := inventoryForCandidate(t, discovered.Candidates("oaw/superpowers"), catalog.HostBinding{
+		Host: "codex", Kind: "skill", Reference: "superpowers:requesting-code-review",
+	})
+	report, effective, err := registry.Resolve(snapshot, "codex", discovered, inventory)
 	if err != nil {
 		t.Fatal(err)
 	}

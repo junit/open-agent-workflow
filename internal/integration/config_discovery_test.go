@@ -11,6 +11,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
@@ -88,7 +89,7 @@ path = "providers/acme.toml"
 		t.Fatal(err)
 	}
 	userRoot := t.TempDir()
-	writeFile(t, userRoot, "config.toml", "schema_version = \"oaw.user-config/v2\"\n"+projectTrustConfig(fingerprint))
+	writeFile(t, userRoot, "config.toml", "schema_version = \"oaw.user-config/v3\"\n"+projectTrustConfig(fingerprint))
 	trusted, err := config.Load(config.LoadOptions{UserConfigRoot: userRoot, ProjectRoot: projectRoot})
 	if err != nil {
 		t.Fatal(err)
@@ -190,7 +191,7 @@ capability_ids = ["review"]
 	providerPath := writeFile(t, userRoot, "providers/acme.toml", testProviderTOML)
 	writeFile(t, userRoot, "profiles/review.toml", testRecipeTOML)
 	writeFile(t, userRoot, "config.toml", fmt.Sprintf(`
-schema_version = "oaw.user-config/v2"
+schema_version = "oaw.user-config/v3"
 denied_providers = ["oaw/matt"]
 [[provider_descriptors]]
 id = "acme/suite"
@@ -242,7 +243,14 @@ func integrationInventory(t *testing.T, evidence discovery.Report, bindings map[
 			t.Fatalf("provider %s candidates = %d, want one", providerID, len(candidates))
 		}
 		for index, binding := range values {
-			observations = append(observations, host.BindingObservation{HostID: "codex", InstallationKey: candidates[0].InstallationKey, Binding: binding, Source: "host-filesystem", EvidenceReference: filepath.Join(candidates[0].Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat("a", 64)})
+			if len(binding.Topologies) == 0 {
+				binding.Topologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+			}
+			observations = append(observations, host.BindingObservation{
+				HostID: "codex", InstallationKey: candidates[0].InstallationKey, Binding: binding,
+				Topologies: []execution.Topology{execution.TopologyCurrent}, Source: "host-filesystem",
+				EvidenceReference: filepath.Join(candidates[0].Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat("a", 64),
+			})
 		}
 	}
 	inventory, err := host.NewBindingInventory("codex", observations)
@@ -285,8 +293,8 @@ func testSchemaRegistry(t *testing.T) *schema.Registry {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v2"
-descriptor_version = "2.0.0"
+schema_version = "oaw.provider-descriptor/v3"
+descriptor_version = "3.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
 
@@ -308,18 +316,20 @@ maximum_effects = ["read-project"]
 resources = ["project"]
 request_modes = ["BOUNDED", "WORKFLOW"]
 responsibilities = ["review"]
-executor_topology = "main-agent-allowed"
+supported_topologies = ["CURRENT", "SUBAGENT"]
 delegation_allow_list = []
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "skill"
 reference = "acme:zeta-review"
+topologies = ["CURRENT", "SUBAGENT"]
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "skill"
 reference = "acme:alpha-review"
+topologies = ["CURRENT", "SUBAGENT"]
 
 [[capabilities]]
 id = "verification"
@@ -329,18 +339,19 @@ maximum_effects = ["read-project"]
 resources = ["project"]
 request_modes = ["BOUNDED", "WORKFLOW"]
 responsibilities = ["verification"]
-executor_topology = "main-agent-allowed"
+supported_topologies = ["CURRENT", "SUBAGENT"]
 delegation_allow_list = []
 
 [[capabilities.host_bindings]]
 host = "codex"
 kind = "tool"
 reference = "acme:verify"
+topologies = ["CURRENT", "SUBAGENT"]
 `
 
 const testRecipeTOML = `
-schema_version = "oaw.profile-recipe/v1"
-recipe_version = "1.0.0"
+schema_version = "oaw.profile-recipe/v2"
+recipe_version = "2.0.0"
 id = "acme/review"
 display_name = "Acme Review"
 required_responsibilities = ["review"]
@@ -348,6 +359,7 @@ incident_routes = []
 entry = "review"
 terminal_gates = ["review"]
 stable_boundaries = ["complete"]
+environment_requirements = []
 
 [[nodes]]
 id = "review"

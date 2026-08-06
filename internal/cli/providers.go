@@ -13,11 +13,10 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
-const providerInspectionSchemaV2 = "oaw.provider-inspection/v2"
+const providerInspectionSchemaV3 = "oaw.provider-inspection/v3"
 
 type providerCommand struct {
 	hostID      string
@@ -36,14 +35,11 @@ type providerInspectionOutput struct {
 }
 
 type providerInspectionCurrentHost struct {
-	HostID                 string                       `json:"host_id"`
-	RuntimeManaged         bool                         `json:"runtime_managed"`
-	DiscoveryDigest        string                       `json:"discovery_digest"`
-	BindingInventoryDigest string                       `json:"binding_inventory_digest,omitempty"`
-	ResolutionDigest       string                       `json:"resolution_digest"`
-	RegistryDigest         string                       `json:"registry_digest"`
-	ObservedBindings       []host.BindingObservation    `json:"observed_bindings"`
-	Providers              []providerInspectionProvider `json:"providers"`
+	HostID           string                       `json:"host_id"`
+	DiscoveryDigest  string                       `json:"discovery_digest"`
+	ResolutionDigest string                       `json:"resolution_digest"`
+	RegistryDigest   string                       `json:"registry_digest"`
+	Providers        []providerInspectionProvider `json:"providers"`
 }
 
 type providerInspectionForeignHost struct {
@@ -227,12 +223,6 @@ func providerInspectionProjection(inputs providerInputs) providerInspectionOutpu
 		providers = append(providers, provider)
 	}
 	sort.Slice(providers, func(left, right int) bool { return providers[left].ProviderID < providers[right].ProviderID })
-	observations := make([]host.BindingObservation, 0)
-	inventoryDigest := ""
-	if inputs.Inventory != nil {
-		inventoryDigest = inputs.Inventory.Digest
-		observations = host.CloneBindingInventory(*inputs.Inventory).Observations
-	}
 	foreignHosts := make([]providerInspectionForeignHost, 0, len(inputs.Foreign))
 	for _, foreign := range inputs.Foreign {
 		foreignProviders := make([]providerInspectionForeignProvider, 0)
@@ -254,12 +244,11 @@ func providerInspectionProjection(inputs providerInputs) providerInspectionOutpu
 		})
 	}
 	return providerInspectionOutput{
-		SchemaVersion: providerInspectionSchemaV2, UserConfigPath: inputs.UserConfigPath, UserConfigExists: inputs.UserConfigExists,
+		SchemaVersion: providerInspectionSchemaV3, UserConfigPath: inputs.UserConfigPath, UserConfigExists: inputs.UserConfigExists,
 		ConfigurationDigest: inputs.Configuration.Digest(), CatalogDigest: inputs.Configuration.Catalog().Digest(),
 		CurrentHost: providerInspectionCurrentHost{
-			HostID: inputs.HostID, RuntimeManaged: inputs.RuntimeManaged, DiscoveryDigest: inputs.Discovery.Digest(),
-			BindingInventoryDigest: inventoryDigest, ResolutionDigest: inputs.Resolutions.Digest(), RegistryDigest: inputs.Registry.Digest(),
-			ObservedBindings: observations, Providers: providers,
+			HostID: inputs.HostID, DiscoveryDigest: inputs.Discovery.Digest(),
+			ResolutionDigest: inputs.Resolutions.Digest(), RegistryDigest: inputs.Registry.Digest(), Providers: providers,
 		},
 		ForeignHosts: foreignHosts,
 	}
@@ -274,19 +263,8 @@ func inspectionCandidate(candidate discovery.Candidate, pin *config.ProviderPin)
 }
 
 func writeProviderInspectionText(inputs providerInputs, output providerInspectionOutput, stdout, stderr io.Writer) int {
-	sections := make([]string, 0, len(output.CurrentHost.ObservedBindings)+len(output.CurrentHost.Providers)+len(output.ForeignHosts))
+	sections := make([]string, 0, len(output.CurrentHost.Providers)+len(output.ForeignHosts))
 	includeSchema := !inputs.UserConfigExists
-	for _, observation := range output.CurrentHost.ObservedBindings {
-		topologies := make([]string, len(observation.Topologies))
-		for index, topology := range observation.Topologies {
-			topologies[index] = string(topology)
-		}
-		sections = append(sections, fmt.Sprintf(
-			"observed_binding host_id=%s installation_key=%s kind=%s reference=%s topologies=%s source=%s evidence_digest=%s",
-			observation.HostID, observation.InstallationKey, observation.Binding.Kind, observation.Binding.Reference,
-			strings.Join(topologies, ","), observation.Source, observation.Digest,
-		))
-	}
 	for _, provider := range output.CurrentHost.Providers {
 		lines := []string{fmt.Sprintf("provider %s state=%s reason=%s", provider.ProviderID, provider.State, provider.Reason)}
 		for _, candidate := range provider.Candidates {
@@ -312,7 +290,7 @@ func writeProviderInspectionText(inputs providerInputs, output providerInspectio
 			sections = append(sections, strings.Join(lines, "\n"))
 		}
 	}
-	value := fmt.Sprintf("configuration path=%s exists=%t\ncurrent_host %s runtime_managed=%t\n%s\n", output.UserConfigPath, output.UserConfigExists, output.CurrentHost.HostID, output.CurrentHost.RuntimeManaged, strings.Join(sections, "\n\n"))
+	value := fmt.Sprintf("configuration path=%s exists=%t\ncurrent_host %s\n%s\n", output.UserConfigPath, output.UserConfigExists, output.CurrentHost.HostID, strings.Join(sections, "\n\n"))
 	if _, err := io.WriteString(stdout, value); err != nil {
 		fmt.Fprintf(stderr, "oaw: OUTPUT_WRITE_FAILED: %v\n", err)
 		return 74

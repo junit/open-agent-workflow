@@ -4,7 +4,9 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
@@ -16,7 +18,7 @@ func TestBuiltInProfileAliasesRequireVerifiedCoverage(t *testing.T) {
 	}
 	for _, alias := range []string{"SP-FULL", "MATT-FULL", "ECC-FULL", "MATT-SP-HYBRID"} {
 		t.Run(alias, func(t *testing.T) {
-			graph, err := profile.CompileProfile(available, verifiedFor(available, nil), profile.CompileRequest{Profile: alias})
+			graph, err := profile.CompileProfile(available, verifiedFor(available, nil), compileRequest(alias))
 			if err != nil {
 				t.Fatalf("CompileProfile(%q) error = %v", alias, err)
 			}
@@ -28,7 +30,7 @@ func TestBuiltInProfileAliasesRequireVerifiedCoverage(t *testing.T) {
 
 	_, err = profile.CompileProfile(available, verifiedFor(available, map[string]map[string]bool{
 		"oaw/superpowers": {"completion": true},
-	}), profile.CompileRequest{Profile: "SP-FULL"})
+	}), compileRequest("SP-FULL"))
 	requireCode(t, err, "PROFILE_CAPABILITY_MISSING")
 }
 
@@ -40,7 +42,7 @@ func TestEveryBuiltInRecipeCompilesFromVerifiedCapabilities(t *testing.T) {
 	verified := verifiedFor(available, nil)
 	for _, recipe := range available.Recipes() {
 		t.Run(recipe.ID, func(t *testing.T) {
-			graph, err := profile.CompileRecipe(available, verified, recipe, nil)
+			graph, err := profile.CompileRecipe(available, verified, recipe, compileRequest(recipe.ID))
 			if err != nil {
 				t.Fatalf("CompileRecipe(%q) error = %v", recipe.ID, err)
 			}
@@ -58,7 +60,7 @@ func TestHybridOmitsUnverifiedOptionalECCHandlers(t *testing.T) {
 	}
 	graph, err := profile.CompileProfile(available, verifiedFor(available, map[string]map[string]bool{
 		"oaw/ecc": {"build-repair": true, "security-review": true},
-	}), profile.CompileRequest{Profile: "MATT-SP-HYBRID"})
+	}), compileRequest("MATT-SP-HYBRID"))
 	if err != nil {
 		t.Fatalf("CompileProfile(MATT-SP-HYBRID) error = %v", err)
 	}
@@ -90,19 +92,20 @@ func TestCustomRecipeUsesTheSameCompilerContract(t *testing.T) {
 	customProvider.ID = "acme/suite"
 	customProvider.DisplayName = "Acme Suite"
 	customRecipe := catalog.ProfileRecipeRecord{
-		SchemaVersion: catalog.ProfileRecipeSchemaV1, RecipeVersion: "1.0.0", ID: "acme/reliable-delivery", DisplayName: "Acme Delivery",
+		SchemaVersion: catalog.ProfileRecipeSchemaV2, RecipeVersion: "2.0.0", ID: "acme/reliable-delivery", DisplayName: "Acme Delivery",
 		RequiredResponsibilities: []string{"requirements", "completion"},
 		Nodes: []catalog.RecipeNode{
 			{ID: "requirements", Kind: catalog.PhaseNode, Responsibility: "requirements", Selector: catalog.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: customProvider.Capabilities[0].ID}, Transitions: []catalog.RecipeTransition{{Signal: "succeeded", Target: "completion"}}},
 			{ID: "completion", Kind: catalog.GateNode, Responsibility: "completion", Selector: catalog.CapabilitySelector{ProviderID: "acme/suite", CapabilityID: "completion"}, Transitions: []catalog.RecipeTransition{}},
 		},
 		IncidentRoutes: []catalog.IncidentRoute{}, Entry: "requirements", TerminalGates: []string{"completion"}, StableBoundaries: []string{"ticket-complete"},
+		EnvironmentRequirements: []execution.EnvironmentRequirement{},
 	}
 	customCatalog, err := catalog.New(append(providers, customProvider), append(base.Recipes(), customRecipe), base.Aliases())
 	if err != nil {
 		t.Fatalf("catalog.New(custom) error = %v", err)
 	}
-	graph, err := profile.CompileProfile(customCatalog, verifiedFor(customCatalog, nil), profile.CompileRequest{Profile: "acme/reliable-delivery"})
+	graph, err := profile.CompileProfile(customCatalog, verifiedFor(customCatalog, nil), compileRequest("acme/reliable-delivery"))
 	if err != nil {
 		t.Fatalf("CompileProfile(custom) error = %v", err)
 	}
@@ -123,16 +126,20 @@ func TestEquivalentRecipeInputsHaveIdenticalGraphDigest(t *testing.T) {
 			recipe = candidate
 		}
 	}
-	first, err := profile.CompileRecipe(available, verifiedFor(available, nil), recipe, []profile.ProfileBinding{
-		{Selector: catalog.CapabilitySelector{ProviderID: "oaw/matt", CapabilityID: "tdd"}, PreferredProviderID: "oaw/matt"},
-	})
+	firstRequest := compileRequest(recipe.ID)
+	firstRequest.Bindings = []profile.ProfileBinding{{
+		Selector: catalog.CapabilitySelector{ProviderID: "oaw/matt", CapabilityID: "tdd"}, PreferredProviderID: "oaw/matt",
+	}}
+	first, err := profile.CompileRecipe(available, verifiedFor(available, nil), recipe, firstRequest)
 	if err != nil {
 		t.Fatalf("first CompileRecipe() error = %v", err)
 	}
 	reverseRecipe(&recipe)
-	second, err := profile.CompileRecipe(available, verifiedFor(available, nil), recipe, []profile.ProfileBinding{
-		{Selector: catalog.CapabilitySelector{ProviderID: "oaw/matt", CapabilityID: "tdd"}, PreferredProviderID: "oaw/matt"},
-	})
+	secondRequest := compileRequest(recipe.ID)
+	secondRequest.Bindings = []profile.ProfileBinding{{
+		Selector: catalog.CapabilitySelector{ProviderID: "oaw/matt", CapabilityID: "tdd"}, PreferredProviderID: "oaw/matt",
+	}}
+	second, err := profile.CompileRecipe(available, verifiedFor(available, nil), recipe, secondRequest)
 	if err != nil {
 		t.Fatalf("second CompileRecipe() error = %v", err)
 	}
@@ -165,13 +172,17 @@ func verifiedFor(available catalog.Catalog, omitted map[string]map[string]bool) 
 		if omitted[provider.ID] != nil && omitted[provider.ID]["*"] {
 			continue
 		}
-		instance := registry.ProviderInstance{ProviderID: provider.ID, HostID: "codex", Digest: provider.ID + "-instance"}
+		instance := registry.ProviderInstance{ProviderID: provider.ID, HostID: "codex", Digest: canonicaljson.DigestBytes([]byte(provider.ID + "-instance"))}
 		for _, capability := range provider.Capabilities {
 			if omitted[provider.ID] != nil && omitted[provider.ID][capability.ID] {
 				continue
 			}
 			binding := capability.HostBindings[0]
-			verified := registry.VerifiedCapability{ID: capability.ID, Binding: binding}
+			verified := registry.VerifiedCapability{
+				ID: capability.ID, Binding: binding,
+				SupportedTopologies:   append([]execution.Topology{}, capability.SupportedTopologies...),
+				BindingEvidenceDigest: canonicaljson.DigestBytes([]byte(provider.ID + "/" + capability.ID)),
+			}
 			instance.Capabilities = append(instance.Capabilities, verified)
 			result.capabilities[provider.ID+"\x00"+capability.ID] = verified
 		}
@@ -180,6 +191,13 @@ func verifiedFor(available catalog.Catalog, omitted map[string]map[string]bool) 
 		}
 	}
 	return result
+}
+
+func compileRequest(profileID string) profile.CompileRequest {
+	return profile.CompileRequest{
+		Profile: profileID, HostTopologies: []execution.Topology{execution.TopologyCurrent},
+		EnvironmentObservations: []execution.EnvironmentObservation{},
+	}
 }
 
 func reverseRecipe(recipe *catalog.ProfileRecipeRecord) {

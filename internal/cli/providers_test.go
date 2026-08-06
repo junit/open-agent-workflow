@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/BurntSushi/toml"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -46,26 +44,21 @@ func TestParseProvidersCommand(t *testing.T) {
 	}
 }
 
-func TestProvidersInspectV2SeparatesCurrentAuthorityFromForeignDiagnostics(t *testing.T) {
+func TestProvidersInspectV3SeparatesCurrentDiscoveryFromForeignDiagnostics(t *testing.T) {
 	newProviderInspectionHostsFixture(t, []string{"current"}, true)
 	var stdout, stderr bytes.Buffer
 	if status := RunWithInput([]string{"providers", "inspect", "--host=codex", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
 	}
-	var output providerInspectionV2Document
+	var output providerInspectionV3Document
 	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
 		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
 	}
-	if output.SchemaVersion != "oaw.provider-inspection/v2" || output.CurrentHost.HostID != "codex" || !output.CurrentHost.RuntimeManaged || output.CurrentHost.DiscoveryDigest == "" || output.CurrentHost.BindingInventoryDigest == "" || output.CurrentHost.ResolutionDigest == "" || output.CurrentHost.RegistryDigest == "" {
+	if output.SchemaVersion != "oaw.provider-inspection/v3" || output.CurrentHost.HostID != "codex" || output.CurrentHost.DiscoveryDigest == "" || output.CurrentHost.ResolutionDigest == "" || output.CurrentHost.RegistryDigest == "" {
 		t.Fatalf("current Host = %#v", output)
 	}
-	for _, observation := range output.CurrentHost.ObservedBindings {
-		if observation.HostID != "codex" || !slices.Equal(observation.Topologies, []execution.Topology{execution.TopologyCurrent}) {
-			t.Fatalf("current observation = %#v", observation)
-		}
-	}
 	current := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
-	if current.State != registry.Verified || current.Instance == nil || current.Instance.HostID != "codex" || current.Instance.InstallationKey == "" || current.Instance.BindingInventoryDigest != output.CurrentHost.BindingInventoryDigest || len(current.Candidates) != 1 {
+	if current.State != registry.CandidateState || current.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || current.Instance != nil || len(current.Candidates) != 1 {
 		t.Fatalf("current Provider = %#v", current)
 	}
 	if candidate := current.Candidates[0]; candidate.HostID != "codex" || candidate.SurfaceID == "" || candidate.DistributionKey == "" || candidate.InstallationKey == "" || strings.Contains(candidate.Location, ".claude") || candidate.ProviderPin != nil {
@@ -86,7 +79,7 @@ func TestProvidersInspectForeignOnlyLeavesCurrentResolutionNotFound(t *testing.T
 	if status := RunWithInput([]string{"providers", "inspect", "--host=codex", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
 	}
-	var output providerInspectionV2Document
+	var output providerInspectionV3Document
 	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
 		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
 	}
@@ -109,15 +102,12 @@ func TestProvidersInspectSupportsPolicyOnlyHost(t *testing.T) {
 	if status := RunWithInput([]string{"providers", "inspect", "--host=claude", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
 		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
 	}
-	var output providerInspectionV2Document
+	var output providerInspectionV3Document
 	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
 		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
 	}
-	if output.CurrentHost.HostID != "claude" || output.CurrentHost.RuntimeManaged || output.CurrentHost.BindingInventoryDigest != "" || output.CurrentHost.RegistryDigest == "" {
+	if output.CurrentHost.HostID != "claude" || output.CurrentHost.RegistryDigest == "" {
 		t.Fatalf("policy-only current Host = %#v", output.CurrentHost)
-	}
-	if len(output.CurrentHost.ObservedBindings) != 0 {
-		t.Fatalf("Claude current Host contains foreign observations: %#v", output.CurrentHost.ObservedBindings)
 	}
 	provider := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
 	if provider.State != registry.CandidateState || provider.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || provider.Instance != nil || len(provider.Candidates) != 1 || provider.Candidates[0].ProviderPin != nil {
@@ -139,7 +129,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	if firstText.String() != secondText.String() {
 		t.Fatal("text inspection is not deterministic")
 	}
-	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v3\"") || !strings.Contains(firstText.String(), "topologies=CURRENT") {
+	if !strings.Contains(firstText.String(), "provider oaw/superpowers state=ambiguous reason=PROVIDER_CANDIDATE_AMBIGUOUS") || !strings.Contains(firstText.String(), "schema_version = \"oaw.user-config/v3\"") {
 		t.Fatalf("text output = %q", firstText.String())
 	}
 	for _, field := range []string{"provider_id =", "host_id =", "installation_key =", "evidence_digest ="} {
@@ -179,7 +169,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	if err := json.Unmarshal(firstJSON.Bytes(), &output); err != nil {
 		t.Fatalf("JSON output = %q: %v", firstJSON.String(), err)
 	}
-	if output.SchemaVersion != providerInspectionSchemaV2 || output.CurrentHost.HostID != "codex" || output.ConfigurationDigest == "" || output.CatalogDigest == "" || output.CurrentHost.DiscoveryDigest == "" || output.CurrentHost.ResolutionDigest == "" || output.CurrentHost.RegistryDigest == "" {
+	if output.SchemaVersion != providerInspectionSchemaV3 || output.CurrentHost.HostID != "codex" || output.ConfigurationDigest == "" || output.CatalogDigest == "" || output.CurrentHost.DiscoveryDigest == "" || output.CurrentHost.ResolutionDigest == "" || output.CurrentHost.RegistryDigest == "" {
 		t.Fatalf("output = %#v", output)
 	}
 	found := false
@@ -246,28 +236,20 @@ type providerInspectionFixture struct {
 	configPath string
 }
 
-type providerInspectionV2Document struct {
+type providerInspectionV3Document struct {
 	SchemaVersion string `json:"schema_version"`
 	CurrentHost   struct {
-		HostID                 string                          `json:"host_id"`
-		RuntimeManaged         bool                            `json:"runtime_managed"`
-		DiscoveryDigest        string                          `json:"discovery_digest"`
-		BindingInventoryDigest string                          `json:"binding_inventory_digest"`
-		ResolutionDigest       string                          `json:"resolution_digest"`
-		RegistryDigest         string                          `json:"registry_digest"`
-		ObservedBindings       []providerInspectionObservation `json:"observed_bindings"`
-		Providers              []providerInspectionV2Provider  `json:"providers"`
+		HostID           string                         `json:"host_id"`
+		DiscoveryDigest  string                         `json:"discovery_digest"`
+		ResolutionDigest string                         `json:"resolution_digest"`
+		RegistryDigest   string                         `json:"registry_digest"`
+		Providers        []providerInspectionV2Provider `json:"providers"`
 	} `json:"current_host"`
 	ForeignHosts []struct {
 		HostID          string                                `json:"host_id"`
 		DiscoveryDigest string                                `json:"discovery_digest"`
 		Providers       []providerInspectionV2ForeignProvider `json:"providers"`
 	} `json:"foreign_hosts"`
-}
-
-type providerInspectionObservation struct {
-	HostID     string               `json:"host_id"`
-	Topologies []execution.Topology `json:"topologies"`
 }
 
 type providerInspectionV2Provider struct {

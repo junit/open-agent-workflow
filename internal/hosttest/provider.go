@@ -1,17 +1,17 @@
 package hosttest
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host/codex"
 )
 
 type ProviderFixture struct {
@@ -23,15 +23,15 @@ type ProviderFixture struct {
 	Installation string
 }
 
-// ObserveProviderBindings installs physical Codex test fixtures for the named
-// discovered Providers, then returns evidence from the production observer.
+// ObserveProviderBindings creates test-only Host observations for the named
+// discovered Providers. Production binding inventories are supplied by Hosts.
 func ObserveProviderBindings(t testing.TB, value catalog.Catalog, report discovery.Report, home string, providerIDs ...string) host.BindingInventory {
 	t.Helper()
 	selected := make(map[string]struct{}, len(providerIDs))
 	for _, providerID := range providerIDs {
 		selected[providerID] = struct{}{}
 	}
-	agentFiles := make(map[string]string)
+	observations := make([]host.BindingObservation, 0)
 	for _, provider := range value.Providers() {
 		if _, found := selected[provider.ID]; !found {
 			continue
@@ -43,60 +43,73 @@ func ObserveProviderBindings(t testing.TB, value catalog.Catalog, report discove
 		candidate := candidates[0]
 		for _, capability := range provider.Capabilities {
 			for _, binding := range capability.HostBindings {
-				if binding.Host != "codex" {
+				if binding.Host != report.HostID() || !slices.Contains(binding.Topologies, execution.TopologyCurrent) {
 					continue
 				}
-				switch binding.Kind {
-				case "skill":
-					name, relative := binding.Reference, ""
-					if _, suffix, found := strings.Cut(binding.Reference, ":"); found {
-						name = suffix
-						relative = filepath.Join("skills", suffix, "SKILL.md")
-					} else {
-						relative = filepath.Join(binding.Reference, "SKILL.md")
-					}
-					path := filepath.Join(candidate.Location, relative)
-					if _, err := os.Stat(path); os.IsNotExist(err) {
-						writeProviderFixtureFile(t, candidate.Location, relative, "---\nname: "+name+"\n---\n")
-					} else if err != nil {
-						t.Fatal(err)
-					}
-				case "agent":
-					relative := filepath.Join("agents", binding.Reference+".toml")
-					writeProviderFixtureFile(t, candidate.Location, relative, "name = "+fmt.Sprintf("%q", binding.Reference)+"\n")
-					agentFiles[binding.Reference] = filepath.Join(candidate.Location, relative)
+				observation, found := observeFixtureBinding(t, report.HostID(), candidate, binding)
+				if found {
+					observations = append(observations, observation)
 				}
 			}
 		}
 	}
-	if len(agentFiles) != 0 {
-		var configuration strings.Builder
-		keys := make([]string, 0, len(agentFiles))
-		for key := range agentFiles {
-			keys = append(keys, key)
-		}
-		sort.Strings(keys)
-		for _, key := range keys {
-			fmt.Fprintf(&configuration, "[agents.%s]\nconfig_file = %q\n", key, agentFiles[key])
-		}
-		writeProviderFixtureFile(t, home, ".codex/config.toml", configuration.String())
-	}
-	inventory, err := codex.ObserveBindings(value, report, codex.InventoryOptions{UserHome: home, CodexConfigRoot: filepath.Join(home, ".codex")})
+	inventory, err := host.NewBindingInventory(report.HostID(), observations)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return inventory
 }
 
-// BuildProviderFixture creates Host evidence through the Codex observer. It
-// deliberately does not derive inventory observations from Descriptor fields.
+func observeFixtureBinding(t testing.TB, hostID string, candidate discovery.Candidate, binding catalog.HostBinding) (host.BindingObservation, bool) {
+	t.Helper()
+	name, relative, source := binding.Reference, "", "host-filesystem"
+	switch binding.Kind {
+	case "skill":
+		if _, suffix, found := strings.Cut(binding.Reference, ":"); found {
+			name = suffix
+			relative = filepath.Join("skills", suffix, "SKILL.md")
+		} else {
+			relative = filepath.Join(binding.Reference, "SKILL.md")
+		}
+	case "agent":
+		relative = filepath.Join("agents", binding.Reference+".toml")
+		source = "host-index"
+	default:
+		return host.BindingObservation{}, false
+	}
+	path := filepath.Join(candidate.Location, relative)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		content := "name = \"" + name + "\"\n"
+		if binding.Kind == "skill" {
+			content = "---\nname: " + name + "\n---\n"
+		}
+		writeProviderFixtureFile(t, candidate.Location, relative, content)
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host.BindingObservation{
+		HostID: hostID, InstallationKey: candidate.InstallationKey, Binding: binding,
+		Topologies: []execution.Topology{execution.TopologyCurrent}, Source: source,
+		EvidenceReference: physical, Digest: canonicaljson.DigestBytes(data),
+	}, true
+}
+
+// BuildProviderFixture creates generic discovery and Host binding evidence.
 func BuildProviderFixture(t testing.TB) ProviderFixture {
 	t.Helper()
 	home := t.TempDir()
 	writeProviderFixtureFile(t, home, ".codex/plugins/acme/marker.txt", "acme")
 	writeProviderFixtureFile(t, home, ".codex/plugins/acme/skills/review/SKILL.md", "---\nname: review\n---\n")
 	descriptor := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		SchemaVersion: catalog.ProviderDescriptorSchemaV3, DescriptorVersion: "3.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
 		Discovery: []catalog.DiscoveryProbe{{
 			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", Distribution: "acme", Kind: "path-exists", Root: "user-home",
 			CandidatePath: ".codex/plugins/acme", EvidencePath: "marker.txt",
@@ -104,7 +117,11 @@ func BuildProviderFixture(t testing.TB) ProviderFixture {
 		Capabilities: []catalog.CapabilityRecord{{
 			ID: "review", InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
 			RequestModes: []catalog.RequestMode{catalog.RequestModeBounded, catalog.RequestModeWorkflow}, Responsibilities: []string{"review"},
-			ExecutorTopology: catalog.IsolatedRequired, DelegationAllowList: []string{}, HostBindings: []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: "acme:review"}},
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}, DelegationAllowList: []string{},
+			HostBindings: []catalog.HostBinding{{
+				Host: "codex", Kind: "skill", Reference: "acme:review",
+				Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+			}},
 		}},
 	}
 	value, err := catalog.New([]catalog.ProviderDescriptorRecord{descriptor}, []catalog.ProfileRecipeRecord{}, []catalog.ProfileAliasRecord{})
@@ -115,10 +132,7 @@ func BuildProviderFixture(t testing.TB) ProviderFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := codex.ObserveBindings(value, report, codex.InventoryOptions{UserHome: home, CodexConfigRoot: filepath.Join(home, ".codex")})
-	if err != nil {
-		t.Fatal(err)
-	}
+	inventory := ObserveProviderBindings(t, value, report, home, "acme/suite")
 	candidates := report.Candidates("acme/suite")
 	if len(candidates) != 1 {
 		t.Fatalf("ProviderFixture candidates = %#v", candidates)

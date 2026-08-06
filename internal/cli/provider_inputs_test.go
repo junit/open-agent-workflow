@@ -27,7 +27,7 @@ func TestLoadProviderInputsSeparatesSelectedHostAuthorityFromForeignDiagnostics(
 	if err != nil {
 		t.Fatalf("loadProviderInputs(foreign) error = %v", err)
 	}
-	if withForeign.HostID != "codex" || !withForeign.RuntimeManaged || withForeign.Discovery.HostID() != "codex" || withForeign.Registry.HostID() != "codex" || withForeign.Inventory == nil || len(withForeign.Foreign) != 1 || withForeign.Foreign[0].HostID != "claude" {
+	if withForeign.HostID != "codex" || withForeign.Discovery.HostID() != "codex" || withForeign.Registry.HostID() != "codex" || len(withForeign.Foreign) != 1 || withForeign.Foreign[0].HostID != "claude" {
 		t.Fatalf("provider inputs = %#v", withForeign)
 	}
 	for _, candidate := range withForeign.Discovery.Candidates("oaw/superpowers") {
@@ -49,7 +49,7 @@ func TestLoadProviderInputsSeparatesSelectedHostAuthorityFromForeignDiagnostics(
 	if err != nil {
 		t.Fatalf("loadProviderInputs(claude) error = %v", err)
 	}
-	if claude.HostID != "claude" || claude.RuntimeManaged || claude.Discovery.HostID() != "claude" || claude.Inventory != nil || claude.Registry.HostID() != "claude" {
+	if claude.HostID != "claude" || claude.Discovery.HostID() != "claude" || claude.Registry.HostID() != "claude" {
 		t.Fatalf("policy-only inputs = %#v", claude)
 	}
 	if _, found := claude.Registry.Provider("oaw/superpowers"); found {
