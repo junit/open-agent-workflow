@@ -44,6 +44,13 @@ assert_entrypoint_help() {
     fail "$entrypoint help exited $ENTRYPOINT_STATUS: $(cat "$output_prefix.stderr")"
   grep -F 'Usage: ./install.sh <command> [options]' "$output_prefix.stdout" >/dev/null ||
     fail "$entrypoint help omitted compatibility usage"
+  grep -F 'oaw workflow exchange' "$output_prefix.stdout" >/dev/null ||
+    fail "$entrypoint help omitted Workflow Coordinator exchange"
+  for retired_text in 'oaw run' 'oaw runtime' '--host codex' '--sandbox' 'execution-root' 'private HOME'; do
+    if grep -F -- "$retired_text" "$output_prefix.stdout" >/dev/null; then
+      fail "$entrypoint help exposed retired execution surface: $retired_text"
+    fi
+  done
   [ ! -s "$output_prefix.stderr" ] ||
     fail "$entrypoint help wrote stderr: $(cat "$output_prefix.stderr")"
 }
@@ -68,6 +75,13 @@ run_wrapper_contract() {
   assert_entrypoint_help "$release_dir/install.sh" "$CUTOVER_TEMP/wrapper-help"
   cmp -s "$CUTOVER_TEMP/direct-help.stdout" "$CUTOVER_TEMP/wrapper-help.stdout" ||
     fail "wrapper help differs from the colocated binary"
+
+  run_entrypoint "$release_dir/oaw" "$CUTOVER_TEMP/removed-run" run --host codex
+  [ "$ENTRYPOINT_STATUS" -eq 64 ] || fail "removed run command exited $ENTRYPOINT_STATUS"
+  run_entrypoint "$release_dir/oaw" "$CUTOVER_TEMP/removed-runtime" runtime exchange
+  [ "$ENTRYPOINT_STATUS" -eq 64 ] || fail "removed runtime command exited $ENTRYPOINT_STATUS"
+  [ ! -e "$CUTOVER_TEMP/state/open-agent-workflow/workflows" ] ||
+    fail "removed execution commands created Workflow State"
 
   run_entrypoint "$release_dir/install.sh" "$CUTOVER_TEMP/check" check --target claude
   [ "$ENTRYPOINT_STATUS" -eq 0 ] ||

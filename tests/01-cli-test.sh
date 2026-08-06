@@ -25,7 +25,19 @@ done
 for usage_item in check install update uninstall --target --project --dry-run --force --help; do
   assert_contains "$usage_item" "usage lists $usage_item"
 done
+assert_contains "oaw workflow exchange" "top-level help lists Workflow Coordinator exchange"
 pass "help is inert"
+
+for removed_command in run runtime; do
+  case "$removed_command" in
+    run) run_oaw run --host codex ;;
+    runtime) run_oaw runtime exchange ;;
+  esac
+  assert_status 64 "$removed_command command is removed"
+  assert_contains "command \"$removed_command\" has been removed" "$removed_command removal is explicit"
+  assert_read_only_roots
+done
+pass "retired execution commands fail without state"
 
 assert_cli_error() {
   expected_message=$1

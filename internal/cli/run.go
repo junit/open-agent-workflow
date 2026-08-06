@@ -26,6 +26,10 @@ func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 }
 
 func RunWithContext(_ context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+	if len(args) == 0 || len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
+		fmt.Fprint(stdout, rootUsage())
+		return 0
+	}
 	if len(args) != 0 {
 		switch args[0] {
 		case "workflow":
@@ -135,4 +139,8 @@ func parse(args []string) (command, error) {
 
 func usage() string {
 	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw providers inspect --host host [--project-root path] [--format text|json]\n       oaw workflow exchange [--state-root path] [--project-root path]\n"
+}
+
+func rootUsage() string {
+	return installerUsage() + "\n" + usage()
 }

@@ -78,6 +78,20 @@ func TestWorkflowExchangeIsOnlyExecutionCommandInUsage(t *testing.T) {
 	}
 }
 
+func TestTopLevelHelpPublishesCoordinatorWithoutModelLaunchOptions(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	status := RunWithInput([]string{"--help"}, strings.NewReader(""), &stdout, &stderr)
+	if status != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "oaw workflow exchange") {
+		t.Fatalf("top-level help status/stdout/stderr = %d/%q/%q", status, stdout.String(), stderr.String())
+	}
+	for _, retired := range []string{"oaw run", "oaw runtime", "--host codex", "--sandbox", "execution-root", "private HOME"} {
+		if strings.Contains(stdout.String(), retired) {
+			t.Fatalf("top-level help contains retired execution surface %q: %q", retired, stdout.String())
+		}
+	}
+}
+
 func assertRemovedCommand(t *testing.T, command []string) {
 	t.Helper()
 	stateRoot := filepath.Join(t.TempDir(), "workflows")

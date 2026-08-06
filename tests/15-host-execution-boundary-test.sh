@@ -5,6 +5,7 @@ set -eu
 TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 REPOSITORY=$(CDPATH='' cd -P -- "$TEST_DIR/.." && pwd)
 BOUNDARY_TEMP=
+BOUNDARY_BINARY=
 BOUNDARY_FAILURES=0
 
 cleanup() {
@@ -75,16 +76,21 @@ scan_host_process_boundary() {
 
 scan_cli_help() {
   BOUNDARY_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-execution-boundary.XXXXXX")
-  binary=$BOUNDARY_TEMP/oaw
+  BOUNDARY_TEMP=$(CDPATH='' cd -P -- "$BOUNDARY_TEMP" && pwd)
+  BOUNDARY_BINARY=$BOUNDARY_TEMP/oaw
   help_output=$BOUNDARY_TEMP/help
 
-  if ! (cd "$REPOSITORY" && GOCACHE="$BOUNDARY_TEMP/go-cache" go build -o "$binary" ./cmd/oaw); then
+  if ! (cd "$REPOSITORY" && GOCACHE="$BOUNDARY_TEMP/go-cache" go build -o "$BOUNDARY_BINARY" ./cmd/oaw); then
     fail_match 'could not build oaw for the CLI help boundary' 'go build ./cmd/oaw failed'
     return
   fi
-  if ! "$binary" --help >"$help_output" 2>&1; then
+  if ! "$BOUNDARY_BINARY" --help >"$help_output" 2>&1; then
     fail_match 'oaw --help failed during the CLI boundary check' "$(cat "$help_output")"
     return
+  fi
+
+  if ! grep -F -- 'oaw workflow exchange' "$help_output" >/dev/null; then
+    fail_match 'CLI help omits Workflow Coordinator exchange' "$(cat "$help_output")"
   fi
 
   for forbidden_text in \
@@ -98,12 +104,106 @@ scan_cli_help() {
     'ignore-rules' \
     'disable hooks' \
     'isolated-executor' \
-    'native-invocation'; do
+    'native-invocation' \
+    'oaw run' \
+    'oaw runtime' \
+    '--host codex' \
+    '--sandbox' \
+    'execution-root'; do
     if grep -F -- "$forbidden_text" "$help_output" >/dev/null; then
       fail_match "CLI help contains forbidden execution text '$forbidden_text'" \
         "$(grep -nF -- "$forbidden_text" "$help_output")"
     fi
   done
+}
+
+assert_removed_commands_are_inert() {
+  state_root=$BOUNDARY_TEMP/removed-state
+  mkdir -p "$state_root"
+  for command_name in run runtime; do
+    set +e
+    case "$command_name" in
+      run)
+        HOME="$BOUNDARY_TEMP/removed-home" XDG_STATE_HOME="$state_root" \
+          "$BOUNDARY_BINARY" run --host codex >/dev/null 2>&1
+        ;;
+      runtime)
+        HOME="$BOUNDARY_TEMP/removed-home" XDG_STATE_HOME="$state_root" \
+          "$BOUNDARY_BINARY" runtime exchange >/dev/null 2>&1
+        ;;
+    esac
+    status=$?
+    set -e
+    if [ "$status" -ne 64 ]; then
+      fail_match "removed $command_name command exited $status instead of 64" "$command_name"
+    fi
+  done
+  if [ -n "$(find "$state_root" -mindepth 1 -print -quit)" ]; then
+    fail_match 'removed execution commands created state' "$(find "$state_root" -mindepth 1 -print)"
+  fi
+}
+
+run_trapped_command() {
+  expected_status=$1
+  shift
+  set +e
+  HOME="$BOUNDARY_TEMP/trap-home" \
+    XDG_CONFIG_HOME="$BOUNDARY_TEMP/trap-config" \
+    XDG_STATE_HOME="$BOUNDARY_TEMP/trap-state" \
+    PATH="$BOUNDARY_TEMP/trap-bin:$PATH" \
+    OAW_MODEL_SENTINEL="$BOUNDARY_TEMP/model-executed" \
+    "$BOUNDARY_BINARY" "$@" >/dev/null 2>&1
+  status=$?
+  set -e
+  if [ "$status" -ne "$expected_status" ]; then
+    fail_match "trapped command '$*' exited $status instead of $expected_status" "$*"
+  fi
+}
+
+assert_public_commands_do_not_launch_models() {
+  mkdir -p "$BOUNDARY_TEMP/trap-bin" "$BOUNDARY_TEMP/trap-home" \
+    "$BOUNDARY_TEMP/trap-config" "$BOUNDARY_TEMP/trap-state"
+  for model_command in codex claude gemini opencode; do
+    {
+      printf '%s\n' '#!/usr/bin/env bash'
+      printf '%s\n' 'printf "%s\n" "$0" >>"$OAW_MODEL_SENTINEL"'
+      printf '%s\n' 'exit 99'
+    } >"$BOUNDARY_TEMP/trap-bin/$model_command"
+    chmod 755 "$BOUNDARY_TEMP/trap-bin/$model_command"
+  done
+
+  run_trapped_command 0 --help
+  run_trapped_command 0 check --target codex
+  run_trapped_command 0 install --target codex --dry-run
+  run_trapped_command 66 update --target codex --dry-run
+  run_trapped_command 0 uninstall --target codex --dry-run
+  run_trapped_command 0 catalog validate
+  run_trapped_command 0 catalog list providers
+  run_trapped_command 0 catalog list recipes
+  run_trapped_command 0 catalog list aliases
+  run_trapped_command 0 providers inspect --host codex
+  run_trapped_command 64 run --host codex
+  run_trapped_command 64 runtime exchange
+
+  set +e
+  workflow_output=$BOUNDARY_TEMP/trapped-workflow-output
+  printf '%s' '{"schema_version":"oaw.workflow-command/v1","kind":"INSPECT","message_id":"","idempotency_key":"","workflow_id":"workflow-missing","expected_revision":0}' |
+    HOME="$BOUNDARY_TEMP/trap-home" \
+      XDG_CONFIG_HOME="$BOUNDARY_TEMP/trap-config" \
+      XDG_STATE_HOME="$BOUNDARY_TEMP/trap-state" \
+      PATH="$BOUNDARY_TEMP/trap-bin:$PATH" \
+      OAW_MODEL_SENTINEL="$BOUNDARY_TEMP/model-executed" \
+      "$BOUNDARY_BINARY" workflow exchange --state-root "$BOUNDARY_TEMP/trap-state/workflows" \
+      >"$workflow_output" 2>&1
+  status=$?
+  set -e
+  if [ "$status" -ne 65 ]; then
+    fail_match "trapped workflow exchange exited $status instead of 65" "$(cat "$workflow_output")"
+  fi
+
+  if [ -e "$BOUNDARY_TEMP/model-executed" ]; then
+    fail_match 'a public OAW command executed a model CLI' "$(cat "$BOUNDARY_TEMP/model-executed")"
+  fi
 }
 
 trap cleanup EXIT HUP INT TERM
@@ -125,6 +225,10 @@ done
 
 scan_host_process_boundary
 scan_cli_help
+if [ -n "$BOUNDARY_BINARY" ]; then
+  assert_removed_commands_are_inert
+  assert_public_commands_do_not_launch_models
+fi
 
 if [ "$BOUNDARY_FAILURES" -ne 0 ]; then
   printf 'FAIL: found %s host execution boundary violation(s)\n' "$BOUNDARY_FAILURES" >&2

@@ -163,7 +163,7 @@ func TestPublicRunRoutesManagementAndPreservesPublicCommands(t *testing.T) {
 		if status := Run(args, &stdout, &stderr); status != 0 {
 			t.Fatalf("Run(%v)=%d stdout=%q stderr=%q", args, status, stdout.String(), stderr.String())
 		}
-		if stdout.String() != installerUsage() || stderr.Len() != 0 {
+		if stdout.String() != rootUsage() || stderr.Len() != 0 {
 			t.Fatalf("Run(%v) stdout=%q stderr=%q", args, stdout.String(), stderr.String())
 		}
 	}

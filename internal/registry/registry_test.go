@@ -111,7 +111,7 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 		t.Fatalf("Capability() exposed topology storage: %#v", freshCapability)
 	}
 
-	if _, _, err := registry.Resolve(snapshot, "claude", discovered, &inventory); err == nil || !strings.Contains(err.Error(), "HOST_PROVIDER_SCOPE_MISMATCH") {
+	if _, _, err := registry.Resolve(snapshot, "claude", discovered, inventory); err == nil || !strings.Contains(err.Error(), "HOST_PROVIDER_SCOPE_MISMATCH") {
 		t.Fatalf("foreign Host Resolve() error = %v", err)
 	}
 	empty, err := host.NewBindingInventory("codex", nil)
@@ -444,9 +444,13 @@ func inventoryForCandidate(t *testing.T, candidates []discovery.Candidate, bindi
 		if len(binding.Topologies) == 0 {
 			binding.Topologies = dualTopologies()
 		}
+		observedTopologies := []execution.Topology{binding.Topologies[0]}
+		if slices.Contains(binding.Topologies, execution.TopologyCurrent) {
+			observedTopologies[0] = execution.TopologyCurrent
+		}
 		observations = append(observations, host.BindingObservation{
 			HostID: "codex", InstallationKey: candidate.InstallationKey, Binding: binding,
-			Topologies: append([]execution.Topology{}, binding.Topologies...),
+			Topologies: observedTopologies,
 			Source:     "host-filesystem", EvidenceReference: filepath.Join(candidate.Location, fmt.Sprintf("evidence-%d", index)), Digest: strings.Repeat(string(rune('a'+index)), 64),
 		})
 	}

@@ -797,3 +797,30 @@ assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" 
 [ ! -e "$OAW_USER_STATE" ] || fail "symlinked policy install created state"
 
 pass "XDG policy components cannot redirect writes through symlinks"
+
+cleanup_sandbox
+unset OAW_PATH
+setup_sandbox
+OAW_INSTALLER=$OAW_BASE_INSTALLER
+OAW_MODEL_BIN=$OAW_SANDBOX/model-bin
+OAW_MODEL_SENTINEL=$OAW_SANDBOX/model-executed
+mkdir -p "$OAW_MODEL_BIN"
+export OAW_MODEL_SENTINEL
+for model_command in codex claude gemini opencode; do
+  {
+    printf '%s\n' '#!/usr/bin/env bash'
+    printf '%s\n' 'printf "%s\n" "$0" >>"$OAW_MODEL_SENTINEL"'
+    printf '%s\n' 'exit 99'
+  } >"$OAW_MODEL_BIN/$model_command"
+  chmod 755 "$OAW_MODEL_BIN/$model_command"
+done
+OAW_PATH=$OAW_MODEL_BIN:$PATH
+
+run_oaw check --target claude,codex,gemini,opencode
+assert_status 0 "management check remains diagnostic with model commands on PATH"
+run_oaw install --target claude,codex,gemini,opencode --dry-run
+assert_status 0 "management dry run does not execute model commands"
+[ ! -e "$OAW_MODEL_SENTINEL" ] ||
+  fail "management commands executed a model CLI: $(cat "$OAW_MODEL_SENTINEL")"
+
+pass "management commands never execute detected model CLIs"

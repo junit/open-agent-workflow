@@ -348,7 +348,7 @@ func testCatalog(t *testing.T, probes ...catalog.DiscoveryProbe) catalog.Catalog
 		}
 	}
 	value, err := catalog.New([]catalog.ProviderDescriptorRecord{{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV2, DescriptorVersion: "2.0.0", ID: "acme/suite", DisplayName: "Acme Suite", Discovery: probes, Capabilities: []catalog.CapabilityRecord{},
+		SchemaVersion: catalog.ProviderDescriptorSchemaV3, DescriptorVersion: "3.0.0", ID: "acme/suite", DisplayName: "Acme Suite", Discovery: probes, Capabilities: []catalog.CapabilityRecord{},
 	}}, []catalog.ProfileRecipeRecord{}, []catalog.ProfileAliasRecord{})
 	if err != nil {
 		t.Fatalf("catalog.New() error = %v", err)
