@@ -160,10 +160,11 @@ stored under the XDG config root, while state and operation backups are stored
 under the XDG state root; see the [architecture guide](architecture.md) for
 exact paths and the record schema.
 
-Install State and Runtime State are disjoint; no automatic migration occurs.
-Management commands neither create Engineering Runs nor import existing
-Policy-only tasks or profile locks. Runtime adoption is an explicit operation
-at a Stable Boundary, not a side effect of `install`, `update`, or `uninstall`.
+Install State and Workflow State are disjoint; no automatic migration occurs.
+Management commands neither create Workflow State nor import existing
+policy-only tasks or Profile locks. Starting coordination or switching at a
+Stable Boundary is an explicit Workflow action, not a side effect of `install`,
+`update`, or `uninstall`.
 
 A normal `install` creates no operation backup. Clean `update` and `uninstall`
 need not create one. A forced `update` or `uninstall` creates an

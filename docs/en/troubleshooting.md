@@ -88,10 +88,10 @@ Provider Family
 ```
 
 Run `oaw providers inspect --host codex --format text` with the same
-`--project-root`, if the Run used one. Codex and Claude Code are independent
+`--project-root`, if the Workflow used one. Codex and Claude Code are independent
 Hosts even when they reference shared files. The current section contains only
-the selected Host's Candidates and observations. A Policy-only Host may show
-Candidates but cannot verify a Runtime Instance. The foreign section is
+the selected Host's Candidates and observations. A `policy` Host may show
+Candidates, but a Candidate alone is not a Verified Provider Instance. The foreign section is
 diagnostic-only and never supplies a pin or authority. Descriptor bindings and
 installation hints are declarations, not Host Binding Evidence.
 
@@ -103,7 +103,7 @@ Interpret the stable reasons as follows:
 | `PROVIDER_BINDING_UNAVAILABLE` | Inventory exists but no exact Installation/Capability/Binding observation matches. |
 | `PROVIDER_FOREIGN_HOST_ONLY` | A Candidate exists only in a foreign diagnostic Host and remains unusable for current authority. |
 | `PROVIDER_PIN_INCOMPATIBLE` | The current-Host pin no longer matches installation identity or evidence. |
-| `HOST_PROVIDER_SCOPE_MISMATCH` | Registry, Instance, Bundle, or Runtime Host identities disagree. |
+| `HOST_PROVIDER_SCOPE_MISMATCH` | Registry, Instance, Bundle, or Agent Host identities disagree. |
 
 `PROVIDER_CANDIDATE_AMBIGUOUS` requires the operator to select one current-Host
 Candidate and add the exact suggestion to user-owned configuration:
@@ -118,20 +118,38 @@ evidence_digest = "<sha256>"
 # version = "6.1.1"
 ```
 
-OAW does not choose a Candidate and does not write the pin. Begin a new Run
+OAW does not choose a Candidate and does not write the pin. Begin a new Workflow
 after changing configuration. `oaw.provider-descriptor/v1` and
 `oaw.user-config/v1` are unsupported active inputs; replace them with explicit
-v2 records rather than expecting migration.
+v3 records rather than expecting migration.
 
-## Management State Is Not Runtime State
+## Install State Is Not Workflow State
 
-Install State and Runtime State are disjoint; no automatic migration occurs.
-An installed adapter may correctly report `clean` while remaining Policy-only.
-Existing tasks and profile locks are not imported, and management commands do
-not create Engineering Runs. Only the pinned Codex runner is currently
-Runtime-managed; every other installed adapter has no Runtime admission, Grant,
-lease, transition-enforcement, or physical-isolation guarantee. Adoption of an
-eligible Policy-only task must be explicit at a Stable Boundary.
+Install State and Workflow State are disjoint; no automatic migration occurs.
+An installed adapter may correctly report `clean` while exposing only the
+`policy` surface. Existing tasks and Profile locks are not imported, and
+management commands do not create Workflow State. Only a real `host-native`
+integration can exchange session facts and Receipts with OAW Core or the
+Workflow Coordinator. The Agent Host still owns physical execution authority.
+
+## Workflow Coordination Errors
+
+These reason codes belong to the Core, Coordinator, or Host integration rather
+than installation management:
+
+| Reason | Diagnosis and recovery |
+| --- | --- |
+| `SCHEMA_UNSUPPORTED` | A Workflow command or result uses a retired schema. Update the caller and construct a new command; do not translate the record in place. |
+| `WORKFLOW_STATE_UNSUPPORTED` | The selected Workflow State root contains a retired or unknown journal schema. Stop cooperating clients, preserve the exact state directory, and perform the explicit pre-release reset below. |
+| `SUBAGENT_UNAVAILABLE` | The active Host session cannot create a native child. Return to the Startup Gate and select `CURRENT`, or repair native Host support; never launch a model process as fallback. |
+| `HOST_SESSION_CHANGED` | Session identity, topology availability, or a pinned Host fact digest changed. Discard the stale Dispatch Packet, obtain a new Host session report, and recompile eligibility before dispatch. |
+
+For an explicit pre-release state reset, first stop every client using the
+Workflow, verify the exact path under
+`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows`, and move
+only the identified Workflow directory to a reviewed backup name. Start a new
+Workflow from current configuration. OAW never deletes an unknown state root
+automatically, and an operator must not remove the XDG state root broadly.
 
 ## Clean Files but Stale Agent Behavior
 

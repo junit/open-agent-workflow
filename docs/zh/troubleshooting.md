@@ -81,10 +81,10 @@ Provider Family
   -> Verified Provider Instance
 ```
 
-运行 `oaw providers inspect --host codex --format text`；如果原 Run 使用了
+运行 `oaw providers inspect --host codex --format text`；如果原 Workflow 使用了
 `--project-root`，这里必须使用同一路径。Codex 与 Claude Code 即使引用共享文件，也仍是
-独立 Host。current section 只包含所选 Host 的 Candidate 和 observation。Policy-only Host
-可以显示 Candidate，但不能验证 Runtime Instance。foreign section 仅供诊断，绝不提供 pin
+独立 Host。current section 只包含所选 Host 的 Candidate 和 observation。`policy` Host
+可以显示 Candidate，但 Candidate 本身不是 Verified Provider Instance。foreign section 仅供诊断，绝不提供 pin
 或权限。Descriptor binding 与 installation hint 是声明，不是 Host Binding Evidence。
 
 稳定原因含义如下：
@@ -95,7 +95,7 @@ Provider Family
 | `PROVIDER_BINDING_UNAVAILABLE` | Inventory 存在，但没有精确匹配 Installation/Capability/Binding 的 observation。 |
 | `PROVIDER_FOREIGN_HOST_ONLY` | Candidate 只存在于 foreign diagnostic Host，不能用于当前权限。 |
 | `PROVIDER_PIN_INCOMPATIBLE` | 当前 Host 的 pin 不再匹配 installation 身份或 evidence。 |
-| `HOST_PROVIDER_SCOPE_MISMATCH` | Registry、Instance、Bundle 或 Runtime 的 Host 身份不一致。 |
+| `HOST_PROVIDER_SCOPE_MISMATCH` | Registry、Instance、Bundle 或 Agent Host 身份不一致。 |
 
 `PROVIDER_CANDIDATE_AMBIGUOUS` 要求 operator 选择一个当前 Host Candidate，并把精确建议
 加入用户自己管理的配置：
@@ -110,17 +110,32 @@ evidence_digest = "<sha256>"
 # version = "6.1.1"
 ```
 
-OAW 不会替用户选择 Candidate，也不会写入 pin。配置变化后必须开始新的 Run。
+OAW 不会替用户选择 Candidate，也不会写入 pin。配置变化后必须开始新的 Workflow。
 `oaw.provider-descriptor/v1` 与 `oaw.user-config/v1` 不再是受支持的 active input；必须显式
-替换为 v2 record，不能期待自动迁移。
+替换为 v3 record，不能期待自动迁移。
 
-## Management State 不是 Runtime State
+## Install State 不是 Workflow State
 
-Install State 与 Runtime State 相互独立，不会自动迁移。Adapter 安装成功并报告 `clean`，
-仍可能正确地保持 Policy-only。现有 task 与 profile lock 不会被导入，management command
-也不会创建 Engineering Run。目前只有固定版本的 Codex runner 是 Runtime-managed；其他
-已安装 adapter 都不提供 Runtime admission、Grant、lease、transition enforcement 或
-physical isolation 保证。符合条件的 Policy-only task 只能在 Stable Boundary 显式接管。
+Install State 与 Workflow State 相互独立，不会自动迁移。Adapter 安装成功并报告 `clean`，
+仍可能只暴露 `policy` surface。现有 task 与 Profile lock 不会被导入，management command
+也不会创建 Workflow State。只有真实 `host-native` integration 可以与 OAW Core 或
+Workflow Coordinator 交换 session fact 与 Receipt。物理执行权限仍属于 Agent Host。
+
+## Workflow Coordination 错误
+
+这些原因码属于 Core、Coordinator 或 Host integration，不属于 installation management：
+
+| 原因 | 诊断与恢复 |
+| --- | --- |
+| `SCHEMA_UNSUPPORTED` | Workflow command 或 result 使用已退役 schema。更新调用方并构造新 command，不要原地翻译 record。 |
+| `WORKFLOW_STATE_UNSUPPORTED` | 所选 Workflow State root 包含已退役或未知 journal schema。停止合作客户端、保留精确 state directory，并执行下方显式 pre-release reset。 |
+| `SUBAGENT_UNAVAILABLE` | active Host session 无法创建原生 child。返回 Startup Gate 选择 `CURRENT`，或修复原生 Host 支持；绝不能用 model process fallback。 |
+| `HOST_SESSION_CHANGED` | session identity、topology availability 或 pin 的 Host fact digest 已变化。丢弃 stale Dispatch Packet，取得新 Host session report，并重新编译 eligibility 后再 dispatch。 |
+
+执行显式 pre-release state reset 前，先停止使用该 Workflow 的全部 client，确认精确路径位于
+`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows` 下，并只把已识别的
+Workflow directory 移到经过复核的 backup 名称。然后用当前配置启动新 Workflow。OAW
+绝不会自动删除未知 state root，operator 也不能宽泛删除 XDG state root。
 
 ## 文件 Clean 但 Agent 行为陈旧
 

@@ -11,59 +11,40 @@ agent 工具。OAW 行为由本地 [lib/targets.sh](../../lib/targets.sh) 与
 
 ## 支持级别
 
-| Target ID | 工具 | OAW scope | OAW 级别 |
+| Target ID | 工具 | OAW scope | Control surface |
 | --- | --- | --- | --- |
-| `claude` | Claude Code | user + project | Core |
-| `codex` | Codex CLI | user + project | Core |
-| `gemini` | Gemini CLI | user + project | Core |
-| `opencode` | OpenCode | user + project | Core |
-| `cursor` | Cursor | project only | Project extension |
-| `windsurf` | Windsurf / Devin rules | project only | Project extension |
-| `cline` | Cline | project only | Project extension |
-| `roo` | Roo Code | project only | Project extension |
-| `copilot` | GitHub Copilot | project only | Project extension |
+| `claude` | Claude Code | user + project | `policy` |
+| `codex` | Codex CLI | user + project | `policy` |
+| `gemini` | Gemini CLI | user + project | `policy` |
+| `opencode` | OpenCode | user + project | `policy` |
+| `cursor` | Cursor | project only | `policy` |
+| `windsurf` | Windsurf / Devin rules | project only | `policy` |
+| `cline` | Cline | project only | `policy` |
+| `roo` | Roo Code | project only | `policy` |
+| `copilot` | GitHub Copilot | project only | `policy` |
 
 User scope 默认安装 core adapter：`claude,codex,gemini,opencode`。Project scope 默认
 按上表 registry order 安装全部九个 target。Extension adapter 不支持 user scope 是 OAW
 的支持决策，不代表 provider 没有全局设置。
 
-## Runtime Host 支持
+## Host Integration Surface
 
-Adapter 安装与 Runtime Host 能力是两个不同问题。当前唯一的
-`runner-managed` Host 是用户明确选择的 Codex CLI integration
-`oaw/codex-runner`。`oaw run --host codex` 会在启动任何 Host process 之前检查其
-已 pin 的 Manifest、audit evidence、Conformance report 与 Integration record。
-Claude、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot 仍是
-`instruction-only`；它们的 policy adapter 不表示 Runtime Protocol、隔离、dispatch
-或 evidence 保证。
+Adapter 安装与 Host execution 是两个不同问题。当前九个内置 integration 都暴露
+`policy` surface：分发 OAW instruction，支持 `CURRENT`，不保证 Coordinator、Receipt
+或 `SUBAGENT`。`host-native` integration 是明确的 Host 能力，不能从 target name 推断。
 
-`oaw run` 使用共享 Runtime Protocol。恢复 `CONTINUE` 或 `INSPECT` frame 时可以传入
-`--project-root /absolute/project/path`，显式加载 project configuration；START frame
-中的 project identity 优先，二者不一致会被拒绝。现有 Bash installer 仍是权威实现，
-不会为 Policy-only adapter 安装 Runtime claim。
+`CURRENT` 表示 active Agent session 保持不变。`SUBAGENT` 表示 active Agent Host 通过
+原生 Subagent facility 创建 child。可用性是 session-dependent；facility 缺失时返回
+`SUBAGENT_UNAVAILABLE`，没有 process fallback。
 
-每次 Codex dispatch 都会收到已提交 Grant 的 effects 与 resources。不含
-`write-project` 或 `git-local` 的 Grant 会被强制放入 Codex
-`--sandbox read-only`；包含任一写 effect 的 Grant 使用
-`--sandbox workspace-write`。Runner 永远不会选择 `danger-full-access`。Codex sandbox
-mode 本身不能约束 MCP 子进程，因此 `oaw run` 将 Host discovery 与 execution 分开。
-Discovery 读取选中的真实 Codex installation，并构造 Host-scoped Registry 与 Binding
-Inventory。`Prepare` 会重新校验 Grant 中的 Provider Instance、Capability、Host
-Installation、精确 Binding、inventory digest 与 physical evidence digest。随后每次
-invocation 都在 Runtime state root 下获得私有 `0700` HOME 与中性 workspace；只有已验证的
-skill 会映射进去，user config、project rule、hook、无关 plugin 与 MCP server 都不会加载。
-`codex exec` 使用 `--ignore-user-config`、`--ignore-rules` 与 `--disable hooks`；原始
-`CODEX_HOME` 只用于认证，physical project 通过 `--add-dir` 暴露。Evidence 发生变化时会在
-模型启动前 fail closed。Agent 与 tool Binding 当前返回
-`CODEX_BINDING_KIND_UNSUPPORTED`，因为隔离 profile 尚不能精确复现它们的 Host registration
-语义。
+host-native adapter 可以报告 secret-free session facts、Provider Binding Evidence、topology
+availability、Dispatch Packet status 和 normalized Receipts。Agent Host owns physical execution authority。
+OAW 绝不启动 model process，也不要求 adapter 重建 MCP、Hook、Skill、
+Plugin、认证、sandbox、approval 或 private configuration。
 
-收到 interrupt
-或 termination signal 时，`oaw` 会先请求 Host cancel，再提交
-`EXECUTION_UNCERTAIN` / `PAUSED`，并给出 `RECONCILE_INVOCATION` recovery。无法捕获的
-`SIGKILL` 不能执行最后的状态转换，因此设置 deadline 的调用方必须先优雅取消，之后才能
-使用 hard-kill fallback。调用方发现 stale authorized invocation 时，应重放同一个幂等
-dispatch frame；Runtime 会在不再次调用 Codex 的情况下提交 uncertain pause。
+Host 可以报告 `inherited`、`host-configured`、`restricted`、`unknown` 或 `unavailable`
+environment observation。Receipt 只是 Host attested outcome 的 evidence，不声称 OAW
+物理包含了 Host。
 
 ## OAW 路径
 

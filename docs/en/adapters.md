@@ -12,65 +12,45 @@ Official sources **Retrieved: 2026-07-30**.
 
 ## Support Levels
 
-| Target ID | Tool | OAW scopes | OAW level |
+| Target ID | Tool | OAW scopes | Control surface |
 | --- | --- | --- | --- |
-| `claude` | Claude Code | user + project | Core |
-| `codex` | Codex CLI | user + project | Core |
-| `gemini` | Gemini CLI | user + project | Core |
-| `opencode` | OpenCode | user + project | Core |
-| `cursor` | Cursor | project only | Project extension |
-| `windsurf` | Windsurf / Devin rules | project only | Project extension |
-| `cline` | Cline | project only | Project extension |
-| `roo` | Roo Code | project only | Project extension |
-| `copilot` | GitHub Copilot | project only | Project extension |
+| `claude` | Claude Code | user + project | `policy` |
+| `codex` | Codex CLI | user + project | `policy` |
+| `gemini` | Gemini CLI | user + project | `policy` |
+| `opencode` | OpenCode | user + project | `policy` |
+| `cursor` | Cursor | project only | `policy` |
+| `windsurf` | Windsurf / Devin rules | project only | `policy` |
+| `cline` | Cline | project only | `policy` |
+| `roo` | Roo Code | project only | `policy` |
+| `copilot` | GitHub Copilot | project only | `policy` |
 
 Core adapters are installed by default for user scope:
 `claude,codex,gemini,opencode`. Project scope defaults to all nine targets in
 the registry order shown above. Unsupported user-scope extension adapters are
  an OAW support decision, not a claim that the provider has no global settings.
 
-## Runtime Host Support
+## Host Integration Surfaces
 
-Adapter installation and Runtime Host capability are separate concerns. The
-only built-in `runner-managed` Host is the explicitly selected Codex CLI
-integration `oaw/codex-runner`. Its pinned Manifest, audit evidence,
-Conformance report, and Integration record are checked by `oaw run --host codex`
-before any Host process is started. Claude, Gemini, OpenCode, Cursor, Windsurf,
-Cline, Roo Code, and Copilot remain `instruction-only`; their policy adapters do
-not imply Runtime Protocol, isolation, dispatch, or evidence guarantees.
+Adapter installation and Host execution are separate concerns. The nine built-in
+integrations currently expose the `policy` surface: they distribute OAW
+instructions, support `CURRENT`, and make no Coordinator, Receipt, or
+`SUBAGENT` guarantee. A `host-native` integration is an explicit Host feature,
+not a property inferred from a target name.
 
-`oaw run` uses the shared Runtime Protocol. A resumed `CONTINUE` or `INSPECT`
-frame can pass `--project-root /absolute/project/path` so project configuration
-is loaded explicitly; a START frame's project identity takes precedence and a
-mismatch is rejected. The existing Bash installer remains authoritative and
-does not install a Runtime claim for a Policy-only adapter.
+`CURRENT` means the active Agent session remains unchanged. `SUBAGENT` means the
+active Agent Host creates a child through its native Subagent facility. Its
+availability is session-dependent; a missing facility returns
+`SUBAGENT_UNAVAILABLE` and has no process fallback.
 
-Every Codex dispatch receives the committed Grant effects and resources. A
-Grant without `write-project` or `git-local` is forced into Codex
-`--sandbox read-only`; a Grant containing either write effect uses
-`--sandbox workspace-write`. The runner never selects `danger-full-access`.
-Codex sandbox mode alone does not constrain MCP subprocesses, so `oaw run`
-separates Host discovery from execution. Discovery reads the selected real
-Codex installation and builds the Host-scoped Registry and Binding Inventory.
-During `Prepare`, the runner revalidates the granted Provider Instance,
-Capability, Host Installation, exact Binding, inventory digest, and physical
-evidence digest. Each invocation then receives a private `0700` HOME and
-neutral workspace under the Runtime state root. Only the verified skill is
-mapped into that HOME; user configuration, project rules, hooks, unrelated
-plugins, and MCP servers are not loaded. `codex exec` uses
-`--ignore-user-config`, `--ignore-rules`, and `--disable hooks`; the original
-`CODEX_HOME` is retained only for authentication, and the physical project is
-exposed with `--add-dir`. Changed evidence fails before the model starts.
-Agent and tool Bindings currently fail closed as
-`CODEX_BINDING_KIND_UNSUPPORTED` because the isolated profile cannot yet map
-their Host registration semantics exactly.
+A host-native adapter may report secret-free session facts, Provider Binding
+Evidence, topology availability, Dispatch Packet status, and normalized
+Receipts. The Agent Host owns physical execution authority. OAW never starts a
+model process and never asks an adapter to reconstruct MCP, Hooks, Skills,
+Plugins, authentication, sandbox, approvals, or private configuration.
 
-On an interrupt or termination signal, `oaw` asks the Host to cancel and then
-commits `EXECUTION_UNCERTAIN` / `PAUSED` with `RECONCILE_INVOCATION` recovery.
-An uncatchable `SIGKILL` cannot run that final state transition, so callers
-that impose deadlines must cancel gracefully before a hard-kill fallback. A
-caller that observes a stale authorized invocation replays the same idempotent
-dispatch frame to commit the uncertain pause without invoking Codex again.
+The Host may report `inherited`, `host-configured`, `restricted`, `unknown`, or
+`unavailable` environment observations. A Receipt is evidence of what the Host
+attested; it is not a claim that OAW physically contained the Host.
 
 ## OAW Paths
 

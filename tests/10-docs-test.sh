@@ -774,7 +774,7 @@ for management_contract in \
   'preserves any existing valid `backup` reference' \
   'mutation journal' \
   'rollback failure' \
-  'Install State and Runtime State are disjoint; no automatic migration occurs' \
+    'Install State and Workflow State are disjoint; no automatic migration occurs' \
   'Stable Boundary'; do
   assert_contains docs/en/installer.md "$management_contract"
 done
@@ -789,7 +789,7 @@ for management_contract in \
   '保留已有且有效的 `backup` 引用' \
   'mutation journal' \
   'Rollback failure' \
-  'Install State 与 Runtime State 相互独立，不会自动迁移' \
+    'Install State 与 Workflow State 相互独立，不会自动迁移' \
   'Stable Boundary'; do
   assert_contains docs/zh/installer.md "$management_contract"
 done
@@ -957,21 +957,39 @@ for adapter_contract in \
   '实验性的嵌套 `AGENTS.md` 行为未被采用'; do
   assert_contains docs/zh/adapters.md "$adapter_contract"
 done
-for runtime_containment_contract in \
-  '--sandbox read-only' \
-  '--sandbox workspace-write' \
-  'danger-full-access' \
-  '--ignore-user-config' \
-  '--ignore-rules' \
-  '--disable hooks' \
-  'CODEX_BINDING_KIND_UNSUPPORTED' \
-  'EXECUTION_UNCERTAIN' \
-  'RECONCILE_INVOCATION' \
-  'SIGKILL'; do
-  assert_contains docs/en/adapters.md "$runtime_containment_contract"
-  assert_contains docs/zh/adapters.md "$runtime_containment_contract"
-  assert_contains docs/en/security.md "$runtime_containment_contract"
-  assert_contains docs/zh/security.md "$runtime_containment_contract"
+for host_surface_contract in \
+  'policy' \
+  'host-native' \
+  'CURRENT' \
+  'SUBAGENT' \
+  'session-dependent' \
+  'session facts' \
+  'Receipts' \
+  'Agent Host owns physical execution authority'; do
+  assert_contains docs/en/adapters.md "$host_surface_contract"
+  assert_contains docs/zh/adapters.md "$host_surface_contract"
+done
+for host_surface_contract in \
+  'reports facts and Receipts' \
+  'never gives OAW a model command' \
+  'credential' \
+  'Hook payload' \
+  'private Plugin/MCP configuration'; do
+  assert_contains docs/en/extending-adapters.md "$host_surface_contract"
+done
+for host_surface_contract in \
+  '报告 fact 与 Receipt' \
+  '不会给 OAW model command' \
+  'credential' \
+  'Hook payload' \
+  'private Plugin/MCP configuration'; do
+  assert_contains docs/zh/extending-adapters.md "$host_surface_contract"
+done
+for host_surface_contract in \
+  'Host sandbox and approvals' \
+  'logical workflow authority' \
+  'secret-free'; do
+  assert_contains docs/en/extending-adapters.md "$host_surface_contract"
 done
 pass "adapter documents preserve paths, scopes, source evidence, loading behavior, and caveats"
 
@@ -993,7 +1011,9 @@ for extension_file in docs/en/extending-adapters.md docs/zh/extending-adapters.m
     '`owned-file`' \
     'pure renderer' \
     'shared destination' \
-    'isolated `HOME`' \
+    'Host-native' \
+    'session facts' \
+    'Receipts' \
     'official primary source' \
     'retrieval date' \
     'precedence' \
@@ -1009,20 +1029,24 @@ for extension_file in docs/en/extending-adapters.md docs/zh/extending-adapters.m
 done
 for extension_contract in \
   'public `oaw` CLI' \
-  'Runtime admission' \
-  'Capability Grant' \
-  'Resource Lease' \
-  'physical isolation' \
-  'Only the pinned Codex runner is currently Runtime-managed'; do
+  'policy surface' \
+  'host-native' \
+  'reports facts and Receipts' \
+  'never gives OAW a model command' \
+  'credential' \
+  'Hook payload' \
+  'private Plugin/MCP configuration'; do
   assert_contains docs/en/extending-adapters.md "$extension_contract"
 done
 for extension_contract in \
   'public `oaw` CLI' \
-  'Runtime admission' \
-  'Capability Grant' \
-  'Resource Lease' \
-  'physical' \
-  '目前只有固定版本的 Codex runner 是 Runtime-managed'; do
+  'policy surface' \
+  'host-native' \
+  '报告 fact 与 Receipt' \
+  '不会给 OAW model command' \
+  'credential' \
+  'Hook payload' \
+  'private Plugin/MCP configuration'; do
   assert_contains docs/zh/extending-adapters.md "$extension_contract"
 done
 pass "extension documents define evidence, metadata, rendering, collision, fixtures, security, and graduation"
@@ -1067,7 +1091,11 @@ for troubleshooting_file in docs/en/troubleshooting.md docs/zh/troubleshooting.m
     'uninstall refusal' \
     'rollback failed' \
     'Install State' \
-    'Runtime State' \
+    'Workflow State' \
+    'SCHEMA_UNSUPPORTED' \
+    'WORKFLOW_STATE_UNSUPPORTED' \
+    'SUBAGENT_UNAVAILABLE' \
+    'HOST_SESSION_CHANGED' \
     'precompiled sibling binary is missing or not executable'; do
     assert_contains "$troubleshooting_file" "$troubleshooting_contract"
   done

@@ -9,18 +9,23 @@ new workflow design. An adapter **must not change lifecycle semantics** and
 **must not vendor a provider**. The target tool and every workflow provider
 remain independently installed.
 
-## Runtime Integration Is Separate
+## Host Integration Is Separate
 
-An installation adapter exposes the Policy Plane only. Other installed
-adapters remain Policy-only and provide no Runtime admission, Capability Grant,
-Resource Lease, transition enforcement, or physical isolation guarantee.
-Only the pinned Codex runner is currently Runtime-managed. Discovery evidence,
-Provider configuration, target registration, and successful installation never
-promote an adapter.
+An installation adapter exposes the `policy surface` only. It distributes
+instructions for `CURRENT` and makes no Workflow Coordinator, `SUBAGENT`, or
+Receipt guarantee. Discovery evidence, Provider configuration, target
+registration, and successful installation never promote an adapter to
+`host-native`.
 
-Runtime-managed support requires a separate pinned Host Binding, conformance
-audit, normalized observation contract, isolation evidence, and explicit
-release decision. That work is not part of the adapter graduation levels below.
+A Host-native integration is implemented by the Agent Host. It supports
+secret-free session facts, topology eligibility, Dispatch Packets, and
+normalized Receipts while the Host retains physical execution authority. It
+reports facts and Receipts but never gives OAW a model command, credential,
+Hook payload, or private Plugin/MCP configuration.
+
+The integration may report opaque policy digests, but the Host sandbox and approvals remain authoritative. A Capability Grant or Resource Lease expresses
+logical workflow authority for cooperating clients only. Conformance evidence
+for this contract is separate from the adapter graduation levels below.
 
 ## Start With an Evidence Packet
 

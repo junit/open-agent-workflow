@@ -142,9 +142,10 @@ User 与 project installation 绝不共用 state file。不同物理 project roo
 state file。已安装 policy 位于 XDG config root，state 与 operation backup 位于 XDG state
 root；精确路径与 record schema 见[架构指南](architecture.md)。
 
-Install State 与 Runtime State 相互独立，不会自动迁移。Management command 不会创建
-Engineering Run，也不会导入现有 Policy-only task 或 profile lock。Runtime 接管必须在
-Stable Boundary 显式执行，不是 `install`、`update` 或 `uninstall` 的副作用。
+Install State 与 Workflow State 相互独立，不会自动迁移。Management command 不会创建
+Workflow State，也不会导入现有 policy-only task 或 Profile lock。在 Stable Boundary
+启动协调或执行切换是显式 Workflow action，不是 `install`、`update` 或 `uninstall` 的
+副作用。
 
 普通 `install` 不创建 operation backup。Clean `update` 与 `uninstall` 不一定创建 backup；
 forced `update` 或 `uninstall` 会在任何 prepared destination 改变前创建经过验证的

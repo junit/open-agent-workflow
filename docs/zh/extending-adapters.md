@@ -8,16 +8,20 @@ entrypoint。新增 adapter 是实现与证据变更，不是新的 workflow 设
 **must not change lifecycle semantics**，也 **must not vendor a provider**。目标工具和
 每个 workflow provider 都保持独立安装。
 
-## Runtime Integration 是独立边界
+## Host Integration 是独立边界
 
-Installation adapter 只暴露 Policy Plane。其他已安装 adapter 仍为 Policy-only，不提供
-Runtime admission、Capability Grant、Resource Lease、transition enforcement 或 physical
-isolation 保证。目前只有固定版本的 Codex runner 是 Runtime-managed。Discovery evidence、
-Provider configuration、target registration 与成功 installation 都不会自动晋级 adapter。
+Installation adapter 只暴露 `policy surface`。它为 `CURRENT` 分发 instruction，不保证
+Workflow Coordinator、`SUBAGENT` 或 Receipt。Discovery evidence、Provider config、target
+registration 与成功 installation 都不会把 adapter 自动晋级为 `host-native`。
 
-Runtime-managed 支持需要独立的 pinned Host Binding、conformance audit、normalized
-observation contract、isolation evidence 与显式 release decision；这不属于下方 adapter
-graduation level。
+Host-native integration 由 Agent Host 实现。它支持 secret-free session facts、topology
+eligibility、Dispatch Packet 与 normalized Receipts，同时 Host 保留物理执行权限。它只
+报告 fact 与 Receipt，不会给 OAW model command、credential、Hook payload。OAW 不会收到
+private Plugin/MCP configuration。
+
+Integration 可以报告 opaque policy digest，但 Host sandbox and approvals 仍具权威性。
+Capability Grant 或 Resource Lease 只为合作客户端表达 logical workflow authority。该
+contract 的 conformance evidence 不属于下方 adapter graduation level。
 
 ## 从 Evidence Packet 开始
 
