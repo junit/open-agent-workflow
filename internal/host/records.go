@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	HostManifestSchemaV1              = "oaw.host-manifest/v1"
-	HostIntegrationSchemaV1           = "oaw.host-integration/v1"
 	HostManifestSchemaV2              = "oaw.host-manifest/v2"
 	HostIntegrationSchemaV2           = "oaw.host-integration/v2"
 	HostSessionSchemaV2               = "oaw.host-session/v2"
@@ -19,18 +17,7 @@ const (
 	HostInvocationReceiptSchemaV2     = "oaw.host-invocation-receipt/v2"
 	HostConformanceTranscriptSchemaV2 = "oaw.host-conformance-transcript/v2"
 	HostConformanceReportSchemaV2     = "oaw.host-conformance-report/v2"
-	ConformanceReportSchemaV1         = "oaw.host-conformance-report/v1"
-	ConformanceSuiteV1                = "oaw.host-conformance/v1"
-	RuntimeProtocolV1                 = "oaw.runtime/v1"
 	WorkflowProtocolV1                = "oaw.workflow/v1"
-)
-
-type IntegrationLevel string
-
-const (
-	InstructionOnly IntegrationLevel = "instruction-only"
-	RunnerManaged   IntegrationLevel = "runner-managed"
-	NativeManaged   IntegrationLevel = "native-managed"
 )
 
 type ControlSurface string
@@ -43,16 +30,10 @@ const (
 type Feature string
 
 const (
-	FeatureIsolatedExecutor         Feature = "isolated-executor"
-	FeatureExactBindingInvocation   Feature = "exact-binding-invocation"
 	FeaturePause                    Feature = "pause"
-	FeatureBundleInheritance        Feature = "bundle-inheritance"
-	FeatureEvidenceReturn           Feature = "evidence-return"
 	FeatureInvocationDedup          Feature = "invocation-deduplication"
 	FeatureCancellation             Feature = "cancellation"
-	FeatureNormalizedObservation    Feature = "normalized-observation"
 	FeatureProviderBindingInventory Feature = "provider-binding-inventory"
-	FeatureNativeInvocation         Feature = "native-invocation"
 	FeatureNormalizedReceipts       Feature = "normalized-receipts"
 	FeatureEnvironmentReporting     Feature = "environment-reporting"
 )
@@ -61,7 +42,6 @@ type Manifest struct {
 	SchemaVersion       string               `json:"schema_version" toml:"schema_version"`
 	ManifestVersion     string               `json:"manifest_version" toml:"manifest_version"`
 	HostID              string               `json:"host_id" toml:"host_id"`
-	IntegrationLevel    IntegrationLevel     `json:"integration_level,omitempty" toml:"integration_level"`
 	ControlSurface      ControlSurface       `json:"control_surface" toml:"control_surface"`
 	Protocols           []string             `json:"protocols" toml:"protocols"`
 	BindingKinds        []string             `json:"binding_kinds" toml:"binding_kinds"`
@@ -182,12 +162,6 @@ type IntegrationRecord struct {
 	Audit              AuditEvidence      `json:"audit" toml:"audit"`
 	Conformance        *ConformanceReport `json:"conformance,omitempty" toml:"conformance"`
 	Digest             string             `json:"digest" toml:"digest"`
-}
-
-type RuntimeFrame struct {
-	HostID              string    `json:"host_id"`
-	IntegrationID       string    `json:"integration_id"`
-	UnavailableFeatures []Feature `json:"unavailable_features"`
 }
 
 type Error struct {
@@ -349,10 +323,5 @@ func CloneIntegration(value IntegrationRecord) IntegrationRecord {
 		report := CloneConformanceReport(*value.Conformance)
 		value.Conformance = &report
 	}
-	return value
-}
-
-func CloneRuntimeFrame(value RuntimeFrame) RuntimeFrame {
-	value.UnavailableFeatures = append([]Feature{}, value.UnavailableFeatures...)
 	return value
 }

@@ -292,7 +292,7 @@ func runnerManifest(t *testing.T) host.Manifest {
 }
 
 func TestDecodeIntegrationJSONAndTOMLAreStrict(t *testing.T) {
-	integration := runnerIntegration(t)
+	integration := hostNativeIntegration(t)
 	jsonRaw, err := json.Marshal(integration)
 	if err != nil {
 		t.Fatal(err)
@@ -333,7 +333,7 @@ func TestDecodeIntegrationJSONAndTOMLAreStrict(t *testing.T) {
 }
 
 func TestDecodeIntegrationRequiresEveryAuthoredDigest(t *testing.T) {
-	base := runnerIntegration(t)
+	base := hostNativeIntegration(t)
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.IntegrationRecord)
@@ -364,7 +364,7 @@ func TestDecodeIntegrationRequiresEveryAuthoredDigest(t *testing.T) {
 	}
 }
 
-func runnerIntegration(t *testing.T) host.IntegrationRecord {
+func hostNativeIntegration(t *testing.T) host.IntegrationRecord {
 	t.Helper()
 	manifest := runnerManifest(t)
 	audit, err := host.NewAuditEvidence(host.AuditEvidence{

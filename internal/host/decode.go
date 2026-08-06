@@ -81,12 +81,6 @@ func rejectUnsupportedIntegrationSchema(record IntegrationRecord) error {
 	if record.Manifest.SchemaVersion != HostManifestSchemaV2 {
 		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Manifest schema", nil)
 	}
-	if record.Manifest.IntegrationLevel != "" {
-		return hostError("HOST_SCHEMA_UNSUPPORTED", "Integration Level is retired", nil)
-	}
-	if isRetiredControlSurface(record.Manifest.ControlSurface) {
-		return hostError("HOST_SCHEMA_UNSUPPORTED", "retired Host control surface", nil)
-	}
 	return nil
 }
 

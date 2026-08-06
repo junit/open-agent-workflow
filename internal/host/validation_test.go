@@ -133,15 +133,27 @@ func TestHostV2RejectsRetiredSchemasAndControlSurfaces(t *testing.T) {
 	if _, err := host.NewManifest(retiredManifest); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
 		t.Fatalf("NewManifest(v1) error = %v", err)
 	}
-	retiredSurface := policyManifestValue("codex")
-	retiredSurface.ControlSurface = host.ControlSurface("runner-managed")
-	if _, err := host.NewManifest(retiredSurface); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
-		t.Fatalf("NewManifest(runner-managed) error = %v", err)
+	for _, surface := range []host.ControlSurface{"instruction-only", "runner-managed", "native-managed"} {
+		retiredSurface := policyManifestValue("codex")
+		retiredSurface.ControlSurface = surface
+		if _, err := host.NewManifest(retiredSurface); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
+			t.Fatalf("NewManifest(%s) error = %v", surface, err)
+		}
 	}
-	retiredLevel := policyManifestValue("codex")
-	retiredLevel.IntegrationLevel = host.RunnerManaged
-	if _, err := host.NewManifest(retiredLevel); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
-		t.Fatalf("NewManifest(IntegrationLevel) error = %v", err)
+	retiredProtocol := hostNativeManifestValue("codex")
+	retiredProtocol.Protocols = []string{"oaw.runtime/v1"}
+	if _, err := host.NewManifest(retiredProtocol); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
+		t.Fatalf("NewManifest(oaw.runtime/v1) error = %v", err)
+	}
+	for _, feature := range []host.Feature{
+		"isolated-executor", "exact-binding-invocation", "bundle-inheritance",
+		"evidence-return", "normalized-observation", "native-invocation",
+	} {
+		retiredFeature := hostNativeManifestValue("codex")
+		retiredFeature.Features = append(retiredFeature.Features, feature)
+		if _, err := host.NewManifest(retiredFeature); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
+			t.Fatalf("NewManifest(%s) error = %v", feature, err)
+		}
 	}
 
 	manifest, err := host.NewManifest(policyManifestValue("codex"))
@@ -176,33 +188,38 @@ func TestHostV2RejectsRetiredSchemasAndControlSurfaces(t *testing.T) {
 		name string
 		json string
 		toml string
+		code string
 	}{
 		{
 			name: "Integration v1",
 			json: `{"schema_version":"oaw.host-integration/v1"}`,
 			toml: `schema_version = "oaw.host-integration/v1"`,
+			code: "HOST_SCHEMA_UNSUPPORTED",
 		},
 		{
 			name: "Manifest v1",
 			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v1"}}`,
 			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v1\"",
+			code: "HOST_SCHEMA_UNSUPPORTED",
 		},
 		{
 			name: "Integration Level",
 			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v2","integration_level":"runner-managed"}}`,
 			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v2\"\nintegration_level = \"runner-managed\"",
+			code: "HOST_INTEGRATION_DECODE_INVALID",
 		},
 		{
 			name: "retired control surface",
 			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v2","control_surface":"runner-managed"}}`,
 			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v2\"\ncontrol_surface = \"runner-managed\"",
+			code: "HOST_INTEGRATION_DECODE_INVALID",
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := host.DecodeIntegrationJSON([]byte(test.json)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+			if _, err := host.DecodeIntegrationJSON([]byte(test.json)); host.ErrorCode(err) != test.code {
 				t.Fatalf("DecodeIntegrationJSON() error = %v", err)
 			}
-			if _, err := host.DecodeIntegrationTOML([]byte(test.toml)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+			if _, err := host.DecodeIntegrationTOML([]byte(test.toml)); host.ErrorCode(err) != test.code {
 				t.Fatalf("DecodeIntegrationTOML() error = %v", err)
 			}
 		})
@@ -255,7 +272,7 @@ func TestAuditEvidenceRejectsInvalidRecords(t *testing.T) {
 }
 
 func TestConformanceReportRejectsInvalidRecords(t *testing.T) {
-	base := host.CloneConformanceReport(*runnerIntegration(t).Conformance)
+	base := host.CloneConformanceReport(*hostNativeIntegration(t).Conformance)
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.ConformanceReport)
@@ -289,7 +306,7 @@ func TestConformanceReportRejectsInvalidRecords(t *testing.T) {
 }
 
 func TestIntegrationRejectsInvalidRecords(t *testing.T) {
-	base := runnerIntegration(t)
+	base := hostNativeIntegration(t)
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.IntegrationRecord)
@@ -329,7 +346,7 @@ func TestIntegrationRejectsInvalidRecords(t *testing.T) {
 }
 
 func TestDecodeIntegrationRejectsSizeSyntaxAndDigestFailures(t *testing.T) {
-	integration := runnerIntegration(t)
+	integration := hostNativeIntegration(t)
 	oversized := []byte(strings.Repeat("x", (1<<20)+1))
 	for name, decode := range map[string]func() error{
 		"oversized JSON": func() error { _, err := host.DecodeIntegrationJSON(oversized); return err },
@@ -350,7 +367,7 @@ func TestDecodeIntegrationRejectsSizeSyntaxAndDigestFailures(t *testing.T) {
 	}
 }
 
-func TestHostErrorAndRuntimeFrameCopies(t *testing.T) {
+func TestHostErrorContract(t *testing.T) {
 	cause := errors.New("cause")
 	err := &host.Error{Code: "HOST_TEST", Detail: "detail", Cause: cause}
 	if err.Error() != "HOST_TEST: detail" || !errors.Is(err, cause) || host.ErrorCode(err) != "HOST_TEST" || host.ErrorCode(errors.New("other")) != "" {
@@ -359,16 +376,10 @@ func TestHostErrorAndRuntimeFrameCopies(t *testing.T) {
 	if (&host.Error{Code: "HOST_TEST"}).Error() != "HOST_TEST" {
 		t.Fatal("code-only error changed")
 	}
-	frame := host.RuntimeFrame{HostID: "codex", IntegrationID: "acme/codex-runtime", UnavailableFeatures: []host.Feature{host.FeaturePause}}
-	cloned := host.CloneRuntimeFrame(frame)
-	cloned.UnavailableFeatures[0] = host.FeatureCancellation
-	if frame.UnavailableFeatures[0] != host.FeaturePause {
-		t.Fatal("CloneRuntimeFrame() exposed source storage")
-	}
 }
 
 func TestValidateIntegrationRecordRequiresCanonicalStoredBytes(t *testing.T) {
-	valid := runnerIntegration(t)
+	valid := hostNativeIntegration(t)
 	if err := host.ValidateIntegrationRecord(valid); err != nil {
 		t.Fatalf("ValidateIntegrationRecord(valid) error = %v", err)
 	}

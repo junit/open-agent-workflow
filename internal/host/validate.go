@@ -32,12 +32,6 @@ func NewManifest(value Manifest) (Manifest, error) {
 	if value.SchemaVersion != HostManifestSchemaV2 {
 		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Manifest schema", nil)
 	}
-	if value.IntegrationLevel != "" {
-		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "Integration Level is retired", nil)
-	}
-	if isRetiredControlSurface(value.ControlSurface) {
-		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "retired Host control surface", nil)
-	}
 	sort.Strings(value.Protocols)
 	sort.Strings(value.BindingKinds)
 	topologies, err := execution.NormalizeTopologies(value.SupportedTopologies)
@@ -101,10 +95,6 @@ func validateManifest(value Manifest) error {
 		return hostError("HOST_MANIFEST_INVALID", "unknown control surface", nil)
 	}
 	return nil
-}
-
-func isRetiredControlSurface(value ControlSurface) bool {
-	return value == ControlSurface(InstructionOnly) || value == ControlSurface(RunnerManaged) || value == ControlSurface(NativeManaged)
 }
 
 func uniqueStrings(values []string, kind string) error {
