@@ -28,3 +28,48 @@ func TestCanonicalPolicyMatchesRepositoryAndReturnsCopies(t *testing.T) {
 		t.Fatal("CanonicalPolicy() reused its result buffer")
 	}
 }
+
+func TestCanonicalPolicyDefinesCoreCoordinatorHostBoundary(t *testing.T) {
+	policy := CanonicalPolicy()
+	required := []string{
+		"OAW Core",
+		"Workflow Coordinator",
+		"Agent Host",
+		"CURRENT",
+		"SUBAGENT",
+		"Only Workflow Mode runs the Startup Gate",
+		"DIRECT and BOUNDED do not create Workflow State",
+		"OAW never starts a model process",
+		"The Agent Host owns physical execution authority",
+	}
+
+	for _, literal := range required {
+		if !bytes.Contains(policy, []byte(literal)) {
+			t.Errorf("CanonicalPolicy() is missing required literal %q", literal)
+		}
+	}
+}
+
+func TestCanonicalPolicyRejectsRemovedExecutionContracts(t *testing.T) {
+	policy := CanonicalPolicy()
+	forbidden := []string{
+		"Runtime Plane",
+		"Runtime-managed",
+		"oaw runtime exchange",
+		"oaw run --host codex",
+		"oaw/codex-runner",
+		"runner-managed",
+		"native-managed",
+		"INLINE",
+		"NATIVE_SUBAGENT",
+		"main-agent-allowed",
+		"isolated-required",
+		"private HOME",
+	}
+
+	for _, literal := range forbidden {
+		if bytes.Contains(policy, []byte(literal)) {
+			t.Errorf("CanonicalPolicy() contains forbidden literal %q", literal)
+		}
+	}
+}
