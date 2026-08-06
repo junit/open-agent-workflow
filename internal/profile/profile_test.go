@@ -13,7 +13,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
-func TestCompileRecipeIntersectsHostCapabilityBindingAndEnvironmentTopologies(t *testing.T) {
+func TestProfileIntersectionRejectsEmptyTopology(t *testing.T) {
 	available, verified, recipe := compilerFixture(t)
 	providers := available.Providers()
 	for providerIndex := range providers {

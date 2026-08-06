@@ -149,7 +149,7 @@ func TestResolveRequiresExactHostInstallationInventory(t *testing.T) {
 	}
 }
 
-func TestResolvePinsOnlyObservedBindingTopologies(t *testing.T) {
+func TestRegistryNeverWidensObservedBindingTopologies(t *testing.T) {
 	snapshot, evidence := builtInInputs(t, "", writeSuperpowersDirect)
 	candidates := evidence.Candidates("oaw/superpowers")
 	if len(candidates) != 1 {

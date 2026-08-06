@@ -33,7 +33,7 @@ func TestClassifyMatchesDeterministicClassifier(t *testing.T) {
 	}
 }
 
-func TestResolvePinsHostScopedInputs(t *testing.T) {
+func TestCoreResolveRejectsCrossHostFacts(t *testing.T) {
 	fixture := newCoreFixture(t, false)
 	if fixture.resolution.Report.HostID() != "codex" || fixture.resolution.Registry.HostID() != "codex" || fixture.resolution.Digest == "" {
 		t.Fatalf("Resolve() = %#v", fixture.resolution)
@@ -102,7 +102,7 @@ func TestCompileReportsBuiltInAndUserDefinedEligibilityWithoutSelection(t *testi
 	}
 }
 
-func TestCompileCreatesImmutableLifecycleBundle(t *testing.T) {
+func TestCoreCompilationResultDeepCopiesNestedRecords(t *testing.T) {
 	fixture := newCoreFixture(t, false)
 	request := fixture.request
 	request.EnvironmentObservations = []execution.EnvironmentObservation{{

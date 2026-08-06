@@ -11,7 +11,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func TestJournalRejectsCorruptHeadAndPredecessorChain(t *testing.T) {
+func TestJournalRecoveryRejectsBrokenPredecessor(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	j, err := newJournal(stateRoot)
 	if err != nil {

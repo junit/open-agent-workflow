@@ -104,7 +104,7 @@ func TestValidateEnvironmentReportPinsSubagentParent(t *testing.T) {
 	}
 }
 
-func TestManifestV2ValidatesPolicyAndHostNativeSurfaces(t *testing.T) {
+func TestHostManifestRejectsUnsupportedFeatureTopologyPairs(t *testing.T) {
 	policy, err := host.NewManifest(policyManifestValue("codex"))
 	if err != nil {
 		t.Fatal(err)
@@ -120,10 +120,32 @@ func TestManifestV2ValidatesPolicyAndHostNativeSurfaces(t *testing.T) {
 		t.Fatalf("host-native Manifest = %#v", hostNative)
 	}
 
-	invalidSubagent := hostNativeManifestValue("codex")
-	invalidSubagent.Features = []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory}
-	if _, err := host.NewManifest(invalidSubagent); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
-		t.Fatalf("NewManifest(SUBAGENT without environment reporting) error = %v", err)
+	for _, test := range []struct {
+		name   string
+		mutate func(*host.Manifest)
+	}{
+		{name: "policy feature", mutate: func(value *host.Manifest) {
+			*value = policyManifestValue("codex")
+			value.Features = []host.Feature{host.FeatureNormalizedReceipts}
+		}},
+		{name: "policy SUBAGENT", mutate: func(value *host.Manifest) {
+			*value = policyManifestValue("codex")
+			value.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+		}},
+		{name: "host-native without CURRENT", mutate: func(value *host.Manifest) {
+			value.SupportedTopologies = []execution.Topology{execution.TopologySubagent}
+		}},
+		{name: "SUBAGENT without environment reporting", mutate: func(value *host.Manifest) {
+			value.Features = []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory}
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := hostNativeManifestValue("codex")
+			test.mutate(&value)
+			if _, err := host.NewManifest(value); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
+				t.Fatalf("NewManifest() error = %v", err)
+			}
+		})
 	}
 }
 

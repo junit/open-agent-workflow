@@ -95,7 +95,7 @@ func TestIntersectTopologiesIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestEnvironmentRequirementsFailClosed(t *testing.T) {
+func TestExecutionRequirementsRejectDuplicateSurfaces(t *testing.T) {
 	t.Parallel()
 
 	requirements := []execution.EnvironmentRequirement{

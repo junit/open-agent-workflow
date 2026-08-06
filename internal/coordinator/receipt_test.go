@@ -160,7 +160,7 @@ func TestReceiptCompletedIncidentPausedAndCancelledTransitions(t *testing.T) {
 	}
 }
 
-func TestReceiptCompletedRequiresDeclaredEvidenceAndSignal(t *testing.T) {
+func TestReceiptTransitionRejectsIncompleteEvidence(t *testing.T) {
 	engine, _, prepared := preparedReceiptWorkflow(t, receiptGraphBundle)
 	started := exchangeReceipt(t, engine, receiptTestCommand(t, prepared, "evidence-started", host.ReceiptStarted, "", ""))
 	missing := receiptTestCommand(t, prepared, "evidence-missing", host.ReceiptCompleted, "succeeded", "")

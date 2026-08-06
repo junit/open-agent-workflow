@@ -82,7 +82,7 @@ func TestDecodeCommandRejectsInvalidUnionAndTransportInput(t *testing.T) {
 	}
 }
 
-func TestDecodeCommandRejectsForgedNestedDigest(t *testing.T) {
+func TestWorkflowRecordsRejectCorruptContentDigests(t *testing.T) {
 	valid := string(mustMarshal(t, validStartCommand(t)))
 	for _, test := range []struct {
 		name string
@@ -94,6 +94,37 @@ func TestDecodeCommandRejectsForgedNestedDigest(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := coordinator.DecodeCommand([]byte(test.raw)); err == nil {
 				t.Fatal("DecodeCommand() accepted a forged digest")
+			}
+		})
+	}
+}
+
+func TestReceiptRejectsSecretBearingOrUnknownFields(t *testing.T) {
+	session, environment := validHostFacts(t)
+	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
+		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
+		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
+		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("d", 64),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
+		MessageID: "message-receipt", IdempotencyKey: "receipt-1", WorkflowID: "workflow-1", ExpectedRevision: 2,
+		Receipt: &coordinator.ReceiptInput{Receipt: receipt},
+	}
+	valid := string(mustMarshal(t, command))
+	marker := `"receipt":{"receipt":{`
+	for _, field := range []string{`"credentials":"secret",`, `"raw_output":"secret",`, `"unknown":true,`} {
+		t.Run(field, func(t *testing.T) {
+			raw := strings.Replace(valid, marker, marker+field, 1)
+			if raw == valid {
+				t.Fatal("Receipt insertion marker was not found")
+			}
+			if _, err := coordinator.DecodeCommand([]byte(raw)); coordinator.ErrorCode(err) != "WORKFLOW_COMMAND_DECODE_INVALID" {
+				t.Fatalf("DecodeCommand(secret-bearing or unknown Receipt field) error = %v", err)
 			}
 		})
 	}

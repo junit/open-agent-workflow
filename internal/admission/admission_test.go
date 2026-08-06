@@ -41,12 +41,13 @@ func TestIssueWorkflowGrantPinsTopologyAndNarrowedAuthority(t *testing.T) {
 	}
 }
 
-func TestIssueWorkflowGrantRejectsAuthorityAndTopologyExpansion(t *testing.T) {
+func TestGrantRejectsTopologyAndSessionMismatch(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		mutate func(*WorkflowGrantRequest)
 		code   string
 	}{
+		{name: "invalid Host session digest", mutate: func(value *WorkflowGrantRequest) { value.HostSessionDigest = "not-a-digest" }, code: "WORKFLOW_GRANT_INVALID"},
 		{name: "effect outside node", mutate: func(value *WorkflowGrantRequest) { value.Effects = []string{"network-read"} }, code: "CAPABILITY_AUTHORITY_EXCEEDED"},
 		{name: "effect outside ceiling", mutate: func(value *WorkflowGrantRequest) { value.Authority.Effects = []string{"read-project"} }, code: "CAPABILITY_AUTHORITY_EXCEEDED"},
 		{name: "resource outside node", mutate: func(value *WorkflowGrantRequest) { value.Resources = []string{"git-repository"} }, code: "CAPABILITY_AUTHORITY_EXCEEDED"},
