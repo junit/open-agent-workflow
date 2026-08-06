@@ -334,6 +334,54 @@ EOF
     fail "available Docker run failure mapped to $available_status instead of 125"
 }
 
+run_host_native_contract() {
+  host_native_script=$REPOSITORY/scripts/smoke-host-native.sh
+  if grep -E 'codex[[:space:]]+exec|claude|gemini|opencode|oaw[[:space:]]+run' "$host_native_script" >/dev/null; then
+    fail "Host-native smoke contains a model command or process fallback"
+  fi
+
+  set +e
+  OAW_HOST_NATIVE_TRANSCRIPT= bash "$host_native_script" \
+    >"$CUTOVER_TEMP/host-native-unset.stdout" \
+    2>"$CUTOVER_TEMP/host-native-unset.stderr"
+  unset_status=$?
+  set -e
+  [ "$unset_status" -eq 77 ] || fail "unset Host-native transcript returned $unset_status instead of 77"
+  [ ! -s "$CUTOVER_TEMP/host-native-unset.stdout" ] || fail "Host-native SKIP wrote stdout"
+  grep -Fx 'SKIP: Host-native SUBAGENT transcript unavailable' "$CUTOVER_TEMP/host-native-unset.stderr" >/dev/null ||
+    fail "unset Host-native transcript omitted exact SKIP reason"
+
+  set +e
+  OAW_HOST_NATIVE_TRANSCRIPT=$CUTOVER_TEMP/missing-transcript.json bash "$host_native_script" \
+    >"$CUTOVER_TEMP/host-native-missing.stdout" \
+    2>"$CUTOVER_TEMP/host-native-missing.stderr"
+  missing_status=$?
+  set -e
+  [ "$missing_status" -eq 77 ] || fail "unreadable Host-native transcript returned $missing_status instead of 77"
+  grep -Fx 'SKIP: Host-native SUBAGENT transcript unavailable' "$CUTOVER_TEMP/host-native-missing.stderr" >/dev/null ||
+    fail "unreadable Host-native transcript omitted exact SKIP reason"
+
+  printf '%s\n' '{' >"$CUTOVER_TEMP/malformed-transcript.json"
+  set +e
+  OAW_HOST_NATIVE_TRANSCRIPT=$CUTOVER_TEMP/malformed-transcript.json bash "$host_native_script" \
+    >"$CUTOVER_TEMP/host-native-malformed.stdout" \
+    2>"$CUTOVER_TEMP/host-native-malformed.stderr"
+  malformed_status=$?
+  set -e
+  [ "$malformed_status" -ne 0 ] || fail "malformed Host-native transcript unexpectedly passed"
+  [ "$malformed_status" -ne 77 ] || fail "malformed readable Host-native transcript was rewritten as SKIP"
+
+  set +e
+  bash "$host_native_script" unexpected-argument \
+    >"$CUTOVER_TEMP/host-native-argument.stdout" \
+    2>"$CUTOVER_TEMP/host-native-argument.stderr"
+  argument_status=$?
+  set -e
+  [ "$argument_status" -eq 64 ] || fail "Host-native smoke accepted arguments"
+
+  pass "Host-native SUBAGENT evidence is external, optional, and never emulated"
+}
+
 trap cleanup EXIT HUP INT TERM
 CUTOVER_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-cutover.XXXXXX") ||
   fail "cannot create cutover test directory"
@@ -342,10 +390,12 @@ case "${1:-all}" in
   all)
     run_wrapper_contract
     run_release_contract
+    run_host_native_contract
     run_docker_contract
     ;;
   wrapper) run_wrapper_contract ;;
   release) run_release_contract ;;
+  host-native) run_host_native_contract ;;
   docker) run_docker_contract ;;
   *) fail "unknown cutover test mode: $1" ;;
 esac
