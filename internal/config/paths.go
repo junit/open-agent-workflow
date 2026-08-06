@@ -79,7 +79,7 @@ func readContained(root, relative string, maximum int64) ([]byte, string, error)
 		return nil, "", fmt.Errorf("CONFIG_FILE_NOT_REGULAR: %s", relative)
 	}
 	if maximum <= 0 {
-		maximum = maximumTOMLBytes
+		maximum = maximumConfigBytes
 	}
 	if info.Size() > maximum {
 		return nil, "", fmt.Errorf("CONFIG_FILE_TOO_LARGE: %s", relative)

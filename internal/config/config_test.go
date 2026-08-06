@@ -172,6 +172,37 @@ topologies = ["CURRENT", "SUBAGENT"]
 	}
 }
 
+func TestDecodeDescriptorJSONRejectsAmbiguousInput(t *testing.T) {
+	registry := testRegistry(t)
+	for _, test := range []struct {
+		name string
+		raw  string
+		want string
+	}{
+		{
+			name: "duplicate field",
+			raw:  `{"schema_version":"oaw.provider-descriptor/v3","schema_version":"oaw.provider-descriptor/v3"}`,
+			want: "CONFIG_JSON_INVALID",
+		},
+		{
+			name: "unknown field",
+			raw:  `{"schema_version":"oaw.provider-descriptor/v3","unknown":true}`,
+			want: "CONFIG_UNKNOWN_FIELD",
+		},
+		{
+			name: "trailing value",
+			raw:  `{} {}`,
+			want: "CONFIG_JSON_INVALID",
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := DecodeProvider([]byte(test.raw), registry); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("DecodeProvider() error = %v, want %s", err, test.want)
+			}
+		})
+	}
+}
+
 func TestDecodeUserAcceptsIndependentHostPins(t *testing.T) {
 	raw := []byte(`schema_version = "oaw.user-config/v3"
 

@@ -1,7 +1,11 @@
 package config
 
 import (
+	"bytes"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -14,7 +18,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
 
-const maximumTOMLBytes = 1 << 20
+const maximumConfigBytes = 1 << 20
 
 func DecodeUser(raw []byte, registry *schema.Registry) (Decoded[UserConfigRecord], error) {
 	var record UserConfigRecord
@@ -60,7 +64,7 @@ func DecodeProject(raw []byte, registry *schema.Registry) (Decoded[ProjectConfig
 
 func DecodeProvider(raw []byte, registry *schema.Registry) (Decoded[catalog.ProviderDescriptorRecord], error) {
 	var record catalog.ProviderDescriptorRecord
-	if err := strictTOML(raw, &record); err != nil {
+	if err := strictDescriptorContent(raw, &record); err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, err
 	}
 	normalizeProvider(&record)
@@ -81,7 +85,7 @@ func DecodeProvider(raw []byte, registry *schema.Registry) (Decoded[catalog.Prov
 
 func DecodeRecipe(raw []byte, registry *schema.Registry) (Decoded[catalog.ProfileRecipeRecord], error) {
 	var record catalog.ProfileRecipeRecord
-	if err := strictTOML(raw, &record); err != nil {
+	if err := strictDescriptorContent(raw, &record); err != nil {
 		return Decoded[catalog.ProfileRecipeRecord]{}, err
 	}
 	normalizeRecipe(&record)
@@ -101,7 +105,7 @@ func DecodeRecipe(raw []byte, registry *schema.Registry) (Decoded[catalog.Profil
 }
 
 func strictTOML(raw []byte, destination any) error {
-	if len(raw) > maximumTOMLBytes {
+	if len(raw) > maximumConfigBytes {
 		return fmt.Errorf("CONFIG_TOO_LARGE: %d bytes", len(raw))
 	}
 	if !utf8.Valid(raw) {
@@ -113,6 +117,109 @@ func strictTOML(raw []byte, destination any) error {
 	}
 	if unknown := metadata.Undecoded(); len(unknown) != 0 {
 		return fmt.Errorf("CONFIG_UNKNOWN_FIELD: %s", unknown[0].String())
+	}
+	return nil
+}
+
+func strictDescriptorContent(raw []byte, destination any) error {
+	if descriptorContentIsJSON(raw) {
+		return strictJSON(raw, destination)
+	}
+	return strictTOML(raw, destination)
+}
+
+func descriptorContentIsJSON(raw []byte) bool {
+	trimmed := bytes.TrimSpace(raw)
+	return len(trimmed) > 0 && trimmed[0] == '{'
+}
+
+func strictJSON(raw []byte, destination any) error {
+	if len(raw) > maximumConfigBytes {
+		return fmt.Errorf("CONFIG_TOO_LARGE: %d bytes", len(raw))
+	}
+	if !utf8.Valid(raw) {
+		return fmt.Errorf("CONFIG_INVALID_UTF8")
+	}
+	if err := rejectDuplicateJSONFields(raw); err != nil {
+		return fmt.Errorf("CONFIG_JSON_INVALID: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(destination); err != nil {
+		if strings.Contains(err.Error(), "unknown field") {
+			return fmt.Errorf("CONFIG_UNKNOWN_FIELD: %w", err)
+		}
+		return fmt.Errorf("CONFIG_JSON_INVALID: %w", err)
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			err = errors.New("trailing JSON value")
+		}
+		return fmt.Errorf("CONFIG_JSON_INVALID: %w", err)
+	}
+	return nil
+}
+
+func rejectDuplicateJSONFields(raw []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := consumeUniqueJSONValue(decoder); err != nil {
+		return err
+	}
+	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("trailing JSON token")
+		}
+		return err
+	}
+	return nil
+}
+
+func consumeUniqueJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, composite := token.(json.Delim)
+	if !composite {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]struct{})
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("object key is not a string")
+			}
+			if _, exists := seen[key]; exists {
+				return fmt.Errorf("duplicate object field %q", key)
+			}
+			seen[key] = struct{}{}
+			if err := consumeUniqueJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim('}') {
+			return errors.New("object is not closed")
+		}
+	case '[':
+		for decoder.More() {
+			if err := consumeUniqueJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		closing, err := decoder.Token()
+		if err != nil || closing != json.Delim(']') {
+			return errors.New("array is not closed")
+		}
+	default:
+		return fmt.Errorf("unexpected JSON delimiter %q", delimiter)
 	}
 	return nil
 }

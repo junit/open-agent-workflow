@@ -232,7 +232,7 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 	} else if err != nil {
 		return userInspection{}, fmt.Errorf("CONFIG_FILE_READ_FAILED: config.toml: %w", err)
 	}
-	raw, _, err := readContained(physical, "config.toml", maximumTOMLBytes)
+	raw, _, err := readContained(physical, "config.toml", maximumConfigBytes)
 	if err != nil {
 		return userInspection{}, err
 	}
@@ -242,7 +242,7 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 	}
 	result := userInspection{config: decoded, providers: []Decoded[catalog.ProviderDescriptorRecord]{}, recipes: []Decoded[catalog.ProfileRecipeRecord]{}, hostIntegrations: []host.IntegrationRecord{}}
 	for _, reference := range decoded.Record.ProviderDescriptors {
-		content, _, readErr := readContained(physical, reference.Path, maximumTOMLBytes)
+		content, _, readErr := readContained(physical, reference.Path, maximumConfigBytes)
 		if readErr != nil {
 			return userInspection{}, readErr
 		}
@@ -256,7 +256,7 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 		result.providers = append(result.providers, provider)
 	}
 	for _, reference := range decoded.Record.ProfileRecipes {
-		content, _, readErr := readContained(physical, reference.Path, maximumTOMLBytes)
+		content, _, readErr := readContained(physical, reference.Path, maximumConfigBytes)
 		if readErr != nil {
 			return userInspection{}, readErr
 		}
@@ -270,7 +270,7 @@ func inspectUser(root string, registry *schema.Registry) (userInspection, error)
 		result.recipes = append(result.recipes, recipe)
 	}
 	for _, reference := range decoded.Record.HostIntegrations {
-		content, _, readErr := readContained(physical, reference.Path, maximumTOMLBytes)
+		content, _, readErr := readContained(physical, reference.Path, maximumConfigBytes)
 		if readErr != nil {
 			return userInspection{}, readErr
 		}

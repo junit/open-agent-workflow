@@ -47,7 +47,7 @@ func inspectProject(projectRoot string, registry *schema.Registry) (projectInspe
 	if err != nil {
 		return projectInspection{}, err
 	}
-	raw, _, err := readContained(root, ".oaw/config.toml", maximumTOMLBytes)
+	raw, _, err := readContained(root, ".oaw/config.toml", maximumConfigBytes)
 	if err != nil {
 		return projectInspection{}, err
 	}
@@ -73,7 +73,7 @@ func inspectProject(projectRoot string, registry *schema.Registry) (projectInspe
 		recipes:   []Decoded[catalog.ProfileRecipeRecord]{},
 	}
 	for _, reference := range decodedConfig.Record.ProviderDescriptors {
-		content, _, readErr := readContained(contentRoot, reference.Path, maximumTOMLBytes)
+		content, _, readErr := readContained(contentRoot, reference.Path, maximumConfigBytes)
 		if readErr != nil {
 			return projectInspection{}, readErr
 		}
@@ -89,7 +89,7 @@ func inspectProject(projectRoot string, registry *schema.Registry) (projectInspe
 		inspection.fingerprint.ProviderIDs = append(inspection.fingerprint.ProviderIDs, provider.Record.ID)
 	}
 	for _, reference := range decodedConfig.Record.ProfileRecipes {
-		content, _, readErr := readContained(contentRoot, reference.Path, maximumTOMLBytes)
+		content, _, readErr := readContained(contentRoot, reference.Path, maximumConfigBytes)
 		if readErr != nil {
 			return projectInspection{}, readErr
 		}

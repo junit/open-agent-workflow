@@ -1,0 +1,39 @@
+{
+  "schema_version": "oaw.provider-descriptor/v3",
+  "descriptor_version": "3.0.0",
+  "id": "acme/engineering",
+  "display_name": "Acme Engineering",
+  "discovery": [
+    {
+      "id": "codex-test-skill",
+      "hosts": ["codex-test"],
+      "surface": "codex-test-skills",
+      "distribution": "acme-engineering",
+      "kind": "path-exists",
+      "root": "user-home",
+      "candidate_path": ".agents/acme-engineering",
+      "evidence_path": "SKILL.md"
+    }
+  ],
+  "capabilities": [
+    {
+      "id": "delivery",
+      "input_schema": "oaw.capability-input/v1",
+      "outcome_schema": "oaw.capability-outcome/v1",
+      "maximum_effects": ["read-project", "run-process", "write-project"],
+      "resources": ["project-worktree"],
+      "request_modes": ["WORKFLOW"],
+      "responsibilities": ["implementation", "planning", "review", "verification"],
+      "supported_topologies": ["CURRENT"],
+      "delegation_allow_list": [],
+      "host_bindings": [
+        {
+          "host": "codex-test",
+          "kind": "skill",
+          "reference": "acme:delivery",
+          "topologies": ["CURRENT"]
+        }
+      ]
+    }
+  ]
+}

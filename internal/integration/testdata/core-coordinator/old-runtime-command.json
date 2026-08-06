@@ -1,0 +1,5 @@
+{
+  "schema_version": "oaw.runtime-frame/v1",
+  "kind": "START",
+  "model_command": "codex exec"
+}

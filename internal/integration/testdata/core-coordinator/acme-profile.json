@@ -1,0 +1,60 @@
+{
+  "schema_version": "oaw.profile-recipe/v2",
+  "recipe_version": "2.0.0",
+  "id": "acme/current-delivery",
+  "display_name": "Acme Current Delivery",
+  "required_responsibilities": ["implementation", "planning", "review", "verification"],
+  "nodes": [
+    {
+      "id": "planning",
+      "kind": "phase",
+      "responsibility": "planning",
+      "selector": {
+        "provider_id": "acme/engineering",
+        "capability_id": "delivery"
+      },
+      "transitions": [
+        {"signal": "succeeded", "target": "implementation"}
+      ]
+    },
+    {
+      "id": "implementation",
+      "kind": "phase",
+      "responsibility": "implementation",
+      "selector": {
+        "provider_id": "acme/engineering",
+        "capability_id": "delivery"
+      },
+      "transitions": [
+        {"signal": "succeeded", "target": "review"}
+      ]
+    },
+    {
+      "id": "review",
+      "kind": "phase",
+      "responsibility": "review",
+      "selector": {
+        "provider_id": "acme/engineering",
+        "capability_id": "delivery"
+      },
+      "transitions": [
+        {"signal": "succeeded", "target": "verification"}
+      ]
+    },
+    {
+      "id": "verification",
+      "kind": "gate",
+      "responsibility": "verification",
+      "selector": {
+        "provider_id": "acme/engineering",
+        "capability_id": "delivery"
+      },
+      "transitions": []
+    }
+  ],
+  "incident_routes": [],
+  "entry": "planning",
+  "terminal_gates": ["verification"],
+  "stable_boundaries": ["implementation-complete", "plan-approved", "verification-complete"],
+  "environment_requirements": []
+}

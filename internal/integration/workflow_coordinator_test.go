@@ -79,6 +79,7 @@ func TestWorkflowCoordinatorVerticalSliceNeverInvokesHostBinding(t *testing.T) {
 
 func workflowBindingInventory(t *testing.T, available catalog.Catalog, discovered discovery.Report, providerID string) host.BindingInventory {
 	t.Helper()
+	hostID := discovered.HostID()
 	candidates := discovered.Candidates(providerID)
 	if len(candidates) != 1 {
 		t.Fatalf("Provider %s candidates = %d, want one", providerID, len(candidates))
@@ -92,7 +93,7 @@ func workflowBindingInventory(t *testing.T, available catalog.Catalog, discovere
 		for _, capability := range provider.Capabilities {
 			for _, binding := range capability.HostBindings {
 				key := binding.Host + "\x00" + binding.Kind + "\x00" + binding.Reference
-				if binding.Host != "codex" || !workflowBindingSupportsCurrent(binding) {
+				if binding.Host != hostID || !workflowBindingSupportsCurrent(binding) {
 					continue
 				}
 				if _, found := seen[key]; found {
@@ -100,7 +101,7 @@ func workflowBindingInventory(t *testing.T, available catalog.Catalog, discovere
 				}
 				seen[key] = struct{}{}
 				observations = append(observations, host.BindingObservation{
-					HostID: "codex", InstallationKey: candidates[0].InstallationKey, Binding: binding,
+					HostID: hostID, InstallationKey: candidates[0].InstallationKey, Binding: binding,
 					Topologies: append([]execution.Topology{}, binding.Topologies...), Source: "host-filesystem",
 					EvidenceReference: filepath.Join(candidates[0].Location, "binding-evidence", binding.Kind+"-"+strings.ReplaceAll(binding.Reference, ":", "-")),
 					Digest:            strings.Repeat("b", 64),
@@ -108,7 +109,7 @@ func workflowBindingInventory(t *testing.T, available catalog.Catalog, discovere
 			}
 		}
 	}
-	inventory, err := host.NewBindingInventory("codex", observations)
+	inventory, err := host.NewBindingInventory(hostID, observations)
 	if err != nil {
 		t.Fatal(err)
 	}
