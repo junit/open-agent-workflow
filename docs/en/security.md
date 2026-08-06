@@ -4,8 +4,8 @@
 [Architecture](architecture.md)
 
 This guide describes the controls and limits of the local Open Agent Workflow
-(OAW) installer. It is not a claim that an untrusted checkout, operating
-system, agent tool, or workflow provider is safe.
+(OAW) installer and its policy/coordinator protocol. It is not a claim that an
+untrusted checkout, operating system, Agent Host, or Provider is safe.
 
 ## Trust Boundaries
 
@@ -19,7 +19,7 @@ The installer treats these values and artifacts as trust-boundary inputs:
 - existing policy, adapter, state, directory, and backup artifacts.
 
 Run only a checkout you trust. OAW **does not access the network**, download a
-release, install a provider, or execute content from an instruction file or
+release, install a Provider, or execute content from an instruction file or
 state record. This removes a remote-fetch boundary but does not make the local
 checkout non-executable.
 
@@ -45,23 +45,20 @@ last check or after an operation has returned.
 
 ## State Is Data, Not Shell
 
-Installation state is parsed as **inert tab-separated data** and is **never sourced or evaluated**.
+Installation state is parsed as **inert tab-separated data** and is **never sourced or evaluated**. The Coordinator's Workflow State uses a separate
+schema and namespace; neither state form is executable input.
+
 The parser accepts only known record types and cardinalities, safe fields,
 absolute recorded paths, numeric checksum pairs, registry-order target rows,
 known ownership modes and origins, consistent shared destinations, and a scope
-binding that matches the selected physical project.
-
-A syntactically valid record is not sufficient authority. Before mutation,
-OAW re-derives target destinations from the registry, verifies the installed
-policy and target bytes, validates recorded OAW-created directories, and checks
-other live state before retaining a shared policy. Forged, stale, malformed, or
-executable-looking state fails closed with exit 65. `--force` cannot override
-an invalid state schema.
+binding that matches the selected physical project. Forged, stale, malformed,
+or executable-looking state fails closed with exit 65. `--force` cannot
+override an invalid state schema.
 
 State files and backup artifacts are installed with mode `600`. Operation
 backup directories use mode `700`. These permissions reduce accidental
-cross-user disclosure, but the backups can contain user instruction files and
-must still be treated as sensitive local data.
+cross-user disclosure, but backups can contain user instruction files and must
+still be treated as sensitive local data.
 
 ## Prepare and Apply
 
@@ -73,10 +70,9 @@ written during preflight.
 
 The apply path performs **apply revalidation** against the allowed root and
 expected relative suffix. Replacements use a temporary file beside the target,
-set the declared mode, revalidate again, and then `mv`, providing **atomic replacement per destination**.
-This is **not operation-wide atomicity**: several destinations are not one
-filesystem transaction, and OAW promises no automatic rollback after a later
-apply failure.
+set the declared mode, revalidate again, and then `mv`, providing **atomic replacement per destination**. This is **not operation-wide atomicity**:
+several destinations are not one filesystem transaction, and OAW promises no
+automatic rollback after a later apply failure.
 
 Dry-run performs preparation and reports actions but creates no managed files,
 state, backups, or directories. A dry-run is not a lock; the real command
@@ -94,8 +90,7 @@ every affected existing policy, target, and state artifact. It creates an
 operation-scoped backup, copies each artifact with mode `600`, compares source
 and backup checksums, writes `manifest.tsv`, and rechecks source bytes before
 apply. Each `artifact` row records the original absolute path, backup path, and
-checksum. Apply also confirms a changing destination is present in the active
-manifest and still matches the recorded pre-mutation checksum.
+checksum.
 
 If marker ownership is ambiguous, OAW creates a recovery backup when possible
 and exits 65 with **manual recovery** required. It does not choose which user
@@ -108,12 +103,11 @@ Uninstall removes only a clean recorded managed block or a clean recorded
 owned file. It preserves surrounding user bytes and does not remove a drifted
 artifact without an eligible forced operation. Directories are removable only
 when state records that OAW actually created them, they still resolve beneath
-the allowed root, and they are empty after planned file removals. A directory
-that appeared after preparation is never claimed as OAW-owned.
+the allowed root, and they are empty after planned file removals.
 
-## Host-Scoped Provider Trust
+## Core, Coordinator, and Host Security Boundary
 
-Runtime Provider authority follows this exact chain:
+Provider authority follows this exact chain:
 
 ```text
 Provider Family
@@ -123,67 +117,36 @@ Provider Family
   -> Verified Provider Instance
 ```
 
-Codex and Claude Code are independent trust domains. Shared files receive
-different Host Installation identities and cannot transfer authority between
-Hosts. Descriptor bindings, discovery markers, configured installation hints,
-and pins are declarations or selection constraints; none can forge Host-owned
-Binding Evidence. Policy-only Hosts may report Candidates but cannot create a
-verified Runtime Instance.
+OAW Core accepts secret-free facts and compiles a Lifecycle Bundle. The
+Workflow Coordinator records only secret-free Workflow State, cooperating
+clients, logical workflow authority, and opaque digest references. It must not
+store API keys, tokens, raw Provider output, private Hook payloads, or full MCP
+or Plugin configuration.
 
-Foreign diagnostics are excluded from pin generation, Registry resolution,
-Profile compilation, admission, Bundles, and Runtime State. The active decoder
-rejects `oaw.provider-descriptor/v1` and `oaw.user-config/v1`. Fail-closed scope
-conditions use `HOST_BINDING_EVIDENCE_REQUIRED`,
-`PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_FOREIGN_HOST_ONLY`,
-`PROVIDER_PIN_INCOMPATIBLE`, or `HOST_PROVIDER_SCOPE_MISMATCH`; Runtime exposes
-only the stable reason and a path-free pointer to the explicit inspection
-surface.
+The Agent Host owns physical execution authority. The Host sandbox and
+approvals, model route, authentication, tools, MCP, Hooks, Skills, and Plugins
+remain Host-owned. A Capability Grant or Resource Lease may be narrower than
+the Host sandbox and approvals, but it cannot physically stop an out-of-protocol
+Host action.
 
-## Runtime Dispatch Containment
+OAW never starts a model CLI. A `policy` integration distributes instructions
+only. A `host-native` integration may report session facts and Receipts, but
+OAW never guarantees MCP, Hook, Skill, or Plugin inheritance into a `SUBAGENT`;
+the active Host reports whether each surface is `inherited`,
+`host-configured`, `restricted`, `unknown`, or `unavailable`.
 
-The Codex Host Driver receives the immutable Grant effect and resource sets.
-Read-only Grants run under `--sandbox read-only`; only Grants containing
-`write-project` or `git-local` may use `--sandbox workspace-write`.
-`danger-full-access` is not an OAW Runtime dispatch mode. Sandbox selection is
-necessary but insufficient: Codex MCP subprocesses are outside that shell-tool
-sandbox and may otherwise write project-local metadata.
-
-`oaw run --host codex` therefore separates the discovery trust domain from the
-invocation execution profile. Dynamic discovery and Host Binding observation
-still use the real Codex installation. `Prepare` then cross-checks the selected
-Host, Binding Inventory digest, Provider Instance digest, Capability Binding,
-Host Installation, Binding Evidence reference, and current file digest. A
-mismatch fails before `DISPATCH_PREPARED` and before the model starts.
-
-The execution profile creates a private `0700` HOME and neutral workspace below
-the Runtime state root. It maps only the exact verified skill Binding and starts
-Codex with `--ignore-user-config`, `--ignore-rules`, `--disable hooks`, and a
-Grant-derived sandbox. The original `CODEX_HOME` remains available for
-authentication, while the physical project root is exposed explicitly through
-`--add-dir`. This keeps interactive user plugins and MCP servers outside the
-invocation without editing their configuration. Agent and tool Bindings fail
-closed with `CODEX_BINDING_KIND_UNSUPPORTED` until an exact isolated mapping is
-implemented. This is a fail-closed Host precondition, not a claim that OAW
-replaces an operating-system sandbox.
-
-The CLI propagates graceful interrupt and termination cancellation into the
-active Host invocation. After requesting Host cancellation, Runtime records
-`EXECUTION_UNCERTAIN` / `PAUSED` and requires `RECONCILE_INVOCATION`; it never
-fabricates a successful observation. No process can persist a final transition
-after an uncatchable `SIGKILL`, so deadline controllers must provide a graceful
-cancellation interval before hard kill.
-An idempotent replay of a stale authorized dispatch records the uncertain pause
-without starting a second Host invocation.
+Host session changes invalidate stale Dispatch Packets. OAW requires a fresh
+Host report and Bundle eligibility check before continuing. It never reconstructs
+a missing child environment or silently falls back to a new process.
 
 ## Out of Scope
 
-The installer cannot protect against:
+The installer and policy protocol cannot protect against:
 
 - malicious shell code in the selected checkout;
 - an operating-system or **same local account** compromise;
 - unrelated software modifying allowed roots after validation;
-- a provider loader ignoring instructions, applying undocumented precedence,
-  or retaining a stale session;
+- a Provider loader ignoring instructions or applying undocumented precedence;
 - a model failing to follow the installed policy;
 - manual restoration to the wrong path or from an unverified backup.
 
@@ -192,3 +155,16 @@ the reported backup path, and stop if ownership is unclear. Report suspected
 vulnerabilities through the private process in the
 [security policy](../../SECURITY.md), without putting exploit details or local
 configuration in a public issue.
+
+## Canonical Security Terms
+
+The bilingual contract intentionally retains these exact terms:
+
+```text
+logical workflow authority
+Host sandbox and approvals
+secret-free
+opaque digest
+cooperating clients
+OAW never starts a model CLI
+```

@@ -36,11 +36,17 @@ state without evaluation, prepares operations before apply, and backs up forced
 drift before mutation. These controls do not make an untrusted checkout safe
 and do not protect files outside the selected roots from unrelated software.
 
-Install State and Runtime State use separate namespaces and authority models;
-there is no automatic migration. Installing a Policy-only adapter grants no
-Runtime admission, Capability Grant, Resource Lease, transition enforcement,
-or physical isolation. Only the pinned Codex runner currently has a
-Runtime-managed integration.
+Install State and Workflow State use separate namespaces and authority models;
+there is no automatic migration. OAW Core and Workflow Coordinator records are
+secret-free and retain only opaque digest references. A Capability Grant or
+Resource Lease expresses logical workflow authority for cooperating clients;
+the Agent Host owns physical execution authority, including the Host sandbox and approvals. OAW never starts a model CLI.
+
+Host integrations expose either a `policy` surface or an explicit `host-native`
+surface. The latter may report session facts and Receipts but does not make OAW
+the owner of Host tools. OAW never guarantees MCP, Hook, Skill, or Plugin
+inheritance into a child context; the active Host decides those facts. A Grant
+cannot physically stop a Host action outside the protocol.
 
 ## Handling Reports
 

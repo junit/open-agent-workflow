@@ -188,14 +188,14 @@ pass "bilingual contribution contracts define the delivery and adapter evidence 
 for contribution_contract in \
   'public Go `oaw` binary' \
   'precompiled sibling binary' \
-  'Install State and Runtime State' \
+    'Install State and Workflow State' \
   'Available native and Docker smoke tests must pass'; do
   assert_contains CONTRIBUTING.md "$contribution_contract"
 done
 for contribution_contract in \
   '公开 Go `oaw` 二进制' \
   '预编译的同目录二进制' \
-  'Install State 与 Runtime State' \
+    'Install State 与 Workflow State' \
   '可用的原生和 Docker smoke test 必须通过'; do
   assert_contains CONTRIBUTING-zh.md "$contribution_contract"
 done
@@ -219,19 +219,40 @@ for security_contract in \
   'public Go binary' \
   'precompiled binaries' \
   'runtime executable download' \
-  'Install State and Runtime State' \
-  'Only the pinned Codex runner'; do
+  'Install State and Workflow State'; do
   assert_contains SECURITY.md "$security_contract"
 done
 for security_contract in \
   '公开 Go binary' \
   '预编译二进制' \
   '运行时不会下载可执行文件' \
-  'Install State 与 Runtime State' \
-  '只有固定版本的 Codex runner'; do
+  'Install State 与 Workflow State'; do
   assert_contains SECURITY-zh.md "$security_contract"
 done
-pass "bilingual security policies publish binary, state, and Runtime trust boundaries"
+pass "bilingual security policies publish binary, state, and Core/Coordinator/Host trust boundaries"
+
+for security_boundary_document in \
+  SECURITY.md SECURITY-zh.md \
+  docs/en/security.md docs/zh/security.md; do
+  for security_boundary in \
+    'logical workflow authority' \
+    'Host sandbox and approvals' \
+    'secret-free' \
+    'opaque digest' \
+    'cooperating clients' \
+    'OAW never starts a model CLI'; do
+    assert_contains "$security_boundary_document" "$security_boundary"
+  done
+  for forbidden_authority_claim in \
+    'Grant contains Host tools' \
+    'guarantees MCP inheritance' \
+    'guarantees Hook inheritance' \
+    'guarantees Skill inheritance' \
+    'guarantees Plugin inheritance'; do
+    assert_not_contains "$security_boundary_document" "$forbidden_authority_claim"
+  done
+done
+pass "security documents separate logical workflow authority from Host physical authority"
 
 assert_contains CODE_OF_CONDUCT.md "Contributor Covenant"
 assert_contains CODE_OF_CONDUCT.md "version 2.1"
@@ -251,7 +272,22 @@ assert_contains CHANGELOG.md "bilingual documentation"
 assert_contains CHANGELOG.md "Go-authoritative management CLI"
 assert_contains CHANGELOG.md "precompiled Darwin, Linux, and Windows archives"
 assert_contains CHANGELOG.md "Docker or optional WSL execution"
-assert_contains CHANGELOG.md "Install State and revisioned Runtime State remain disjoint"
+assert_contains CHANGELOG.md "Install State and revisioned Workflow State remain disjoint"
+assert_contains CHANGELOG.md "OAW Core"
+assert_contains CHANGELOG.md "optional Workflow Coordinator"
+assert_contains CHANGELOG.md '`CURRENT`/`SUBAGENT`'
+assert_contains CHANGELOG.md "Host session reports"
+assert_contains CHANGELOG.md "Provider descriptor v3"
+assert_contains CHANGELOG.md "Profile Recipe v2"
+assert_contains CHANGELOG.md "user configuration v3"
+assert_contains CHANGELOG.md "Host integration v2"
+assert_contains CHANGELOG.md "Capability Grant v2"
+assert_contains CHANGELOG.md "Workflow State v1"
+assert_contains CHANGELOG.md "oaw run --host codex"
+assert_contains CHANGELOG.md "oaw runtime exchange"
+assert_contains CHANGELOG.md "Codex Runner"
+assert_contains CHANGELOG.md "private HOME/Skill staging"
+assert_contains CHANGELOG.md "Core and Coordinator state is secret-free"
 pass "changelog describes the local unreleased 0.1.0 candidate"
 
 assert_executable scripts/check-docs.sh

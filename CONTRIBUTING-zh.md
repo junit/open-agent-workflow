@@ -17,8 +17,9 @@ Open Agent Workflow（OAW）接受按 issue 划分的纵向改动，每个改动
   文档语义一致。
 - remote publication、push、release、凭据以及第三方资源修改必须由所有者另行
   批准，安装器代码不得执行这些操作。
-- 保持 Install State 与 Runtime State 相互独立。Management 变更不得导入现有
-  Policy-only task 或 profile lock，安装 adapter 也不代表获得 Runtime admission。
+- 保持 Install State 与 Workflow State 相互独立。Management 变更不得导入现有
+  policy-only task 或 Profile lock，安装 adapter 也不代表获得 Workflow coordination 或
+  Host execution authority。
 
 ## Adapter Evidence
 

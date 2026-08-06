@@ -29,10 +29,15 @@ OAW 校验注册表拥有的目标、拒绝 symlink 重定向、以不求值方�
 前完成准备，并在强制处理 drift 前备份。这些控制不能让不可信 checkout 变得安全，
 也不负责保护所选根目录之外的文件免受其他软件影响。
 
-Install State 与 Runtime State 使用独立 namespace 和 authority model，不会自动迁移。
-安装 Policy-only adapter 不会授予 Runtime admission、Capability Grant、Resource Lease、
-transition enforcement 或 physical isolation。目前只有固定版本的 Codex runner 具备
-Runtime-managed integration。
+Install State 与 Workflow State 使用独立 namespace 和 authority model，不会自动迁移。
+OAW Core 与 Workflow Coordinator record 必须 secret-free，只保留 opaque digest reference。
+Capability Grant 或 Resource Lease 只为 cooperating clients 表达 logical workflow authority；
+Agent Host 拥有物理执行权限，包括 Host sandbox and approvals。OAW never starts a model CLI。
+
+Host integration 只能暴露 `policy` 或明确的 `host-native` surface。后者可以报告 session
+fact 与 Receipt，但不会让 OAW 拥有 Host tool。OAW never guarantees MCP、Hook、Skill 或
+Plugin inheritance 到 child context；这些事实由 active Host 决定。Grant 不能物理阻止
+Host 在协议外执行 action。
 
 ## 报告处理
 

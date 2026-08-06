@@ -20,9 +20,9 @@ before implementation. Keep one change responsible for one observable outcome.
   safety guidance, support levels, or commands change.
 - Treat remote publication, pushing, releases, credentials, and third-party
   resource changes as owner-approved operations outside installer code.
-- Keep Install State and Runtime State disjoint. Management changes must not
-  import existing Policy-only tasks or profile locks, and adapter installation
-  must not imply Runtime admission.
+- Keep Install State and Workflow State disjoint. Management changes must not
+  import existing policy-only tasks or Profile locks, and adapter installation
+  must not imply Workflow coordination or Host execution authority.
 
 ## Adapter Evidence
 

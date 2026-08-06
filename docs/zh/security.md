@@ -3,96 +3,91 @@
 [English](../en/security.md) | [安全策略](../../SECURITY-zh.md) |
 [架构](architecture.md)
 
-本指南说明本地 Open Agent Workflow（OAW）安装器的安全控制与限制。它不表示不可信
-checkout、操作系统、agent 工具或 workflow provider 是安全的。
+本指南说明本地 Open Agent Workflow（OAW）installer 及 policy/coordinator protocol 的控制
+与限制。它不声称不可信 checkout、操作系统、Agent Host 或 Provider 是安全的。
 
-## Trust Boundary
+## 信任边界
 
-安装器把以下值与构件视为 trust-boundary input：
+Installer 把以下值与构件视为 trust-boundary input：
 
-- 当前 checkout，包括可执行 shell code、`VERSION` 与 `policy/ENGINEERING.md`；
-- CLI target 与 project argument；
+- 当前 checkout，包括 executable shell code、`VERSION` 和 `policy/ENGINEERING.md`；
+- CLI target 与 project 参数；
 - `HOME`、`XDG_CONFIG_HOME` 与 `XDG_STATE_HOME`；
-- physical project root，以及选定 destination 下的每个 component；
+- physical project root 以及 selected destination 下的每个 component；
 - 现有 policy、adapter、state、directory 与 backup artifact。
 
-只能运行可信 checkout。OAW **does not access the network**，不会下载 release、安装
-provider，也不会执行 instruction file 或 state record 中的内容。这消除了 remote-fetch
-边界，但不会让本地 checkout 变成不可执行数据。
+只运行你信任的 checkout。OAW **does not access the network**，不下载 release、不安装
+Provider，也不执行 instruction file 或 state record 中的内容。去掉 remote-fetch 边界并不
+代表本地 checkout 不是可执行代码。
 
 ## Root、Path 与 Symlink 防御
 
-被使用的 root 必须是绝对路径，且不含 **control characters**。Project scope 在 identity
-与 containment 检查前按物理目录语义解析。Registry function 为每个 target 提供固定
-relative suffix；空 component、`.`、`..`、absolute suffix 与不安全 serialization field
-都会被拒绝。
+输入 root 必须是绝对路径，且不含 **control characters**。Project scope 在 identity 与
+containment 检查前按 physical-directory semantics 解析。Registry function 为每个 target
+提供固定 relative suffix；empty component、`.`、`..`、absolute suffix 与不安全
+serialization field 都会被拒绝。
 
-OAW 验证每个 intermediate component 和 final destination。无论指向 allowed root 内外，
-**symlink** 都会被拒绝。同样检查覆盖 policy、user target、project target、state、backup
-与 recorded cross-scope reference。Project destination 必须满足 physical root
-**containment**；其他位置的同名文件不能通过检查。
+OAW 验证每个 intermediate component 与 final destination。无论 **symlink** 指向允许 root
+内部还是外部，都拒绝使用。相同检查覆盖 policy、user target、project target、state、
+backup 和 recorded cross-scope reference。Project destination 必须满足 physical root
+**containment**，其他位置的同名文件不能替代。
 
-创建目录、复制 backup、每次 replace/remove 与清理目录前都会重复验证。这样可以减少
-path swap 与 TOCTOU 风险，但不能阻止以 **same local account** 运行的进程在最后一次检查
-后或操作返回后修改文件。
+创建目录、复制 backup、每次 replacement/removal 和 prune directory 前都会重复验证。
+这会降低 path-swap 与 TOCTOU 风险，但无法阻止以 **same local account** 运行的其他
+process 在最后一次检查后修改文件。
 
 ## State 是数据，不是 Shell
 
-安装 state 作为 **inert tab-separated data** 解析，且 **never sourced or evaluated**。
-Parser 只接受已知 record type 与 cardinality、安全 field、absolute recorded path、numeric
+Install State 按 **inert tab-separated data** 解析，且 **never sourced or evaluated**。
+Coordinator 的 Workflow State 使用独立 schema 与 namespace；两种 state 都不是可执行输入。
+
+Parser 只接受已知 record type/cardinality、安全 field、absolute recorded path、numeric
 checksum pair、registry-order target row、已知 ownership mode/origin、一致的 shared
-destination，以及与选定 physical project 匹配的 scope binding。
+destination，以及与 selected physical project 匹配的 scope binding。Forged、stale、
+malformed 或 executable-looking state 以 exit 65 关闭失败。`--force` 不能绕过 invalid state
+schema。
 
-语法有效的 record 并不足以授权变更。Mutation 前，OAW 从 registry 重新推导 target
-destination，验证已安装 policy 与 target byte，检查记录的 OAW-created directory，并在
-保留 shared policy 前验证其他 live state。Forged、stale、malformed 或
-executable-looking state 会以 65 关闭失败；`--force` 不能覆盖 invalid state schema。
-
-State file 与 backup artifact 使用 `600` mode，operation backup directory 使用 `700`。
-这些权限减少意外的跨用户泄露，但 backup 可能包含 user instruction file，仍应作为敏感
-本地数据处理。
+State file 与 backup artifact 使用 mode `600`，operation backup directory 使用 `700`。
+这些 permission 减少意外交叉用户泄露，但 backup 可能含用户 instruction file，仍应视为
+敏感本地数据。
 
 ## Prepare 与 Apply
 
-在 **prepare phase**，OAW 渲染 prospective content、解析所有相关 state、验证 drift 与
-ownership、解决 shared destination，并在任何 managed write 开始前构建全部 file/directory
-action。因此 preflight 中较后的 target 失败，会阻止较早 target 被写入。
+在 **prepare phase**，OAW 渲染 prospective content、解析相关 state、验证 drift 与
+ownership、解析 shared destination，并在 managed write 开始前构建全部 file/directory
+action。后续 target 失败会阻止 preflight 中较早 target 被写入。
 
-Apply path 针对 allowed root 与 expected relative suffix 执行 **apply revalidation**。
-Replacement 在 target 旁写临时文件，设置声明 mode，再次验证后执行 `mv`，从而提供
-**atomic replacement per destination**。这 **not operation-wide atomicity**：多个
-destination 不属于同一个 filesystem transaction，后续 apply 失败时 OAW 不承诺自动
-rollback。
+Apply path 对 allowed root 与 expected relative suffix 执行 **apply revalidation**。
+Replacement 在 target 旁写 temporary file，设置 mode，再次验证后执行 `mv`，提供
+**atomic replacement per destination**。这属于 **not operation-wide atomicity**：多个
+destination 不是一个 filesystem transaction，后续 apply failure 不保证自动 rollback。
 
-Dry-run 执行 preparation 并报告 action，但不创建 managed file、state、backup 或目录。
-Dry-run 不是锁；真实命令会重新验证。
+Dry-run 执行准备与报告，但不创建 managed file、state、backup 或 directory。Dry-run
+不是 lock；真实 command 会重复验证。
 
 ## Force 与 Backup
 
-`--force` 只是针对仍能证明既有 ownership 的 drift 的窄恢复机制。它不会接管 untracked
-owned file，不会绕过 symlink/containment failure，不会接受 malformed state，也不会在
-ambiguous marker layout 之间猜测。
+`--force` 只能恢复 prior ownership 仍可建立的 drift。它不 adopt untracked owned file、
+不绕过 symlink 或 containment failure、不接受 malformed state，也不猜测 ambiguous marker。
 
-符合条件的 forced update/uninstall 在任何 mutation 前，都会收集所有受影响的现有 policy、
-target 与 state artifact。OAW 创建 operation-scoped backup，以 `600` mode 复制每个
-artifact，对比 source/backup checksum，写入 `manifest.tsv`，并在 apply 前重新检查 source
-byte。每个 `artifact` row 记录 original absolute path、backup path 与 checksum。Apply 还会
-确认待变更 destination 存在于 active manifest 中，并仍匹配 mutation 前 checksum。
+符合条件的 forced update 或 uninstall 变更前，OAW 收集全部受影响 policy、target 与 state
+artifact，创建 operation-scoped backup，以 mode `600` 复制，比较 checksum，写入
+`manifest.tsv`，并在 apply 前重新检查 source bytes。每个 `artifact` row 记录 original
+absolute path、backup path 与 checksum。
 
-Marker ownership 有歧义时，OAW 会在可能的情况下创建 recovery backup，再以 65 退出并
-要求 **manual recovery**，不会自行选择删除哪些 user byte。用户通过读取 `manifest.tsv`
-手工恢复；manifest 是数据，绝不能执行或 source。
+Marker ownership 有歧义时，OAW 会尽可能创建 recovery backup，然后以 65 退出并要求
+**manual recovery**。它不会选择删除哪些用户 byte。用户通过读取 `manifest.tsv` 手工恢复；
+manifest 是数据，绝不能执行或 source。
 
 ## 精确 Uninstall Ownership
 
-Uninstall 只删除干净且有记录的 managed block 或 owned file。它保留周围 user byte；没有
-符合条件的 forced operation 时，不删除 drifted artifact。只有 state 记录为 OAW 实际创建、
-仍解析在 allowed root 下，并且 planned file removal 后为空的目录才可删除。Prepare 后才
-出现的目录绝不会被认领为 OAW-owned。
+Uninstall 只删除干净的 recorded managed block 或 owned file。它保留周围用户 byte，不在
+缺少 eligible forced operation 时删除 drifted artifact。只有 state 证明由 OAW 创建、仍在
+allowed root 下、且 planned file removal 后为空的目录才能删除。
 
-## Host-scoped Provider Trust
+## Core、Coordinator 与 Host 安全边界
 
-Runtime Provider 权限遵循以下精确链条：
+Provider authority 遵循以下精确链条：
 
 ```text
 Provider Family
@@ -102,60 +97,47 @@ Provider Family
   -> Verified Provider Instance
 ```
 
-Codex 与 Claude Code 是独立 trust domain。共享文件会获得不同的 Host Installation 身份，
-不能在 Host 之间转移权限。Descriptor binding、discovery marker、配置的 installation hint
-和 pin 都只是声明或选择约束，不能伪造 Host-owned Binding Evidence。Policy-only Host 可以
-报告 Candidate，但不能创建 verified Runtime Instance。
+OAW Core 接收 secret-free fact 并编译 Lifecycle Bundle。Workflow Coordinator 只记录
+secret-free Workflow State、cooperating clients、logical workflow authority 与 opaque
+digest reference。它不能保存 API key、token、raw Provider output、private Hook payload，
+或完整 MCP/Plugin configuration。
 
-foreign diagnostics 不会进入 pin generation、Registry resolution、Profile compilation、
-admission、Bundle 或 Runtime State。Active decoder 会拒绝
-`oaw.provider-descriptor/v1` 与 `oaw.user-config/v1`。Fail-closed scope condition 使用
-`HOST_BINDING_EVIDENCE_REQUIRED`、`PROVIDER_BINDING_UNAVAILABLE`、
-`PROVIDER_FOREIGN_HOST_ONLY`、`PROVIDER_PIN_INCOMPATIBLE` 或
-`HOST_PROVIDER_SCOPE_MISMATCH`；Runtime 只暴露稳定原因和不包含路径的明确 inspection
-入口提示。
+Agent Host 拥有物理执行权限。Host sandbox and approvals、model route、authentication、
+tool、MCP、Hook、Skill 与 Plugin 都由 Host 拥有。Capability Grant 或 Resource Lease 可以
+比 Host sandbox and approvals 更窄，但不能物理阻止 Host 执行协议外 action。
 
-## Runtime Dispatch Containment
+OAW never starts a model CLI。`policy` integration 只分发 instruction。`host-native`
+integration 可以报告 session fact 与 Receipt，但 OAW 绝不保证 MCP、Hook、Skill 或 Plugin
+inheritance 到 `SUBAGENT`；active Host 报告各 surface 为 `inherited`、`host-configured`、
+`restricted`、`unknown` 或 `unavailable`。
 
-Codex Host Driver 会收到不可变的 Grant effect 与 resource set。只读 Grant 在
-`--sandbox read-only` 下运行；只有包含 `write-project` 或 `git-local` 的 Grant 才能使用
-`--sandbox workspace-write`。`danger-full-access` 不是 OAW Runtime dispatch mode。
-Sandbox 选择是必要条件，但并不充分：Codex MCP 子进程位于 shell-tool sandbox 之外，
-否则仍可能写入 project-local metadata。
-
-因此，`oaw run --host codex` 将 discovery trust domain 与 invocation execution profile
-分开。动态发现与 Host Binding observation 仍读取真实 Codex installation；`Prepare` 随后
-交叉校验 selected Host、Binding Inventory digest、Provider Instance digest、Capability
-Binding、Host Installation、Binding Evidence reference 与当前文件 digest。任何不一致都会在
-`DISPATCH_PREPARED` 与模型启动前 fail closed。
-
-执行 profile 会在 Runtime state root 下创建私有 `0700` HOME 与中性 workspace，只映射精确
-验证的 skill Binding，并使用 `--ignore-user-config`、`--ignore-rules`、`--disable hooks`
-以及由 Grant 推导的 sandbox 启动 Codex。原始 `CODEX_HOME` 只用于认证；physical project
-root 通过 `--add-dir` 显式暴露。这样无需改写用户配置即可把交互环境中的 plugin 与 MCP
-server 排除在 invocation 之外。Agent 与 tool Binding 在精确隔离映射实现前以
-`CODEX_BINDING_KIND_UNSUPPORTED` fail closed。这是 Host 前置条件，不表示 OAW 替代了操作
-系统 sandbox。
-
-CLI 会把可优雅处理的 interrupt 与 termination cancellation 传入活动 Host invocation。
-请求 Host cancel 后，Runtime 记录 `EXECUTION_UNCERTAIN` / `PAUSED` 并要求
-`RECONCILE_INVOCATION`，绝不会伪造成功 observation。任何进程都无法在不可捕获的
-`SIGKILL` 后持久化最终转换，因此 deadline controller 必须在 hard kill 前预留优雅取消
-时间。
-对 stale authorized dispatch 进行幂等重放，可以在不启动第二次 Host invocation 的情况下
-记录 uncertain pause。
+Host session 变化会使 stale Dispatch Packet 失效。继续前需要 fresh Host report 与 Bundle
+eligibility check。OAW 不重建缺失 child environment，也不静默 fallback 到新 process。
 
 ## 范围之外
 
-安装器不能防御：
+Installer 与 policy protocol 无法防御：
 
-- 选定 checkout 中的恶意 shell code；
+- selected checkout 中的恶意 shell code；
 - 操作系统或 **same local account** compromise；
-- 验证后由 unrelated software 修改 allowed root；
-- provider loader 忽略 instruction、使用 undocumented precedence 或保留 stale session；
-- 模型不遵守已安装 policy；
-- 手工恢复到错误路径，或从未验证 backup 恢复。
+- unrelated software 在 validation 后修改 allowed root；
+- Provider loader 忽略 instruction 或使用 undocumented precedence；
+- model 不遵守 installed policy；
+- manual restoration 使用错误 path 或未经验证 backup。
 
-测试应使用隔离 root；每次 forced dry-run 都要检查，并保留 stderr 与报告的 backup path。
-Ownership 不清楚时应停止。疑似漏洞应按[安全策略](../../SECURITY-zh.md)的私密流程报告，
-不要在公开 issue 中放入 exploit detail 或本地配置。
+测试应使用 isolated root，检查每次 forced dry-run，保留 stderr 与 backup path，ownership
+不明确时停止。疑似漏洞通过[安全策略](../../SECURITY-zh.md)中的 private 流程报告，不要把
+exploit detail 或本地配置放进公开 issue。
+
+## Canonical Security Terms
+
+双语契约有意保留下列精确术语：
+
+```text
+logical workflow authority
+Host sandbox and approvals
+secret-free
+opaque digest
+cooperating clients
+OAW never starts a model CLI
+```
