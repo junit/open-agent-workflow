@@ -2,8 +2,9 @@
 
 ## Status
 
-Accepted; supersedes ADR 0006 and the Codex execution decisions in ADR 0005;
-capability-environment inheritance is amended by ADR 0008
+Superseded by ADR 0009; Host-native control is retained
+
+ADR 0009 is the active decision; this record remains historical context.
 
 ## Context
 

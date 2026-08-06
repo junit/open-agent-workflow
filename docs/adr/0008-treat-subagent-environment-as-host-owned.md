@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted; amends the capability-environment decision in ADR 0007
+Superseded by ADR 0009; Host-owned environment semantics are retained
+
+ADR 0009 is the active decision; this record remains historical context.
 
 ## Context
 

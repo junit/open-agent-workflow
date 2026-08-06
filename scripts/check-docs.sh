@@ -177,6 +177,19 @@ for diagnostic_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md
   require_literal "$diagnostic_document" 'oaw.user-config/v1'
 done
 
+require_literal docs/adr/0003-add-optional-capability-admission-runtime.md \
+  'Superseded by ADR 0009'
+require_literal docs/adr/0007-use-host-native-execution-topologies.md \
+  'Superseded by ADR 0009; Host-native control is retained'
+require_literal docs/adr/0008-treat-subagent-environment-as-host-owned.md \
+  'Superseded by ADR 0009; Host-owned environment semantics are retained'
+require_literal docs/adr/0009-separate-core-coordination-and-host-execution.md \
+  'Accepted'
+require_literal docs/superpowers/specs/2026-08-04-oaw-host-native-execution-topology-design.md \
+  'Superseded by the 2026-08-05 OAW Core and Workflow Coordinator hard-cutover design'
+require_literal docs/superpowers/specs/2026-08-05-oaw-core-coordinator-hard-cutover-design.md \
+  'Approved for implementation'
+
 find "$REPOSITORY" -type f -name '*.md' \
   ! -path "$REPOSITORY/.git/*" \
   ! -path "$REPOSITORY/.serena/*" \

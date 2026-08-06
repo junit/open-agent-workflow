@@ -1,7 +1,7 @@
 # OAW Core and Workflow Coordinator Hard-Cutover Design
 
 **Date:** 2026-08-05
-**Status:** Written design pending user review
+**Status:** Approved for implementation
 **Lifecycle:** MATT-SP-HYBRID
 **Execution topology:** CURRENT
 **Scope:** Product boundaries, execution topology, Host integration, workflow

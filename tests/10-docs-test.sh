@@ -147,6 +147,19 @@ EOF
       >>"$fixture_root/$document_path"
   done
   : >"$fixture_root/CHANGELOG.md"
+  mkdir -p "$fixture_root/docs/adr" "$fixture_root/docs/superpowers/specs"
+  printf '%s\n' 'Superseded by ADR 0009' \
+    >"$fixture_root/docs/adr/0003-add-optional-capability-admission-runtime.md"
+  printf '%s\n' 'Superseded by ADR 0009; Host-native control is retained' \
+    >"$fixture_root/docs/adr/0007-use-host-native-execution-topologies.md"
+  printf '%s\n' 'Superseded by ADR 0009; Host-owned environment semantics are retained' \
+    >"$fixture_root/docs/adr/0008-treat-subagent-environment-as-host-owned.md"
+  printf '%s\n' 'Accepted' \
+    >"$fixture_root/docs/adr/0009-separate-core-coordination-and-host-execution.md"
+  printf '%s\n' 'Superseded by the 2026-08-05 OAW Core and Workflow Coordinator hard-cutover design' \
+    >"$fixture_root/docs/superpowers/specs/2026-08-04-oaw-host-native-execution-topology-design.md"
+  printf '%s\n' 'Approved for implementation' \
+    >"$fixture_root/docs/superpowers/specs/2026-08-05-oaw-core-coordinator-hard-cutover-design.md"
   printf '%s\n' 'experience-based' >>"$fixture_root/docs/en/comparison.md"
   printf '%s\n' '基于经验' >>"$fixture_root/docs/zh/comparison.md"
 }

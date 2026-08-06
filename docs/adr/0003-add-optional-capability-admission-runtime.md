@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0009
+
+ADR 0009 is the active decision; this record remains historical context.
 
 ## Context
 

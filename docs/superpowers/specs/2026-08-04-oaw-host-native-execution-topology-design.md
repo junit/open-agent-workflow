@@ -1,7 +1,7 @@
 # OAW Host-Native Execution Topology Design
 
 **Date:** 2026-08-04
-**Status:** Written design pending user review (amended)
+**Status:** Superseded by the 2026-08-05 OAW Core and Workflow Coordinator hard-cutover design
 **Lifecycle:** MATT-SP-HYBRID
 **Execution:** INLINE
 **Scope:** Host control inversion, execution topology, capability inheritance,
