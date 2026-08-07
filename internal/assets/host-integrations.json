@@ -12,7 +12,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "673220f3db0b3bbceb021a7297a9fd2ae97352d117ccb467c7d813859310b535",
@@ -34,7 +36,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "22d56a58fdfa15f380c7797a4aed5db2c04610621ef7c0c27063ebd0ccbe7bc3",
@@ -47,6 +51,71 @@
     },
     {
       "schema_version": "oaw.host-integration/v2",
+      "integration_version": "1.0.0",
+      "id": "oaw/codex-host",
+      "manifest": {
+        "schema_version": "oaw.host-manifest/v2",
+        "manifest_version": "1.0.0",
+        "host_id": "codex",
+        "control_surface": "host-native",
+        "protocols": [
+          "oaw.workflow/v1"
+        ],
+        "binding_kinds": [
+          "skill"
+        ],
+        "supported_topologies": [
+          "CURRENT"
+        ],
+        "features": [
+          "environment-reporting",
+          "normalized-receipts",
+          "provider-binding-inventory"
+        ]
+      },
+      "manifest_digest": "2f6f4c90909e7d23249e633057e1608dfc9bf2b506d60a9a6dcced87e829db38",
+      "audit": {
+        "status": "passed",
+        "references": [
+          {
+            "reference": "repo://docs/superpowers/specs/2026-08-07-oaw-codex-host-bridge-design.md",
+            "digest": "fa53a947f982fa3cdaa854c6297357f6421d985b755ce9771065004868ea7f3b"
+          },
+          {
+            "reference": "repo://internal/assets/conformance/codex-host-v1.json",
+            "digest": "1c641f43459c3001b02ffebf5f83281129377ebe5bc00512b01b720aab015b93"
+          },
+          {
+            "reference": "repo://internal/codexbridge/appserver/security_test.go",
+            "digest": "f18336ee94704f0c41ce938436aac76eed656910548c21a938040a11d04c4179"
+          },
+          {
+            "reference": "repo://internal/codexbridge/hook/input_test.go",
+            "digest": "f91e86eb1b8ac27a43eb7b34c4ab18b354e695f1b7fa229ecc5cb611cf8082a5"
+          },
+          {
+            "reference": "repo://internal/codexbridge/hook/output_test.go",
+            "digest": "c5c4a7afb550d66cbccacb3c0486aeaceafdb90f9f56c2de7e1363b9352f8ac1"
+          }
+        ],
+        "digest": "7b2e4188a2761f4389e064dac89b268037830ee88c1a672a4a12ca01387d4e40"
+      },
+      "conformance": {
+        "schema_version": "oaw.host-conformance-report/v2",
+        "manifest_digest": "2f6f4c90909e7d23249e633057e1608dfc9bf2b506d60a9a6dcced87e829db38",
+        "transcript_digest": "2e7b3ab6d3b06f299f067e97d6ad6e381bcc7a8a0449d38bbad8d47c192429c4",
+        "verified_features": [
+          "environment-reporting",
+          "normalized-receipts",
+          "provider-binding-inventory"
+        ],
+        "diagnostics": [],
+        "digest": "bd305517dc6dda2679bf22cdfbe84460953d9d69fc19e9ccc54c9c15b41c7390"
+      },
+      "digest": "e048f1f6fee3685b23557c786c88d5e7758473ceb918890b72196491b1eae3b8"
+    },
+    {
+      "schema_version": "oaw.host-integration/v2",
       "integration_version": "2.0.0",
       "id": "oaw/codex-policy",
       "manifest": {
@@ -56,7 +125,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "c20a8730e9240d164a1ea07d373ec648db2a3c6cb8fa9997a828aca4235be3a2",
@@ -78,7 +149,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "85331976854723fead4a0e68f33ffb5a4219decb58e98c1a68901771425c79d1",
@@ -100,7 +173,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "46e45fff28ca0109c0369c011f2a54bfa2743176c6bf04cf726bf2e6939e1f74",
@@ -122,7 +197,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "9037a7100e8faa4df5c6b76c626ffa6b2edf0132d81bf3be04ee3502c6d02232",
@@ -144,7 +221,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "6b4c0eaf4556045ee802ebbf7ad54bae7905be346164aca405f8b433e9931c07",
@@ -166,7 +245,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "4e24840799e494beeefd14b69e468bbfda1d5368c9212c2cb5260f8f37a1be4d",
@@ -188,7 +269,9 @@
         "control_surface": "policy",
         "protocols": [],
         "binding_kinds": [],
-        "supported_topologies": ["CURRENT"],
+        "supported_topologies": [
+          "CURRENT"
+        ],
         "features": []
       },
       "manifest_digest": "c9d25d1968a6b776ec14f9534435792ccfb6dbb62d97d116e33973ab2cdff40f",

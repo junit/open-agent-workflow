@@ -15,10 +15,16 @@ func TestLoadBuiltinIntegrationsUsesNinePolicySurfaces(t *testing.T) {
 		t.Fatalf("LoadBuiltinIntegrations() error = %v", err)
 	}
 	wantHosts := []string{"claude", "cline", "codex", "copilot", "cursor", "gemini", "opencode", "roo", "windsurf"}
-	if len(records) != len(wantHosts) {
-		t.Fatalf("built-in Integration count = %d, want %d", len(records), len(wantHosts))
+	policies := make([]host.IntegrationRecord, 0, len(wantHosts))
+	for _, record := range records {
+		if record.Manifest.ControlSurface == host.SurfacePolicy {
+			policies = append(policies, record)
+		}
 	}
-	for index, record := range records {
+	if len(policies) != len(wantHosts) {
+		t.Fatalf("built-in policy Integration count = %d, want %d", len(policies), len(wantHosts))
+	}
+	for index, record := range policies {
 		if err := host.ValidateIntegrationRecord(record); err != nil {
 			t.Fatalf("ValidateIntegrationRecord(%s) error = %v", record.ID, err)
 		}
@@ -36,4 +42,40 @@ func TestLoadBuiltinIntegrationsUsesNinePolicySurfaces(t *testing.T) {
 	if err != nil || !slices.Equal(fresh[0].Manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
 		t.Fatalf("LoadBuiltinIntegrations() exposed mutable storage: %#v, %v", fresh, err)
 	}
+}
+
+func TestBuiltinCodexPolicyAndHostRemainSeparate(t *testing.T) {
+	integrations, err := host.LoadBuiltinIntegrations(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	policy := integrationByID(t, integrations, "oaw/codex-policy")
+	native := integrationByID(t, integrations, "oaw/codex-host")
+	if policy.Manifest.ControlSurface != host.SurfacePolicy || native.Manifest.ControlSurface != host.SurfaceHostNative {
+		t.Fatalf("policy = %#v, native = %#v", policy, native)
+	}
+	if !slices.Equal(native.Manifest.BindingKinds, []string{"skill"}) ||
+		!slices.Equal(native.Manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) ||
+		!slices.Equal(native.Manifest.Features, []host.Feature{
+			host.FeatureEnvironmentReporting,
+			host.FeatureNormalizedReceipts,
+			host.FeatureProviderBindingInventory,
+		}) || native.Audit.Status != host.AuditPassed || native.Conformance == nil {
+		t.Fatalf("native manifest = %#v", native)
+	}
+	if len(policy.Manifest.Protocols) != 0 || len(policy.Manifest.BindingKinds) != 0 || len(policy.Manifest.Features) != 0 ||
+		policy.Audit.Status != host.AuditPending || policy.Conformance != nil {
+		t.Fatalf("policy Integration gained Host-native authority: %#v", policy)
+	}
+}
+
+func integrationByID(t *testing.T, values []host.IntegrationRecord, id string) host.IntegrationRecord {
+	t.Helper()
+	for _, value := range values {
+		if value.ID == id {
+			return value
+		}
+	}
+	t.Fatalf("Integration %q not found", id)
+	return host.IntegrationRecord{}
 }

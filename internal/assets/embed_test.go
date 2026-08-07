@@ -1,9 +1,16 @@
 package assets
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/fs"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
 func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
@@ -44,6 +51,62 @@ func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 		}
 		assertClosedObjects(t, path, document)
 	}
+}
+
+func TestCodexHostEvidenceAssetsAreEmbeddedAndPinned(t *testing.T) {
+	transcriptRaw, err := fs.ReadFile(FS(), "conformance/codex-host-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var transcript host.ConformanceTranscript
+	if err := json.Unmarshal(transcriptRaw, &transcript); err != nil {
+		t.Fatal(err)
+	}
+	rebuiltTranscript, err := host.NewConformanceTranscript(transcript)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(transcriptRaw, canonicalAssetBytes(t, rebuiltTranscript)) {
+		t.Fatal("embedded Codex conformance transcript is not canonical")
+	}
+
+	auditRaw, err := fs.ReadFile(FS(), "audits/codex-host-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var audit host.AuditEvidence
+	if err := json.Unmarshal(auditRaw, &audit); err != nil {
+		t.Fatal(err)
+	}
+	rebuiltAudit, err := host.NewAuditEvidence(audit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rebuiltAudit.Status != host.AuditPassed || !bytes.Equal(auditRaw, canonicalAssetBytes(t, rebuiltAudit)) {
+		t.Fatalf("embedded Codex audit is not canonical: %#v", rebuiltAudit)
+	}
+	for _, reference := range rebuiltAudit.References {
+		if !strings.HasPrefix(reference.Reference, "repo://") {
+			t.Fatalf("audit reference is not repository-relative: %q", reference.Reference)
+		}
+		path := filepath.Join("..", "..", filepath.FromSlash(strings.TrimPrefix(reference.Reference, "repo://")))
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if digest := canonicaljson.DigestBytes(content); digest != reference.Digest {
+			t.Fatalf("audit reference %q digest = %s, want %s", reference.Reference, reference.Digest, digest)
+		}
+	}
+}
+
+func canonicalAssetBytes(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := canonicaljson.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return append(raw, '\n')
 }
 
 func assertClosedObjects(t *testing.T, path string, value any) {
