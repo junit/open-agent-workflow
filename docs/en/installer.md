@@ -173,6 +173,58 @@ Each destination uses atomic replacement. A later apply failure triggers the
 Go mutation journal's best-effort whole-operation rollback; a rollback failure
 is explicit and leaves the verified backup available for manual recovery.
 
+## Codex Host Bridge
+
+Codex has two separate OAW installation surfaces:
+
+```text
+oaw install --target codex
+oaw bridge install codex
+```
+
+The first command installs only the policy adapter and `ENGINEERING.md`. It
+does not install an executable Plugin or claim current-session Host evidence.
+The second command is an explicit opt-in transaction for the audited Codex Host
+Bridge. Its management surface is:
+
+```text
+oaw bridge check codex
+oaw bridge update codex
+oaw bridge uninstall codex
+oaw bridge serve codex
+oaw bridge hook codex
+```
+
+The Bridge owns install state below
+`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/codex-bridge` and its
+binary plus local marketplace below
+`${XDG_DATA_HOME:-$HOME/.local/share}/open-agent-workflow/codex-bridge`.
+Codex owns its Plugin cache, enablement configuration, approvals, and other
+Host state. OAW invokes official Codex Plugin commands through fixed argument
+vectors; it never edits Codex config or cache, creates an alternate user home, or
+projects Host configuration.
+
+Review the exact four `PreToolUse` matchers in rendered `hooks/hooks.json` and
+trust them in Codex `/hooks` before using the Bridge. Start a new Codex session
+after install or update. Only successful `observe_current` in that new session
+proves current-session evidence; `bridge check` always reports
+`current_session_loaded: false`.
+
+Bridge install and update are transactional. They render a digest-pinned copy
+of the running binary, use an OAW-owned local marketplace, and roll back
+OAW-owned files when official Codex registration fails. Drift, symlinks,
+unrecorded payload files, and mismatched state are preserved and reported.
+Uninstall invokes official Plugin and marketplace removal first, then deletes
+only clean recorded OAW files and state. It preserves unrelated Codex config,
+user files, and drifted content.
+
+The Bridge supports `CURRENT` only. The current Codex session invokes Skills
+and tools; OAW observes allowlisted metadata, compiles policy, and exchanges
+Coordinator records. It does not create a child session, invoke a model, or
+inherit or reconstruct MCP, Hooks, Skills, Plugins, authentication, sandbox,
+or approval configuration beyond facts the Host reports. See the dedicated
+[Codex Host Bridge guide](codex-bridge.md) for Hook and recovery contracts.
+
 ## Exit Codes
 
 The complete v0.1 exit set is **0, 64, 65, 66, 69, 70, 73, and 74**:

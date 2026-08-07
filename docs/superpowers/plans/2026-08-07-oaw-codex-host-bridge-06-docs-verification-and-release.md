@@ -48,7 +48,7 @@
 - Modify: `docs/en/installer.md`
 - Modify: `docs/zh/installer.md`
 
-- [ ] **Step 1: Write the English guide with the exact public contract**
+- [x] **Step 1: Write the English guide with the exact public contract**
 
 The guide must contain these exact command examples and operational rules:
 
@@ -73,14 +73,14 @@ and object-valued `updatedInput`; valid later operations return no stdout; a
 session/cwd mismatch returns the nested `deny` form. List the stable diagnostic
 codes from the approved design with one concrete recovery command for each.
 
-- [ ] **Step 2: Translate the same contract into Chinese**
+- [x] **Step 2: Translate the same contract into Chinese**
 
 Keep command names, JSON field names, diagnostic codes, topology names, and
 exit statuses byte-for-byte unchanged. Translate prose, not protocol tokens.
 Include a visible statement that the Bridge does not create a child session or
 copy Host extensions, credentials, sandbox, or approval configuration.
 
-- [ ] **Step 3: Update installer references**
+- [x] **Step 3: Update installer references**
 
 Add a dedicated `Codex Host Bridge` section to both installer documents. The
 section must distinguish OAW-owned install state below the XDG state root and
@@ -88,7 +88,7 @@ OAW-owned binary/marketplace files below the XDG data root from Codex-owned
 Plugin cache/config, describe rollback and drift behavior, and state that
 uninstall invokes official Codex removal before deleting only clean OAW files.
 
-- [ ] **Step 4: Run documentation RED/GREEN checks**
+- [x] **Step 4: Run documentation RED/GREEN checks**
 
 ```bash
 rtk bash scripts/check-docs.sh
@@ -97,7 +97,7 @@ rtk bash scripts/check-docs.sh
 Expected before the matching changes to other docs: FAIL with missing paired
 document or release-boundary messages. After the task, it must pass.
 
-- [ ] **Step 5: Commit the operator guide**
+- [x] **Step 5: Commit the operator guide**
 
 ```bash
 rtk git add docs/en/codex-bridge.md docs/zh/codex-bridge.md docs/en/installer.md docs/zh/installer.md

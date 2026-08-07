@@ -153,6 +153,52 @@ operation-scoped backup。每个 destination 使用 atomic replacement；后续 
 会触发 Go mutation journal 的 best-effort whole-operation rollback。Rollback failure 会
 明确报告，并保留 verified backup 供 manual recovery。
 
+## Codex Host Bridge
+
+Codex 有两套相互独立的 OAW installation surface：
+
+```text
+oaw install --target codex
+oaw bridge install codex
+```
+
+第一条命令只安装 policy adapter 与 `ENGINEERING.md`，不安装 executable Plugin，
+也不声明 current-session Host evidence。第二条命令是经过审计的 Codex Host Bridge
+的显式 opt-in transaction。它的 management surface 是：
+
+```text
+oaw bridge check codex
+oaw bridge update codex
+oaw bridge uninstall codex
+oaw bridge serve codex
+oaw bridge hook codex
+```
+
+Bridge 在 `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/codex-bridge`
+下拥有 install state，在
+`${XDG_DATA_HOME:-$HOME/.local/share}/open-agent-workflow/codex-bridge` 下拥有 binary
+与 local marketplace。Codex 拥有 Plugin cache、enablement configuration、approval
+与其他 Host state。OAW 只通过固定 argument vector 调用官方 Codex Plugin command，
+不编辑 Codex config 或 cache，不创建隔离用户主目录，也不投影 Host configuration。
+
+使用 Bridge 前，在 Codex `/hooks` 中检查并信任 rendered `hooks/hooks.json` 的四个
+精确 `PreToolUse` matcher。安装或 update 后启动新的 Codex session。只有该新 session
+中成功的 `observe_current` 才能证明 current-session evidence；`bridge check` 永远
+报告 `current_session_loaded: false`。
+
+Bridge install 与 update 是 transactional。它们渲染 running binary 的
+digest-pinned copy，使用 OAW-owned local marketplace；official Codex registration
+失败时回滚 OAW-owned file。Drift、symlink、unrecorded payload file 与不匹配的 state
+会保留并报告。Uninstall 先调用 official Plugin 与 marketplace removal，然后只删除
+clean 的 recorded OAW file 与 state，保留无关 Codex config、user file 与 drifted
+content。
+
+Bridge 只支持 `CURRENT`。当前 Codex session 调用 Skill 与 tool；OAW 观察
+allowlisted metadata、编译 policy 并交换 Coordinator record。它不创建 child session、
+不调用 model，也不复制或重建 MCP、Hook、Skill、Plugin、authentication、sandbox
+或 approval configuration，除非这些是 Host 报告的 fact。完整 Hook 与 recovery
+契约见 [Codex Host Bridge 指南](codex-bridge.md)。
+
 ## 退出码
 
 完整 v0.1 exit set 是 **0, 64, 65, 66, 69, 70, 73, and 74**：
