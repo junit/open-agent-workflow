@@ -28,7 +28,7 @@ func layerForCode(code string) string {
 	}
 }
 
-func ProjectDiagnostic(err error, _ string, directAvailable bool) Diagnostic {
+func ProjectDiagnostic(err error, evidenceDigest string, directAvailable bool) Diagnostic {
 	code := Code(err)
 	layer := layerForCode(code)
 	detail := "Bridge operation failed"
@@ -36,7 +36,15 @@ func ProjectDiagnostic(err error, _ string, directAvailable bool) Diagnostic {
 	if errors.As(err, &value) {
 		layer, detail = value.Layer, value.Detail
 	}
-	return NewDiagnostic(code, layer, detail, directAvailable)
+	diagnostic := NewDiagnostic(code, layer, detail, directAvailable)
+	if validDiagnosticDigest(evidenceDigest) {
+		diagnostic.EvidenceDigest = evidenceDigest
+	}
+	return diagnostic
+}
+
+func validDiagnosticDigest(value string) bool {
+	return len(value) == 64 && strings.Trim(value, "0123456789abcdef") == ""
 }
 
 func NewDiagnostic(code, layer, detail string, directAvailable bool) Diagnostic {

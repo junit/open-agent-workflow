@@ -7,13 +7,14 @@ import (
 
 func TestDiagnosticProjectionNeverIncludesHandleOrAbsolutePath(t *testing.T) {
 	err := NewError("HOST_EVIDENCE_HANDLE_INVALID", "edited token at /Users/example/repo", nil)
-	value := ProjectDiagnostic(err, "codex", true)
+	evidenceDigest := strings.Repeat("a", 64)
+	value := ProjectDiagnostic(err, evidenceDigest, true)
 	if strings.Contains(value.Detail, "token") || strings.Contains(value.Detail, "/Users/") {
 		t.Fatalf("diagnostic leaked private data: %#v", value)
 	}
 	if value.Code != "HOST_EVIDENCE_HANDLE_INVALID" || value.Layer != "evidence" ||
 		!value.DirectAvailable || !value.RecoverableByObservation || value.RecoveryAction == "" ||
-		value.AffectedProviders == nil || value.AffectedProfiles == nil {
+		value.AffectedProviders == nil || value.AffectedProfiles == nil || value.EvidenceDigest != evidenceDigest {
 		t.Fatalf("diagnostic projection is incomplete: %#v", value)
 	}
 }
