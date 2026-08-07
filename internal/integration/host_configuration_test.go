@@ -9,20 +9,35 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func TestDefaultConfigurationContainsOnlyPolicyHostIntegrations(t *testing.T) {
+func TestDefaultConfigurationKeepsPolicyAndHostIntegrationsSeparate(t *testing.T) {
 	snapshot, err := config.Load(config.LoadOptions{ProjectRoot: t.TempDir()})
 	if err != nil {
 		t.Fatalf("config.Load() error = %v", err)
 	}
 	records := snapshot.HostIntegrations()
-	if len(records) != 9 || len(snapshot.Record().HostIntegrations) != 9 {
+	if len(records) != 10 || len(snapshot.Record().HostIntegrations) != 10 {
 		t.Fatalf("default Host Integration count = %d", len(records))
 	}
+	policyCount := 0
+	nativeCount := 0
 	for _, record := range records {
-		if record.ID == "oaw/codex-runner" || record.Manifest.ControlSurface != host.SurfacePolicy ||
-			!slices.Equal(record.Manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) ||
-			len(record.Manifest.Protocols) != 0 || len(record.Manifest.Features) != 0 || record.Conformance != nil || record.Digest == "" {
-			t.Fatalf("default Integration claims Host-native guarantees: %#v", record)
+		switch record.Manifest.ControlSurface {
+		case host.SurfacePolicy:
+			policyCount++
+			if record.ID == "oaw/codex-runner" || !slices.Equal(record.Manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) ||
+				len(record.Manifest.Protocols) != 0 || len(record.Manifest.Features) != 0 || record.Conformance != nil || record.Digest == "" {
+				t.Fatalf("policy Integration claims Host-native guarantees: %#v", record)
+			}
+		case host.SurfaceHostNative:
+			nativeCount++
+			if record.ID != "oaw/codex-host" || !integrationCanSupplyInventory(snapshot, record.ID) {
+				t.Fatalf("unexpected Host-native Integration: %#v", record)
+			}
+		default:
+			t.Fatalf("unknown Integration control surface: %#v", record)
 		}
+	}
+	if policyCount != 9 || nativeCount != 1 {
+		t.Fatalf("policy count = %d, Host-native count = %d", policyCount, nativeCount)
 	}
 }
