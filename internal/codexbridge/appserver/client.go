@@ -272,7 +272,10 @@ func (client *Client) exchange(ctx context.Context, method string, params any) (
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		return nil, NewError("HOST_OBSERVATION_FAILED", "App Server response has trailing JSON", err)
 	}
-	if response.JSONRPC != "2.0" || response.ID != id {
+	// Codex 0.146.1 accepts JSON-RPC requests but omits the version field on
+	// stdio responses. Preserve strict ID matching and reject conflicting
+	// non-empty versions instead of accepting arbitrary response envelopes.
+	if (response.JSONRPC != "" && response.JSONRPC != "2.0") || response.ID != id {
 		return nil, NewError("HOST_OBSERVATION_FAILED", "App Server response ID does not match the request", nil)
 	}
 	if response.Error != nil {

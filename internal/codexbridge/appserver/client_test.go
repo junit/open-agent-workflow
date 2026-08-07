@@ -64,6 +64,21 @@ func TestClientCallUsesAllowlistAndMonotonicRequestIDs(t *testing.T) {
 	}
 }
 
+func TestClientAcceptsCodexResponseWithoutJSONRPCVersion(t *testing.T) {
+	transport := newRecordingTransport()
+	transport.response = func(request Request) []byte {
+		return []byte(`{"id":` + jsonNumber(request.ID) + `,"result":{"data":[]}}`)
+	}
+	client := NewClient(ClientOptions{Transport: transport})
+	result, err := client.Call(context.Background(), "skills/list", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(result) != `{"data":[]}` {
+		t.Fatalf("result = %s", result)
+	}
+}
+
 func TestClientRejectsMalformedAndMismatchedResponses(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -75,6 +90,9 @@ func TestClientRejectsMalformedAndMismatchedResponses(t *testing.T) {
 		}},
 		{"wrong-id", func(request Request) []byte {
 			return mustResponse(Response{JSONRPC: "2.0", ID: request.ID + 1, Result: json.RawMessage(`{}`)})
+		}},
+		{"wrong-version", func(request Request) []byte {
+			return mustResponse(Response{JSONRPC: "1.0", ID: request.ID, Result: json.RawMessage(`{}`)})
 		}},
 		{"missing-result", func(request Request) []byte { return mustResponse(Response{JSONRPC: "2.0", ID: request.ID}) }},
 	}
