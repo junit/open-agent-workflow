@@ -9,6 +9,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -56,6 +58,173 @@ func NewClient(options ClientOptions) *Client {
 		maximumMessageBytes: clampMessageBytes(options.MaximumMessageBytes),
 		requestTimeout:      clampRequestTimeout(options.RequestTimeout),
 	}
+}
+
+func (client *Client) Observe(ctx context.Context, cwd string) (MetadataObservation, error) {
+	if !filepath.IsAbs(cwd) || filepath.Clean(cwd) != cwd || hasControl(cwd) {
+		return MetadataObservation{}, NewError("HOST_OBSERVATION_FAILED", "cwd is not canonical", nil)
+	}
+	if err := client.initialize(ctx, cwd); err != nil {
+		return MetadataObservation{}, err
+	}
+	skills, err := client.callSkills(ctx, cwd)
+	if err != nil {
+		return MetadataObservation{}, requiredObservationError(err)
+	}
+
+	methods := []string{"skills/list"}
+	diagnostics := make([]ObservationDiagnostic, 0, 2)
+	hooks, hookErr := client.callHooks(ctx, cwd)
+	if hookErr == nil {
+		methods = append(methods, "hooks/list")
+	} else {
+		diagnostics = append(diagnostics, observationDiagnostic("HOST_OBSERVATION_PARTIAL", "hooks/list unavailable"))
+	}
+	config, configErr := client.callConfig(ctx, cwd)
+	if configErr == nil {
+		methods = append(methods, "config/read")
+	} else {
+		diagnostics = append(diagnostics, observationDiagnostic("HOST_OBSERVATION_PARTIAL", "config/read unavailable"))
+	}
+	slices.Sort(methods)
+	return MetadataObservation{
+		Skills:       skills,
+		Hooks:        normalizeHooks(hooks, hookErr, cwd),
+		Config:       normalizeConfig(config, configErr),
+		Methods:      methods,
+		Diagnostics:  diagnostics,
+		CodexVersion: client.userAgent,
+	}, nil
+}
+
+func (client *Client) callSkills(ctx context.Context, cwd string) (SkillsEntry, error) {
+	raw, err := client.Call(ctx, "skills/list", map[string]any{"cwds": []string{cwd}, "forceReload": true})
+	if err != nil {
+		return SkillsEntry{}, err
+	}
+	var response skillsResultWire
+	if err := json.Unmarshal(raw, &response); err != nil || response.Data == nil || len(*response.Data) != 1 {
+		return SkillsEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "skills/list projection is malformed", err)
+	}
+	entry := (*response.Data)[0]
+	if entry.CWD == nil || entry.Errors == nil || entry.Skills == nil || *entry.CWD != cwd {
+		return SkillsEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "skills/list projection does not match cwd", nil)
+	}
+	if len(*entry.Skills) > maximumMetadataEntries {
+		return SkillsEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "skills/list projection is oversized", nil)
+	}
+	errors, err := normalizeMetadataErrors(*entry.Errors)
+	if err != nil {
+		return SkillsEntry{}, err
+	}
+	skills := make([]SkillMetadata, 0, len(*entry.Skills))
+	for _, value := range *entry.Skills {
+		if value.Name == nil || value.Enabled == nil || value.Path == nil || value.Scope == nil ||
+			!validMetadataText(*value.Name, 512) || !filepath.IsAbs(*value.Path) || filepath.Clean(*value.Path) != *value.Path ||
+			hasControl(*value.Path) || !validSkillScope(*value.Scope) {
+			return SkillsEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "skills/list contains an invalid Skill projection", nil)
+		}
+		skills = append(skills, SkillMetadata{Name: *value.Name, Enabled: *value.Enabled, Path: *value.Path, Scope: *value.Scope})
+	}
+	return SkillsEntry{CWD: cwd, Errors: errors, Skills: skills}, nil
+}
+
+func (client *Client) callHooks(ctx context.Context, cwd string) (HooksEntry, error) {
+	raw, err := client.Call(ctx, "hooks/list", map[string]any{"cwds": []string{cwd}})
+	if err != nil {
+		return HooksEntry{}, err
+	}
+	var response hooksResultWire
+	if err := json.Unmarshal(raw, &response); err != nil || response.Data == nil || len(*response.Data) != 1 {
+		return HooksEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "hooks/list projection is malformed", err)
+	}
+	entry := (*response.Data)[0]
+	if entry.CWD == nil || entry.Errors == nil || entry.Warnings == nil || entry.Hooks == nil || *entry.CWD != cwd {
+		return HooksEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "hooks/list projection does not match cwd", nil)
+	}
+	if len(*entry.Hooks) > maximumMetadataEntries {
+		return HooksEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "hooks/list projection is oversized", nil)
+	}
+	errors, err := normalizeMetadataErrors(*entry.Errors)
+	if err != nil {
+		return HooksEntry{}, err
+	}
+	warnings, err := normalizeWarnings(*entry.Warnings)
+	if err != nil {
+		return HooksEntry{}, err
+	}
+	hooks := make([]HookMetadata, 0, len(*entry.Hooks))
+	for _, value := range *entry.Hooks {
+		if value.CurrentHash == nil || value.Enabled == nil || value.EventName == nil || value.Source == nil || value.TrustStatus == nil ||
+			!validOptionalMetadataText(*value.CurrentHash, 512) || !validHookEvent(*value.EventName) || !validHookSource(*value.Source) ||
+			!validHookTrust(*value.TrustStatus) || value.PluginID != nil && !validOptionalMetadataText(*value.PluginID, 512) {
+			return HooksEntry{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "hooks/list contains an invalid Hook projection", nil)
+		}
+		pluginID := ""
+		if value.PluginID != nil {
+			pluginID = *value.PluginID
+		}
+		hooks = append(hooks, HookMetadata{CurrentHash: *value.CurrentHash, Enabled: *value.Enabled, EventName: *value.EventName, PluginID: pluginID, Source: *value.Source, TrustStatus: *value.TrustStatus})
+	}
+	return HooksEntry{CWD: cwd, Errors: errors, Warnings: warnings, Hooks: hooks}, nil
+}
+
+func (client *Client) callConfig(ctx context.Context, cwd string) (ConfigProjection, error) {
+	raw, err := client.Call(ctx, "config/read", map[string]any{"cwd": cwd, "includeLayers": false})
+	if err != nil {
+		return ConfigProjection{}, err
+	}
+	var response configResultWire
+	if err := json.Unmarshal(raw, &response); err != nil || response.Config == nil || response.Origins == nil {
+		return ConfigProjection{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "config/read projection is malformed", err)
+	}
+	var config map[string]any
+	if err := json.Unmarshal(*response.Config, &config); err != nil || config == nil {
+		return ConfigProjection{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "config/read config is malformed", err)
+	}
+	projection, err := ProjectConfig(config)
+	if err != nil {
+		return ConfigProjection{}, err
+	}
+	projection.CWDObserved = true
+	return projection, nil
+}
+
+func requiredObservationError(err error) error {
+	if Code(err) == "HOST_BRIDGE_PROTOCOL_MISMATCH" {
+		return err
+	}
+	return NewError("HOST_OBSERVATION_FAILED", "required skills/list observation failed", err)
+}
+
+func normalizeHooks(value HooksEntry, err error, cwd string) HooksEntry {
+	if err == nil {
+		return value
+	}
+	return HooksEntry{CWD: cwd, Errors: optionalMetadataFailure("hooks/list"), Warnings: []string{}, Hooks: []HookMetadata{}}
+}
+
+func normalizeConfig(value ConfigProjection, err error) ConfigProjection {
+	if err == nil {
+		return value
+	}
+	return unknownConfigProjection()
+}
+
+func validSkillScope(value string) bool {
+	return slices.Contains([]string{"admin", "repo", "system", "user"}, value)
+}
+
+func validHookEvent(value string) bool {
+	return slices.Contains([]string{"permissionRequest", "postCompact", "postToolUse", "preCompact", "preToolUse", "sessionEnd", "sessionStart", "stop", "subagentStart", "subagentStop", "userPromptSubmit"}, value)
+}
+
+func validHookSource(value string) bool {
+	return slices.Contains([]string{"cloudManagedConfig", "cloudRequirements", "legacyManagedConfigFile", "legacyManagedConfigMdm", "mdm", "plugin", "project", "sessionFlags", "system", "unknown", "user"}, value)
+}
+
+func validHookTrust(value string) bool {
+	return slices.Contains([]string{"managed", "modified", "trusted", "untrusted"}, value)
 }
 
 func (client *Client) Call(ctx context.Context, method string, params any) (json.RawMessage, error) {

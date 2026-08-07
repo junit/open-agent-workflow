@@ -1,8 +1,10 @@
 package appserver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"slices"
 	"sync"
 	"testing"
@@ -101,6 +103,33 @@ func TestClientNormalizesRemoteMethodErrors(t *testing.T) {
 		t.Fatalf("optional method error = %v", err)
 	}
 }
+
+func TestProcessTransportExchangesAndNotifiesWithBoundedJSONLines(t *testing.T) {
+	var exchangeInput bytes.Buffer
+	exchange := newProcessTransport(nopWriteCloser{Writer: &exchangeInput}, bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"result":{}}`+"\n"), nil, func() {})
+	response, err := exchange.Exchange(context.Background(), []byte(`{"jsonrpc":"2.0","id":1,"method":"skills/list"}`), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response) != `{"jsonrpc":"2.0","id":1,"result":{}}` || exchangeInput.Bytes()[len(exchangeInput.Bytes())-1] != '\n' {
+		t.Fatalf("response=%s request=%q", response, exchangeInput.Bytes())
+	}
+
+	var notifyInput bytes.Buffer
+	notify := newProcessTransport(nopWriteCloser{Writer: &notifyInput}, bytes.NewReader(nil), nil, func() {})
+	if err := notify.Notify(context.Background(), []byte(`{"jsonrpc":"2.0","method":"initialized"}`)); err != nil {
+		t.Fatal(err)
+	}
+	if notifyInput.Bytes()[len(notifyInput.Bytes())-1] != '\n' {
+		t.Fatalf("notification=%q", notifyInput.Bytes())
+	}
+}
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }
 
 type recordingTransport struct {
 	mu            sync.Mutex

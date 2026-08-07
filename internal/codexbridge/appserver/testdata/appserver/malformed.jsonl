@@ -1,0 +1,2 @@
+{"method":"initialize","result":{"userAgent":"codex-cli/0.146.1","codexHome":"/host/.codex","platformFamily":"unix","platformOs":"macos"}}
+{"method":"skills/list","result":{"data":[{"cwd":"/repo","errors":[],"skills":[{"name":"acme:review","enabled":true,"path":"/plugins/acme/skills/review/SKILL.md"}]}]}}

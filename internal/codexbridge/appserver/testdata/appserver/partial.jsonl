@@ -1,0 +1,4 @@
+{"method":"initialize","result":{"userAgent":"codex-cli/0.146.1","codexHome":"/host/.codex","platformFamily":"unix","platformOs":"macos"}}
+{"method":"skills/list","result":{"data":[{"cwd":"/repo","errors":[],"skills":[{"name":"acme:review","enabled":true,"path":"/plugins/acme/skills/review/SKILL.md","scope":"user","description":"ignored"}]}]}}
+{"method":"hooks/list","error":{"code":-32601,"message":"not available"}}
+{"method":"config/read","error":{"code":-32601,"message":"not available"}}
