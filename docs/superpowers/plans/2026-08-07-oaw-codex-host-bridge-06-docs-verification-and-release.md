@@ -213,7 +213,7 @@ rtk git commit -m "docs: align architecture with Codex Host Bridge"
 - Create: `tests/18-codex-bridge-protocol-test.sh`
 - Modify: `tests/run.sh`
 
-- [ ] **Step 1: Write failing integration assertions**
+- [x] **Step 1: Write failing integration assertions**
 
 ```go
 func TestCodexBridgeCurrentWorkflowTranscript(t *testing.T) {
@@ -231,7 +231,7 @@ func TestDirectPathDoesNotRequireBridge(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 rtk go test ./internal/integration -run 'CodexBridge|DirectPath'
@@ -239,7 +239,7 @@ rtk go test ./internal/integration -run 'CodexBridge|DirectPath'
 
 Expected: FAIL until the integration fixture and MCP calls are wired.
 
-- [ ] **Step 3: Add shell boundary checks**
+- [x] **Step 3: Add shell boundary checks**
 
 ```bash
 #!/usr/bin/env bash
@@ -262,7 +262,7 @@ disabled Skill, an orphan Skill, and a foreign Host Candidate all fail closed;
 the three later-operation context failures must return
 `hookSpecificOutput.permissionDecision=deny` with no `updatedInput`.
 
-- [ ] **Step 4: Run integration and shell GREEN**
+- [x] **Step 4: Run integration and shell GREEN**
 
 ```bash
 rtk gofmt -w internal/integration/codex_bridge_blackbox_test.go
@@ -273,7 +273,7 @@ rtk git diff --check
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit protocol coverage**
+- [x] **Step 5: Commit protocol coverage**
 
 ```bash
 rtk git add internal/integration/codex_bridge_blackbox_test.go tests/18-codex-bridge-protocol-test.sh tests/run.sh

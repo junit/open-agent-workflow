@@ -39,7 +39,8 @@ for test_script in \
   14-cutover-release-test.sh \
   15-host-execution-boundary-test.sh \
   16-core-coordinator-conformance-test.sh \
-  17-codex-bridge-management-test.sh; do
+  17-codex-bridge-management-test.sh \
+  18-codex-bridge-protocol-test.sh; do
   bash "$TEST_DIR/$test_script"
 done
 
