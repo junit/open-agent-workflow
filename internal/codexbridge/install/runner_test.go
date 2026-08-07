@@ -178,15 +178,29 @@ func TestCodexNonzeroResultWithoutErrorIsStillRejected(t *testing.T) {
 }
 
 type recordingRunner struct {
-	Commands [][]string
-	Results  map[string]CLIResult
-	Failures map[string]error
+	Commands         [][]string
+	Results          map[string]CLIResult
+	Failures         map[string]error
+	FailureSequences map[string][]error
 }
 
 func (r *recordingRunner) Run(_ context.Context, args ...string) (CLIResult, error) {
 	r.Commands = append(r.Commands, slices.Clone(args))
 	key := commandKey(args)
-	return r.Results[key], r.Failures[key]
+	result, ok := r.Results[key]
+	if !ok {
+		switch strings.Join(args, " ") {
+		case "plugin list --json":
+			result.Stdout = []byte(`{"installed":[]}`)
+		case "plugin marketplace list --json":
+			result.Stdout = []byte(`{"marketplaces":[]}`)
+		}
+	}
+	if sequence := r.FailureSequences[key]; len(sequence) != 0 {
+		r.FailureSequences[key] = sequence[1:]
+		return result, sequence[0]
+	}
+	return result, r.Failures[key]
 }
 
 func (r *recordingRunner) Saw(prefix string) bool {

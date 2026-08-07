@@ -81,6 +81,17 @@ func managedDataPath(environment Environment, relative string) (string, error) {
 }
 
 func WriteState(environment Environment, state InstallState) error {
+	return writeState(environment, state, "")
+}
+
+func ReplaceState(environment Environment, state InstallState, expectedDigest string) error {
+	if !validSHA256(expectedDigest) {
+		return invalidState("expected install state digest is invalid", nil)
+	}
+	return writeState(environment, state, expectedDigest)
+}
+
+func writeState(environment Environment, state InstallState, expectedDigest string) error {
 	if err := validateStateBinding(environment, state); err != nil {
 		return err
 	}
@@ -94,10 +105,24 @@ func WriteState(environment Environment, state InstallState) error {
 	}
 	defer root.Close()
 
+	var previous fs.FileInfo
 	if info, inspectErr := root.Lstat("install.json"); inspectErr == nil {
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			return unsafePath("Bridge state destination is not a regular owned file", nil)
 		}
+		if expectedDigest == "" {
+			return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state already exists", nil)
+		}
+		digest, err := stateDigestFromRoot(root, info)
+		if err != nil {
+			return err
+		}
+		if digest != expectedDigest {
+			return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state changed before replacement", nil)
+		}
+		previous = info
+	} else if expectedDigest != "" && errors.Is(inspectErr, fs.ErrNotExist) {
+		return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state disappeared before replacement", nil)
 	} else if !errors.Is(inspectErr, fs.ErrNotExist) {
 		return unsafePath("inspect Bridge state destination", inspectErr)
 	}
@@ -125,12 +150,43 @@ func WriteState(environment Environment, state InstallState) error {
 	if err := temporary.Close(); err != nil {
 		return installError("BRIDGE_INSTALL_IO", "close temporary Bridge state", err)
 	}
+	current, inspectErr := root.Lstat("install.json")
+	if expectedDigest == "" {
+		if inspectErr == nil || !errors.Is(inspectErr, fs.ErrNotExist) {
+			return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state appeared before creation", inspectErr)
+		}
+	} else if inspectErr != nil || !os.SameFile(previous, current) {
+		return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state changed before replacement", inspectErr)
+	} else if digest, err := stateDigestFromRoot(root, current); err != nil || digest != expectedDigest {
+		return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state content changed before replacement", err)
+	}
 	if err := root.Rename(temporaryName, "install.json"); err != nil {
 		return installError("BRIDGE_INSTALL_IO", "publish Bridge state", err)
 	}
 	keepTemporary = false
 	syncRoot(root)
 	return nil
+}
+
+func stateDigestFromRoot(root *os.Root, info fs.FileInfo) (string, error) {
+	if info.Mode().Perm() != 0o600 || info.Size() < 1 || info.Size() > maximumInstallStateBytes {
+		return "", unsafePath("Bridge state file is unsafe", nil)
+	}
+	file, err := root.Open("install.json")
+	if err != nil {
+		return "", installError("BRIDGE_INSTALL_IO", "open Bridge state", err)
+	}
+	defer file.Close()
+	opened, statErr := file.Stat()
+	content, readErr := io.ReadAll(io.LimitReader(file, maximumInstallStateBytes+1))
+	if statErr != nil || readErr != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		return "", unsafePath("Bridge state changed while opening", errors.Join(statErr, readErr))
+	}
+	state, err := DecodeState(content)
+	if err != nil {
+		return "", err
+	}
+	return state.Digest, nil
 }
 
 func ReadState(environment Environment) (InstallState, error) {
@@ -148,6 +204,9 @@ func ReadState(environment Environment) (InstallState, error) {
 	}
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maximumInstallStateBytes {
 		return InstallState{}, unsafePath("Bridge state file is unsafe", err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		return InstallState{}, unsafePath("Bridge state file permissions are unsafe", nil)
 	}
 	file, err := root.Open("install.json")
 	if err != nil {
@@ -170,6 +229,75 @@ func ReadState(environment Environment) (InstallState, error) {
 		return InstallState{}, err
 	}
 	return state, nil
+}
+
+func RemoveState(environment Environment, expectedDigest string) error {
+	if err := ValidateEnvironment(environment); err != nil {
+		return err
+	}
+	if !validSHA256(expectedDigest) {
+		return invalidState("expected install state digest is invalid", nil)
+	}
+	root, err := openExistingManagedRoot(environment.StateRoot)
+	if Code(err) == "BRIDGE_INSTALL_NOT_INSTALLED" {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	info, err := root.Lstat("install.json")
+	if errors.Is(err, fs.ErrNotExist) {
+		root.Close()
+		return nil
+	}
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		root.Close()
+		return unsafePath("Bridge state file is unsafe", err)
+	}
+	file, err := root.Open("install.json")
+	if err != nil {
+		root.Close()
+		return installError("BRIDGE_INSTALL_IO", "open Bridge state before removal", err)
+	}
+	opened, statErr := file.Stat()
+	content, readErr := io.ReadAll(io.LimitReader(file, maximumInstallStateBytes+1))
+	file.Close()
+	if statErr != nil || readErr != nil || !opened.Mode().IsRegular() || !os.SameFile(info, opened) {
+		root.Close()
+		return unsafePath("Bridge state changed before removal", errors.Join(statErr, readErr))
+	}
+	state, decodeErr := DecodeState(content)
+	if decodeErr != nil || state.Digest != expectedDigest {
+		root.Close()
+		return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state changed before removal", decodeErr)
+	}
+	current, inspectErr := root.Lstat("install.json")
+	if inspectErr != nil || !os.SameFile(info, current) {
+		root.Close()
+		return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state changed before removal", inspectErr)
+	}
+	if err := root.Remove("install.json"); err != nil {
+		root.Close()
+		return installError("BRIDGE_INSTALL_IO", "remove Bridge state", err)
+	}
+	syncRoot(root)
+	root.Close()
+	removeEmptyManagedRoot(environment.StateRoot)
+	return nil
+}
+
+func removeEmptyManagedRoot(rootPath string) {
+	base, relative, err := managedRootCoordinates(rootPath)
+	if err != nil {
+		return
+	}
+	baseRoot, err := openInspectedRoot(base)
+	if err != nil {
+		return
+	}
+	defer baseRoot.Close()
+	_ = baseRoot.Remove(relative)
+	_ = baseRoot.Remove("open-agent-workflow")
 }
 
 func validateStateBinding(environment Environment, state InstallState) error {

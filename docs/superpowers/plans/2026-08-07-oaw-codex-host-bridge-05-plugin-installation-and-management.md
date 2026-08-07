@@ -431,7 +431,7 @@ rtk git commit -m "feat: add transactional Codex Bridge install state"
 - Create: `internal/codexbridge/install/transaction_test.go`
 - Create: `internal/codexbridge/install/check_test.go`
 
-- [ ] **Step 1: Write failing transaction tests**
+- [x] **Step 1: Write failing transaction tests**
 
 ```go
 func TestInstallRollsBackMarketplaceWhenPluginAddFails(t *testing.T) {
@@ -468,7 +468,7 @@ printing paths or command output. `Check` is deliberately unable to observe a
 live MCP process; only a successful `observe_current` response can establish
 current-session evidence.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 rtk go test ./internal/codexbridge/install -run 'Install|Uninstall|Check'
@@ -476,7 +476,7 @@ rtk go test ./internal/codexbridge/install -run 'Install|Uninstall|Check'
 
 Expected: FAIL because transaction functions are absent.
 
-- [ ] **Step 3: Implement `Install` and `Update` in ordered phases**
+- [x] **Step 3: Implement `Install` and `Update` in ordered phases**
 
 ```go
 func Install(ctx context.Context, env Environment, runner CodexRunner, request InstallRequest) (Result, error) {
@@ -509,7 +509,7 @@ removes only staged/recorded artifacts. If any rollback command fails, return
 `BRIDGE_INSTALL_ROLLBACK_INCOMPLETE` and preserve the state file and recovery
 coordinates for manual recovery; do not delete broadly.
 
-- [ ] **Step 4: Implement read-only `Check`**
+- [x] **Step 4: Implement read-only `Check`**
 
 ```go
 type CheckResult struct {
@@ -535,7 +535,7 @@ process has no access to the MCP service's in-memory evidence. A successful
 absolute paths to short digests in the default text projection while retaining
 exact paths in the machine-readable local result.
 
-- [ ] **Step 5: Implement safe uninstall**
+- [x] **Step 5: Implement safe uninstall**
 
 Uninstall reads and validates state, invokes official Plugin remove and
 marketplace remove only for the recorded names, removes only files whose
@@ -544,7 +544,7 @@ current digest equals the recorded digest, and leaves drifted files plus a
 after all recorded descendants are gone. `--force` is not accepted by Bridge
 uninstall; a drifted artifact requires explicit manual resolution.
 
-- [ ] **Step 6: Run GREEN, fault injection, and race checks**
+- [x] **Step 6: Run GREEN, fault injection, and race checks**
 
 ```bash
 rtk gofmt -w internal/codexbridge/install/transaction.go internal/codexbridge/install/check.go internal/codexbridge/install/*_test.go
@@ -556,7 +556,7 @@ rtk go vet ./internal/codexbridge/install
 Expected: PASS; injected failures prove rollback, drift preservation, and
 idempotent replay without deleting unrelated files.
 
-- [ ] **Step 7: Commit management transactions**
+- [x] **Step 7: Commit management transactions**
 
 ```bash
 rtk git add internal/codexbridge/install/transaction.go internal/codexbridge/install/check.go internal/codexbridge/install/*_test.go

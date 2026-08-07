@@ -180,6 +180,61 @@ func TestWriteStateRejectsCoordinatesOutsideDataRoot(t *testing.T) {
 	}
 }
 
+func TestRemoveStateRejectsConcurrentStateReplacement(t *testing.T) {
+	environment := testEnvironment(t)
+	first := stateForEnvironment(t, environment)
+	if err := WriteState(environment, first); err != nil {
+		t.Fatal(err)
+	}
+	installed, err := ReadState(environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second := stateForEnvironment(t, environment)
+	second.BridgeVersion = "2.0.0"
+	if err := ReplaceState(environment, second, installed.Digest); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveState(environment, installed.Digest); Code(err) != "BRIDGE_INSTALL_STATE_CONFLICT" {
+		t.Fatalf("error = %v", err)
+	}
+	current, err := ReadState(environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.BridgeVersion != "2.0.0" {
+		t.Fatalf("concurrent state was removed or replaced: %#v", current)
+	}
+}
+
+func TestStatePublicationRequiresCreateOrMatchingReplace(t *testing.T) {
+	environment := testEnvironment(t)
+	state := stateForEnvironment(t, environment)
+	if err := WriteState(environment, state); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteState(environment, state); Code(err) != "BRIDGE_INSTALL_STATE_CONFLICT" {
+		t.Fatalf("second create error = %v", err)
+	}
+	state.BridgeVersion = "2.0.0"
+	if err := ReplaceState(environment, state, strings.Repeat("f", 64)); Code(err) != "BRIDGE_INSTALL_STATE_CONFLICT" {
+		t.Fatalf("mismatched replace error = %v", err)
+	}
+}
+
+func TestReadStateRejectsUnsafePermissions(t *testing.T) {
+	environment := testEnvironment(t)
+	if err := WriteState(environment, stateForEnvironment(t, environment)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(environment.StateFile, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadState(environment); Code(err) != "BRIDGE_INSTALL_PATH_UNSAFE" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
 func testEnvironment(t *testing.T) Environment {
 	t.Helper()
 	root := t.TempDir()
