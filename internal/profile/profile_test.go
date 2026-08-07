@@ -16,15 +16,6 @@ import (
 func TestProfileIntersectionRejectsEmptyTopology(t *testing.T) {
 	available, verified, recipe := compilerFixture(t)
 	providers := available.Providers()
-	for providerIndex := range providers {
-		for capabilityIndex := range providers[providerIndex].Capabilities {
-			capability := &providers[providerIndex].Capabilities[capabilityIndex]
-			if capability.ID == "implementation" {
-				capability.SupportedTopologies = []execution.Topology{execution.TopologyCurrent}
-				capability.HostBindings[0].Topologies = []execution.Topology{execution.TopologyCurrent}
-			}
-		}
-	}
 	implementation := verified.capabilities["acme/suite\x00implementation"]
 	implementation.SupportedTopologies = []execution.Topology{execution.TopologyCurrent}
 	implementation.Binding.Topologies = []execution.Topology{execution.TopologyCurrent}

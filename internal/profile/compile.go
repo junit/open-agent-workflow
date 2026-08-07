@@ -282,7 +282,9 @@ func compileNodeTopologies(capability catalog.CapabilityRecord, declared catalog
 	if err != nil {
 		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid verified binding topologies: %v", capability.ID, err)
 	}
-	if !slices.Equal(bindingTopologies, verifiedTopologies) || !slices.Equal(bindingTopologies, verifiedBindingTopologies) {
+	if !topologySubset(verifiedTopologies, bindingTopologies) ||
+		!topologySubset(verifiedBindingTopologies, bindingTopologies) ||
+		!slices.Equal(verifiedTopologies, verifiedBindingTopologies) {
 		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s verified binding topology evidence does not match its descriptor", capability.ID)
 	}
 	eligible, err := execution.IntersectTopologies(capabilityTopologies, bindingTopologies, verifiedTopologies, verifiedBindingTopologies)
@@ -291,6 +293,18 @@ func compileNodeTopologies(capability catalog.CapabilityRecord, declared catalog
 	}
 	declared.Topologies = bindingTopologies
 	return eligible, cloneHostBinding(declared), nil
+}
+
+func topologySubset(values, allowed []execution.Topology) bool {
+	if len(values) == 0 {
+		return false
+	}
+	for _, value := range values {
+		if !slices.Contains(allowed, value) {
+			return false
+		}
+	}
+	return true
 }
 
 func cloneHostBinding(value catalog.HostBinding) catalog.HostBinding {
