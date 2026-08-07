@@ -208,10 +208,12 @@ func bridgeEnvironment() (install.Environment, error) {
 	if stateHome == "" {
 		stateHome = filepath.Join(home, ".local", "state")
 	}
+	stateHome = filepath.Clean(stateHome)
 	dataHome := os.Getenv("XDG_DATA_HOME")
 	if dataHome == "" {
 		dataHome = filepath.Join(home, ".local", "share")
 	}
+	dataHome = filepath.Clean(dataHome)
 	projectRoot, err := os.Getwd()
 	if err != nil {
 		return install.Environment{}, newBridgeCLIError("BRIDGE_INSTALL_INPUT_INVALID", "resolve current project root")

@@ -646,7 +646,7 @@ rtk git commit -m "feat: add Codex Bridge CLI commands"
 - Create: `tests/17-codex-bridge-management-test.sh`
 - Modify: `tests/run.sh`
 
-- [ ] **Step 1: Add executable black-box assertions**
+- [x] **Step 1: Add executable black-box assertions**
 
 ```bash
 #!/usr/bin/env bash
@@ -665,7 +665,7 @@ marketplace. Do not mutate process-global `HOME`, `CODEX_HOME`, or another
 ambient configuration variable, and do not call the real Codex Plugin
 installer in this test.
 
-- [ ] **Step 2: Run the black-box test**
+- [x] **Step 2: Run the black-box test**
 
 ```bash
 rtk bash tests/17-codex-bridge-management-test.sh
@@ -673,7 +673,7 @@ rtk bash tests/17-codex-bridge-management-test.sh
 
 Expected: PASS.
 
-- [ ] **Step 3: Commit black-box coverage**
+- [x] **Step 3: Commit black-box coverage**
 
 ```bash
 rtk git add tests/17-codex-bridge-management-test.sh tests/run.sh
