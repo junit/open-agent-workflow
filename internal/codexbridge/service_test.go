@@ -187,7 +187,7 @@ func newTestService(t *testing.T) *Service {
 			CWDObserved: true, SandboxDisposition: "host-configured", MCPDisposition: "host-configured",
 			HookDisposition: "host-configured", ApprovalDisposition: "host-configured",
 		},
-		Methods: []string{"config/read", "hooks/list", "skills/list"}, CodexVersion: "codex-cli/test",
+		Methods: []string{"config/read", "hooks/list", "skills/list"}, CodexVersion: "codex-cli/0.146.1",
 	}}
 	service, err := NewService(ServiceOptions{
 		Observer: observer, Store: NewEvidenceStore(CacheOptions{MaximumEntries: 8}), StateRoot: t.TempDir(),

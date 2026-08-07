@@ -65,8 +65,14 @@ func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, 
 }
 
 func validateMetadataObservation(context HookContext, metadata appserver.MetadataObservation) error {
-	if !validCanonicalPath(context.CWD) || metadata.Skills.CWD != context.CWD || !validMethodSet(metadata.Methods) {
+	if !validCanonicalPath(context.CWD) || metadata.Skills.CWD != context.CWD {
 		return NewError("HOST_OBSERVATION_FAILED", "Codex metadata is not bound to the current CWD", nil)
+	}
+	if _, err := Negotiate(currentVersionEvidence(metadata.CodexVersion, metadata.Methods)); err != nil {
+		return err
+	}
+	if !validMethodSet(metadata.Methods) {
+		return NewError("HOST_OBSERVATION_FAILED", "Codex metadata method evidence is invalid", nil)
 	}
 	hooksObserved := slices.Contains(metadata.Methods, "hooks/list")
 	if hooksObserved && metadata.Hooks.CWD != context.CWD {
