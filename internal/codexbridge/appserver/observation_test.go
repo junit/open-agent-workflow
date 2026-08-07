@@ -33,7 +33,7 @@ func TestClientUsesOnlyAllowlistedMetadataMethods(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range [][]byte{[]byte("discarded-command"), []byte("private-hook"), []byte("fixture-private")} {
+	for _, forbidden := range [][]byte{[]byte("discarded-command"), []byte("private-hook"), []byte("private-warning"), []byte("fixture-private")} {
 		if bytes.Contains(raw, forbidden) {
 			t.Fatalf("Hook projection retained private metadata: %s", raw)
 		}
@@ -53,6 +53,22 @@ func TestObserveSendsExactCWDAndForceReload(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(`"cwds":["/repo"]`)) || !bytes.Contains(raw, []byte(`"forceReload":true`)) {
 		t.Fatalf("skills request = %s", raw)
+	}
+	hooks := findRequest(t, transport.Requests(), "hooks/list")
+	raw, err = json.Marshal(hooks.Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"cwds":["/repo"]`)) {
+		t.Fatalf("hooks request = %s", raw)
+	}
+	config := findRequest(t, transport.Requests(), "config/read")
+	raw, err = json.Marshal(config.Params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(raw, []byte(`"cwd":"/repo"`)) || !bytes.Contains(raw, []byte(`"includeLayers":false`)) {
+		t.Fatalf("config request = %s", raw)
 	}
 }
 
@@ -80,10 +96,10 @@ func TestObserveKeepsOptionalFailuresPartial(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(observation.Methods, []string{"skills/list"}) || !hasObservationDiagnostic(observation.Diagnostics, "HOST_OBSERVATION_PARTIAL") {
+	if !slices.Equal(observation.Methods, []string{"skills/list"}) || len(observation.Diagnostics) != 2 || !hasObservationDiagnostic(observation.Diagnostics, "HOST_OBSERVATION_PARTIAL") {
 		t.Fatalf("observation=%#v", observation)
 	}
-	if observation.Config.MCPDisposition != "unknown" || observation.Hooks.CWD != "/repo" {
+	if observation.Config.MCPDisposition != "unknown" || observation.Hooks.CWD != "/repo" || len(observation.Hooks.Errors) != 1 {
 		t.Fatalf("optional projections were not normalized: %#v", observation)
 	}
 }
@@ -207,7 +223,7 @@ func metadataResponse(request Request) []byte {
 	case "skills/list":
 		result = json.RawMessage(`{"data":[{"cwd":"/repo","errors":[],"skills":[{"name":"acme:review","enabled":true,"path":"/plugins/acme/skills/review/SKILL.md","scope":"user","description":"ignored"}]}]}`)
 	case "hooks/list":
-		result = json.RawMessage(`{"data":[{"cwd":"/repo","errors":[],"warnings":[],"hooks":[{"currentHash":"abc","enabled":true,"eventName":"preToolUse","pluginId":"oaw-codex-host","source":"plugin","trustStatus":"trusted","command":"discarded","displayOrder":0,"handlerType":"command","isManaged":false,"key":"oaw","sourcePath":"/private/hook.json","timeoutSec":10}]}]}`)
+		result = json.RawMessage(`{"data":[{"cwd":"/repo","errors":[],"warnings":["warning at /private-warning/config"],"hooks":[{"currentHash":"abc","enabled":true,"eventName":"preToolUse","pluginId":"oaw-codex-host","source":"plugin","trustStatus":"trusted","command":"discarded","displayOrder":0,"handlerType":"command","isManaged":false,"key":"oaw","sourcePath":"/private/hook.json","timeoutSec":10}]}]}`)
 	case "config/read":
 		result = json.RawMessage(`{"config":{"mcp_servers":{"private_setting":"fixture-value"},"features":{"hooks":true},"approval_policy":"ask","sandbox_mode":"workspace-write"},"origins":{}}`)
 	default:

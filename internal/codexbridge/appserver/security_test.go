@@ -24,6 +24,7 @@ func TestCodexLauncherUsesExactArgumentsAndExplicitEnvironment(t *testing.T) {
 	script := filepath.Join(directory, "fake-codex")
 	content := "#!/bin/sh\n" +
 		"{ printf 'args\\n'; printf '%s\\n' \"$@\"; printf 'env\\n'; env | sort; } > \"$CAPTURE_PATH\"\n" +
+		"if IFS= read -r line; then printf '%s\\n' '{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}'; fi\n" +
 		"while IFS= read -r line; do :; done\n"
 	if err := os.WriteFile(script, []byte(content), 0o700); err != nil {
 		t.Fatal(err)
@@ -35,15 +36,12 @@ func TestCodexLauncherUsesExactArgumentsAndExplicitEnvironment(t *testing.T) {
 	}
 	defer func() { _ = transport.Close() }()
 
-	deadline := time.Now().Add(2 * time.Second)
-	var raw []byte
-	for time.Now().Before(deadline) {
-		raw, err = os.ReadFile(capture)
-		if err == nil && bytes.Contains(raw, []byte("OAW_TEST_VALUE=present")) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
+	exchangeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := transport.Exchange(exchangeCtx, []byte(`{"jsonrpc":"2.0","id":1,"method":"probe"}`), 1024); err != nil {
+		t.Fatalf("fixture synchronization failed: %v", err)
 	}
+	raw, err := os.ReadFile(capture)
 	if err != nil || !bytes.Contains(raw, []byte("OAW_TEST_VALUE=present")) {
 		t.Fatalf("capture did not complete: %v: %q", err, raw)
 	}

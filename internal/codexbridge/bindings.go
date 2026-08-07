@@ -43,11 +43,6 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 			add("HOST_OBSERVATION_FAILED", "Skill path is not a canonical regular SKILL.md")
 			continue
 		}
-		content, err := readSkillEvidence(path)
-		if err != nil {
-			add("HOST_OBSERVATION_FAILED", "enabled Skill content could not be read")
-			continue
-		}
 		candidates := candidatesContaining(value, report, path)
 		if len(candidates) == 0 {
 			add("HOST_SKILL_ORPHAN", "enabled Skill is outside every discovered Candidate")
@@ -63,12 +58,28 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 			add("HOST_BINDING_EVIDENCE_REQUIRED", "no declared Skill binding matches the enabled Skill")
 			continue
 		}
+		type availableBinding struct {
+			binding    catalog.HostBinding
+			topologies []execution.Topology
+		}
+		available := make([]availableBinding, 0, len(bindings))
 		for _, binding := range bindings {
 			topologies := intersectTopologies(binding.Topologies, []execution.Topology{execution.TopologyCurrent})
 			if len(topologies) == 0 {
 				add("HOST_BINDING_TOPOLOGY_UNAVAILABLE", "declared Skill binding does not support CURRENT")
 				continue
 			}
+			available = append(available, availableBinding{binding: binding, topologies: topologies})
+		}
+		if len(available) == 0 {
+			continue
+		}
+		content, err := readSkillEvidence(path)
+		if err != nil {
+			add("HOST_OBSERVATION_FAILED", "enabled Skill content could not be read")
+			continue
+		}
+		for _, admitted := range available {
 			record := struct {
 				Name            string `json:"name"`
 				Scope           string `json:"scope"`
@@ -87,8 +98,8 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 				return host.BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill evidence cannot be canonicalized", err)
 			}
 			observations = append(observations, host.BindingObservation{
-				HostID: candidate.HostID, InstallationKey: candidate.InstallationKey, Binding: binding,
-				Topologies: topologies, Source: "native-probe",
+				HostID: candidate.HostID, InstallationKey: candidate.InstallationKey, Binding: admitted.binding,
+				Topologies: admitted.topologies, Source: "native-probe",
 				EvidenceReference: "evidence://codex/skills-list/" + digest, Digest: digest,
 			})
 		}

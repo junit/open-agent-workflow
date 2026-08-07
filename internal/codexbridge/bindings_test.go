@@ -32,6 +32,12 @@ func TestBuildBindingInventoryRejectsDisabledOrphanAndUnboundSkills(t *testing.T
 	unbound := filepath.Join(fixture.Candidate.Location, "skills/unbound/SKILL.md")
 	writeSkillFixture(t, orphan, "orphan")
 	writeSkillFixture(t, unbound, "unbound")
+	if err := os.Truncate(orphan, maximumSkillEvidenceBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(unbound, maximumSkillEvidenceBytes+1); err != nil {
+		t.Fatal(err)
+	}
 	metadata := appserver.MetadataObservation{Skills: appserver.SkillsEntry{CWD: fixture.Home, Skills: []appserver.SkillMetadata{
 		{Name: "acme:review", Enabled: false, Path: filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"), Scope: "user"},
 		{Name: "orphan", Enabled: true, Path: orphan, Scope: "user"},

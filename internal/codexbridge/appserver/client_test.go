@@ -104,6 +104,17 @@ func TestClientNormalizesRemoteMethodErrors(t *testing.T) {
 	}
 }
 
+func TestClientBoundsSlowMetadataResponse(t *testing.T) {
+	client := NewClient(ClientOptions{Transport: blockingTransport{}, RequestTimeout: 100 * time.Millisecond})
+	started := time.Now()
+	if _, err := client.Call(context.Background(), "skills/list", nil); Code(err) != "HOST_OBSERVATION_FAILED" {
+		t.Fatalf("error=%v", err)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("slow response exceeded bounded timeout: %s", elapsed)
+	}
+}
+
 func TestProcessTransportExchangesAndNotifiesWithBoundedJSONLines(t *testing.T) {
 	var exchangeInput bytes.Buffer
 	exchange := newProcessTransport(nopWriteCloser{Writer: &exchangeInput}, bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"result":{}}`+"\n"), nil, func() {})
@@ -130,6 +141,16 @@ type nopWriteCloser struct {
 }
 
 func (nopWriteCloser) Close() error { return nil }
+
+type blockingTransport struct{}
+
+func (blockingTransport) Exchange(ctx context.Context, _ []byte, _ int) ([]byte, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func (blockingTransport) Notify(context.Context, []byte) error { return nil }
+func (blockingTransport) Close() error                         { return nil }
 
 type recordingTransport struct {
 	mu            sync.Mutex
