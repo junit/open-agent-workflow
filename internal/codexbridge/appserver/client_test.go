@@ -171,6 +171,23 @@ func TestProcessTransportExchangesAndNotifiesWithBoundedJSONLines(t *testing.T) 
 	}
 }
 
+func TestProcessTransportSkipsInterleavedNotifications(t *testing.T) {
+	stdout := bytes.NewBufferString(
+		`{"jsonrpc":"2.0","method":"remoteControl/status/changed","params":{}}` +
+			"\n" +
+			`{"id":1,"result":{"ok":true}}` +
+			"\n",
+	)
+	transport := newProcessTransport(nopWriteCloser{Writer: &bytes.Buffer{}}, stdout, nil, func() {})
+	response, err := transport.Exchange(context.Background(), []byte(`{"jsonrpc":"2.0","id":1,"method":"skills/list"}`), 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(response) != `{"id":1,"result":{"ok":true}}` {
+		t.Fatalf("response = %s", response)
+	}
+}
+
 type nopWriteCloser struct {
 	io.Writer
 }

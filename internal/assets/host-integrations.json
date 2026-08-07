@@ -87,7 +87,7 @@
           },
           {
             "reference": "repo://internal/codexbridge/appserver/security_test.go",
-            "digest": "f18336ee94704f0c41ce938436aac76eed656910548c21a938040a11d04c4179"
+            "digest": "029c35c8e129f48c3bb812b5aaf2e6711425be5e19bf8be0d895a57d49d5a60d"
           },
           {
             "reference": "repo://internal/codexbridge/hook/input_test.go",
@@ -98,7 +98,7 @@
             "digest": "c5c4a7afb550d66cbccacb3c0486aeaceafdb90f9f56c2de7e1363b9352f8ac1"
           }
         ],
-        "digest": "7b2e4188a2761f4389e064dac89b268037830ee88c1a672a4a12ca01387d4e40"
+        "digest": "abf39513f433e0ac4e316d4b838a2a50fdbe3e270c907fc94b3f91766417a026"
       },
       "conformance": {
         "schema_version": "oaw.host-conformance-report/v2",
@@ -112,7 +112,7 @@
         "diagnostics": [],
         "digest": "bd305517dc6dda2679bf22cdfbe84460953d9d69fc19e9ccc54c9c15b41c7390"
       },
-      "digest": "e048f1f6fee3685b23557c786c88d5e7758473ceb918890b72196491b1eae3b8"
+      "digest": "760e749c338c2a39d7ddda344ab90ed259acd8b37b3c486f9ba88e8e119300b7"
     },
     {
       "schema_version": "oaw.host-integration/v2",

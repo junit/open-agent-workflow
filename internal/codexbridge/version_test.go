@@ -92,6 +92,15 @@ func TestNegotiateAcceptsVerifiedBaselineAndNewerVersions(t *testing.T) {
 	}
 }
 
+func TestNegotiateAcceptsCodexAppServerUserAgent(t *testing.T) {
+	input := compatibleVersions()
+	input.CodexVersion = "oaw-codex-bridge/0.146.1 (Mac OS 15.7.7; arm64) Orca/1.4.175 (oaw-codex-bridge; 1.0.0)"
+	result, err := Negotiate(input)
+	if err != nil || !result.Compatible {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+}
+
 func TestMetadataValidationUsesCompatibilityNegotiation(t *testing.T) {
 	metadata := completeFactMetadata()
 	metadata.CodexVersion = "0.146.0"

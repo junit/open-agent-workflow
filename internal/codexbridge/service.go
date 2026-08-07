@@ -138,7 +138,11 @@ func (service *Service) WorkflowExchange(_ context.Context, input WorkflowExchan
 	if err != nil {
 		return coordinator.Result{}, err
 	}
-	if err := validateCommandHostFacts(input.Command, facts); err != nil {
+	command, err := input.Command.coordinatorCommand(facts)
+	if err != nil {
+		return coordinator.Result{}, err
+	}
+	if err := validateCommandHostFacts(command, facts); err != nil {
 		return coordinator.Result{}, err
 	}
 	engine, err := coordinator.NewEngine(coordinator.Options{
@@ -159,11 +163,11 @@ func (service *Service) WorkflowExchange(_ context.Context, input WorkflowExchan
 		if err := compareActiveBundleFacts(current, facts); err != nil {
 			return coordinator.Result{}, err
 		}
-		if input.Command.Kind == coordinator.CommandInspect {
+		if command.Kind == coordinator.CommandInspect {
 			return current, nil
 		}
 	}
-	return engine.Exchange(input.Command)
+	return engine.Exchange(command)
 }
 
 func validateCommandHostFacts(command coordinator.Command, facts Facts) error {

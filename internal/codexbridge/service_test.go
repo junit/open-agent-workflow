@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
@@ -61,6 +63,42 @@ func TestCoreCompileCannotReplaceCachedHostFacts(t *testing.T) {
 	}
 	if _, err := DecodeCoreCompileInput(forged); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestWorkflowExchangeCannotReplaceCachedHostFacts(t *testing.T) {
+	raw := []byte(`{
+		"host_evidence_handle":{"version":"v","session_digest":"s","cwd_digest":"c","token":"t"},
+		"command":{
+			"schema_version":"oaw.workflow-command/v1","kind":"START","message_id":"m",
+			"idempotency_key":"i","workflow_id":"","expected_revision":0,
+			"start":{
+				"request_id":"r","deliverable_id":"d","input_digest":"digest","active_ticket":"",
+				"proposal":{"schema_version":"oaw.classification-proposal/v1"},
+				"selection":{},"host_session":{}
+			}
+		}
+	}`)
+	if _, err := DecodeWorkflowExchangeInput(raw); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestWorkflowCommandNormalizesHostReceiptDigest(t *testing.T) {
+	input := WorkflowCommandInput{Receipt: &coordinator.ReceiptInput{Receipt: host.InvocationReceipt{
+		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
+		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64),
+		NodeID: "requirements", Topology: execution.TopologyCurrent,
+		HostSessionDigest: strings.Repeat("b", 64), DispatchDigest: strings.Repeat("c", 64),
+		ContextFreshness: host.ContextShared, EnvironmentReportDigest: strings.Repeat("d", 64),
+		Evidence: []host.EvidenceReference{},
+	}}}
+	command, err := input.coordinatorCommand(Facts{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if command.Receipt == nil || len(command.Receipt.Receipt.Digest) != 64 {
+		t.Fatalf("command = %#v", command)
 	}
 }
 
@@ -125,13 +163,12 @@ func TestWorkflowExchangeRejectsChangedPinnedFactsBeforeMutation(t *testing.T) {
 		t.Fatal("changed observation reused the old handle")
 	}
 	if _, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
-		HostEvidenceHandle: changed.HostEvidenceHandle, Command: cancel,
+		HostEvidenceHandle: changed.HostEvidenceHandle, Command: publicCommand(cancel),
 	}); Code(err) != "HOST_SESSION_CHANGED" {
 		t.Fatalf("error = %v", err)
 	}
 	inspected, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
-		HostEvidenceHandle: handle,
-		Command: coordinator.Command{
+		HostEvidenceHandle: handle, Command: WorkflowCommandInput{
 			SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: cancel.WorkflowID,
 		},
 	})
@@ -339,7 +376,7 @@ func startedWorkflow(t *testing.T) (*Service, HostEvidenceHandle, coordinator.Co
 			HostSession: facts.Session, Environment: facts.Environment,
 		},
 	}
-	started, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{HostEvidenceHandle: observed.HostEvidenceHandle, Command: start})
+	started, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{HostEvidenceHandle: observed.HostEvidenceHandle, Command: publicCommand(start)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -348,4 +385,23 @@ func startedWorkflow(t *testing.T) (*Service, HostEvidenceHandle, coordinator.Co
 		MessageID: "message-cancel", IdempotencyKey: "bridge-service-cancel", WorkflowID: started.WorkflowID,
 		ExpectedRevision: started.Revision, Cancel: &coordinator.CancelInput{Reason: "test cancellation", InvocationTerminal: true},
 	}
+}
+
+func publicCommand(command coordinator.Command) WorkflowCommandInput {
+	result := WorkflowCommandInput{
+		SchemaVersion: command.SchemaVersion, Kind: command.Kind, MessageID: command.MessageID,
+		IdempotencyKey: command.IdempotencyKey, WorkflowID: command.WorkflowID,
+		ExpectedRevision: command.ExpectedRevision, Prepare: command.Prepare, Receipt: command.Receipt, Cancel: command.Cancel,
+	}
+	if command.Start != nil {
+		result.Start = &WorkflowStartInput{
+			RequestID: command.Start.RequestID, DeliverableID: command.Start.DeliverableID,
+			InputDigest: command.Start.InputDigest, ActiveTicket: command.Start.ActiveTicket,
+			Proposal: command.Start.Proposal, Selection: command.Start.Selection,
+		}
+	}
+	if command.Switch != nil {
+		result.Switch = &WorkflowSwitchInput{Boundary: command.Switch.Boundary, Selection: command.Switch.Selection}
+	}
+	return result
 }

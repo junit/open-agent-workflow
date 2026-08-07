@@ -374,7 +374,13 @@ type CodexLauncher struct {
 }
 
 func (launcher CodexLauncher) Open(ctx context.Context, cwd string) (Transport, error) {
-	processCtx, cancel := context.WithCancel(ctx)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// The App Server belongs to the long-lived Bridge client, not to the MCP
+	// request that first caused metadata observation. Client.Close explicitly
+	// ends this process when the Bridge server exits.
+	processCtx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(processCtx, launcher.Binary, "app-server", "--listen", "stdio://")
 	cmd.Dir = cwd
 	if launcher.Environment == nil {
@@ -397,7 +403,12 @@ func (launcher CodexLauncher) Open(ctx context.Context, cwd string) (Transport, 
 		cancel()
 		return nil, err
 	}
-	return newProcessTransport(stdin, stdout, cmd, cancel), nil
+	transport := newProcessTransport(stdin, stdout, cmd, cancel)
+	if err := ctx.Err(); err != nil {
+		_ = transport.Close()
+		return nil, err
+	}
+	return transport, nil
 }
 
 type processTransport struct {
@@ -427,8 +438,17 @@ func (transport *processTransport) Exchange(ctx context.Context, request []byte,
 			completed <- result{err: err}
 			return
 		}
-		value, err := readJSONLine(transport.stdout, maximum)
-		completed <- result{value: value, err: err}
+		for {
+			value, err := readJSONLine(transport.stdout, maximum)
+			if err != nil {
+				completed <- result{err: err}
+				return
+			}
+			if hasMessageID(value) {
+				completed <- result{value: value}
+				return
+			}
+		}
 	}()
 	select {
 	case output := <-completed:
@@ -438,6 +458,16 @@ func (transport *processTransport) Exchange(ctx context.Context, request []byte,
 		<-completed
 		return nil, ctx.Err()
 	}
+}
+
+func hasMessageID(raw []byte) bool {
+	var envelope struct {
+		ID json.RawMessage `json:"id"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return false
+	}
+	return len(envelope.ID) != 0 && string(envelope.ID) != "null"
 }
 
 func (transport *processTransport) Notify(ctx context.Context, notification []byte) error {

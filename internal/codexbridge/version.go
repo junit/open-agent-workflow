@@ -1,6 +1,7 @@
 package codexbridge
 
 import (
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -8,6 +9,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
+
+var codexVersionToken = regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?`)
 
 const (
 	MinimumCodexBaseline    = "0.146.1"
@@ -90,29 +93,8 @@ func currentVersionEvidence(codexVersion string, metadataMethods []string) Versi
 }
 
 func compareCodexVersion(value, minimum string) int {
-	parse := func(raw string) ([3]int, bool) {
-		raw = strings.TrimSpace(raw)
-		raw = strings.TrimPrefix(raw, "codex-cli ")
-		raw = strings.TrimPrefix(raw, "codex-cli/")
-		if strings.ContainsAny(raw, "+-") {
-			return [3]int{}, false
-		}
-		parts := strings.Split(raw, ".")
-		if len(parts) != 3 {
-			return [3]int{}, false
-		}
-		var result [3]int
-		for index, part := range parts {
-			parsed, err := strconv.Atoi(part)
-			if err != nil || parsed < 0 {
-				return [3]int{}, false
-			}
-			result[index] = parsed
-		}
-		return result, true
-	}
-	left, leftOK := parse(value)
-	right, rightOK := parse(minimum)
+	left, leftOK := parseCodexVersion(value)
+	right, rightOK := parseCodexVersion(minimum)
 	if !leftOK || !rightOK {
 		return -1
 	}
@@ -125,4 +107,44 @@ func compareCodexVersion(value, minimum string) int {
 		}
 	}
 	return 0
+}
+
+func parseCodexVersion(raw string) ([3]int, bool) {
+	raw = strings.TrimSpace(raw)
+	for _, prefix := range []string{"codex-cli ", "codex-cli/"} {
+		if strings.HasPrefix(raw, prefix) {
+			raw = strings.TrimPrefix(raw, prefix)
+			break
+		}
+	}
+	if parsed, ok := parseVersionTriplet(raw); ok {
+		return parsed, true
+	}
+	match := codexVersionToken.FindStringIndex(raw)
+	if match == nil || !strings.Contains(strings.ToLower(raw[:match[0]]), "codex") {
+		return [3]int{}, false
+	}
+	if strings.ContainsAny(raw[match[0]:match[1]], "+-") {
+		return [3]int{}, false
+	}
+	return parseVersionTriplet(raw[match[0]:match[1]])
+}
+
+func parseVersionTriplet(raw string) ([3]int, bool) {
+	if strings.ContainsAny(raw, "+-") {
+		return [3]int{}, false
+	}
+	parts := strings.Split(raw, ".")
+	if len(parts) != 3 {
+		return [3]int{}, false
+	}
+	var result [3]int
+	for index, part := range parts {
+		parsed, err := strconv.Atoi(part)
+		if err != nil || parsed < 0 {
+			return [3]int{}, false
+		}
+		result[index] = parsed
+	}
+	return result, true
 }

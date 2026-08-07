@@ -32,6 +32,9 @@ func TestMCPListsExactlyFourClosedTools(t *testing.T) {
 		if strings.Contains(string(raw), "_oaw_host_context") {
 			t.Fatalf("private Hook context advertised by %s", tool.Name)
 		}
+		if tool.Name == "workflow_exchange" && (strings.Contains(string(raw), `"host_session"`) || strings.Contains(string(raw), `"environment"`)) {
+			t.Fatalf("Host-owned facts advertised by %s: %s", tool.Name, raw)
+		}
 	}
 }
 

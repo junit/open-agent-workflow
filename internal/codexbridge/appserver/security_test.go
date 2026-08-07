@@ -53,6 +53,36 @@ func TestCodexLauncherUsesExactArgumentsAndExplicitEnvironment(t *testing.T) {
 	}
 }
 
+func TestCodexLauncherOutlivesOpeningRequestContext(t *testing.T) {
+	directory := t.TempDir()
+	script := filepath.Join(directory, "fake-codex")
+	content := "#!/bin/sh\n" +
+		"request_id=0\n" +
+		"while IFS= read -r line; do request_id=$((request_id + 1)); printf '{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{}}\\n' \"$request_id\"; done\n"
+	if err := os.WriteFile(script, []byte(content), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	openCtx, cancelOpen := context.WithCancel(context.Background())
+	transport, err := (CodexLauncher{Binary: script}).Open(openCtx, directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = transport.Close() }()
+	cancelOpen()
+	time.Sleep(50 * time.Millisecond)
+
+	exchangeCtx, cancelExchange := context.WithTimeout(context.Background(), time.Second)
+	defer cancelExchange()
+	response, err := transport.Exchange(exchangeCtx, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`), 1024)
+	if err != nil {
+		t.Fatalf("request cancellation stopped the App Server: %v", err)
+	}
+	if string(response) != `{"jsonrpc":"2.0","id":1,"result":{}}` {
+		t.Fatalf("response = %s", response)
+	}
+}
+
 func TestJSONLineFramingIsBounded(t *testing.T) {
 	var output bytes.Buffer
 	if err := writeJSONLine(&output, []byte(`{"ok":true}`), 64); err != nil {

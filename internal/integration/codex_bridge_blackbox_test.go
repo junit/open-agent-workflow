@@ -16,10 +16,8 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/cli"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
-	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
-	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
@@ -52,7 +50,6 @@ func TestDirectPathDoesNotRequireBridge(t *testing.T) {
 type codexBridgeFixture struct {
 	client        *mcp.ClientSession
 	hostContext   codexbridge.HookContext
-	facts         codexbridge.Facts
 	proposal      classification.ClassificationProposal
 	deliverableID string
 	inputDigest   string
@@ -104,9 +101,8 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	facts := assembleCodexBridgeFixtureFacts(t, metadata, hostContext, userConfigRoot, userHome)
 	return codexBridgeFixture{
-		client: connectCodexBridgeMCP(t, service), hostContext: hostContext, facts: facts,
+		client: connectCodexBridgeMCP(t, service), hostContext: hostContext,
 		proposal:      classification.ClassificationProposal{SchemaVersion: classification.ProposalSchemaV1},
 		deliverableID: "codex-bridge-blackbox", inputDigest: canonicaljson.DigestBytes([]byte("codex-bridge-blackbox-input")),
 	}
@@ -144,41 +140,6 @@ func writeCodexBridgeFixture(t *testing.T, path, contents string) {
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func assembleCodexBridgeFixtureFacts(
-	t *testing.T,
-	metadata appserver.MetadataObservation,
-	hostContext codexbridge.HookContext,
-	userConfigRoot string,
-	userHome string,
-) codexbridge.Facts {
-	t.Helper()
-	metadata.Skills.CWD = hostContext.CWD
-	metadata.Hooks.CWD = hostContext.CWD
-	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: userConfigRoot, ProjectRoot: hostContext.CWD})
-	if err != nil {
-		t.Fatal(err)
-	}
-	report, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: userHome})
-	if err != nil {
-		t.Fatal(err)
-	}
-	inventory, _, err := codexbridge.BuildBindingInventory(snapshot.Catalog(), report, metadata, hostContext.CWD)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resolved, err := core.Resolve(core.ResolutionRequest{
-		Configuration: snapshot, HostID: "codex", Discovery: report, Inventory: &inventory,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	facts, err := codexbridge.AssembleFacts(hostContext, metadata, snapshot, report, inventory, resolved)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return facts
 }
 
 func connectCodexBridgeMCP(t *testing.T, service *codexbridge.Service) *mcp.ClientSession {
@@ -254,13 +215,12 @@ func callWorkflowStartThroughMCP(
 	compiled core.CompilationResult,
 ) coordinator.Result {
 	t.Helper()
-	command := coordinator.Command{
+	command := codexbridge.WorkflowCommandInput{
 		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
 		MessageID: "message-start", IdempotencyKey: "codex-bridge-blackbox-start",
-		Start: &coordinator.StartInput{
+		Start: &codexbridge.WorkflowStartInput{
 			RequestID: "request-codex-bridge-blackbox", DeliverableID: fixture.deliverableID,
 			InputDigest: fixture.inputDigest, Proposal: fixture.proposal, Selection: compiled.Bundle.Selection,
-			HostSession: fixture.facts.Session, Environment: fixture.facts.Environment,
 		},
 	}
 	result := callCodexBridgeTool[coordinator.Result](t, fixture.client, "workflow_exchange", codexbridge.WorkflowExchangeInput{
