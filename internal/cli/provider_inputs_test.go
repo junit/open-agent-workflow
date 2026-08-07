@@ -1,13 +1,55 @@
 package cli
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
+
+func TestLoadProviderInputsUsesHostBindingInventory(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	configRoot := filepath.Join(t.TempDir(), "open-agent-workflow")
+	providerRoot := filepath.Join(configRoot, "providers")
+	if err := os.MkdirAll(providerRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	descriptor, err := json.Marshal(fixture.Catalog.Providers()[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(providerRoot, "acme.json"), descriptor, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	configContents := "schema_version = \"oaw.user-config/v3\"\n" +
+		"[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n"
+	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte(configContents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	inputs, err := loadProviderInputs(providerInputOptions{
+		HostID: "codex", UserConfigRoot: configRoot, UserHome: fixture.Home, Inventory: &fixture.Inventory,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolution, ok := inputs.Resolutions.Resolution("acme/suite")
+	if !ok || resolution.State != registry.Verified {
+		t.Fatalf("resolution = %#v, found=%v", resolution, ok)
+	}
+	if inputs.Inventory == nil || inputs.Inventory == &fixture.Inventory || len(inputs.Inventory.Observations) == 0 {
+		t.Fatalf("inventory was not defensively cloned: %#v", inputs.Inventory)
+	}
+	fixture.Inventory.Observations[0].Topologies = []execution.Topology{execution.TopologySubagent}
+	if got := inputs.Inventory.Observations[0].Topologies; len(got) != 1 || got[0] != execution.TopologyCurrent {
+		t.Fatalf("cloned inventory changed with caller input: %#v", got)
+	}
+}
 
 func TestLoadProviderInputsSeparatesSelectedHostAuthorityFromForeignDiagnostics(t *testing.T) {
 	userHome := t.TempDir()

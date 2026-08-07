@@ -20,6 +20,7 @@ func TestParseProvidersCommand(t *testing.T) {
 		want providerCommand
 	}{
 		{[]string{"inspect", "--host", "codex"}, providerCommand{hostID: "codex", format: "text"}},
+		{[]string{"inspect", "--host", "codex", "--strict"}, providerCommand{hostID: "codex", format: "text", strict: true}},
 		{[]string{"inspect", "--host=codex", "--format=text"}, providerCommand{hostID: "codex", format: "text"}},
 		{[]string{"inspect", "--host", "codex", "--project-root", projectRoot, "--format", "json"}, providerCommand{hostID: "codex", projectRoot: projectRoot, format: "json"}},
 	}
@@ -41,6 +42,20 @@ func TestParseProvidersCommand(t *testing.T) {
 		if _, err := parseProvidersCommand(args); err == nil {
 			t.Fatalf("parseProvidersCommand(%v) accepted invalid arguments", args)
 		}
+	}
+}
+
+func TestStrictProviderInspectionFailsClosedWithoutBridgeInventory(t *testing.T) {
+	newProviderInspectionHostsFixture(t, []string{"current"}, false)
+	var stdout, stderr bytes.Buffer
+	status := RunWithInput(
+		[]string{"providers", "inspect", "--host", "codex", "--strict"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if status != 69 || stdout.Len() != 0 || !strings.Contains(stderr.String(), "HOST_BRIDGE_UNAVAILABLE") || !strings.Contains(stderr.String(), "invoke core.inspect in the active Codex session") {
+		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
 }
 

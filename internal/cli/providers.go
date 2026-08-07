@@ -22,6 +22,7 @@ type providerCommand struct {
 	hostID      string
 	projectRoot string
 	format      string
+	strict      bool
 }
 
 type providerInspectionOutput struct {
@@ -109,6 +110,10 @@ func runProviders(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "oaw: %s: %v\n", reason, err)
 		return status
 	}
+	if parsed.strict && inputs.Inventory == nil {
+		fmt.Fprintln(stderr, "oaw: HOST_BRIDGE_UNAVAILABLE: strict inspection requires current-session Bridge evidence; invoke core.inspect in the active Codex session")
+		return 69
+	}
 	output := providerInspectionProjection(inputs)
 	if parsed.format == "json" {
 		return writeProviderInspectionJSON(output, stdout, stderr)
@@ -121,7 +126,7 @@ func parseProvidersCommand(args []string) (providerCommand, error) {
 	if len(args) == 0 || args[0] != "inspect" {
 		return providerCommand{}, fmt.Errorf("expected providers inspect command")
 	}
-	hostSeen, projectSeen, formatSeen := false, false, false
+	hostSeen, projectSeen, formatSeen, strictSeen := false, false, false, false
 	for index := 1; index < len(args); {
 		argument := args[index]
 		switch {
@@ -166,6 +171,13 @@ func parseProvidersCommand(args []string) (providerCommand, error) {
 			}
 			formatSeen = true
 			result.format = strings.TrimPrefix(argument, "--format=")
+			index++
+		case argument == "--strict":
+			if strictSeen {
+				return providerCommand{}, fmt.Errorf("--strict may be specified only once")
+			}
+			strictSeen = true
+			result.strict = true
 			index++
 		default:
 			return providerCommand{}, fmt.Errorf("unexpected providers argument %q", argument)

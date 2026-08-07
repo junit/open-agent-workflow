@@ -9,6 +9,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -17,6 +18,7 @@ type providerInputOptions struct {
 	ProjectRoot               string
 	UserConfigRoot            string
 	UserHome                  string
+	Inventory                 *host.BindingInventory
 	IncludeForeignDiagnostics bool
 }
 
@@ -29,6 +31,7 @@ type providerInputs struct {
 	HostID           string
 	Configuration    config.Snapshot
 	Discovery        discovery.Report
+	Inventory        *host.BindingInventory
 	Resolutions      registry.ResolutionReport
 	Registry         registry.Registry
 	Foreign          []foreignProviderDiscovery
@@ -71,10 +74,15 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_DISCOVERY_REQUIRED: %w", err)
 	}
+	inventory, err := validatedProviderInventory(options.Inventory, options.HostID)
+	if err != nil {
+		return providerInputs{}, fmt.Errorf("PROVIDER_REGISTRY_REQUIRED: %w", err)
+	}
 	resolved, err := core.Resolve(core.ResolutionRequest{
 		Configuration: snapshot,
 		HostID:        options.HostID,
 		Discovery:     evidence,
+		Inventory:     inventory,
 	})
 	if err != nil {
 		return providerInputs{}, fmt.Errorf("PROVIDER_REGISTRY_REQUIRED: %w", err)
@@ -103,9 +111,21 @@ func loadProviderInputs(options providerInputOptions) (providerInputs, error) {
 	}
 	return providerInputs{
 		HostID:        options.HostID,
-		Configuration: snapshot, Discovery: evidence, Resolutions: resolved.Report, Registry: resolved.Registry, Foreign: foreign,
+		Configuration: snapshot, Discovery: evidence, Inventory: inventory, Resolutions: resolved.Report, Registry: resolved.Registry, Foreign: foreign,
 		UserConfigPath: configPath, UserConfigExists: exists,
 	}, nil
+}
+
+func validatedProviderInventory(value *host.BindingInventory, hostID string) (*host.BindingInventory, error) {
+	if value == nil {
+		return nil, nil
+	}
+	cloned := host.CloneBindingInventory(*value)
+	rebuilt, err := host.NewBindingInventory(cloned.HostID, cloned.Observations)
+	if err != nil || cloned.SchemaVersion != host.BindingInventorySchemaV2 || cloned.HostID != hostID || rebuilt.Digest != cloned.Digest {
+		return nil, fmt.Errorf("HOST_BINDING_INVENTORY_INVALID: inventory does not match Host %q", hostID)
+	}
+	return &cloned, nil
 }
 
 func providerHostIDs(snapshot config.Snapshot) []string {
