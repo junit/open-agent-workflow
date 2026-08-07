@@ -25,6 +25,7 @@ func TestParsePreToolUseRejectsWrongToolAndMalformedInput(t *testing.T) {
 	for _, raw := range []string{
 		`{"session_id":"s","turn_id":"t","tool_use_id":"u","cwd":"/repo","hook_event_name":"PreToolUse","model":"m","permission_mode":"default","tool_name":"Bash","tool_input":{}}`,
 		`{"session_id":"s","turn_id":"t","tool_use_id":"u","cwd":"/repo","hook_event_name":"PreToolUse","model":"m","permission_mode":"default","tool_name":"mcp__oaw_codex_bridge__observe_current","tool_input":[]}`,
+		`{"session_id":"s\u0000","turn_id":"t","tool_use_id":"u","cwd":"/repo","hook_event_name":"PreToolUse","model":"m","permission_mode":"default","tool_name":"mcp__oaw_codex_bridge__observe_current","tool_input":{}}`,
 		`{"session_id":"s","turn_id":"t","tool_use_id":"u","cwd":"/repo","hook_event_name":"PreToolUse","model":"m","permission_mode":"default","tool_name":"mcp__oaw_codex_bridge__observe_current","tool_input":{},"extra":true}`,
 	} {
 		if _, err := ParsePreToolUse([]byte(raw)); codexbridge.Code(err) != "HOST_BRIDGE_CONTEXT_REQUIRED" {
@@ -53,7 +54,16 @@ func TestProcessMalformedInputReturnsDeny(t *testing.T) {
 func FuzzParsePreToolUse(f *testing.F) {
 	f.Add([]byte(`{"session_id":"s","turn_id":"t","tool_use_id":"u","cwd":"/repo","hook_event_name":"PreToolUse","model":"m","permission_mode":"default","tool_name":"mcp__oaw_codex_bridge__observe_current","tool_input":{}}`))
 	f.Fuzz(func(t *testing.T, raw []byte) {
-		_, _ = ParsePreToolUse(raw)
+		if len(raw) > 64<<10 {
+			return
+		}
+		output, _ := ProcessPreToolUse(raw)
+		if output.HookSpecificOutput != nil && output.HookSpecificOutput.PermissionDecision == "allow" {
+			input, err := ParsePreToolUse(raw)
+			if err != nil || !isObservationTool(input.ToolName) {
+				t.Fatalf("non-observation input received allow: tool=%q err=%v", input.ToolName, err)
+			}
+		}
 	})
 }
 

@@ -25,3 +25,22 @@ func TestDiagnosticProjectionKeepsSafeDetailAndMapsRecovery(t *testing.T) {
 		t.Fatalf("diagnostic = %#v", value)
 	}
 }
+
+func TestDiagnosticRecoveryMappingsAreClosed(t *testing.T) {
+	tests := []struct {
+		code        string
+		layer       string
+		recoverable bool
+	}{
+		{"HOST_BRIDGE_CONTEXT_REQUIRED", "bridge", true},
+		{"HOST_EVIDENCE_EXPIRED", "evidence", true},
+		{"HOST_OBSERVATION_PARTIAL", "downstream", true},
+		{"HOST_OBSERVATION_FAILED", "downstream", false},
+	}
+	for _, test := range tests {
+		value := NewDiagnostic(test.code, layerForCode(test.code), "safe", false)
+		if value.Layer != test.layer || value.RecoverableByObservation != test.recoverable || value.RecoveryAction == "" {
+			t.Fatalf("%s diagnostic=%#v", test.code, value)
+		}
+	}
+}

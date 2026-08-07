@@ -64,7 +64,7 @@ func validatePreToolUseInput(input PreToolUseInput) error {
 }
 
 func validHookText(value string, maximumRunes int) bool {
-	return value != "" && utf8.ValidString(value) && len([]rune(value)) <= maximumRunes &&
+	return value != "" && utf8.ValidString(value) && utf8.RuneCountInString(value) <= maximumRunes &&
 		strings.TrimSpace(value) == value && strings.IndexFunc(value, unicode.IsControl) < 0
 }
 

@@ -1,7 +1,6 @@
 package codexbridge
 
 import (
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -53,7 +52,7 @@ func validateFacts(value Facts) error {
 		value.Environment.Topology != execution.TopologyCurrent {
 		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host facts are not pinned to the same session", nil)
 	}
-	if err := validateFactDigests(value.FactDigests); err != nil {
+	if err := validateFactDigests(value); err != nil {
 		return err
 	}
 	return nil
@@ -82,29 +81,24 @@ func bridgeManifest(session host.SessionSnapshot) (host.Manifest, error) {
 	})
 }
 
-func validateFactDigests(value FactDigests) error {
+func validateFactDigests(value Facts) error {
 	values := []struct {
-		name   string
-		digest string
+		name     string
+		declared string
+		actual   string
 	}{
-		{"session", value.Session}, {"inventory", value.Inventory}, {"environment", value.Environment},
-		{"configuration", value.Configuration}, {"discovery", value.Discovery}, {"resolution", value.Resolution}, {"registry", value.Registry},
+		{"session", value.FactDigests.Session, value.Session.Digest},
+		{"inventory", value.FactDigests.Inventory, value.Inventory.Digest},
+		{"environment", value.FactDigests.Environment, value.Environment.Digest},
+		{"configuration", value.FactDigests.Configuration, value.Configuration.Digest()},
+		{"discovery", value.FactDigests.Discovery, value.Discovery.Digest()},
+		{"resolution", value.FactDigests.Resolution, value.Resolutions.Digest()},
+		{"registry", value.FactDigests.Registry, value.Registry.Digest()},
 	}
 	for _, item := range values {
-		if item.digest != "" && (len(item.digest) != 64 || strings.Trim(item.digest, "0123456789abcdef") != "") {
+		if item.declared != item.actual || item.actual != "" && (len(item.actual) != 64 || strings.Trim(item.actual, "0123456789abcdef") != "") {
 			return NewError("HOST_EVIDENCE_HANDLE_INVALID", fmt.Sprintf("invalid %s fact digest", item.name), nil)
 		}
 	}
 	return nil
-}
-
-func factDigest(value string) string {
-	if len(value) != 64 {
-		return ""
-	}
-	decoded, err := hex.DecodeString(value)
-	if err != nil || len(decoded) != 32 {
-		return ""
-	}
-	return value
 }

@@ -127,7 +127,7 @@ func (store *evidenceStore) Get(handle HostEvidenceHandle) (Facts, error) {
 		return Facts{}, NewError("HOST_EVIDENCE_SESSION_MISMATCH", "handle headers do not match the cached Host context", nil)
 	}
 	now := store.now()
-	if !now.Before(entry.expires) {
+	if now.Before(entry.issued) || !now.Before(entry.expires) {
 		store.removeElement(element)
 		return Facts{}, NewError("HOST_EVIDENCE_EXPIRED", "Host evidence handle has expired", nil)
 	}
