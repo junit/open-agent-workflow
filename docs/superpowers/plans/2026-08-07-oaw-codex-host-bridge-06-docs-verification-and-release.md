@@ -375,7 +375,7 @@ rtk git commit -m "test: add Codex Bridge platform gates"
 - Create: `.scratch/oaw-codex-host-bridge-dogfood/verification.json`
 - Create: `.scratch/oaw-codex-host-bridge-dogfood/cleanup.json`
 
-- [ ] **Step 1: Capture the clean pilot preflight**
+- [x] **Step 1: Capture the clean pilot preflight**
 
 Run against `/Users/wifibaby4u/LLM/open-code-review` without changing its
 remote or publishing artifacts:
@@ -391,7 +391,7 @@ Record the exact baseline, current branch, Codex version, Bridge version, and
 whether the Plugin is already enabled. Abort the live step if the repository is
 not clean; leave only a local diagnostic artifact.
 
-- [ ] **Step 2: Install and review the opt-in Plugin**
+- [x] **Step 2: Install and review the opt-in Plugin**
 
 Build the current binary, run `oaw bridge install codex`, inspect the rendered
 manifest pointers (`skills`, `mcpServers`, and `hooks`), `hooks/hooks.json`, and
@@ -400,7 +400,7 @@ Start a new Codex session before observing. Do not use a bypass-trust flag.
 Capture Hook hash and install state digests, never raw Hook commands or
 credentials.
 
-- [ ] **Step 3: Prove current-session observation and Provider resolution**
+- [x] **Step 3: Prove current-session observation and Provider resolution**
 
 In the new Codex session, call `observe_current`, then `core.inspect`; record
 only the secret-free outputs. Confirm at least one actually enabled Skill maps
@@ -408,7 +408,7 @@ to exactly one discovered installation and that absent Matt/ECC Skills remain
 Candidate/ineligible. Confirm `CURRENT` is the only topology and Direct Mode
 still works with Bridge disabled.
 
-- [ ] **Step 4: Run one controlled Workflow**
+- [x] **Step 4: Run one controlled Workflow**
 
 Use `/Users/wifibaby4u/LLM/open-code-review` on an isolated branch or worktree,
 select a previously approved Profile explicitly at the Startup Gate, compile
@@ -417,7 +417,7 @@ deliverable, submit a normalized Receipt, and capture verification evidence.
 Do not commit or push pilot changes. Stop on any Host fact change, unexpected
 approval behavior, or missing evidence.
 
-- [ ] **Step 5: Uninstall and capture cleanup**
+- [x] **Step 5: Uninstall and capture cleanup**
 
 After the pilot, run `oaw bridge uninstall codex`, verify official Plugin and
 marketplace removal, verify only clean OAW-owned files disappeared, and start a
@@ -432,7 +432,7 @@ if rtk git ls-files --error-unmatch .scratch/oaw-codex-host-bridge-dogfood >/dev
 if rtk git diff --cached --name-only | rtk rg -q '^\.scratch/oaw-codex-host-bridge-dogfood/'; then exit 1; fi
 ```
 
-- [ ] **Step 6: Review dogfood evidence**
+- [x] **Step 6: Review dogfood evidence**
 
 ```bash
 rtk jq -e '.session_id_digest and .inventory_digest' .scratch/oaw-codex-host-bridge-dogfood/observation.json
@@ -445,7 +445,7 @@ credential, raw App Server config, or full absolute Skill path.
 
 ## Task 6: Run the final release-readiness gate without publishing
 
-- [ ] **Step 1: Run the complete supported test set**
+- [x] **Step 1: Run the complete supported test set**
 
 ```bash
 rtk go test ./...
@@ -458,7 +458,7 @@ rtk bash scripts/check-codex-bridge.sh
 Expected: PASS. Any unavailable platform command is recorded as `SKIP`/77,
 not hidden as success.
 
-- [ ] **Step 2: Verify hard-cutover exclusions**
+- [x] **Step 2: Verify hard-cutover exclusions**
 
 ```bash
 rtk rg -n 'codex exec|thread/start|thread/resume|thread/fork|turn/start|turn/steer|plugin/list|private.*HOME|projected.*config|NATIVE_SUBAGENT|INLINE|oaw/codex-runner' --glob '*.go' --glob '!**/*_test.go' internal/codexbridge internal/cli
@@ -469,7 +469,7 @@ Expected: production files have no forbidden path. Approved negative tests,
 design documents, and the verification script's own forbidden-pattern list
 are outside these production-only scan roots.
 
-- [ ] **Step 3: Inspect status and produce a local report**
+- [x] **Step 3: Inspect status and produce a local report**
 
 ```bash
 rtk git status --short --branch
@@ -482,7 +482,7 @@ commands, PASS/SKIP results, Docker architecture, macOS Codex version, and
 unresolved follow-up tickets. Do not commit the report, push, tag, merge, or
 create a release in this phase.
 
-- [ ] **Step 4: Verify the tracked implementation is already committed**
+- [x] **Step 4: Verify the tracked implementation is already committed**
 
 ```bash
 rtk git diff --name-only
