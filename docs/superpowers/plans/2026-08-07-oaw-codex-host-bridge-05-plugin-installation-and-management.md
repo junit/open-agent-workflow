@@ -288,7 +288,7 @@ rtk git commit -m "feat: package Codex Host Bridge plugin"
 - Create: `internal/codexbridge/install/state_test.go`
 - Create: `internal/codexbridge/install/runner_test.go`
 
-- [ ] **Step 1: Write failing state and argument-vector tests**
+- [x] **Step 1: Write failing state and argument-vector tests**
 
 ```go
 func TestRunnerNeverUsesShell(t *testing.T) {
@@ -309,7 +309,7 @@ func TestInstallStateIsClosedAndDigestPinned(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 rtk go test ./internal/codexbridge/install -run 'Runner|InstallState'
@@ -317,7 +317,7 @@ rtk go test ./internal/codexbridge/install -run 'Runner|InstallState'
 
 Expected: FAIL because state and runner types are absent.
 
-- [ ] **Step 3: Add state records and OAW-owned coordinates**
+- [x] **Step 3: Add state records and OAW-owned coordinates**
 
 ```go
 const InstallStateSchemaV1 = "oaw.codex-bridge-install/v1"
@@ -363,7 +363,7 @@ fsync, and atomically rename. State validation checks every recorded file's
 current checksum before update or uninstall. Drift yields
 `BRIDGE_INSTALL_DRIFT` and preserves the file.
 
-- [ ] **Step 4: Add the official Codex CLI runner**
+- [x] **Step 4: Add the official Codex CLI runner**
 
 ```go
 type CLIResult struct { Stdout, Stderr []byte; ExitCode int }
@@ -404,7 +404,7 @@ the user's normal authentication and config surface; a non-nil environment is
 copied without mutation. The runner never creates a private HOME/CODEX_HOME or
 projects replacement configuration.
 
-- [ ] **Step 5: Run GREEN and security checks**
+- [x] **Step 5: Run GREEN and security checks**
 
 ```bash
 rtk gofmt -w internal/codexbridge/install/records.go internal/codexbridge/install/paths.go internal/codexbridge/install/runner.go internal/codexbridge/install/*_test.go
@@ -416,7 +416,7 @@ rtk go vet ./internal/codexbridge/install
 Expected: PASS; tests prove no shell, no Codex config edit, and no secret in
 state or runner diagnostics.
 
-- [ ] **Step 6: Commit state and runner**
+- [x] **Step 6: Commit state and runner**
 
 ```bash
 rtk git add internal/codexbridge/install/records.go internal/codexbridge/install/paths.go internal/codexbridge/install/runner.go internal/codexbridge/install/*_test.go
