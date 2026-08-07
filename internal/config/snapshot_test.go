@@ -37,15 +37,20 @@ replace = false
 	if !found || loaded.Digest != integration.Digest {
 		t.Fatalf("HostIntegration() = %#v, %t", loaded, found)
 	}
-	if got := len(snapshot.HostIntegrations()); got != 10 {
-		t.Fatalf("HostIntegrations() count = %d, want 10", got)
+	if got := len(snapshot.HostIntegrations()); got != 11 {
+		t.Fatalf("HostIntegrations() count = %d, want 11", got)
 	}
 	loaded.Manifest.SupportedTopologies[0] = execution.TopologySubagent
 	fresh, found := snapshot.HostIntegration("acme/codex-policy")
 	if !found || fresh.Manifest.SupportedTopologies[0] != execution.TopologyCurrent {
 		t.Fatal("HostIntegration() exposed Snapshot storage")
 	}
-	if snapshot.Record().HostIntegrations[9].Digest == "" || snapshot.Digest() == "" {
+	for _, record := range snapshot.Record().HostIntegrations {
+		if record.Digest == "" {
+			t.Fatalf("Snapshot record does not pin Host Integration %q", record.ID)
+		}
+	}
+	if snapshot.Digest() == "" {
 		t.Fatalf("Snapshot record does not pin Host Integrations: %#v", snapshot.Record())
 	}
 }
@@ -57,7 +62,7 @@ func TestLoadRejectsUntrustedHostIntegrationInputs(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		writeConfigTestHostIntegration(t, root, "integrations/codex.toml", builtins[2])
+		writeConfigTestHostIntegration(t, root, "integrations/codex.toml", configTestIntegrationByID(t, builtins, "oaw/codex-policy"))
 		writeConfigTestUserFile(t, root, `
 schema_version = "oaw.user-config/v3"
 [[host_integrations]]
@@ -156,6 +161,17 @@ replace = false
 			t.Fatalf("Load() error = %v", err)
 		}
 	})
+}
+
+func configTestIntegrationByID(t *testing.T, values []host.IntegrationRecord, id string) host.IntegrationRecord {
+	t.Helper()
+	for _, value := range values {
+		if value.ID == id {
+			return value
+		}
+	}
+	t.Fatalf("Host Integration %q not found", id)
+	return host.IntegrationRecord{}
 }
 
 func TestEquivalentHostIntegrationOrderProducesSameSnapshot(t *testing.T) {
