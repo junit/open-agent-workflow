@@ -1,0 +1,13 @@
+{
+  "name": "{{MARKETPLACE_NAME}}",
+  "plugins": [
+    {
+      "name": "{{PLUGIN_NAME}}",
+      "source": {
+        "source": "local",
+        "path": "./plugins/oaw-codex-host"
+      },
+      "version": "{{BRIDGE_VERSION}}"
+    }
+  ]
+}

@@ -31,7 +31,7 @@
 | `internal/codexbridge/install/assets/.mcp.json` | MCP server template with binary placeholder. |
 | `internal/codexbridge/install/assets/hooks/hooks.json` | Exact four-tool PreToolUse matcher template. |
 | `internal/codexbridge/install/assets/skills/oaw-codex-bridge/SKILL.md` | Instruction-only guidance; never evidence. |
-| `internal/codexbridge/install/assets/marketplace.json` | OAW-owned local marketplace template. |
+| `internal/codexbridge/install/assets/.agents/plugins/marketplace.json` | OAW-owned local marketplace template at the Codex 0.146.1 discovery path. |
 | `internal/cli/bridge.go` | CLI parsing and command dispatch. |
 | `internal/cli/run.go` | Root command dispatch and usage text. |
 | `internal/cli/bridge_test.go` | Argument validation and command exit status tests. |
@@ -48,12 +48,19 @@ command string or interpolates unquoted path bytes. The five rendered files
 use this marketplace-relative layout:
 
 ```text
-marketplace.json
+.agents/plugins/marketplace.json
 plugins/oaw-codex-host/.codex-plugin/plugin.json
 plugins/oaw-codex-host/.mcp.json
 plugins/oaw-codex-host/hooks/hooks.json
 plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md
 ```
+
+Codex 0.146.1 accepts a local marketplace directory only when its manifest is
+at `.agents/plugins/marketplace.json`; it rejects both a root
+`marketplace.json` and a JSON file passed directly as the marketplace source.
+The marketplace entry therefore uses the official object-valued local source
+`{"source":"local","path":"./plugins/oaw-codex-host"}`. OAW supports only
+that current format and does not render the rejected shapes.
 
 The MCP file has this semantic content:
 
@@ -101,10 +108,10 @@ argv, so the two execution surfaces cannot accidentally share quoting rules.
 - Create: `internal/codexbridge/install/assets/.mcp.json`
 - Create: `internal/codexbridge/install/assets/hooks/hooks.json`
 - Create: `internal/codexbridge/install/assets/skills/oaw-codex-bridge/SKILL.md`
-- Create: `internal/codexbridge/install/assets/marketplace.json`
+- Create: `internal/codexbridge/install/assets/.agents/plugins/marketplace.json`
 - Create: `internal/codexbridge/install/templates_test.go`
 
-- [ ] **Step 1: Write failing template tests**
+- [x] **Step 1: Write failing template tests**
 
 ```go
 func TestRenderPluginHasExactSurface(t *testing.T) {
@@ -114,7 +121,7 @@ func TestRenderPluginHasExactSurface(t *testing.T) {
 	if strings.Contains(string(files["plugins/oaw-codex-host/hooks/hooks.json"]), "{{") || strings.Contains(string(files["plugins/oaw-codex-host/.mcp.json"]), "{{") { t.Fatal("unresolved placeholder") }
 	assertPluginManifest(t, files["plugins/oaw-codex-host/.codex-plugin/plugin.json"], "./skills/", "./.mcp.json", "./hooks/hooks.json")
 	assertExactMatchers(t, files["plugins/oaw-codex-host/hooks/hooks.json"])
-	assertMarketplaceSource(t, files["marketplace.json"], "./plugins/oaw-codex-host")
+	assertMarketplaceSource(t, files[".agents/plugins/marketplace.json"], "./plugins/oaw-codex-host")
 }
 
 func TestRenderRejectsUnsafeAbsoluteBinary(t *testing.T) {
@@ -139,7 +146,7 @@ func TestRenderEscapesBinaryPathForJSONAndHookShell(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 rtk go test ./internal/codexbridge/install -run 'Render'
@@ -147,7 +154,7 @@ rtk go test ./internal/codexbridge/install -run 'Render'
 
 Expected: FAIL because templates and renderer are absent.
 
-- [ ] **Step 3: Add the exact plugin manifest and renderer**
+- [x] **Step 3: Add the exact plugin manifest and renderer**
 
 Before implementing the renderer, add the literal placeholder to the embedded
 assets: every entry in `assets/hooks/hooks.json` must be a `PreToolUse` matcher
@@ -155,7 +162,7 @@ for exactly one of the four generated MCP tool names and must use
 `"command": "{{OAW_HOOK_COMMAND}}"`. The asset must contain all four matchers
 and no shell command, binary path, or second placeholder. The direct server map
 in `assets/.mcp.json` uses only `{{OAW_BINARY}}`; the Plugin manifest uses
-`{{BRIDGE_VERSION}}`, while `assets/marketplace.json` uses
+`{{BRIDGE_VERSION}}`, while `assets/.agents/plugins/marketplace.json` uses
 `{{MARKETPLACE_NAME}}` and `{{PLUGIN_NAME}}` for its exact identities.
 
 The Hook asset must use the official Codex lifecycle-hook envelope, with one
@@ -195,7 +202,7 @@ one command handler per matcher, and no additional event or handler fields.
 ```
 
 ```go
-//go:embed assets/.codex-plugin/plugin.json assets/.mcp.json assets/hooks/hooks.json assets/skills/oaw-codex-bridge/SKILL.md assets/marketplace.json
+//go:embed assets/.agents/plugins/marketplace.json assets/.codex-plugin/plugin.json assets/.mcp.json assets/hooks/hooks.json assets/skills/oaw-codex-bridge/SKILL.md
 var templateFS embed.FS
 
 func Render(options RenderOptions) (map[string][]byte, error) {
@@ -211,7 +218,7 @@ func Render(options RenderOptions) (map[string][]byte, error) {
 	}
 	result := make(map[string][]byte, 5)
 	templates := []struct{ source, target string }{
-		{"marketplace.json", "marketplace.json"},
+		{".agents/plugins/marketplace.json", ".agents/plugins/marketplace.json"},
 		{".codex-plugin/plugin.json", "plugins/oaw-codex-host/.codex-plugin/plugin.json"},
 		{".mcp.json", "plugins/oaw-codex-host/.mcp.json"},
 		{"hooks/hooks.json", "plugins/oaw-codex-host/hooks/hooks.json"},
@@ -242,7 +249,8 @@ version. The names remain explicit inputs for state/CLI comparison but cannot
 change the embedded marketplace layout in v1. Parse every
 rendered JSON file with a closed plan-owned projection and
 `DisallowUnknownFields`; ensure the marketplace path is relative to its own
-root, the Plugin source points to `./plugins/oaw-codex-host`, and the manifest
+root, the Plugin source is the local-source object pointing to
+`./plugins/oaw-codex-host`, and the manifest
 points exactly to `./skills/`, `./.mcp.json`, and
 `./hooks/hooks.json`. `assertPluginManifest` decodes that same projection and
 compares all three component paths; a root `.mcp.json` without the explicit
@@ -254,7 +262,7 @@ Windows installation remains explicitly unsupported in Bridge v1 and returns
 `BRIDGE_INSTALL_UNSUPPORTED`; deterministic Core/Bridge tests still run in
 Docker Linux, while real Host installation is verified on macOS.
 
-- [ ] **Step 4: Run GREEN**
+- [x] **Step 4: Run GREEN**
 
 ```bash
 rtk gofmt -w internal/codexbridge/install/templates.go internal/codexbridge/install/templates_test.go
@@ -264,7 +272,7 @@ rtk go vet ./internal/codexbridge/install
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit templates**
+- [x] **Step 5: Commit templates**
 
 ```bash
 rtk git add internal/codexbridge/install/templates.go internal/codexbridge/install/assets internal/codexbridge/install/templates_test.go

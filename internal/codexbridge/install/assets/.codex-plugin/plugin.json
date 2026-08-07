@@ -1,0 +1,13 @@
+{
+  "name": "oaw-codex-host",
+  "version": "{{BRIDGE_VERSION}}",
+  "description": "Open Agent Workflow Host Bridge for Codex",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "OAW Codex Host Bridge",
+    "shortDescription": "Current-session Host evidence and Workflow coordination",
+    "category": "Developer Tools"
+  }
+}

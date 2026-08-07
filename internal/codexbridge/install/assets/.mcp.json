@@ -1,0 +1,8 @@
+{
+  "oaw_codex_bridge": {
+    "command": "{{OAW_BINARY}}",
+    "args": ["bridge", "serve", "codex"],
+    "cwd": ".",
+    "env_vars": []
+  }
+}

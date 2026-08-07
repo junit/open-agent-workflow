@@ -1,0 +1,30 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__oaw_codex_bridge__observe_current",
+        "hooks": [
+          {"type": "command", "command": "{{OAW_HOOK_COMMAND}}"}
+        ]
+      },
+      {
+        "matcher": "mcp__oaw_codex_bridge__core_inspect",
+        "hooks": [
+          {"type": "command", "command": "{{OAW_HOOK_COMMAND}}"}
+        ]
+      },
+      {
+        "matcher": "mcp__oaw_codex_bridge__core_compile",
+        "hooks": [
+          {"type": "command", "command": "{{OAW_HOOK_COMMAND}}"}
+        ]
+      },
+      {
+        "matcher": "mcp__oaw_codex_bridge__workflow_exchange",
+        "hooks": [
+          {"type": "command", "command": "{{OAW_HOOK_COMMAND}}"}
+        ]
+      }
+    ]
+  }
+}
