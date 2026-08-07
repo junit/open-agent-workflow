@@ -572,7 +572,7 @@ rtk git commit -m "feat: manage Codex Bridge installation transactionally"
 - Modify: `internal/cli/management.go`
 - Modify: `internal/cli/management_test.go`
 
-- [ ] **Step 1: Write failing parser and dispatch tests**
+- [x] **Step 1: Write failing parser and dispatch tests**
 
 ```go
 func TestParseBridgeCommands(t *testing.T) {
@@ -591,7 +591,7 @@ func TestBridgeRejectsUnknownHostAndLegacyRunner(t *testing.T) {	for _, args := 
 }
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```bash
 rtk go test ./internal/cli -run 'Bridge|LegacyRunner'
@@ -599,7 +599,7 @@ rtk go test ./internal/cli -run 'Bridge|LegacyRunner'
 
 Expected: FAIL because the Bridge parser and dispatch are absent.
 
-- [ ] **Step 3: Add exact dispatch and usage**
+- [x] **Step 3: Add exact dispatch and usage**
 
 ```go
 switch args[0] {
@@ -622,7 +622,7 @@ rather than a Hook process error that Codex would treat as advisory.
 `check/install/update/uninstall` use the separate install package and never
 instantiate a Service.
 
-- [ ] **Step 4: Run CLI GREEN and black-box parser checks**
+- [x] **Step 4: Run CLI GREEN and black-box parser checks**
 
 ```bash
 rtk gofmt -w internal/cli/bridge.go internal/cli/bridge_test.go internal/cli/run.go internal/cli/management.go
@@ -633,7 +633,7 @@ rtk go test ./cmd/oaw ./...
 Expected: PASS; the command help lists `oaw bridge ...` and no old Runner,
 `INLINE`, or `NATIVE_SUBAGENT` alias.
 
-- [ ] **Step 5: Commit the CLI surface**
+- [x] **Step 5: Commit the CLI surface**
 
 ```bash
 rtk git add internal/cli/bridge.go internal/cli/bridge_test.go internal/cli/run.go internal/cli/management.go internal/cli/management_test.go

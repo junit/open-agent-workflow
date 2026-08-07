@@ -25,13 +25,15 @@ func RunWithInput(args []string, stdin io.Reader, stdout io.Writer, stderr io.Wr
 	return RunWithContext(context.Background(), args, stdin, stdout, stderr)
 }
 
-func RunWithContext(_ context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
+func RunWithContext(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer) int {
 	if len(args) == 0 || len(args) == 1 && (args[0] == "help" || args[0] == "-h" || args[0] == "--help") {
 		fmt.Fprint(stdout, rootUsage())
 		return 0
 	}
 	if len(args) != 0 {
 		switch args[0] {
+		case "bridge":
+			return runBridge(ctx, args[1:], stdin, stdout, stderr)
 		case "workflow":
 			return runWorkflowExchange(args[1:], stdin, stdout, stderr)
 		case "runtime", "run":
@@ -142,5 +144,5 @@ func usage() string {
 }
 
 func rootUsage() string {
-	return installerUsage() + "\n" + usage()
+	return installerUsage() + "\n" + bridgeUsage() + "\n" + usage()
 }

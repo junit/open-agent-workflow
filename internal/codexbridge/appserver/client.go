@@ -60,6 +60,19 @@ func NewClient(options ClientOptions) *Client {
 	}
 }
 
+func (client *Client) Close() error {
+	client.mu.Lock()
+	transport := client.transport
+	client.transport = nil
+	client.initialized = false
+	client.initializedCWD = ""
+	client.mu.Unlock()
+	if transport == nil {
+		return nil
+	}
+	return transport.Close()
+}
+
 func (client *Client) Observe(ctx context.Context, cwd string) (MetadataObservation, error) {
 	if !filepath.IsAbs(cwd) || filepath.Clean(cwd) != cwd || hasControl(cwd) {
 		return MetadataObservation{}, NewError("HOST_OBSERVATION_FAILED", "cwd is not canonical", nil)

@@ -115,6 +115,23 @@ func TestClientBoundsSlowMetadataResponse(t *testing.T) {
 	}
 }
 
+func TestClientCloseReleasesTransportOnce(t *testing.T) {
+	transport := newRecordingTransport()
+	client := NewClient(ClientOptions{Transport: transport})
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
+	transport.mu.Lock()
+	closed := transport.closed
+	transport.mu.Unlock()
+	if closed != 1 {
+		t.Fatalf("transport close count = %d", closed)
+	}
+}
+
 func TestProcessTransportExchangesAndNotifiesWithBoundedJSONLines(t *testing.T) {
 	var exchangeInput bytes.Buffer
 	exchange := newProcessTransport(nopWriteCloser{Writer: &exchangeInput}, bytes.NewBufferString(`{"jsonrpc":"2.0","id":1,"result":{}}`+"\n"), nil, func() {})
@@ -157,6 +174,7 @@ type recordingTransport struct {
 	requests      []Request
 	notifications [][]byte
 	response      func(Request) []byte
+	closed        int
 }
 
 func newRecordingTransport() *recordingTransport {
@@ -187,7 +205,12 @@ func (transport *recordingTransport) Notify(_ context.Context, raw []byte) error
 	return nil
 }
 
-func (transport *recordingTransport) Close() error { return nil }
+func (transport *recordingTransport) Close() error {
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	transport.closed++
+	return nil
+}
 
 func (transport *recordingTransport) Requests() []Request {
 	transport.mu.Lock()
