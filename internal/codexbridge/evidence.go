@@ -59,26 +59,14 @@ func validateFacts(value Facts) error {
 }
 
 func bridgeManifest(session host.SessionSnapshot) (host.Manifest, error) {
-	if session.HostID == "" || session.IntegrationVersion == "" {
-		return host.Manifest{}, NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host session identity is incomplete", nil)
+	if session.HostID != "codex" || session.IntegrationID != BridgeIntegrationID || session.IntegrationVersion != BridgeIntegrationVersion {
+		return host.Manifest{}, NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host session does not belong to the Codex Bridge", nil)
 	}
-	return host.NewManifest(host.Manifest{
-		SchemaVersion:       host.HostManifestSchemaV2,
-		ManifestVersion:     "2.0.0",
-		HostID:              session.HostID,
-		ControlSurface:      host.SurfaceHostNative,
-		Protocols:           []string{host.WorkflowProtocolV1},
-		BindingKinds:        []string{"agent", "skill", "tool"},
-		SupportedTopologies: append([]execution.Topology{}, session.SupportedTopologies...),
-		Features: []host.Feature{
-			host.FeatureCancellation,
-			host.FeatureEnvironmentReporting,
-			host.FeatureInvocationDedup,
-			host.FeatureNormalizedReceipts,
-			host.FeaturePause,
-			host.FeatureProviderBindingInventory,
-		},
-	})
+	manifest, err := CodexHostManifest()
+	if err != nil {
+		return host.Manifest{}, NewError("HOST_EVIDENCE_HANDLE_INVALID", "Codex Host Manifest is invalid", err)
+	}
+	return manifest, nil
 }
 
 func validateFactDigests(value Facts) error {

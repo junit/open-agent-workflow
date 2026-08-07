@@ -216,13 +216,7 @@ func testContext(sessionID, cwd string) HookContext {
 
 func testFacts(t *testing.T, sessionID, _ string) Facts {
 	t.Helper()
-	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
-		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
-		BindingKinds:        []string{"agent", "skill", "tool"},
-		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
-		Features:            []host.Feature{host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
-	})
+	manifest, err := CodexHostManifest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,8 +232,8 @@ func testFacts(t *testing.T, sessionID, _ string) Facts {
 		t.Fatal(err)
 	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "oaw-test/codex",
-		IntegrationVersion: "2.0.0", SessionID: sessionID,
+		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: BridgeIntegrationID,
+		IntegrationVersion: BridgeIntegrationVersion, SessionID: sessionID,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: environment.Digest,
 	})

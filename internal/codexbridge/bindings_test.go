@@ -1,0 +1,152 @@
+package codexbridge
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
+	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
+)
+
+func TestBuildBindingInventoryMatchesPathAndName(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	metadata := bindingMetadata(fixture.Home, "acme:review", filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"))
+	inventory, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
+	if err != nil || len(diagnostics) != 0 || len(inventory.Observations) != 1 {
+		t.Fatalf("inventory=%#v diagnostics=%#v err=%v", inventory, diagnostics, err)
+	}
+	observation := inventory.Observations[0]
+	if observation.InstallationKey != fixture.Candidate.InstallationKey || observation.Binding.Reference != "acme:review" ||
+		observation.Source != "native-probe" || len(observation.Topologies) != 1 || observation.EvidenceReference == "" {
+		t.Fatalf("observation=%#v", observation)
+	}
+}
+
+func TestBuildBindingInventoryRejectsDisabledOrphanAndUnboundSkills(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	orphan := filepath.Join(fixture.Home, "unowned", "SKILL.md")
+	unbound := filepath.Join(fixture.Candidate.Location, "skills/unbound/SKILL.md")
+	writeSkillFixture(t, orphan, "orphan")
+	writeSkillFixture(t, unbound, "unbound")
+	metadata := appserver.MetadataObservation{Skills: appserver.SkillsEntry{CWD: fixture.Home, Skills: []appserver.SkillMetadata{
+		{Name: "acme:review", Enabled: false, Path: filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"), Scope: "user"},
+		{Name: "orphan", Enabled: true, Path: orphan, Scope: "user"},
+		{Name: "unbound", Enabled: true, Path: unbound, Scope: "user"},
+	}}}
+	inventory, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inventory.Observations) != 0 {
+		t.Fatalf("rejected Skills produced observations: %#v", inventory.Observations)
+	}
+	if !hasDiagnostic(diagnostics, "HOST_SKILL_ORPHAN") || !hasDiagnostic(diagnostics, "HOST_BINDING_EVIDENCE_REQUIRED") {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+}
+
+func TestBuildBindingInventoryRejectsAmbiguousInstallation(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	providers := fixture.Catalog.Providers()
+	shadow := providers[0].Discovery[0]
+	shadow.ID = "codex-shadow"
+	shadow.Surface = "codex-plugin-shadow"
+	providers[0].Discovery = append(providers[0].Discovery, shadow)
+	value, err := catalog.New(providers, fixture.Catalog.Recipes(), fixture.Catalog.Aliases())
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: fixture.Home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Candidates("acme/suite")) != 2 {
+		t.Fatalf("candidates=%#v", report.Candidates("acme/suite"))
+	}
+	metadata := bindingMetadata(fixture.Home, "acme:review", filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"))
+	inventory, diagnostics, err := BuildBindingInventory(value, report, metadata, fixture.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inventory.Observations) != 0 || !hasDiagnostic(diagnostics, "HOST_SKILL_INSTALLATION_AMBIGUOUS") {
+		t.Fatalf("inventory=%#v diagnostics=%#v", inventory, diagnostics)
+	}
+}
+
+func TestBuildBindingInventoryChangesWhenSkillContentChanges(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	path := filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md")
+	metadata := bindingMetadata(fixture.Home, "acme:review", path)
+	first, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
+	if err != nil || len(diagnostics) != 0 || len(first.Observations) != 1 {
+		t.Fatalf("first=%#v diagnostics=%#v err=%v", first, diagnostics, err)
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\nchanged\n"); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
+	if err != nil || len(diagnostics) != 0 || len(second.Observations) != 1 {
+		t.Fatalf("second=%#v diagnostics=%#v err=%v", second, diagnostics, err)
+	}
+	if first.Observations[0].Digest == second.Observations[0].Digest || first.Digest == second.Digest {
+		t.Fatal("Skill content change did not change evidence digest")
+	}
+}
+
+func TestValidateSkillIdentityRejectsMalformedNameAndUnknownScope(t *testing.T) {
+	for _, value := range []appserver.SkillMetadata{
+		{Name: "", Scope: "user"},
+		{Name: " leading", Scope: "user"},
+		{Name: "bad\nname", Scope: "repo"},
+		{Name: "acme:review", Scope: "workspace"},
+	} {
+		if err := validateSkillIdentity(value.Name, value.Scope); err == nil {
+			t.Fatalf("accepted %#v", value)
+		}
+	}
+	for _, scope := range []string{"user", "repo", "system", "admin"} {
+		if err := validateSkillIdentity("acme:review", scope); err != nil {
+			t.Fatalf("scope %q: %v", scope, err)
+		}
+	}
+}
+
+func TestCandidatePathRejectsForeignHost(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	candidate := fixture.Candidate
+	candidate.HostID = "claude"
+	path := filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md")
+	if candidateContainsPath(candidate, "codex", path) {
+		t.Fatal("foreign Host Candidate matched Codex Skill")
+	}
+}
+
+func bindingMetadata(cwd, name, path string) appserver.MetadataObservation {
+	return appserver.MetadataObservation{Skills: appserver.SkillsEntry{CWD: cwd, Skills: []appserver.SkillMetadata{{Name: name, Enabled: true, Path: path, Scope: "user"}}}}
+}
+
+func writeSkillFixture(t *testing.T, path, name string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: "+name+"\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func hasDiagnostic(values []Diagnostic, code string) bool {
+	return slices.ContainsFunc(values, func(value Diagnostic) bool { return value.Code == code })
+}
