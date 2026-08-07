@@ -287,7 +287,7 @@ rtk git commit -m "test: cover Codex Bridge protocol boundaries"
 - Create: `scripts/smoke-codex-bridge.sh`
 - Create: `scripts/smoke-codex-bridge-docker.sh`
 
-- [ ] **Step 1: Add the deterministic local gate**
+- [x] **Step 1: Add the deterministic local gate**
 
 ```bash
 #!/usr/bin/env bash
@@ -305,7 +305,7 @@ plan.
 Add scans that production source contains no `plugin/list`, model/thread/turn
 launch, private projected environment, or legacy topology alias.
 
-- [ ] **Step 2: Add the macOS real-Codex smoke with explicit skips**
+- [x] **Step 2: Add the macOS real-Codex smoke with explicit skips**
 
 ```bash
 if [ "$(uname -s)" != "Darwin" ]; then
@@ -323,7 +323,7 @@ fake-transcript protocol smoke. It does not install into a user's real Codex
 configuration automatically. The real session steps in Task 5 require an
 explicit operator checkpoint.
 
-- [ ] **Step 3: Add Docker Linux smoke**
+- [x] **Step 3: Add Docker Linux smoke**
 
 The Docker script detects a reachable Docker daemon, selects a pinned
 `bash`/Go verification image by `linux/amd64` or `linux/arm64`, mounts the
@@ -346,7 +346,7 @@ MODULE_CACHE=$(go env GOMODCACHE)
 docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --tmpfs /tmp:rw,exec,nosuid,nodev,size=512m -e GOCACHE=/tmp/go-cache -e GOMODCACHE=/go/pkg/mod -e GOPROXY=off -v "$MODULE_CACHE:/go/pkg/mod:ro" -v "$REPOSITORY:/src:ro" -w /src "$IMAGE" sh -c 'go test -mod=readonly ./internal/codexbridge/... ./internal/integration'
 ```
 
-- [ ] **Step 4: Run platform scripts**
+- [x] **Step 4: Run platform scripts**
 
 ```bash
 rtk bash scripts/check-codex-bridge.sh
@@ -358,7 +358,7 @@ Expected: local gate passes; macOS smoke passes or returns 77 only when its
 prerequisites are absent; Docker smoke passes or returns 77 only when Docker
 cannot run. A 77 skip is recorded and does not block supported environments.
 
-- [ ] **Step 5: Commit platform gates**
+- [x] **Step 5: Commit platform gates**
 
 ```bash
 rtk git add scripts/check-codex-bridge.sh scripts/smoke-codex-bridge.sh scripts/smoke-codex-bridge-docker.sh
