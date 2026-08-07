@@ -117,6 +117,32 @@ inheritance 到 `SUBAGENT`；active Host 报告各 surface 为 `inherited`、`ho
 Host session 变化会使 stale Dispatch Packet 失效。继续前需要 fresh Host report 与 Bundle
 eligibility check。OAW 不重建缺失 child environment，也不静默 fallback 到新 process。
 
+## Codex Host Bridge 边界
+
+Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式
+安装并信任。Bridge v1 只支持 `CURRENT` 与 `skill` binding。它不创建 child session，
+也不保证继承 MCP、Hook、Skill、Plugin、model、authentication、sandbox 或 approval
+behavior，除非 Host 提供稳定 observation。
+
+Trusted `PreToolUse` Hook input 是唯一的 current-session identity source。Agent 不能自行
+填写或替换 reserved `_oaw_host_context`。只有严格只读的 `observe_current` rewrite 可以
+得到自动 `allow`；后续 Core 与 Coordinator operation 保留正常 Host approval behavior，
+session 或 working-directory 不匹配时 fail closed。
+
+`skills/list` 是 v1 唯一的 Provider binding authority。`hooks/list` 与 allowlisted
+`config/read` projection 只是 diagnostic environment observation。`plugin/list` 不是
+production dependency。Filesystem detection、Descriptor declaration、user configuration、
+prompt 与 Skill self-report 都不能创建 Host Binding Evidence。
+
+Bridge 在 bounded process memory 中保存 opaque session-bound handle，只返回 secret-free
+summary。它不保存 raw Hook command、credential、MCP environment value、header、token、
+arbitrary Plugin setting 或完整 App Server configuration。Handle 不能进入 Workflow State、
+evidence artifact、log、ticket 或 screenshot。
+
+这是 cooperation boundary，不是 operating-system isolation。具有相同用户权限的 process
+可以干扰本地 program、file 或 process I/O。OAW 可以验证 protocol record，但不能认证或
+contain 每个 same-user process。
+
 ## 范围之外
 
 Installer 与 policy protocol 无法防御：

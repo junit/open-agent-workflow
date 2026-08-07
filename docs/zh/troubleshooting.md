@@ -121,6 +121,36 @@ Install State 与 Workflow State 相互独立，不会自动迁移。Adapter 安
 也不会创建 Workflow State。只有真实 `host-native` integration 可以与 OAW Core 或
 Workflow Coordinator 交换 session fact 与 Receipt。物理执行权限仍属于 Agent Host。
 
+## Codex Host Bridge 诊断
+
+先运行只读 management projection：
+
+```bash
+oaw bridge check codex --format json
+```
+
+Management check 只证明 file 与 registration state，并始终报告
+`current_session_loaded: false`。只有新 Codex session 中 trusted `observe_current` Hook
+input 才能建立 current-session evidence。
+
+| Reason | 诊断与恢复 |
+| --- | --- |
+| `HOST_BRIDGE_UNAVAILABLE` | Plugin 或 MCP Bridge 不可用。安装或启用它，检查 Codex `/hooks`，然后启动新 session。 |
+| `HOST_BRIDGE_CONTEXT_REQUIRED` | MCP call 缺少 trusted Hook context。检查并信任精确的四个 Hook matcher，然后启动新 session。 |
+| `HOST_BRIDGE_PROTOCOL_MISMATCH` | Plugin、Hook、Bridge、Core 或 Host protocol version 不一致。运行 `oaw bridge update codex`，重新检查 Hook 并启动新 session。 |
+| `HOST_EVIDENCE_HANDLE_REQUIRED` | 后续 operation 缺少当前 handle。调用 `observe_current`，使用返回的 handle 重试。 |
+| `HOST_EVIDENCE_HANDLE_INVALID` | Handle malformed、edited、unknown、evicted 或来自重启后的 Bridge。丢弃它并重新调用 `observe_current`。 |
+| `HOST_EVIDENCE_EXPIRED` | Handle 超过 bounded TTL。重试 `core.inspect` 或 `core.compile` 前调用 `observe_current`。 |
+| `HOST_EVIDENCE_SESSION_MISMATCH` | Handle 属于另一 session 或 working directory。在 mutation 前停止，并在当前 session 重新 observe。 |
+| `HOST_OBSERVATION_FAILED` | 必需 stable metadata，尤其 `skills/list`，获取失败。修复本地 Codex/App Server capability；受影响 Provider 保持 unverified。 |
+| `HOST_OBSERVATION_PARTIAL` | 可选 Hook 或 configuration metadata 不完整。不可用 field 保持 `unknown`，不得推断 inheritance。 |
+| `HOST_SESSION_CHANGED` | active Bundle pin 的 fact 变化。暂停、重新 observe、返回 Startup Gate，并编译新的 Bundle generation。 |
+
+`skills/list` 是 v1 唯一的 Provider binding authority。`plugin/list` 不是 production
+dependency。不得通过编辑 handle、虚构 binding、复制 Host configuration 或启动另一
+process 修复这些 reason。[Codex Host Bridge 指南](codex-bridge.md)定义 install、Hook 与
+rollback 行为。
+
 ## Workflow Coordination 错误
 
 这些原因码属于 Core、Coordinator 或 Host integration，不属于 installation management：

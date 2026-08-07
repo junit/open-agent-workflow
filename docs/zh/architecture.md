@@ -85,6 +85,12 @@ Evidence。foreign-Host diagnostics 绝不会进入 pin matching、Profile compi
 Lifecycle Bundle。active schema 会拒绝 `oaw.provider-descriptor/v1` 和
 `oaw.user-config/v1`，不会静默升级。
 
+Codex 默认提供 policy integration，并在 `oaw/codex-host` 提供独立的 audited
+host-native Bridge。Bridge 必须显式安装并信任；它只支持 `CURRENT` 与 `skill` binding。
+`oaw/codex-policy` policy surface 不会因 filesystem detection 被提升。未报告的 MCP、
+Hook、Skill、Plugin、model、authentication、sandbox、approval 与 tool surface 都保持
+`unknown`。
+
 ## Core 编译
 
 OAW Core 接收 request evidence、可信配置、Host session fact、verified Provider
@@ -116,10 +122,19 @@ Subagent 不可用时，没有 process 或 container fallback。可用集合取 
 所有 active Capability binding、integration metadata 与当前 Host session fact 的交集。
 用户在 Workflow Startup Gate 中选择 topology。
 
-当前九个内置 integration 都使用 `policy` control surface，并支持 `CURRENT`。未来的
-`host-native` integration 必须支持 `CURRENT`；其 `SUBAGENT` 可用性取决于当前 session。
-它报告 fact、Dispatch Packet outcome 和 Receipt，但绝不会向 OAW 交出 model command、
-credential、private Hook payload，或 private MCP、Skill、Plugin 配置。
+Codex 默认暴露 `oaw/codex-policy`，并提供 opt-in 的 `oaw/codex-host` host-native
+surface。Bridge 只支持 `CURRENT` 与 `skill` binding，session-dependent evidence 来自
+trusted Hook 与 allowlisted Host metadata。其他内置 integration 仍是 policy surface，
+除非它们各自的 Host-native integration 被显式安装并验证。任何 integration 都不会向 OAW
+转交 model command、credential、private Hook payload 或 private MCP、Skill、Plugin 配置。
+
+Codex Bridge 路径为：
+
+```text
+observe_current -> Core inspect -> explicit Startup Gate
+                -> Core compile / Coordinator START
+                -> current Codex session 执行 Skill 与 tool
+```
 
 Agent Host 拥有物理执行权限。Lifecycle Bundle、Capability Grant 与 Resource Lease 为
 合作客户端表达 logical workflow authority。Grant 可以比 Host sandbox and approvals

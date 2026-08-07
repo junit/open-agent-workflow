@@ -29,9 +29,14 @@ User scope 默认安装 core adapter：`claude,codex,gemini,opencode`。Project 
 
 ## Host Integration Surface
 
-Adapter 安装与 Host execution 是两个不同问题。当前九个内置 integration 都暴露
-`policy` surface：分发 OAW instruction，支持 `CURRENT`，不保证 Coordinator、Receipt
-或 `SUBAGENT`。`host-native` integration 是明确的 Host 能力，不能从 target name 推断。
+Adapter 安装与 Host execution 是两个不同问题。Codex 默认暴露 `oaw/codex-policy`，
+并通过独立且经过审计的 `oaw/codex-host` host-native Bridge 提供显式 opt-in。Bridge
+只支持 `CURRENT` 与 `skill` binding。其他内置 target 仍是 policy surface，除非它们各自
+的 Host-native integration 被显式安装并验证。
+
+Codex Bridge 不能从 `codex` target adapter 推断出来。它必须单独安装并信任，并且只有
+trusted Hook observation 成功后才报告 current-session fact。`host-native` integration
+是明确的 Host 能力，不能从 target name 推断。
 
 `CURRENT` 表示 active Agent session 保持不变。`SUBAGENT` 表示 active Agent Host 通过
 原生 Subagent facility 创建 child。可用性是 session-dependent；facility 缺失时返回

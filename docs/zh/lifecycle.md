@@ -149,9 +149,21 @@ idempotency、协作式 Resource Lease、Receipt、evidence、pause、cancel、s
 recovery。它不创建 Agent、执行 model、调用 Skill、使用 tool 或强制 Host sandbox。
 
 Agent Host 拥有物理执行权限。Lifecycle Bundle、Capability Grant 或 Resource Lease 只
-表达 logical workflow authority。当前九个内置 Host integration 都使用 `policy` surface
-并支持 `CURRENT`，不保证 Coordinator semantics。未来的 `host-native` surface 可以交换
-session fact、Dispatch Packet 与 Receipt，但所有 effect 仍由 Host 执行。
+表达 logical workflow authority。Codex 默认提供 policy integration，并在 `oaw/codex-host`
+提供独立且经过审计的 host-native Bridge，必须显式安装并信任。Bridge 只支持 `CURRENT`
+与 `skill` binding；除非 Host 报告稳定 evidence，否则所有其他 Host surface 都保持
+unknown。
+
+Codex Host-native Workflow 的 evidence 路径为：
+
+```text
+observe_current -> Core inspect -> explicit Startup Gate
+                -> Core compile / Coordinator START
+                -> current Codex session 执行 Skill 与 tool
+```
+
+其他内置 integration 仍是 policy surface，除非其自身的 Host-native integration 被显式
+安装并验证。这些 logical record 都不会把物理执行权限从 Agent Host 转交出去。
 
 ## Matt-Superpowers 阶段映射
 

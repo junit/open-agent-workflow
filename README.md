@@ -152,7 +152,7 @@ OAW Core is required and stateless. The Workflow Coordinator is optional and sto
 
 The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 
-`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.
+`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default and a separate audited host-native Bridge that must be explicitly installed and trusted. The Bridge v1 supports CURRENT and skill bindings only; all other Host surfaces remain unknown unless the Host reports stable evidence.
 
 Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness. On macOS, use `scripts/smoke-docker.sh` for the native Linux archive when Docker Desktop is available. WSL-specific checks are optional and a `SKIP` is recorded, never reported as a pass.
 
@@ -314,6 +314,7 @@ guides are being completed as part of the local v0.1 documentation ticket:
 | Lifecycle | [English](docs/en/lifecycle.md) | [中文](docs/zh/lifecycle.md) |
 | Architecture | [English](docs/en/architecture.md) | [中文](docs/zh/architecture.md) |
 | Installer | [English](docs/en/installer.md) | [中文](docs/zh/installer.md) |
+| Codex Host Bridge | [English](docs/en/codex-bridge.md) | [中文](docs/zh/codex-bridge.md) |
 | Adapters | [English](docs/en/adapters.md) | [中文](docs/zh/adapters.md) |
 | Extending adapters | [English](docs/en/extending-adapters.md) | [中文](docs/zh/extending-adapters.md) |
 | Security model | [English](docs/en/security.md) | [中文](docs/zh/security.md) |

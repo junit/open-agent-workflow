@@ -142,6 +142,37 @@ Host session changes invalidate stale Dispatch Packets. OAW requires a fresh
 Host report and Bundle eligibility check before continuing. It never reconstructs
 a missing child environment or silently falls back to a new process.
 
+## Codex Host Bridge Boundary
+
+Codex has a policy integration by default and a separate audited host-native
+Bridge that must be explicitly installed and trusted. The Bridge v1 supports
+`CURRENT` and `skill` bindings only. It does not create a child session, and it
+does not promise inherited MCP, Hook, Skill, Plugin, model, authentication,
+sandbox, or approval behavior beyond stable Host observations.
+
+Trusted `PreToolUse` Hook input is the only current-session identity source.
+The Agent cannot author or replace reserved `_oaw_host_context`. Only the
+strictly read-only `observe_current` rewrite may receive an automatic `allow`;
+later Core and Coordinator operations retain normal Host approval behavior and
+fail closed on a session or working-directory mismatch.
+
+`skills/list` is the only v1 Provider binding authority. `hooks/list` and the
+allowlisted `config/read` projection are diagnostic environment observations.
+`plugin/list` is not a production dependency. Filesystem detection, Descriptor
+declarations, user configuration, prompts, and Skill self-reports cannot create
+Host Binding Evidence.
+
+The Bridge stores an opaque session-bound handle in bounded process memory and
+returns only secret-free summaries. It does not retain raw Hook commands,
+credentials, MCP environment values, headers, tokens, arbitrary Plugin
+settings, or full App Server configuration. Handles must not enter Workflow
+State, evidence artifacts, logs, tickets, or screenshots.
+
+This is a cooperation boundary, not operating-system isolation. A process with
+the same user authority can interfere with local programs, files, or process
+I/O. OAW validates protocol records but cannot authenticate or contain every
+same-user process.
+
 ## Out of Scope
 
 The installer and policy protocol cannot protect against:

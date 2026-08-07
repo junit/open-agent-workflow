@@ -140,9 +140,7 @@ Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、�
 approval 和全部物理 effect。OAW 绝不启动 model process。
 
 `CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，
-`SUBAGENT` 才可用；不存在 process fallback。当前九个内置 integration 全部是 `policy`
-surface。未来的 `host-native` integration 可以报告 session fact 与 Receipt，但不会把执行
-权限转交 OAW。
+`SUBAGENT` 才可用；不存在 process fallback。Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式安装并信任。Bridge v1 只支持 CURRENT 和 skill binding；除非 Host 报告稳定 evidence，否则所有其他 Host surface 都保持 unknown。
 
 可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。在 macOS 上，如果 Docker Desktop 可用，应使用 `scripts/smoke-docker.sh` 验证 Linux 归档。WSL-specific 检查是可选项，`SKIP` 必须记录，绝不能报告为 pass。
 
@@ -284,6 +282,7 @@ vendor、patch、更新、删除、许可或静默替换 provider 内容。Agent
 | 生命周期 | [English](docs/en/lifecycle.md) | [中文](docs/zh/lifecycle.md) |
 | 架构 | [English](docs/en/architecture.md) | [中文](docs/zh/architecture.md) |
 | 安装器 | [English](docs/en/installer.md) | [中文](docs/zh/installer.md) |
+| Codex Host Bridge | [English](docs/en/codex-bridge.md) | [中文](docs/zh/codex-bridge.md) |
 | 适配器 | [English](docs/en/adapters.md) | [中文](docs/zh/adapters.md) |
 | 扩展适配器 | [English](docs/en/extending-adapters.md) | [中文](docs/zh/extending-adapters.md) |
 | 安全模型 | [English](docs/en/security.md) | [中文](docs/zh/security.md) |

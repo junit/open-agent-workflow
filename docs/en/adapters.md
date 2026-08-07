@@ -31,11 +31,16 @@ the registry order shown above. Unsupported user-scope extension adapters are
 
 ## Host Integration Surfaces
 
-Adapter installation and Host execution are separate concerns. The nine built-in
-integrations currently expose the `policy` surface: they distribute OAW
-instructions, support `CURRENT`, and make no Coordinator, Receipt, or
-`SUBAGENT` guarantee. A `host-native` integration is an explicit Host feature,
-not a property inferred from a target name.
+Adapter installation and Host execution are separate concerns. Codex exposes
+`oaw/codex-policy` by default and the separate audited `oaw/codex-host`
+host-native Bridge as an explicit opt-in. The Bridge supports `CURRENT` and
+`skill` bindings only. All other built-in targets remain policy surfaces unless
+their own Host-native integration is explicitly installed and verified.
+
+The Codex Bridge is not inferred from the `codex` target adapter. It must be
+installed and trusted separately, and it reports current-session facts only
+after a trusted Hook observation. A host-native integration is an explicit Host
+feature, not a property inferred from a target name.
 
 `CURRENT` means the active Agent session remains unchanged. `SUBAGENT` means the
 active Agent Host creates a child through its native Subagent facility. Its

@@ -48,6 +48,7 @@ docs/en/comparison.md|docs/zh/comparison.md
 docs/en/lifecycle.md|docs/zh/lifecycle.md
 docs/en/architecture.md|docs/zh/architecture.md
 docs/en/installer.md|docs/zh/installer.md
+docs/en/codex-bridge.md|docs/zh/codex-bridge.md
 docs/en/adapters.md|docs/zh/adapters.md
 docs/en/extending-adapters.md|docs/zh/extending-adapters.md
 docs/en/security.md|docs/zh/security.md
@@ -82,7 +83,7 @@ README.md|Release archives contain precompiled binaries and perform no runtime e
 README.md|Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.
 README.md|OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
 README.md|The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
-README.md|`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.
+README.md|Codex has a policy integration by default and a separate audited host-native Bridge
 README.md|Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.
 README-zh.md|公开安装管理以 Go 为权威实现。
 README-zh.md|`install.sh` 是离线的同目录二进制兼容包装器。
@@ -90,12 +91,24 @@ README-zh.md|发布归档包含预编译二进制，运行时不会下载可执�
 README-zh.md|安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。
 README-zh.md|OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
 README-zh.md|Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、
-README-zh.md|`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，
+README-zh.md|Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge
 README-zh.md|可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。
 EOF
 while IFS='|' read -r boundary_document boundary_text; do
   require_literal "$boundary_document" "$boundary_text"
 done <"$CHECK_TEMP/release-boundaries"
+
+cat >"$CHECK_TEMP/bridge-boundaries" <<'EOF'
+docs/en/architecture.md|oaw/codex-host
+docs/zh/architecture.md|oaw/codex-host
+docs/en/lifecycle.md|observe_current
+docs/zh/lifecycle.md|observe_current
+docs/en/troubleshooting.md|HOST_BRIDGE_PROTOCOL_MISMATCH
+docs/zh/troubleshooting.md|HOST_BRIDGE_PROTOCOL_MISMATCH
+EOF
+while IFS='|' read -r boundary_document boundary_text; do
+  require_literal "$boundary_document" "$boundary_text"
+done <"$CHECK_TEMP/bridge-boundaries"
 
 cat >"$CHECK_TEMP/current-user-documents" <<'EOF'
 README.md
@@ -177,6 +190,49 @@ if [ -s "$CHECK_VIOLATIONS" ]; then
   exit 1
 fi
 
+cat >"$CHECK_TEMP/forbidden-authority-claims" <<'EOF'
+OAW starts a model process
+OAW launches a model process
+OAW starts a child process
+OAW creates a child process
+OAW creates a child session
+The Bridge creates a child session
+OAW guarantees Host extension inheritance
+OAW guarantees MCP inheritance
+OAW guarantees Hook inheritance
+OAW guarantees Skill inheritance
+OAW guarantees Plugin inheritance
+OAW 启动 model process
+OAW 创建 child process
+OAW 创建 child session
+OAW 保证 Host extension inheritance
+OAW 保证 MCP inheritance
+OAW 保证 Hook inheritance
+OAW 保证 Skill inheritance
+OAW 保证 Plugin inheritance
+EOF
+for current_document_path in \
+  "$REPOSITORY/policy/ENGINEERING.md" \
+  "$REPOSITORY/README.md" \
+  "$REPOSITORY/README-zh.md" \
+  "$REPOSITORY/SECURITY.md" \
+  "$REPOSITORY/SECURITY-zh.md" \
+  "$REPOSITORY"/docs/en/*.md \
+  "$REPOSITORY"/docs/zh/*.md; do
+  current_document=${current_document_path#"$REPOSITORY"/}
+  while IFS= read -r forbidden_claim; do
+    [ -n "$forbidden_claim" ] || continue
+    if grep -nF -- "$forbidden_claim" "$current_document_path" \
+      >"$CHECK_TEMP/forbidden-authority-claim-matches"; then
+      while IFS=: read -r line_number ignored_match; do
+        printf 'docs: error: forbidden positive authority claim: %s:%s:%s\n' \
+          "$current_document" "$line_number" "$forbidden_claim" >&2
+      done <"$CHECK_TEMP/forbidden-authority-claim-matches"
+      exit 1
+    fi
+  done <"$CHECK_TEMP/forbidden-authority-claims"
+done
+
 cat >"$CHECK_TEMP/core-boundary-documents" <<'EOF'
 docs/en/architecture.md
 docs/zh/architecture.md
@@ -249,6 +305,19 @@ for diagnostic_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md
   done
   require_literal "$diagnostic_document" 'oaw.provider-descriptor/v1'
   require_literal "$diagnostic_document" 'oaw.user-config/v1'
+  for bridge_reason in \
+    HOST_BRIDGE_UNAVAILABLE \
+    HOST_BRIDGE_CONTEXT_REQUIRED \
+    HOST_BRIDGE_PROTOCOL_MISMATCH \
+    HOST_EVIDENCE_HANDLE_REQUIRED \
+    HOST_EVIDENCE_HANDLE_INVALID \
+    HOST_EVIDENCE_EXPIRED \
+    HOST_EVIDENCE_SESSION_MISMATCH \
+    HOST_OBSERVATION_FAILED \
+    HOST_OBSERVATION_PARTIAL \
+    HOST_SESSION_CHANGED; do
+    require_literal "$diagnostic_document" "$bridge_reason"
+  done
 done
 
 require_literal docs/adr/0003-add-optional-capability-admission-runtime.md \

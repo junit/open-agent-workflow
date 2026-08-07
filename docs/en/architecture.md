@@ -97,6 +97,13 @@ Foreign-Host diagnostics never enter pin matching, Profile compilation, or a
 Lifecycle Bundle. Active schemas reject `oaw.provider-descriptor/v1` and
 `oaw.user-config/v1` instead of silently upgrading them.
 
+Codex has a policy integration by default and a separate audited host-native
+Bridge at `oaw/codex-host`. The Bridge must be explicitly installed and trusted;
+it supports `CURRENT` and `skill` bindings only. The policy surface remains
+`oaw/codex-policy` and is never promoted by filesystem detection. Unreported
+MCP, Hook, Skill, Plugin, model, authentication, sandbox, approval, and tool
+surfaces remain `unknown`.
+
 ## Core Compilation
 
 OAW Core accepts request evidence, trusted configuration, Host session facts,
@@ -132,12 +139,21 @@ eligible set is the intersection of the selected Profile, every active
 Capability binding, integration metadata, and current Host session facts. The
 user selects a topology during the Workflow Startup Gate.
 
-All nine built-in integrations currently have the `policy` control surface and
-support `CURRENT`. A future `host-native` integration must support `CURRENT`;
-its `SUBAGENT` availability remains session-dependent. It reports facts,
-Dispatch Packet outcomes, and Receipts but never transfers a model command,
-credential, private Hook payload, or private MCP, Skill, or Plugin configuration
-to OAW.
+Codex exposes `oaw/codex-policy` by default and the opt-in `oaw/codex-host`
+host-native surface. The Bridge supports `CURRENT` and `skill` bindings only;
+its session-dependent evidence comes from the trusted Hook and allowlisted Host
+metadata. Other built-in integrations remain policy surfaces unless their own
+Host-native integration is explicitly installed and verified. No integration
+transfers a model command, credential, private Hook payload, or private MCP,
+Skill, or Plugin configuration to OAW.
+
+The Codex Bridge path is:
+
+```text
+observe_current -> Core inspect -> explicit Startup Gate
+                -> Core compile / Coordinator START
+                -> current Codex session executes Skills and tools
+```
 
 The Agent Host owns physical execution authority. Lifecycle Bundles,
 Capability Grants, and Resource Leases express logical workflow authority for

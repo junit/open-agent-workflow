@@ -78,6 +78,7 @@ docs/en/comparison.md|docs/zh/comparison.md
 docs/en/lifecycle.md|docs/zh/lifecycle.md
 docs/en/architecture.md|docs/zh/architecture.md
 docs/en/installer.md|docs/zh/installer.md
+docs/en/codex-bridge.md|docs/zh/codex-bridge.md
 docs/en/adapters.md|docs/zh/adapters.md
 docs/en/extending-adapters.md|docs/zh/extending-adapters.md
 docs/en/security.md|docs/zh/security.md
@@ -98,7 +99,7 @@ EOF
     'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
     'OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
     'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
-    '`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.' \
+    'Codex has a policy integration by default and a separate audited host-native Bridge' \
     'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.' \
     >>"$fixture_root/README.md"
   printf '%s\n' \
@@ -108,7 +109,7 @@ EOF
     '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
     'OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
     'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
-    '`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，' \
+    'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
     '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
     >>"$fixture_root/README-zh.md"
   mkdir -p "$fixture_root/policy"
@@ -128,6 +129,14 @@ EOF
       'Verified Provider Instance' \
       >>"$fixture_root/$document_path"
   done
+  printf '%s\n' 'oaw/codex-host' \
+    >>"$fixture_root/docs/en/architecture.md"
+  printf '%s\n' 'oaw/codex-host' \
+    >>"$fixture_root/docs/zh/architecture.md"
+  printf '%s\n' 'observe_current' \
+    >>"$fixture_root/docs/en/lifecycle.md"
+  printf '%s\n' 'observe_current' \
+    >>"$fixture_root/docs/zh/lifecycle.md"
   for document_path in \
     README.md README-zh.md \
     docs/en/lifecycle.md docs/zh/lifecycle.md \
@@ -162,6 +171,16 @@ EOF
       PROVIDER_FOREIGN_HOST_ONLY \
       PROVIDER_PIN_INCOMPATIBLE \
       HOST_PROVIDER_SCOPE_MISMATCH \
+      HOST_BRIDGE_UNAVAILABLE \
+      HOST_BRIDGE_CONTEXT_REQUIRED \
+      HOST_BRIDGE_PROTOCOL_MISMATCH \
+      HOST_EVIDENCE_HANDLE_REQUIRED \
+      HOST_EVIDENCE_HANDLE_INVALID \
+      HOST_EVIDENCE_EXPIRED \
+      HOST_EVIDENCE_SESSION_MISMATCH \
+      HOST_OBSERVATION_FAILED \
+      HOST_OBSERVATION_PARTIAL \
+      HOST_SESSION_CHANGED \
       oaw.provider-descriptor/v1 \
       oaw.user-config/v1 \
       >>"$fixture_root/$document_path"
@@ -327,6 +346,7 @@ assert_executable scripts/check-docs.sh
 assert_contains scripts/check-docs.sh "README.md|README-zh.md"
 assert_contains scripts/check-docs.sh "docs/en/background.md|docs/zh/background.md"
 assert_contains scripts/check-docs.sh "docs/en/extending-adapters.md|docs/zh/extending-adapters.md"
+assert_contains scripts/check-docs.sh "docs/en/codex-bridge.md|docs/zh/codex-bridge.md"
 assert_contains scripts/check-docs.sh "for command in check install update uninstall"
 assert_contains scripts/check-docs.sh "experience-based"
 assert_contains scripts/check-docs.sh "基于经验"
@@ -338,6 +358,8 @@ assert_contains scripts/check-docs.sh "host-scope-documents"
 assert_contains scripts/check-docs.sh "Host Installation"
 assert_contains scripts/check-docs.sh "Verified Provider Instance"
 assert_contains scripts/check-docs.sh "PROVIDER_FOREIGN_HOST_ONLY"
+assert_contains scripts/check-docs.sh "HOST_BRIDGE_PROTOCOL_MISMATCH"
+assert_contains scripts/check-docs.sh "forbidden positive authority claim"
 if grep -E '(^|[;&|[:space:]])(curl|wget)([[:space:]]|$)' \
   "$REPOSITORY/scripts/check-docs.sh" >/dev/null; then
   fail "documentation checker contains a network client command"
@@ -409,6 +431,25 @@ fi
 cp "$HISTORICAL_FIXTURE_BACKUP" "$HISTORICAL_FIXTURE"
 pass "documentation checker rejects stale current claims while allowing historical ADR text"
 
+AUTHORITY_FIXTURE="$DOCS_TEST_TEMP/repository/docs/en/architecture.md"
+AUTHORITY_FIXTURE_BACKUP="$DOCS_TEST_TEMP/architecture.md.before-authority"
+cp "$AUTHORITY_FIXTURE" "$AUTHORITY_FIXTURE_BACKUP"
+printf '%s\n' 'OAW starts a model process' >>"$AUTHORITY_FIXTURE"
+if checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  fail "documentation checker accepts a positive OAW execution-authority claim"
+fi
+case "$checker_output" in
+  *'forbidden positive authority claim'*'OAW starts a model process'*) ;;
+  *) fail "documentation checker gives no positive authority diagnostic" ;;
+esac
+cp "$AUTHORITY_FIXTURE_BACKUP" "$AUTHORITY_FIXTURE"
+printf '%s\n' 'OAW never starts a model process.' >>"$AUTHORITY_FIXTURE"
+if ! checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  fail "documentation checker rejects a valid negative authority statement: $checker_output"
+fi
+cp "$AUTHORITY_FIXTURE_BACKUP" "$AUTHORITY_FIXTURE"
+pass "documentation checker rejects positive execution claims and permits negative boundaries"
+
 for readme_file in README.md README-zh.md; do
   for command_example in \
     './install.sh check' \
@@ -454,6 +495,7 @@ for readme_file in README.md README-zh.md; do
     lifecycle \
     architecture \
     installer \
+    codex-bridge \
     adapters \
     extending-adapters \
     security \
@@ -471,7 +513,7 @@ for release_boundary in \
   'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
   'OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
   'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
-  '`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. All nine built-in integrations currently expose the `policy` surface. A future `host-native` integration may report session facts and Receipts without transferring execution authority to OAW.' \
+  'Codex has a policy integration by default and a separate audited host-native Bridge' \
   'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.'; do
   assert_contains README.md "$release_boundary"
 done
@@ -482,7 +524,7 @@ for release_boundary in \
   '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
   'OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
   'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
-  '`CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，' \
+  'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
   '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。'; do
   assert_contains README-zh.md "$release_boundary"
 done

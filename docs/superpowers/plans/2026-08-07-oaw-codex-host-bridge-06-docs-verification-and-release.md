@@ -122,7 +122,7 @@ rtk git commit -m "docs: document Codex Host Bridge operations"
 - Modify: `scripts/check-docs.sh`
 - Modify: `tests/10-docs-test.sh`
 
-- [ ] **Step 1: Replace stale Host claims**
+- [x] **Step 1: Replace stale Host claims**
 
 Replace the old statement that all built-in integrations are policy-only with
 the precise split:
@@ -139,7 +139,7 @@ Startup Gate -> Core compile/Coordinator START`, and show Direct/Bounded paths
 without the Bridge. Update the adapters table with `oaw/codex-host` as an
 optional host-native surface while retaining `oaw/codex-policy`.
 
-- [ ] **Step 2: Add the diagnostics and security boundary text**
+- [x] **Step 2: Add the diagnostics and security boundary text**
 
 The troubleshooting tables must include, at minimum:
 
@@ -162,7 +162,7 @@ is not a production dependency, and a same-user process can interfere with
 local programs. Do not promise inherited MCP, Hook, Skill, Plugin, model,
 authentication, sandbox, or approval behavior beyond observed Host facts.
 
-- [ ] **Step 3: Update `scripts/check-docs.sh` release boundaries**
+- [x] **Step 3: Update `scripts/check-docs.sh` release boundaries**
 
 Replace the exact old README assertion beginning `All nine built-in
 integrations currently expose the policy surface` in both
@@ -188,7 +188,7 @@ Update `make_checker_fixture` in `tests/10-docs-test.sh` with the same new
 document pair and release-boundary literals so the checker is tested against
 the new contract instead of the removed nine-policy assertion.
 
-- [ ] **Step 4: Run GREEN documentation checks**
+- [x] **Step 4: Run GREEN documentation checks**
 
 ```bash
 rtk bash scripts/check-docs.sh
@@ -199,7 +199,7 @@ rtk git diff --check
 Expected: PASS with both language projections present and no stale execution
 vocabulary.
 
-- [ ] **Step 5: Commit documentation projections**
+- [x] **Step 5: Commit documentation projections**
 
 ```bash
 rtk git add README.md README-zh.md docs/en/architecture.md docs/zh/architecture.md docs/en/lifecycle.md docs/zh/lifecycle.md docs/en/security.md docs/zh/security.md docs/en/troubleshooting.md docs/zh/troubleshooting.md docs/en/adapters.md docs/zh/adapters.md scripts/check-docs.sh tests/10-docs-test.sh

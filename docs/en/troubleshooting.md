@@ -132,6 +132,37 @@ management commands do not create Workflow State. Only a real `host-native`
 integration can exchange session facts and Receipts with OAW Core or the
 Workflow Coordinator. The Agent Host still owns physical execution authority.
 
+## Codex Host Bridge Diagnostics
+
+Start with the read-only management projection:
+
+```bash
+oaw bridge check codex --format json
+```
+
+The management check proves file and registration state only. It always reports
+`current_session_loaded: false`; only trusted `observe_current` Hook input in a
+fresh Codex session can establish current-session evidence.
+
+| Reason | Diagnosis and recovery |
+| --- | --- |
+| `HOST_BRIDGE_UNAVAILABLE` | The Plugin or MCP Bridge is unavailable. Install or enable it, inspect Codex `/hooks`, and start a new session. |
+| `HOST_BRIDGE_CONTEXT_REQUIRED` | MCP was called without trusted Hook context. Review and trust the exact four Hook matchers, then start a new session. |
+| `HOST_BRIDGE_PROTOCOL_MISMATCH` | Plugin, Hook, Bridge, Core, or Host protocol versions differ. Run `oaw bridge update codex`, review the Hook again, and start a new session. |
+| `HOST_EVIDENCE_HANDLE_REQUIRED` | A later operation omitted its current handle. Call `observe_current` and retry with the returned handle. |
+| `HOST_EVIDENCE_HANDLE_INVALID` | The handle is malformed, edited, unknown, evicted, or from a restarted Bridge. Discard it and call `observe_current` again. |
+| `HOST_EVIDENCE_EXPIRED` | The handle exceeded its bounded TTL. Call `observe_current` before retrying `core.inspect` or `core.compile`. |
+| `HOST_EVIDENCE_SESSION_MISMATCH` | The handle belongs to another session or working directory. Stop before mutation and observe again in the current session. |
+| `HOST_OBSERVATION_FAILED` | Required stable metadata, especially `skills/list`, failed. Repair the local Codex/App Server capability; affected Providers remain unverified. |
+| `HOST_OBSERVATION_PARTIAL` | Optional Hook or configuration metadata is incomplete. Keep unavailable fields `unknown`; do not infer inheritance. |
+| `HOST_SESSION_CHANGED` | Facts pinned by the active Bundle changed. Pause, observe again, return to the Startup Gate, and compile a new Bundle generation. |
+
+`skills/list` is the only v1 Provider binding authority. `plugin/list` is not a
+production dependency. Do not repair these reasons by editing a handle,
+inventing a binding, copying Host configuration, or launching another process.
+The [Codex Host Bridge guide](codex-bridge.md) defines installation, Hook, and
+rollback behavior.
+
 ## Workflow Coordination Errors
 
 These reason codes belong to the Core, Coordinator, or Host integration rather

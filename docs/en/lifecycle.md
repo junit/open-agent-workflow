@@ -170,10 +170,22 @@ sandbox.
 
 The Agent Host owns physical execution authority. A Lifecycle Bundle,
 Capability Grant, or Resource Lease expresses logical workflow authority only.
-All nine built-in Host integrations currently use the `policy` surface and
-support `CURRENT`; they do not guarantee Coordinator semantics. A future
-`host-native` surface may exchange session facts, Dispatch Packets, and Receipts
-while the Host continues to perform every effect.
+Codex has a policy integration by default and a separate audited host-native
+Bridge at `oaw/codex-host` that must be explicitly installed and trusted. The
+Bridge supports `CURRENT` and `skill` bindings only; all other Host surfaces
+remain unknown unless the Host reports stable evidence.
+
+For a Codex Host-native Workflow, the evidence path is:
+
+```text
+observe_current -> Core inspect -> explicit Startup Gate
+                -> Core compile / Coordinator START
+                -> current Codex session executes Skills and tools
+```
+
+Other built-in integrations remain policy surfaces unless their own Host-native
+integration is explicitly installed and verified. None of these logical
+records transfer physical execution authority from the Agent Host.
 
 ## Matt-Superpowers Stage Map
 
