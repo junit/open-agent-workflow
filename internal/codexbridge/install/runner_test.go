@@ -41,6 +41,23 @@ func TestExecRunnerCopiesExplicitEnvironmentWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestExecRunnerProjectsExitAndLaunchFailures(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Bridge v1 installation is unsupported on Windows")
+	}
+	result, err := (ExecRunner{Binary: "/usr/bin/false", Environment: []string{}}).Run(context.Background(), "failure")
+	if err == nil || result.ExitCode == 0 {
+		t.Fatalf("false result = %#v, %v", result, err)
+	}
+	result, err = (ExecRunner{Binary: "/definitely/missing/codex", Environment: []string{}}).Run(context.Background(), "plugin")
+	if err == nil || result.ExitCode != -1 {
+		t.Fatalf("missing result = %#v, %v", result, err)
+	}
+	if _, err := (ExecRunner{Binary: "/usr/bin/false"}).Run(context.Background(), "bad\nargument"); Code(err) != "BRIDGE_INSTALL_INPUT_INVALID" {
+		t.Fatalf("argument error = %v", err)
+	}
+}
+
 func TestOfficialCodexCommandsUseExactArgumentVectors(t *testing.T) {
 	runner := &recordingRunner{Results: map[string]CLIResult{
 		"plugin list":        {Stdout: []byte(`{"installed":[]}`)},
@@ -174,6 +191,23 @@ func TestCodexNonzeroResultWithoutErrorIsStillRejected(t *testing.T) {
 	}}
 	if _, err := AddPlugin(context.Background(), runner); Code(err) != "BRIDGE_INSTALL_CODEX_FAILED" {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestCodexInventoryRejectsMalformedAndInvalidRecords(t *testing.T) {
+	runner := &recordingRunner{Results: map[string]CLIResult{
+		"plugin list": {Stdout: []byte(`{"installed":`)},
+	}}
+	if _, err := ListPlugins(context.Background(), runner); Code(err) != "BRIDGE_INSTALL_CODEX_INVALID" {
+		t.Fatalf("malformed Plugin inventory error = %v", err)
+	}
+	runner.Results["plugin list"] = CLIResult{Stdout: []byte(`{"installed":[{"pluginId":"bad\n","name":"p","marketplaceName":"m","version":"1","installed":true}]}`)}
+	if _, err := ListPlugins(context.Background(), runner); Code(err) != "BRIDGE_INSTALL_CODEX_INVALID" {
+		t.Fatalf("invalid Plugin inventory error = %v", err)
+	}
+	runner.Results["plugin marketplace"] = CLIResult{Stdout: []byte(`{"marketplaces":[{"name":"bad\n"}]}`)}
+	if _, err := ListMarketplaces(context.Background(), runner); Code(err) != "BRIDGE_INSTALL_CODEX_INVALID" {
+		t.Fatalf("invalid marketplace inventory error = %v", err)
 	}
 }
 

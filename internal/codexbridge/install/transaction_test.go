@@ -86,6 +86,115 @@ func TestInstallRollsBackMarketplaceWhenPluginAddFails(t *testing.T) {
 	}
 }
 
+func TestInstallRollsBackPartialMarketplaceAdd(t *testing.T) {
+	environment := testEnvironment(t)
+	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source", "binary-v1")
+	runner := &recordingRunner{FailureSequences: map[string][]error{
+		"plugin marketplace": {errors.New("partial add"), nil},
+	}}
+	if _, err := Install(context.Background(), environment, runner, InstallRequest{Binary: binary, Version: "1.0.0"}); Code(err) != "BRIDGE_INSTALL_ROLLBACK" {
+		t.Fatalf("error = %v, commands = %#v", err, runner.Commands)
+	}
+	if runner.Saw("plugin remove") || !runner.Saw("plugin marketplace remove") {
+		t.Fatalf("rollback commands = %#v", runner.Commands)
+	}
+}
+
+func TestInstallRejectsUnsafeSourceAndExistingDestination(t *testing.T) {
+	environment := testEnvironment(t)
+	nonExecutable := filepath.Join(environment.ProjectRoot, "not-executable")
+	if err := os.WriteFile(nonExecutable, []byte("data"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), environment, &recordingRunner{}, InstallRequest{Binary: nonExecutable, Version: "1.0.0"}); Code(err) != "BRIDGE_INSTALL_INPUT_INVALID" {
+		t.Fatalf("non-executable error = %v", err)
+	}
+	link := filepath.Join(environment.ProjectRoot, "binary-link")
+	if err := os.Symlink(nonExecutable, link); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), environment, &recordingRunner{}, InstallRequest{Binary: link, Version: "1.0.0"}); Code(err) != "BRIDGE_INSTALL_INPUT_INVALID" {
+		t.Fatalf("symlink error = %v", err)
+	}
+	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source", "binary-v1")
+	if err := os.MkdirAll(filepath.Join(environment.DataRoot, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Install(context.Background(), environment, &recordingRunner{}, InstallRequest{Binary: binary, Version: "1.0.0"}); Code(err) != "BRIDGE_INSTALL_ALREADY_INSTALLED" {
+		t.Fatalf("existing destination error = %v", err)
+	}
+}
+
+func TestPublishConflictCleanupRemovesOnlyStagingDirectory(t *testing.T) {
+	environment := testEnvironment(t)
+	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source", "binary-v1")
+	prepared, err := preparePayload(environment, InstallRequest{Binary: binary, Version: "1.0.0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged, err := stagePayload(environment, prepared, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stagePath := filepath.Join(environment.DataRoot, staged.name)
+	if err := os.Mkdir(filepath.Join(environment.DataRoot, "bin"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := publishFreshPayload(environment, staged); Code(err) != "BRIDGE_INSTALL_ALREADY_INSTALLED" {
+		t.Fatalf("publish error = %v", err)
+	}
+	cleanupStaging(environment, "bin")
+	if _, err := os.Stat(stagePath); err != nil {
+		t.Fatalf("non-staging cleanup changed staged payload: %v", err)
+	}
+	cleanupStaging(environment, staged.name)
+	if _, err := os.Stat(stagePath); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("staging directory remains: %v", err)
+	}
+	if info, err := os.Stat(filepath.Join(environment.DataRoot, "bin")); err != nil || !info.IsDir() {
+		t.Fatalf("conflicting destination changed: %v", err)
+	}
+}
+
+func TestManagedPayloadInspectionRejectsUnsafeFiles(t *testing.T) {
+	environment := testEnvironment(t)
+	root, err := openOrCreateManagedRoot(environment.DataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := writeNewRootFile(root, "bin/oaw", []byte("binary"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureRootDirectories(root, "marketplace"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../bin/oaw", filepath.Join(environment.DataRoot, "marketplace", "linked")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := listPayloadFiles(root); Code(err) != "BRIDGE_INSTALL_PATH_UNSAFE" {
+		t.Fatalf("payload symlink error = %v", err)
+	}
+	if _, _, err := digestRootFile(root, "marketplace/linked"); Code(err) != "BRIDGE_INSTALL_PATH_UNSAFE" {
+		t.Fatalf("digest symlink error = %v", err)
+	}
+	oversized := filepath.Join(environment.DataRoot, "oversized")
+	file, err := os.OpenFile(oversized, os.O_CREATE|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maximumBridgeBinaryBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := digestRootFile(root, "oversized"); Code(err) != "BRIDGE_INSTALL_PATH_UNSAFE" {
+		t.Fatalf("oversized digest error = %v", err)
+	}
+}
+
 func TestInstallPreservesRecoveryStateWhenRollbackCommandFails(t *testing.T) {
 	environment := testEnvironment(t)
 	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source", "binary-v1")
@@ -136,6 +245,33 @@ func TestUpdateReplacesCleanInstallationWithoutMarketplaceUpgrade(t *testing.T) 
 	}
 }
 
+func TestUpdateDryRunAndUnrecordedFileAreNonMutating(t *testing.T) {
+	environment, runner, state := installedFixture(t)
+	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source-v2", "binary-v2")
+	before := len(runner.Commands)
+	result, err := Update(context.Background(), environment, runner, InstallRequest{Binary: binary, Version: "2.0.0", DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Changed || result.Operation != "update" {
+		t.Fatalf("result = %#v", result)
+	}
+	if commandsContain(runner.Commands[before:], "plugin remove") || commandsContain(runner.Commands[before:], "plugin add") {
+		t.Fatalf("dry-run mutation commands = %#v", runner.Commands[before:])
+	}
+	extra := filepath.Join(state.MarketplacePath, "unrecorded.txt")
+	if err := os.WriteFile(extra, []byte("user"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before = len(runner.Commands)
+	if _, err := Update(context.Background(), environment, runner, InstallRequest{Binary: binary, Version: "2.0.0"}); Code(err) != "BRIDGE_INSTALL_DRIFT" {
+		t.Fatalf("unrecorded file error = %v", err)
+	}
+	if len(runner.Commands) != before {
+		t.Fatalf("unrecorded file invoked Codex: %#v", runner.Commands[before:])
+	}
+}
+
 func TestUpdateRejectsDriftBeforeInvokingCodex(t *testing.T) {
 	environment, runner, state := installedFixture(t)
 	drifted := filepath.Join(environment.DataRoot, filepath.FromSlash(state.Files[0].Path))
@@ -183,6 +319,82 @@ func TestUpdateRestoresPreviousPayloadWhenPluginAddFails(t *testing.T) {
 		if strings.HasPrefix(entry.Name(), ".backup-") || strings.HasPrefix(entry.Name(), ".stage-") {
 			t.Fatalf("transaction directory remains: %q", entry.Name())
 		}
+	}
+}
+
+func TestUpdateRestoresPreviousPayloadWhenPluginRemoveFails(t *testing.T) {
+	environment, installedRunner, previous := installedFixture(t)
+	runner := &recordingRunner{
+		Results: installedRunner.Results,
+		FailureSequences: map[string][]error{
+			"plugin remove": {errors.New("old Plugin removal denied")},
+		},
+	}
+	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source-v2", "binary-v2")
+	if _, err := Update(context.Background(), environment, runner, InstallRequest{Binary: binary, Version: "2.0.0"}); Code(err) != "BRIDGE_INSTALL_ROLLBACK" {
+		t.Fatalf("error = %v, commands = %#v", err, runner.Commands)
+	}
+	restored, err := ReadState(environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Digest != previous.Digest || restored.BinaryDigest != previous.BinaryDigest {
+		t.Fatalf("restored state = %#v, previous = %#v", restored, previous)
+	}
+	content, err := os.ReadFile(restored.BinaryPath)
+	if err != nil || string(content) != "binary-v1" {
+		t.Fatalf("restored binary = %q, %v", content, err)
+	}
+	if !runner.Saw("plugin add") {
+		t.Fatalf("previous Plugin was not re-added: %#v", runner.Commands)
+	}
+}
+
+func TestUpdatePreservesConcurrentPayloadDriftWhenRollbackCannotRestore(t *testing.T) {
+	environment, installedRunner, previous := installedFixture(t)
+	delegate := &recordingRunner{
+		Results:  installedRunner.Results,
+		Failures: map[string]error{"plugin add": errors.New("new Plugin rejected")},
+	}
+	var mutationErr error
+	mutated := false
+	runner := &callbackRunner{
+		delegate: delegate,
+		before: func(arguments []string) {
+			if !mutated && commandKey(arguments) == "plugin add" {
+				mutated = true
+				mutationErr = os.WriteFile(previous.BinaryPath, []byte("concurrent edit"), 0o700)
+			}
+		},
+	}
+	binary := writeTestBinary(t, environment.ProjectRoot, "oaw-source-v2", "binary-v2")
+	if _, err := Update(context.Background(), environment, runner, InstallRequest{Binary: binary, Version: "2.0.0"}); Code(err) != "BRIDGE_INSTALL_ROLLBACK_INCOMPLETE" {
+		t.Fatalf("error = %v, commands = %#v", err, delegate.Commands)
+	}
+	if mutationErr != nil {
+		t.Fatal(mutationErr)
+	}
+	content, err := os.ReadFile(previous.BinaryPath)
+	if err != nil || string(content) != "concurrent edit" {
+		t.Fatalf("concurrent edit was not preserved: %q, %v", content, err)
+	}
+	state, err := ReadState(environment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Digest != previous.Digest {
+		t.Fatalf("previous authority state changed: %#v", state)
+	}
+	foundBackup := false
+	entries, err := os.ReadDir(environment.DataRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		foundBackup = foundBackup || strings.HasPrefix(entry.Name(), ".backup-")
+	}
+	if !foundBackup {
+		t.Fatal("recovery backup was removed after incomplete rollback")
 	}
 }
 
@@ -355,4 +567,16 @@ func hasDiagnostic(diagnostics []Diagnostic, code string) bool {
 		}
 	}
 	return false
+}
+
+type callbackRunner struct {
+	delegate *recordingRunner
+	before   func([]string)
+}
+
+func (r *callbackRunner) Run(ctx context.Context, arguments ...string) (CLIResult, error) {
+	if r.before != nil {
+		r.before(arguments)
+	}
+	return r.delegate.Run(ctx, arguments...)
 }

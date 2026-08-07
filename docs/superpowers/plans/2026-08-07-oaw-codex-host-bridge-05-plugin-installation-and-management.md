@@ -682,7 +682,7 @@ rtk git commit -m "test: cover Codex Bridge command boundaries"
 
 ## Task 6: Self-review installation authority
 
-- [ ] **Step 1: Scan for forbidden mutations**
+- [x] **Step 1: Scan for forbidden mutations**
 
 ```bash
 rtk rg -n 'os\.WriteFile.*\.codex|\.codex/config|\.codex/plugins/cache|HOME=|CODEX_HOME=|sh -c|bash -c|plugin/list' --glob '*.go' --glob '!**/*_test.go' internal/codexbridge/install internal/cli
@@ -692,7 +692,7 @@ Expected: no direct Codex config/cache writes, shell interpolation, private
 HOME, or production `plugin/list` dependency. Negative-test literals remain
 covered by the tests and are deliberately excluded from this production scan.
 
-- [ ] **Step 2: Run the phase gate**
+- [x] **Step 2: Run the phase gate**
 
 ```bash
 rtk go test ./internal/codexbridge/... ./internal/cli

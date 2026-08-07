@@ -3,6 +3,7 @@ package install
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"maps"
 	"slices"
 	"strings"
@@ -93,6 +94,72 @@ func TestRenderEscapesBinaryPathForJSONAndHookShell(t *testing.T) {
 
 	assertDirectMCPMap(t, files["plugins/oaw-codex-host/.mcp.json"], binary)
 	assertExactMatchers(t, files["plugins/oaw-codex-host/hooks/hooks.json"], quotePOSIX(binary)+" bridge hook codex")
+}
+
+func TestRenderedProjectionRejectsEverySurfaceDrift(t *testing.T) {
+	options := validRenderOptions("/state/bin/oaw")
+	hookCommand := quotePOSIX(options.Binary) + " bridge hook codex"
+	tests := []struct {
+		name   string
+		mutate func(map[string][]byte)
+	}{
+		{name: "manifest", mutate: func(files map[string][]byte) {
+			path := "plugins/oaw-codex-host/.codex-plugin/plugin.json"
+			files[path] = bytes.Replace(files[path], []byte(`"./skills/"`), []byte(`"./other/"`), 1)
+		}},
+		{name: "mcp", mutate: func(files map[string][]byte) {
+			path := "plugins/oaw-codex-host/.mcp.json"
+			files[path] = bytes.Replace(files[path], []byte(`"bridge", "serve", "codex"`), []byte(`"bridge", "serve", "other"`), 1)
+		}},
+		{name: "hooks", mutate: func(files map[string][]byte) {
+			path := "plugins/oaw-codex-host/hooks/hooks.json"
+			var document hookDocument
+			if err := json.Unmarshal(files[path], &document); err != nil {
+				t.Fatal(err)
+			}
+			document.Hooks.PreToolUse = document.Hooks.PreToolUse[:3]
+			files[path], _ = json.Marshal(document)
+		}},
+		{name: "marketplace", mutate: func(files map[string][]byte) {
+			path := ".agents/plugins/marketplace.json"
+			files[path] = bytes.Replace(files[path], []byte(`"./plugins/oaw-codex-host"`), []byte(`"./plugins/other"`), 1)
+		}},
+		{name: "skill", mutate: func(files map[string][]byte) {
+			files["plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md"] = nil
+		}},
+		{name: "unknown manifest field", mutate: func(files map[string][]byte) {
+			path := "plugins/oaw-codex-host/.codex-plugin/plugin.json"
+			files[path] = bytes.Replace(files[path], []byte("{"), []byte(`{"unknown":true,`), 1)
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			files, err := Render(options)
+			if err != nil {
+				t.Fatal(err)
+			}
+			test.mutate(files)
+			if err := validateRenderedFiles(files, options, hookCommand); Code(err) != "BRIDGE_INSTALL_TEMPLATE_INVALID" {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestTemplateHelpersRejectUnknownAndTrailingValues(t *testing.T) {
+	if _, err := replaceTemplateValues([]byte(`{"value":"{{UNKNOWN}}"}`), map[string]string{}); Code(err) != "BRIDGE_INSTALL_TEMPLATE_INVALID" {
+		t.Fatalf("placeholder error = %v", err)
+	}
+	if err := decodeClosed([]byte(`{"name":"x"} {}`), &struct {
+		Name string `json:"name"`
+	}{}); err == nil {
+		t.Fatal("trailing JSON accepted")
+	}
+	cause := errors.New("cause")
+	err := installError("TEST", "message", cause)
+	if !errors.Is(err, cause) || err.Error() != "message: cause" {
+		t.Fatalf("wrapped error = %v", err)
+	}
 }
 
 func validRenderOptions(binary string) RenderOptions {

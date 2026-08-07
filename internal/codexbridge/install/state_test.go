@@ -78,6 +78,30 @@ func TestInstallStateRejectsUnsafeOwnedFiles(t *testing.T) {
 	}
 }
 
+func TestInstallStateRejectsInvalidRecords(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*InstallState)
+	}{
+		{name: "schema", mutate: func(state *InstallState) { state.SchemaVersion = "old" }},
+		{name: "version", mutate: func(state *InstallState) { state.BridgeVersion = "latest" }},
+		{name: "binary digest", mutate: func(state *InstallState) { state.BinaryDigest = "bad" }},
+		{name: "identity", mutate: func(state *InstallState) { state.PluginName = "other" }},
+		{name: "duplicate", mutate: func(state *InstallState) { state.Files = append(state.Files, state.Files[0]) }},
+		{name: "mode", mutate: func(state *InstallState) { state.Files[0].Mode = 0o1000 }},
+		{name: "timestamp", mutate: func(state *InstallState) { state.InstalledAt = "not-a-time" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			state := validInstallState(t)
+			test.mutate(&state)
+			if _, err := EncodeState(state); Code(err) != "BRIDGE_INSTALL_STATE_INVALID" {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
 func TestNewEnvironmentUsesOnlyOAWOwnedXDGCoordinates(t *testing.T) {
 	root := t.TempDir()
 	stateHome := filepath.Join(root, "state")
@@ -110,6 +134,31 @@ func TestNewEnvironmentRejectsUnsafeCoordinates(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := NewEnvironment(arguments[0], arguments[1], arguments[2], arguments[3]); Code(err) != "BRIDGE_INSTALL_INPUT_INVALID" {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestValidateEnvironmentRejectsMalformedProjection(t *testing.T) {
+	environment := testEnvironment(t)
+	tests := []struct {
+		name   string
+		mutate func(*Environment)
+	}{
+		{name: "state root", mutate: func(value *Environment) { value.StateRoot = "relative" }},
+		{name: "data root", mutate: func(value *Environment) { value.DataRoot = "relative" }},
+		{name: "project root", mutate: func(value *Environment) { value.ProjectRoot = "relative" }},
+		{name: "state file", mutate: func(value *Environment) {
+			value.StateFile = filepath.Join(filepath.Dir(value.StateRoot), "install.json")
+		}},
+		{name: "codex binary", mutate: func(value *Environment) { value.CodexBinary = "codex --help" }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			candidate := environment
+			test.mutate(&candidate)
+			if err := ValidateEnvironment(candidate); Code(err) != "BRIDGE_INSTALL_INPUT_INVALID" {
 				t.Fatalf("error = %v", err)
 			}
 		})
@@ -204,6 +253,36 @@ func TestRemoveStateRejectsConcurrentStateReplacement(t *testing.T) {
 	}
 	if current.BridgeVersion != "2.0.0" {
 		t.Fatalf("concurrent state was removed or replaced: %#v", current)
+	}
+}
+
+func TestRemoveStateIsIdempotentAndRejectsUnsafeInputs(t *testing.T) {
+	environment := testEnvironment(t)
+	digest := strings.Repeat("a", 64)
+	if err := RemoveState(environment, "invalid"); Code(err) != "BRIDGE_INSTALL_STATE_INVALID" {
+		t.Fatalf("invalid digest error = %v", err)
+	}
+	if err := RemoveState(environment, digest); err != nil {
+		t.Fatalf("missing root error = %v", err)
+	}
+	if err := os.MkdirAll(environment.StateRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveState(environment, digest); err != nil {
+		t.Fatalf("missing state error = %v", err)
+	}
+	target := filepath.Join(filepath.Dir(environment.StateRoot), "foreign-state")
+	if err := os.WriteFile(target, []byte("foreign"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, environment.StateFile); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveState(environment, digest); Code(err) != "BRIDGE_INSTALL_PATH_UNSAFE" {
+		t.Fatalf("symlink error = %v", err)
+	}
+	if content, err := os.ReadFile(target); err != nil || string(content) != "foreign" {
+		t.Fatalf("foreign state changed: %q, %v", content, err)
 	}
 }
 
