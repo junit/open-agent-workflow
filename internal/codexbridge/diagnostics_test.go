@@ -1,0 +1,27 @@
+package codexbridge
+
+import (
+	"strings"
+	"testing"
+)
+
+func TestDiagnosticProjectionNeverIncludesHandleOrAbsolutePath(t *testing.T) {
+	err := NewError("HOST_EVIDENCE_HANDLE_INVALID", "edited token at /Users/example/repo", nil)
+	value := ProjectDiagnostic(err, "codex", true)
+	if strings.Contains(value.Detail, "token") || strings.Contains(value.Detail, "/Users/") {
+		t.Fatalf("diagnostic leaked private data: %#v", value)
+	}
+	if value.Code != "HOST_EVIDENCE_HANDLE_INVALID" || value.Layer != "evidence" ||
+		!value.DirectAvailable || !value.RecoverableByObservation || value.RecoveryAction == "" ||
+		value.AffectedProviders == nil || value.AffectedProfiles == nil {
+		t.Fatalf("diagnostic projection is incomplete: %#v", value)
+	}
+}
+
+func TestDiagnosticProjectionKeepsSafeDetailAndMapsRecovery(t *testing.T) {
+	value := NewDiagnostic("HOST_SESSION_CHANGED", "downstream", "the current session changed", false)
+	if value.Detail != "the current session changed" || !value.RecoverableByObservation ||
+		value.RecoveryAction == "" || value.EvidenceDigest != "" {
+		t.Fatalf("diagnostic = %#v", value)
+	}
+}
