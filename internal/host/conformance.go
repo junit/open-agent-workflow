@@ -10,7 +10,7 @@ import (
 )
 
 func NewConformanceTranscript(input ConformanceTranscript) (ConformanceTranscript, error) {
-	if input.SchemaVersion != HostConformanceTranscriptSchemaV3 {
+	if input.SchemaVersion != HostConformanceTranscriptSchemaV4 {
 		return ConformanceTranscript{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Conformance Transcript schema", nil)
 	}
 	providedDigest := input.Digest
@@ -150,7 +150,8 @@ func ValidateConformanceTranscript(manifest Manifest, transcript ConformanceTran
 		}
 	}
 	return NewConformanceReport(ConformanceReport{
-		SchemaVersion: HostConformanceReportSchemaV3, ManifestDigest: normalizedManifest.Digest,
+		SchemaVersion: HostConformanceReportSchemaV4, ManifestDigest: normalizedManifest.Digest,
+		HostSessionDigest: normalizedTranscript.Session.Digest, BindingInventoryDigest: normalizedTranscript.Inventory.Digest,
 		TranscriptDigest: normalizedTranscript.Digest, VerifiedFeatures: verified,
 		VerifiedDelegationFeatures: verifiedDelegation, VerifiedHostActionIDs: verifiedActions, Diagnostics: diagnostics,
 	})

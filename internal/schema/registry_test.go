@@ -61,23 +61,47 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	}
 }
 
-func TestRegistryValidatesHostNeutralGrantAndDispatchSchemas(t *testing.T) {
+func TestRegistryRejectsRetiredGrantAuthorityBeforeCoordinatorCutover(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json", []byte(`{}`)); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Grant v2) error = %v", err)
+	}
+}
+
+func TestRegistryValidatesGrantV3AuthorizationReceiptV3ConformanceV4AndRejectsOldAuthority(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := strings.Repeat("a", 64)
-	grant := []byte(fmt.Sprintf(`{"schema_version":"oaw.capability-grant/v2","id":"grant-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","topology":"CURRENT","host_session_digest":"%s","provider_id":"oaw/superpowers","provider_instance_digest":"%s","capability_id":"implementation","binding":{"host":"codex","kind":"skill","reference":"superpowers:executing-plans","topologies":["CURRENT"]},"effects":["read-project"],"resources":["project"],"termination_condition":"complete","digest":"%s"}`, digest, digest, digest, digest))
-	if err := registry.Validate(CapabilityGrantV2, grant); err != nil {
-		t.Fatalf("Validate(CapabilityGrantV2) error = %v", err)
+	tree := "sha256:" + digest
+	cursor := `{"slot_id":"implementation","kind":"binding","unit_id":"implementation-main","ordinal":1}`
+	target := fmt.Sprintf(`{"target_kind":"provider-binding","provider_binding":{"provider_id":"acme/provider","provider_instance_digest":"%s","distribution_id":"distribution","distribution_revision":"0123456789abcdef0123456789abcdef01234567","distribution_tree_digest":"%s","binding_id":"binding","surface":"codex-skills","kind":"skill","reference":"acme:implementation","invocation":"model","binding_tree_digest":"%s","binding_evidence_digest":"%s","input_artifact":"workflow-input","output_artifact":"workflow-output","input_schema":"oaw.workflow-input/v1","outcome_schema":"oaw.workflow-output/v1","requires_explicit_invocation":false}}`, digest, tree, tree, digest)
+	explicitTarget := strings.Replace(strings.TrimSuffix(strings.TrimPrefix(target, `{"target_kind":"provider-binding","provider_binding":`), `}`), `"invocation":"model"`, `"invocation":"human-explicit"`, 1)
+	explicitTarget = strings.Replace(explicitTarget, `"requires_explicit_invocation":false`, `"requires_explicit_invocation":true`, 1)
+	authorization := fmt.Sprintf(`{"schema_version":"oaw.user-authorization/v1","id":"authorization-0123456789abcdef0123456789abcdef","issuer_host_id":"codex","host_session_digest":"%s","evidence_handle_digest":"%s","authorization_nonce":"nonce-1","workflow_id":"workflow-0123456789abcdef0123456789abcdef","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","cursor":%s,"target":%s,"decision":"allowed","effects":["network-write"],"resources":["project-worktree"],"evidence":[{"kind":"user-approval","reference":"evidence://host/approval","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, cursor, target, digest, digest)
+	attestation := fmt.Sprintf(`{"schema_version":"oaw.explicit-invocation-attestation/v1","id":"invocation-attestation-0123456789abcdef0123456789abcdef","issuer_host_id":"codex","host_session_digest":"%s","evidence_handle_digest":"%s","invocation_nonce":"nonce-1","workflow_id":"workflow-0123456789abcdef0123456789abcdef","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","cursor":%s,"provider_binding":%s,"evidence":[{"kind":"explicit-invocation","reference":"evidence://host/invocation","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, cursor, explicitTarget, digest, digest)
+	grant := fmt.Sprintf(`{"schema_version":"oaw.capability-grant/v3","id":"grant-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","cursor":%s,"target":%s,"topology":"CURRENT","host_session_digest":"%s","effects":["network-write"],"resources":["project-worktree"],"termination_condition":"complete","authorization_digest":"%s","invocation_attestation_digest":"","digest":"%s"}`, digest, cursor, target, digest, digest, digest)
+	receipt := fmt.Sprintf(`{"schema_version":"oaw.host-invocation-receipt/v3","kind":"COMPLETED","workflow_id":"workflow-0123456789abcdef0123456789abcdef","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","cursor":%s,"topology":"CURRENT","host_session_digest":"%s","dispatch_digest":"%s","invocation_handle":"","context_freshness":"shared","environment_report_digest":"%s","outcome":"succeeded","failure_code":"","outputs":[{"artifact_id":"workflow-output","schema":"oaw.workflow-output/v1","reference":"artifact://workflow/output/1","digest":"%s"}],"evidence":[{"kind":"report","reference":"evidence://report","digest":"%s"}],"digest":"%s"}`, digest, cursor, digest, digest, digest, digest, digest, digest)
+	for schemaID, raw := range map[string][]byte{
+		UserAuthorizationV1: []byte(authorization), ExplicitInvocationAttestationV1: []byte(attestation), CapabilityGrantV3: []byte(grant), HostInvocationReceiptV3: []byte(receipt),
+	} {
+		if err := registry.Validate(schemaID, raw); err != nil {
+			t.Fatalf("Validate(%s) error = %v", schemaID, err)
+		}
 	}
-	packet := []byte(fmt.Sprintf(`{"schema_version":"oaw.dispatch-packet/v1","id":"dispatch-0123456789abcdef0123456789abcdef","workflow_id":"workflow-0123456789abcdef0123456789abcdef","request_id":"request-1","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","ticket":"","topology":"CURRENT","host_session_digest":"%s","environment_report_digest":"%s","grant":%s,"input_references":[],"evidence_requirements":[],"environment_requirements":[],"digest":"%s"}`, digest, digest, digest, grant, digest))
-	if err := registry.Validate(DispatchPacketV1, packet); err != nil {
-		t.Fatalf("Validate(DispatchPacketV1) error = %v", err)
-	}
-	withExecutor := []byte(strings.Replace(string(grant), `"effects":`, `"executor":{"id":"agent-1","kind":"isolated"},"effects":`, 1))
-	if err := registry.Validate(CapabilityGrantV2, withExecutor); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
-		t.Fatalf("Validate(Grant with executor) error = %v", err)
+	for _, retired := range []string{
+		"https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json",
+		"https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json",
+		"https://open-agent-workflow.dev/schemas/v3/host-conformance-transcript.schema.json",
+		"https://open-agent-workflow.dev/schemas/v3/host-conformance-report.schema.json",
+	} {
+		if err := registry.Validate(retired, []byte(`{}`)); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+			t.Fatalf("retired authority schema %s error = %v", retired, err)
+		}
 	}
 }
 
@@ -208,26 +232,26 @@ func TestRegistryUsesHostBindingInventoryV3Only(t *testing.T) {
 	}
 }
 
-func TestRegistryValidatesConformanceV3WithReceiptV2Bridge(t *testing.T) {
+func TestRegistryValidatesConformanceV4WithReceiptV3(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
 	digest := strings.Repeat("a", 64)
-	receipt := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-invocation-receipt/v2","kind":"COMPLETED","workflow_id":"workflow-1","bundle_generation":1,"bundle_digest":"%s","node_id":"implementation","topology":"CURRENT","host_session_digest":"%s","dispatch_digest":"%s","invocation_handle":"","context_freshness":"shared","environment_report_digest":"%s","outcome":"succeeded","failure_code":"","evidence":[{"kind":"report","reference":"evidence://report","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, digest, digest, digest))
-	if err := registry.Validate(HostInvocationReceiptV2, receipt); err != nil {
-		t.Fatalf("Validate(HostInvocationReceiptV2) error = %v", err)
+	receipt := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-invocation-receipt/v3","kind":"COMPLETED","workflow_id":"workflow-0123456789abcdef0123456789abcdef","bundle_id":"bundle-0123456789abcdef0123456789abcdef","bundle_generation":1,"bundle_digest":"%s","cursor":{"slot_id":"implementation","kind":"binding","unit_id":"implementation-main","ordinal":1},"topology":"CURRENT","host_session_digest":"%s","dispatch_digest":"%s","invocation_handle":"","context_freshness":"shared","environment_report_digest":"%s","outcome":"succeeded","failure_code":"","outputs":[{"artifact_id":"workflow-output","schema":"oaw.workflow-output/v1","reference":"artifact://output/1","digest":"%s"}],"evidence":[{"kind":"report","reference":"evidence://report","digest":"%s"}],"digest":"%s"}`, digest, digest, digest, digest, digest, digest, digest))
+	if err := registry.Validate(HostInvocationReceiptV3, receipt); err != nil {
+		t.Fatalf("Validate(HostInvocationReceiptV3) error = %v", err)
 	}
-	transcript := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-transcript/v3","session":{"schema_version":"oaw.host-session/v3","host_id":"codex","integration_id":"acme/codex-host","integration_version":"3.0.0","session_id":"session-current","manifest_digest":"%s","supported_topologies":["CURRENT"],"provider_inventory_digest":"%s","feature_observations":[],"feature_digest":"%s","host_action_observations":[],"host_action_digest":"%s","environment_report_digest":"%s","sandbox_policy_digest":"","approval_policy_digest":"","digest":"%s"},"inventory":{"schema_version":"oaw.host-binding-inventory/v3","host_id":"codex","observations":[],"digest":"%s"},"environment_reports":[{"schema_version":"oaw.host-environment-report/v2","session_id":"session-current","parent_session_id":"","topology":"CURRENT","observations":[],"digest":"%s"}],"receipts":[],"invocations":[],"digest":"%s"}`, digest, digest, digest, digest, digest, digest, digest, digest, digest))
-	if err := registry.Validate(HostConformanceTranscriptV3, transcript); err != nil {
-		t.Fatalf("Validate(HostConformanceTranscriptV3) error = %v", err)
+	transcript := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-transcript/v4","session":{"schema_version":"oaw.host-session/v3","host_id":"codex","integration_id":"acme/codex-host","integration_version":"3.0.0","session_id":"session-current","manifest_digest":"%s","supported_topologies":["CURRENT"],"provider_inventory_digest":"%s","feature_observations":[],"feature_digest":"%s","host_action_observations":[],"host_action_digest":"%s","environment_report_digest":"%s","sandbox_policy_digest":"","approval_policy_digest":"","digest":"%s"},"inventory":{"schema_version":"oaw.host-binding-inventory/v3","host_id":"codex","observations":[],"digest":"%s"},"environment_reports":[{"schema_version":"oaw.host-environment-report/v2","session_id":"session-current","parent_session_id":"","topology":"CURRENT","observations":[],"digest":"%s"}],"receipts":[],"invocations":[],"digest":"%s"}`, digest, digest, digest, digest, digest, digest, digest, digest, digest))
+	if err := registry.Validate(HostConformanceTranscriptV4, transcript); err != nil {
+		t.Fatalf("Validate(HostConformanceTranscriptV4) error = %v", err)
 	}
-	report := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-report/v3","manifest_digest":"%s","transcript_digest":"%s","verified_features":["normalized-receipts"],"verified_delegation_features":[],"verified_host_action_ids":[],"diagnostics":[],"digest":"%s"}`, digest, digest, digest))
-	if err := registry.Validate(HostConformanceReportV3, report); err != nil {
-		t.Fatalf("Validate(HostConformanceReportV3) error = %v", err)
+	report := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-report/v4","manifest_digest":"%s","host_session_digest":"%s","binding_inventory_digest":"%s","transcript_digest":"%s","verified_features":["normalized-receipts"],"verified_delegation_features":[],"verified_host_action_ids":[],"diagnostics":[],"digest":"%s"}`, digest, digest, digest, digest, digest))
+	if err := registry.Validate(HostConformanceReportV4, report); err != nil {
+		t.Fatalf("Validate(HostConformanceReportV4) error = %v", err)
 	}
 	legacyReport := []byte(fmt.Sprintf(`{"schema_version":"oaw.host-conformance-report/v2","manifest_digest":"%s","transcript_digest":"%s","verified_features":[],"diagnostics":[],"digest":"%s"}`, digest, digest, digest))
-	if err := registry.Validate(HostConformanceReportV3, legacyReport); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	if err := registry.Validate(HostConformanceReportV4, legacyReport); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(legacy report) error = %v", err)
 	}
 }

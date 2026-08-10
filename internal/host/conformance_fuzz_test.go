@@ -26,11 +26,15 @@ func FuzzInvocationReceiptFailsClosed(f *testing.F) {
 			}}
 		}
 		input := host.InvocationReceipt{
-			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptKind(kind),
-			WorkflowID: "workflow-1", BundleGeneration: generation, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+			SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptKind(kind),
+			WorkflowID: "workflow-0123456789abcdef0123456789abcdef", BundleID: "bundle-0123456789abcdef0123456789abcdef", BundleGeneration: generation, BundleDigest: strings.Repeat("a", 64),
+			Cursor:   execution.GraphCursor{SlotID: "implementation", Kind: execution.CursorBinding, UnitID: "implementation-main", Ordinal: 1},
 			Topology: execution.Topology(topology), HostSessionDigest: strings.Repeat("b", 64), InvocationHandle: handle,
 			ContextFreshness: freshness, EnvironmentReportDigest: strings.Repeat("c", 64), DispatchDigest: strings.Repeat("d", 64), Outcome: outcome,
-			FailureCode: failureCode, Evidence: evidence,
+			FailureCode: failureCode, Outputs: []host.OutputReference{}, Evidence: evidence,
+		}
+		if input.Kind == host.ReceiptCompleted {
+			input.Outputs = validOutputs()
 		}
 		first, firstErr := host.NewInvocationReceipt(input)
 		second, secondErr := host.NewInvocationReceipt(input)
@@ -84,10 +88,12 @@ func FuzzConformanceTranscriptFailsClosed(f *testing.F) {
 		})
 		inventory, environment, session := currentHostFacts(t, manifest)
 		receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
-			WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+			SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted,
+			WorkflowID: "workflow-0123456789abcdef0123456789abcdef", BundleID: "bundle-0123456789abcdef0123456789abcdef", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64),
+			Cursor:   execution.GraphCursor{SlotID: "implementation", Kind: execution.CursorBinding, UnitID: "implementation-main", Ordinal: 1},
 			Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
 			EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
+			Outputs:  validOutputs(),
 			Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("e", 64)}},
 		})
 		if err != nil {
@@ -103,7 +109,7 @@ func FuzzConformanceTranscriptFailsClosed(f *testing.F) {
 			invocations = append(invocations, invocations[0])
 		}
 		input := host.ConformanceTranscript{
-			SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory,
+			SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
 			EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt},
 			Invocations: invocations,
 		}

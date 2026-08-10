@@ -15,9 +15,9 @@ const (
 	HostIntegrationSchemaV3           = "oaw.host-integration/v3"
 	HostSessionSchemaV3               = "oaw.host-session/v3"
 	HostEnvironmentReportSchemaV2     = "oaw.host-environment-report/v2"
-	HostInvocationReceiptSchemaV2     = "oaw.host-invocation-receipt/v2"
-	HostConformanceTranscriptSchemaV3 = "oaw.host-conformance-transcript/v3"
-	HostConformanceReportSchemaV3     = "oaw.host-conformance-report/v3"
+	HostInvocationReceiptSchemaV3     = "oaw.host-invocation-receipt/v3"
+	HostConformanceTranscriptSchemaV4 = "oaw.host-conformance-transcript/v4"
+	HostConformanceReportSchemaV4     = "oaw.host-conformance-report/v4"
 	WorkflowProtocolV1                = "oaw.workflow/v1"
 )
 
@@ -100,23 +100,32 @@ type EvidenceReference struct {
 	Digest    string `json:"digest"`
 }
 
+type OutputReference struct {
+	ArtifactID string `json:"artifact_id"`
+	Schema     string `json:"schema"`
+	Reference  string `json:"reference"`
+	Digest     string `json:"digest"`
+}
+
 type InvocationReceipt struct {
-	SchemaVersion           string              `json:"schema_version"`
-	Kind                    ReceiptKind         `json:"kind"`
-	WorkflowID              string              `json:"workflow_id"`
-	BundleGeneration        uint64              `json:"bundle_generation"`
-	BundleDigest            string              `json:"bundle_digest"`
-	NodeID                  string              `json:"node_id"`
-	Topology                execution.Topology  `json:"topology"`
-	HostSessionDigest       string              `json:"host_session_digest"`
-	DispatchDigest          string              `json:"dispatch_digest"`
-	InvocationHandle        string              `json:"invocation_handle"`
-	ContextFreshness        string              `json:"context_freshness"`
-	EnvironmentReportDigest string              `json:"environment_report_digest"`
-	Outcome                 string              `json:"outcome"`
-	FailureCode             string              `json:"failure_code"`
-	Evidence                []EvidenceReference `json:"evidence"`
-	Digest                  string              `json:"digest"`
+	SchemaVersion           string                `json:"schema_version"`
+	Kind                    ReceiptKind           `json:"kind"`
+	WorkflowID              string                `json:"workflow_id"`
+	BundleID                string                `json:"bundle_id"`
+	BundleGeneration        uint64                `json:"bundle_generation"`
+	BundleDigest            string                `json:"bundle_digest"`
+	Cursor                  execution.GraphCursor `json:"cursor"`
+	Topology                execution.Topology    `json:"topology"`
+	HostSessionDigest       string                `json:"host_session_digest"`
+	DispatchDigest          string                `json:"dispatch_digest"`
+	InvocationHandle        string                `json:"invocation_handle"`
+	ContextFreshness        string                `json:"context_freshness"`
+	EnvironmentReportDigest string                `json:"environment_report_digest"`
+	Outcome                 string                `json:"outcome"`
+	FailureCode             string                `json:"failure_code"`
+	Outputs                 []OutputReference     `json:"outputs"`
+	Evidence                []EvidenceReference   `json:"evidence"`
+	Digest                  string                `json:"digest"`
 }
 
 type InvocationRecord struct {
@@ -156,6 +165,8 @@ type AuditEvidence struct {
 type ConformanceReport struct {
 	SchemaVersion              string      `json:"schema_version" toml:"schema_version"`
 	ManifestDigest             string      `json:"manifest_digest" toml:"manifest_digest"`
+	HostSessionDigest          string      `json:"host_session_digest" toml:"host_session_digest"`
+	BindingInventoryDigest     string      `json:"binding_inventory_digest" toml:"binding_inventory_digest"`
 	TranscriptDigest           string      `json:"transcript_digest" toml:"transcript_digest"`
 	VerifiedFeatures           []Feature   `json:"verified_features" toml:"verified_features"`
 	VerifiedDelegationFeatures []FeatureID `json:"verified_delegation_features" toml:"verified_delegation_features"`
@@ -261,7 +272,7 @@ func CloneAuditEvidence(value AuditEvidence) AuditEvidence {
 }
 
 func NewConformanceReport(value ConformanceReport) (ConformanceReport, error) {
-	if value.SchemaVersion != HostConformanceReportSchemaV3 {
+	if value.SchemaVersion != HostConformanceReportSchemaV4 {
 		return ConformanceReport{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Conformance Report schema", nil)
 	}
 	providedDigest := value.Digest

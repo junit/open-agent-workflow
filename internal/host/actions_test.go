@@ -260,24 +260,26 @@ func TestConformanceV3KeepsEnvironmentAndReceiptV2Bridge(t *testing.T) {
 		t.Fatal(err)
 	}
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted, WorkflowID: "workflow-host-v3",
-		BundleGeneration: 1, BundleDigest: strings.Repeat("b", 64), NodeID: "verification", Topology: execution.TopologyCurrent,
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted, WorkflowID: "workflow-0123456789abcdef0123456789abcdef",
+		BundleID: "bundle-0123456789abcdef0123456789abcdef", BundleGeneration: 1, BundleDigest: strings.Repeat("b", 64),
+		Cursor: execution.GraphCursor{SlotID: "fresh-verification", Kind: execution.CursorHostAction, UnitID: "verification.execute", Ordinal: 1}, Topology: execution.TopologyCurrent,
 		HostSessionDigest: session.Digest, DispatchDigest: strings.Repeat("c", 64), ContextFreshness: host.ContextShared,
 		EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		Outputs:  []host.OutputReference{{ArtifactID: "workflow-output", Schema: "oaw.host-action.verification-outcome/v1", Reference: "artifact://verification/output/1", Digest: strings.Repeat("e", 64)}},
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://codex/conformance/success", Digest: strings.Repeat("d", 64)}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
-		SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory,
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
 		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt}, Invocations: []host.InvocationRecord{},
 	})
 	if err != nil {
 		t.Fatalf("NewConformanceTranscript() error = %v", err)
 	}
 	report, err := host.ValidateConformanceTranscript(manifest, transcript)
-	if err != nil || report.SchemaVersion != host.HostConformanceReportSchemaV3 || len(report.Diagnostics) != 0 ||
+	if err != nil || report.SchemaVersion != host.HostConformanceReportSchemaV4 || len(report.Diagnostics) != 0 ||
 		!slices.Equal(report.VerifiedFeatures, manifest.Features) || len(report.VerifiedDelegationFeatures) != 0 || len(report.VerifiedHostActionIDs) != 0 {
 		t.Fatalf("ValidateConformanceTranscript() = %#v, %v", report, err)
 	}
@@ -293,7 +295,8 @@ func TestIntegrationV3DefensiveCopiesOptionalConformance(t *testing.T) {
 		t.Fatal(err)
 	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion: host.HostConformanceReportSchemaV3, ManifestDigest: manifest.Digest, TranscriptDigest: strings.Repeat("b", 64),
+		SchemaVersion: host.HostConformanceReportSchemaV4, ManifestDigest: manifest.Digest, HostSessionDigest: strings.Repeat("c", 64),
+		BindingInventoryDigest: strings.Repeat("d", 64), TranscriptDigest: strings.Repeat("b", 64),
 		VerifiedFeatures: allControlFeaturesV3(), VerifiedDelegationFeatures: allDelegationFeaturesV3(),
 		VerifiedHostActionIDs: []string{"closeout.execute", "verification.execute", "workspace.prepare-or-confirm"}, Diagnostics: []string{},
 	})

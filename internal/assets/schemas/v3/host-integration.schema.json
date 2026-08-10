@@ -11,7 +11,7 @@
     "manifest": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-manifest.schema.json"},
     "manifest_digest": {"$ref": "#/$defs/digest"},
     "audit": {"$ref": "#/$defs/audit"},
-    "conformance": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-conformance-report.schema.json"},
+    "conformance": {"$ref": "https://open-agent-workflow.dev/schemas/v4/host-conformance-report.schema.json"},
     "digest": {"$ref": "#/$defs/digest"}
   },
   "allOf": [

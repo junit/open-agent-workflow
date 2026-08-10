@@ -10,39 +10,38 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func TestConformanceV3PinsCurrentHostFactsAndReceiptV2(t *testing.T) {
+func TestConformanceV4PinsHostV3FactsAndReceiptV3(t *testing.T) {
 	manifest := hostNativeManifest(t, []host.Feature{host.FeatureProviderBindingInventory, host.FeatureNormalizedReceipts})
 	inventory, environment, session := currentHostFacts(t, manifest)
-	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
-		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
-		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
-		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
-		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
-	})
+	receipt := validReceiptV3(host.ReceiptCompleted)
+	receipt.HostSessionDigest = session.Digest
+	receipt.EnvironmentReportDigest = environment.Digest
+	receipt, err := host.NewInvocationReceipt(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
-		SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory,
-		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt},
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt}, Invocations: []host.InvocationRecord{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	report, err := host.ValidateConformanceTranscript(manifest, transcript)
-	if err != nil || report.SchemaVersion != host.HostConformanceReportSchemaV3 || report.TranscriptDigest != transcript.Digest ||
+	if err != nil || report.SchemaVersion != host.HostConformanceReportSchemaV4 || report.TranscriptDigest != transcript.Digest ||
 		len(report.Diagnostics) != 0 || !slices.Equal(report.VerifiedFeatures, manifest.Features) {
 		t.Fatalf("ValidateConformanceTranscript() = %#v, %v", report, err)
 	}
 	inventory.Observations[0].Topologies[0] = execution.TopologySubagent
 	environment.Observations[0].Surface = "changed"
-	if transcript.Inventory.Observations[0].Topologies[0] != execution.TopologyCurrent || transcript.EnvironmentReports[0].Observations[0].Surface != "skills" {
+	receipt.Outputs[0].Reference = "changed"
+	if transcript.Inventory.Observations[0].Topologies[0] != execution.TopologyCurrent || transcript.EnvironmentReports[0].Observations[0].Surface != "skills" ||
+		transcript.Receipts[0].Outputs[0].Reference == "changed" {
 		t.Fatal("Conformance Transcript shares caller storage")
 	}
 }
 
-func TestConformanceV3RequiresPinnedSubagentEnvironment(t *testing.T) {
+func TestConformanceV4RequiresPinnedSubagentEnvironment(t *testing.T) {
 	manifest, err := host.NewManifest(host.Manifest{
 		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex", ControlSurface: host.SurfaceHostNative,
 		Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
@@ -67,10 +66,8 @@ func TestConformanceV3RequiresPinnedSubagentEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	environment, err := host.NewEnvironmentReport(host.EnvironmentReport{
-		SchemaVersion: host.HostEnvironmentReportSchemaV2, SessionID: "session-child", ParentSessionID: "session-current",
-		Topology: execution.TopologySubagent, Observations: []execution.EnvironmentObservation{{
-			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-subagent", Digest: strings.Repeat("e", 64),
-		}},
+		SchemaVersion: host.HostEnvironmentReportSchemaV2, SessionID: "session-child", ParentSessionID: "session-current", Topology: execution.TopologySubagent,
+		Observations: []execution.EnvironmentObservation{{Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-subagent", Digest: strings.Repeat("e", 64)}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -83,20 +80,21 @@ func TestConformanceV3RequiresPinnedSubagentEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted, WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
-		Topology: execution.TopologySubagent, HostSessionDigest: session.Digest, InvocationHandle: "child-invocation-1", ContextFreshness: host.ContextFresh,
-		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
-		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
-	})
+	receipt := validReceiptV3(host.ReceiptCompleted)
+	receipt.Topology = execution.TopologySubagent
+	receipt.HostSessionDigest = session.Digest
+	receipt.InvocationHandle = "child-invocation-1"
+	receipt.ContextFreshness = host.ContextFresh
+	receipt.EnvironmentReportDigest = environment.Digest
+	receipt, err = host.NewInvocationReceipt(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	newTranscript := func(value host.InvocationReceipt) host.ConformanceTranscript {
 		t.Helper()
 		transcript, transcriptErr := host.NewConformanceTranscript(host.ConformanceTranscript{
-			SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory,
-			EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{value},
+			SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
+			EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{value}, Invocations: []host.InvocationRecord{},
 		})
 		if transcriptErr != nil {
 			t.Fatal(transcriptErr)
@@ -118,33 +116,31 @@ func TestConformanceV3RequiresPinnedSubagentEnvironment(t *testing.T) {
 	}
 }
 
-func TestConformanceV3VerifiesControlReceiptsAndDeduplication(t *testing.T) {
+func TestConformanceV4VerifiesControlReceiptsAndDeduplication(t *testing.T) {
 	manifest := hostNativeManifest(t, []host.Feature{
-		host.FeatureCancellation, host.FeatureInvocationDedup, host.FeatureNormalizedReceipts,
-		host.FeaturePause, host.FeatureProviderBindingInventory,
+		host.FeatureCancellation, host.FeatureInvocationDedup, host.FeatureNormalizedReceipts, host.FeaturePause, host.FeatureProviderBindingInventory,
 	})
 	inventory, environment, session := currentHostFacts(t, manifest)
-	newReceipt := func(kind host.ReceiptKind, outcome string, evidence []host.EvidenceReference) host.InvocationReceipt {
+	newReceipt := func(kind host.ReceiptKind) host.InvocationReceipt {
 		t.Helper()
-		value, err := host.NewInvocationReceipt(host.InvocationReceipt{
-			SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: kind, WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
-			Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared, EnvironmentReportDigest: environment.Digest,
-			DispatchDigest: strings.Repeat("8", 64), Outcome: outcome, Evidence: evidence,
-		})
+		value := validReceiptV3(kind)
+		value.HostSessionDigest = session.Digest
+		value.EnvironmentReportDigest = environment.Digest
+		result, err := host.NewInvocationReceipt(value)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return value
+		return result
 	}
-	completed := newReceipt(host.ReceiptCompleted, "succeeded", []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}})
-	paused := newReceipt(host.ReceiptPaused, "paused", nil)
-	cancelled := newReceipt(host.ReceiptCancelled, "cancelled", nil)
+	completed := newReceipt(host.ReceiptCompleted)
+	paused := newReceipt(host.ReceiptPaused)
+	cancelled := newReceipt(host.ReceiptCancelled)
 	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
-		SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory, EnvironmentReports: []host.EnvironmentReport{environment},
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory, EnvironmentReports: []host.EnvironmentReport{environment},
 		Receipts: []host.InvocationReceipt{paused, cancelled, completed}, Invocations: []host.InvocationRecord{
-			{IdempotencyKey: "dedup-key", DispatchDigest: strings.Repeat("8", 64), ReceiptDigest: completed.Digest},
-			{IdempotencyKey: "a-key", DispatchDigest: strings.Repeat("8", 64), ReceiptDigest: completed.Digest},
-			{IdempotencyKey: "dedup-key", DispatchDigest: strings.Repeat("8", 64), ReceiptDigest: completed.Digest},
+			{IdempotencyKey: "dedup-key", DispatchDigest: strings.Repeat("d", 64), ReceiptDigest: completed.Digest},
+			{IdempotencyKey: "a-key", DispatchDigest: strings.Repeat("d", 64), ReceiptDigest: completed.Digest},
+			{IdempotencyKey: "dedup-key", DispatchDigest: strings.Repeat("d", 64), ReceiptDigest: completed.Digest},
 		},
 	})
 	if err != nil {
@@ -156,34 +152,26 @@ func TestConformanceV3VerifiesControlReceiptsAndDeduplication(t *testing.T) {
 	}
 }
 
-func TestConformanceV3RejectsOversizedCollections(t *testing.T) {
+func TestConformanceV4RejectsOversizedAndOldAuthority(t *testing.T) {
 	manifest := hostNativeManifest(t, []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory})
 	inventory, environment, session := currentHostFacts(t, manifest)
-	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted, WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
-		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared, EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("8", 64), Outcome: "succeeded",
-		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://report", Digest: strings.Repeat("f", 64)}},
-	})
-	if err != nil {
-		t.Fatal(err)
+	base := host.ConformanceTranscript{
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{}, Invocations: []host.InvocationRecord{},
 	}
-	base := host.ConformanceTranscript{SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory, EnvironmentReports: []host.EnvironmentReport{environment}}
-	tooManyReceipts := base
-	tooManyReceipts.Receipts = make([]host.InvocationReceipt, 257)
-	for index := range tooManyReceipts.Receipts {
-		tooManyReceipts.Receipts[index] = receipt
+	tooMany := base
+	tooMany.Invocations = make([]host.InvocationRecord, 257)
+	if _, err := host.NewConformanceTranscript(tooMany); host.ErrorCode(err) != "HOST_CONFORMANCE_TRANSCRIPT_INVALID" {
+		t.Fatalf("oversized transcript error = %v", err)
 	}
-	if _, err := host.NewConformanceTranscript(tooManyReceipts); host.ErrorCode(err) != "HOST_CONFORMANCE_TRANSCRIPT_INVALID" {
-		t.Fatalf("oversized receipts error = %v", err)
+	old := base
+	old.SchemaVersion = "oaw.host-conformance-transcript/v3"
+	if _, err := host.NewConformanceTranscript(old); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewConformanceTranscript(v3) error = %v", err)
 	}
-	tooManyInvocations := base
-	tooManyInvocations.Invocations = make([]host.InvocationRecord, 257)
-	for index := range tooManyInvocations.Invocations {
-		tooManyInvocations.Invocations[index] = host.InvocationRecord{IdempotencyKey: "key", DispatchDigest: strings.Repeat("8", 64), ReceiptDigest: receipt.Digest}
-	}
-	tooManyInvocations.Receipts = []host.InvocationReceipt{receipt}
-	if _, err := host.NewConformanceTranscript(tooManyInvocations); host.ErrorCode(err) != "HOST_CONFORMANCE_TRANSCRIPT_INVALID" {
-		t.Fatalf("oversized invocations error = %v", err)
+	report := host.ConformanceReport{SchemaVersion: "oaw.host-conformance-report/v3"}
+	if _, err := host.NewConformanceReport(report); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("NewConformanceReport(v3) error = %v", err)
 	}
 }
 
@@ -191,8 +179,8 @@ func hostNativeManifest(t *testing.T, features []host.Feature) host.Manifest {
 	t.Helper()
 	value, err := host.NewManifest(host.Manifest{
 		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex", ControlSurface: host.SurfaceHostNative,
-		Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
-		SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: features, DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
+		Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		Features: features, DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v3/capability-grant.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "id", "workflow_id", "request_id", "bundle_id", "bundle_generation", "bundle_digest", "cursor", "target", "topology", "host_session_digest", "effects", "resources", "termination_condition", "authorization_digest", "invocation_attestation_digest", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.capability-grant/v3"},
+    "id": {"type": "string", "pattern": "^grant-[0-9a-f]{32}$"},
+    "workflow_id": {"$ref": "#/$defs/workflow_id"},
+    "request_id": {"$ref": "#/$defs/text"},
+    "bundle_id": {"$ref": "#/$defs/bundle_id"},
+    "bundle_generation": {"type": "integer", "minimum": 1},
+    "bundle_digest": {"$ref": "#/$defs/digest"},
+    "cursor": {"$ref": "#/$defs/cursor"},
+    "target": {"$ref": "#/$defs/target"},
+    "topology": {"enum": ["CURRENT", "SUBAGENT"]},
+    "host_session_digest": {"$ref": "#/$defs/digest"},
+    "effects": {"$ref": "#/$defs/effects"},
+    "resources": {"$ref": "#/$defs/resources"},
+    "termination_condition": {"$ref": "#/$defs/text"},
+    "authorization_digest": {"$ref": "#/$defs/optional_digest"},
+    "invocation_attestation_digest": {"$ref": "#/$defs/optional_digest"},
+    "digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^\\S(?:.*\\S)?$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optional_digest": {"anyOf": [{"const": ""}, {"$ref": "#/$defs/digest"}]},
+    "tree_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "local_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "qualified_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._-]*$"},
+    "workflow_id": {"type": "string", "pattern": "^workflow-[0-9a-f]{32}$"},
+    "bundle_id": {"type": "string", "pattern": "^bundle-[0-9a-f]{32}$"},
+    "cursor": {"type": "object", "additionalProperties": false, "required": ["slot_id", "kind", "unit_id", "ordinal"], "properties": {"slot_id": {"$ref": "#/$defs/text"}, "kind": {"enum": ["binding", "host-action"]}, "unit_id": {"$ref": "#/$defs/text"}, "ordinal": {"type": "integer", "minimum": 1}}},
+    "effects": {"type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": {"enum": ["git-local", "network-mutation", "network-read", "network-write", "read-project", "run-process", "write-project"]}},
+    "resources": {"type": "array", "minItems": 1, "maxItems": 128, "uniqueItems": true, "items": {"enum": ["credentials", "data", "deployment", "git-repository", "network", "project", "project-worktree", "security"]}},
+    "provider_binding": {"type": "object", "additionalProperties": false, "required": ["provider_id", "provider_instance_digest", "distribution_id", "distribution_revision", "distribution_tree_digest", "binding_id", "surface", "kind", "reference", "invocation", "binding_tree_digest", "binding_evidence_digest", "input_artifact", "output_artifact", "input_schema", "outcome_schema", "requires_explicit_invocation"], "properties": {"provider_id": {"$ref": "#/$defs/qualified_id"}, "provider_instance_digest": {"$ref": "#/$defs/digest"}, "distribution_id": {"$ref": "#/$defs/local_id"}, "distribution_revision": {"$ref": "#/$defs/revision"}, "distribution_tree_digest": {"$ref": "#/$defs/tree_digest"}, "binding_id": {"$ref": "#/$defs/local_id"}, "surface": {"$ref": "#/$defs/text"}, "kind": {"enum": ["agent", "instruction", "role", "skill", "tool"]}, "reference": {"$ref": "#/$defs/text"}, "invocation": {"enum": ["host", "human-explicit", "model"]}, "binding_tree_digest": {"$ref": "#/$defs/tree_digest"}, "binding_evidence_digest": {"$ref": "#/$defs/digest"}, "input_artifact": {"$ref": "#/$defs/text"}, "output_artifact": {"$ref": "#/$defs/text"}, "input_schema": {"$ref": "#/$defs/text"}, "outcome_schema": {"$ref": "#/$defs/text"}, "requires_explicit_invocation": {"type": "boolean"}}},
+    "host_action": {"type": "object", "additionalProperties": false, "required": ["id", "input_artifact", "output_artifact", "input_schema", "outcome_schema", "maximum_effects", "resources", "observation_digest"], "properties": {"id": {"$ref": "#/$defs/text"}, "input_artifact": {"$ref": "#/$defs/text"}, "output_artifact": {"$ref": "#/$defs/text"}, "input_schema": {"$ref": "#/$defs/text"}, "outcome_schema": {"$ref": "#/$defs/text"}, "maximum_effects": {"$ref": "#/$defs/effects"}, "resources": {"$ref": "#/$defs/resources"}, "observation_digest": {"$ref": "#/$defs/digest"}}},
+    "target": {"type": "object", "additionalProperties": false, "required": ["target_kind"], "properties": {"target_kind": {"enum": ["provider-binding", "host-action"]}, "provider_binding": {"$ref": "#/$defs/provider_binding"}, "host_action": {"$ref": "#/$defs/host_action"}}, "oneOf": [{"required": ["provider_binding"], "properties": {"target_kind": {"const": "provider-binding"}}, "not": {"required": ["host_action"]}}, {"required": ["host_action"], "properties": {"target_kind": {"const": "host-action"}}, "not": {"required": ["provider_binding"]}}]}
+  }
+}

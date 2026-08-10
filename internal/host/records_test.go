@@ -122,7 +122,7 @@ func TestHostV3ManifestNormalizesAndDefendsAllCollections(t *testing.T) {
 	}
 }
 
-func TestHostV3AuditIntegrationAndConformanceAreCanonical(t *testing.T) {
+func TestConformanceV4IntegrationRecordIsCanonical(t *testing.T) {
 	integration := hostNativeIntegration(t)
 	if integration.Digest == "" || integration.Conformance == nil || integration.Conformance.Digest == "" {
 		t.Fatalf("Integration = %#v", integration)
@@ -229,7 +229,8 @@ func hostNativeIntegration(t *testing.T) host.IntegrationRecord {
 		t.Fatal(err)
 	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion: host.HostConformanceReportSchemaV3, ManifestDigest: manifest.Digest, TranscriptDigest: strings.Repeat("f", 64),
+		SchemaVersion: host.HostConformanceReportSchemaV4, ManifestDigest: manifest.Digest,
+		HostSessionDigest: strings.Repeat("e", 64), BindingInventoryDigest: strings.Repeat("d", 64), TranscriptDigest: strings.Repeat("f", 64),
 		VerifiedFeatures: manifest.Features, VerifiedDelegationFeatures: manifest.DelegationFeatures,
 		VerifiedHostActionIDs: []string{"closeout.execute", "verification.execute", "workspace.prepare-or-confirm"}, Diagnostics: []string{},
 	})

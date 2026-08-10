@@ -194,7 +194,8 @@ func validateAuditEvidence(value AuditEvidence) error {
 }
 
 func validateConformanceReport(value ConformanceReport) error {
-	if !digestPattern.MatchString(value.ManifestDigest) || !digestPattern.MatchString(value.TranscriptDigest) {
+	if !digestPattern.MatchString(value.ManifestDigest) || !digestPattern.MatchString(value.HostSessionDigest) ||
+		!digestPattern.MatchString(value.BindingInventoryDigest) || !digestPattern.MatchString(value.TranscriptDigest) {
 		return hostError("HOST_CONFORMANCE_REPORT_INVALID", "missing Conformance Report identity", nil)
 	}
 	if len(value.Diagnostics) > 32 {
