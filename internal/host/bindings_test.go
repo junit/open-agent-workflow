@@ -72,6 +72,28 @@ func TestBindingInventoryV3AcceptsFiveExactBindingKinds(t *testing.T) {
 	}
 }
 
+func TestBindingObservationV3AcceptsLogicalSlashInstructionReference(t *testing.T) {
+	base := host.BindingObservation{
+		HostID: "codex", ProviderID: "oaw/ecc", InstallationKey: "installation-ecc", DistributionID: "ecc",
+		BindingID: "codex-feature-dev", Surface: "codex-plugin", Kind: catalog.BindingInstruction, Reference: "/feature-dev",
+		Invocation: catalog.InvocationModel, BindingTreeDigest: "sha256:" + strings.Repeat("a", 64),
+		Topologies: []execution.Topology{execution.TopologyCurrent}, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex/instructions/feature-dev",
+	}
+	if _, err := host.NewBindingObservation(base); err != nil {
+		t.Fatalf("logical slash instruction was rejected: %v", err)
+	}
+	base.Kind = catalog.BindingSkill
+	if _, err := host.NewBindingObservation(base); err == nil {
+		t.Fatal("absolute-looking skill reference was accepted")
+	}
+	base.Kind = catalog.BindingInstruction
+	base.Reference = "/commands/feature-dev"
+	if _, err := host.NewBindingObservation(base); err == nil {
+		t.Fatal("multi-segment absolute instruction reference was accepted")
+	}
+}
+
 func TestBindingInventoryV3RejectsInvalidIdentityEvidenceAndDuplicates(t *testing.T) {
 	valid := host.BindingObservation{
 		HostID: "codex", ProviderID: "oaw/provider", InstallationKey: "installation-provider",

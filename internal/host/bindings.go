@@ -136,7 +136,7 @@ func validateBindingObservation(value BindingObservation) error {
 	if !validHostText(value.InstallationKey, 512) || !validHostText(value.Surface, 128) || strings.ContainsAny(value.Surface, `/\\`) {
 		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid installation or surface identity", nil)
 	}
-	if !validBindingKind(value.Kind) || !validBindingInvocation(value.Invocation) || !validHostText(value.Reference, 2048) || filepath.IsAbs(value.Reference) {
+	if !validBindingKind(value.Kind) || !validBindingInvocation(value.Invocation) || !validHostText(value.Reference, 2048) || !validBindingReference(value.Kind, value.Reference) {
 		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Host Binding identity", nil)
 	}
 	if !treeDigestPattern.MatchString(value.BindingTreeDigest) || len(value.Topologies) == 0 {
@@ -157,6 +157,17 @@ func validBindingKind(value catalog.BindingKind) bool {
 
 func validBindingInvocation(value catalog.InvocationDisposition) bool {
 	return value == catalog.InvocationHumanExplicit || value == catalog.InvocationModel || value == catalog.InvocationHost || value == catalog.InvocationInternal
+}
+
+func validBindingReference(kind catalog.BindingKind, reference string) bool {
+	if !filepath.IsAbs(reference) {
+		return true
+	}
+	if kind != catalog.BindingInstruction || !strings.HasPrefix(reference, "/") || strings.ContainsAny(reference[1:], `/\\`) {
+		return false
+	}
+	_, err := catalog.ParseLocalID(reference[1:])
+	return err == nil
 }
 
 func bindingObservationIdentity(value BindingObservation) string {
