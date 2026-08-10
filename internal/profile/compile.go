@@ -1,360 +1,663 @@
 package profile
 
 import (
+	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
-	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func CompileProfile(available CatalogSource, verified EffectiveRegistry, request CompileRequest) (ExecutionGraph, error) {
+type pendingIncidentRoute struct {
+	record  catalog.IncidentRoute
+	unitIDs []string
+}
+
+func CompileProfile(source CatalogSource, verified EffectiveRegistry, request CompileRequest) (CompileResult, error) {
 	recipeID := request.Profile
-	for _, alias := range available.Aliases() {
+	matches := 0
+	for _, alias := range source.Aliases() {
 		if alias.Alias == request.Profile {
 			recipeID = alias.RecipeID
-			break
+			matches++
 		}
 	}
-	for _, recipe := range available.Recipes() {
+	if matches > 1 {
+		return CompileResult{}, fmt.Errorf("PROFILE_TRUSTED_ALIAS_INVALID: duplicate alias %q", request.Profile)
+	}
+	for _, recipe := range source.Recipes() {
 		if recipe.ID == recipeID {
-			return CompileRecipe(available, verified, recipe, request)
+			return CompileRecipe(source, verified, recipe, request)
 		}
 	}
-	return ExecutionGraph{}, compileError("PROFILE_NOT_FOUND", "profile %q is not declared", request.Profile)
+	return diagnosticCompileResult([]CompileDiagnostic{{Code: "PROFILE_NOT_FOUND", Detail: "requested Profile is not declared"}})
 }
 
-func CompileRecipe(available CatalogSource, verified EffectiveRegistry, recipe catalog.ProfileRecipeRecord, request CompileRequest) (ExecutionGraph, error) {
-	hostID := verified.HostID()
-	if _, err := catalog.ParseLocalID(hostID); err != nil {
-		return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Registry has invalid Host %q", hostID)
+func CompileRecipe(source CatalogSource, verified EffectiveRegistry, recipe catalog.ProfileRecipeRecord, request CompileRequest) (CompileResult, error) {
+	hostRecord := request.Host.Record()
+	if err := ValidateHostEvidenceRecord(hostRecord); err != nil {
+		return CompileResult{}, err
 	}
-	hostTopologies, err := execution.NormalizeTopologies(request.HostTopologies)
-	if err != nil {
-		return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%v", err)
+	if verified.HostID() != hostRecord.HostID || !recordDigestPattern.MatchString(verified.Digest()) {
+		return CompileResult{}, fmt.Errorf("PROFILE_TRUSTED_REGISTRY_INVALID: Host or digest mismatch")
 	}
-	requirements, err := execution.NormalizeRequirements(recipe.EnvironmentRequirements)
-	if err != nil {
-		return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%v", err)
+	if request.Topology != hostRecord.Topology {
+		return diagnosticCompileResult([]CompileDiagnostic{{Code: "PROFILE_TOPOLOGY_UNAVAILABLE", Topology: request.Topology, Detail: "selection topology differs from Host evidence"}})
 	}
-	if err := execution.RequirementsSatisfied(requirements, request.EnvironmentObservations); err != nil {
-		return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%v", err)
-	}
-	addOns, err := indexAddOns(request.AddOns, recipe.Nodes)
-	if err != nil {
-		return ExecutionGraph{}, err
-	}
-	bindingIndex, normalizedBindings, err := indexBindings(request.Bindings)
-	if err != nil {
-		return ExecutionGraph{}, err
-	}
-	if err := validateBindingSelectors(normalizedBindings, recipe.Nodes); err != nil {
-		return ExecutionGraph{}, err
-	}
-	normalizedRecipe := normalizeRecipe(recipe)
-	recipeDigest, _, err := canonicaljson.Digest(normalizedRecipe)
-	if err != nil {
-		return ExecutionGraph{}, err
+	if _, err := execution.NormalizeTopologies([]execution.Topology{request.Topology}); err != nil {
+		return diagnosticCompileResult([]CompileDiagnostic{{Code: "PROFILE_TOPOLOGY_UNAVAILABLE", Topology: request.Topology, Detail: "selection topology is invalid"}})
 	}
 
-	descriptors := make(map[string]catalog.ProviderDescriptorRecord)
-	for _, descriptor := range available.Providers() {
-		descriptors[descriptor.ID] = descriptor
+	normalizedRecipe, recipeDigest, err := catalog.NormalizeAndDigestRecipe(source.Providers(), recipe)
+	if err != nil {
+		return CompileResult{}, fmt.Errorf("PROFILE_TRUSTED_RECIPE_INVALID: %w", err)
+	}
+	if err := execution.RequirementsSatisfied(normalizedRecipe.EnvironmentRequirements, hostRecord.EnvironmentObservations); err != nil {
+		return diagnosticCompileResult([]CompileDiagnostic{{Code: "PROFILE_ENVIRONMENT_UNAVAILABLE", Topology: request.Topology, Detail: "Host environment does not satisfy the Recipe"}})
+	}
+	selection, diagnostics, err := normalizeSelection(source, normalizedRecipe, recipeDigest, request)
+	if err != nil {
+		return CompileResult{}, err
+	}
+	if len(diagnostics) != 0 {
+		return diagnosticCompileResult(diagnostics)
+	}
+	context := newCompilerContext(source.Providers(), verified, hostRecord, request.Topology)
+	slots, pendingRoutes, decisions, diagnostics, err := compileSelectedRecipe(context, normalizedRecipe, selection)
+	if err != nil {
+		return CompileResult{}, err
+	}
+	if len(diagnostics) != 0 {
+		return diagnosticCompileResult(diagnostics)
+	}
+	assignTraversal(slots)
+	routes := materializeIncidentRoutes(slots, pendingRoutes)
+	if diagnostics = validateCompiledControlGraph(slots, routes); len(diagnostics) != 0 {
+		return diagnosticCompileResult(diagnostics)
+	}
+	providers, err := graphProviders(verified, slots)
+	if err != nil {
+		return CompileResult{}, err
+	}
+	entry := firstActiveSlot(slots)
+	if entry == "" {
+		return CompileResult{}, fmt.Errorf("PROFILE_COMPILER_INTERNAL: no active slot")
+	}
+	sortCompileDecisions(decisions)
+	graphRecord := ExecutionGraphRecord{
+		SchemaVersion: ExecutionGraphSchemaV4, HostID: hostRecord.HostID, HostEvidenceDigest: hostRecord.Digest, RegistryDigest: verified.Digest(),
+		TaxonomyVersion: normalizedRecipe.TaxonomyVersion, RecipeID: normalizedRecipe.ID, RecipeVersion: normalizedRecipe.RecipeVersion, RecipeDigest: recipeDigest,
+		Selection: selection, ProviderInstances: providers, EntrySlotID: entry, Slots: slots, IncidentRoutes: routes,
+		StableBoundaries: append([]string{}, normalizedRecipe.StableBoundaries...), Topology: request.Topology,
+		EnvironmentRequirements: cloneRequirements(normalizedRecipe.EnvironmentRequirements), Decisions: decisions,
+	}
+	graphRecord.Digest = graphRecord.ContentDigest()
+	if err := ValidateExecutionGraphRecord(graphRecord); err != nil {
+		return CompileResult{}, err
+	}
+	return graphCompileResult(ExecutionGraph{record: graphRecord})
+}
+
+func normalizeSelection(source CatalogSource, recipe catalog.ProfileRecipeRecord, recipeDigest string, request CompileRequest) (Selection, []CompileDiagnostic, error) {
+	profileName := request.Profile
+	if profileName == "" {
+		profileName = recipe.ID
+	}
+	addOns, valid := sortedUniqueStrings(request.AddOns)
+	if !valid {
+		return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", Detail: "Add-on selection is invalid or duplicated"}}, nil
+	}
+	declaredAddOns := make(map[string]struct{}, len(recipe.AddOns))
+	for _, addOn := range recipe.AddOns {
+		declaredAddOns[addOn.ID] = struct{}{}
+	}
+	for _, addOn := range addOns {
+		if _, found := declaredAddOns[addOn]; !found {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", AddOnID: addOn, Detail: "Add-on is not declared by the Recipe"}}, nil
+		}
+	}
+	overlaySet := make(map[string]struct{}, len(request.Overlays))
+	for _, id := range request.Overlays {
+		if id == "" {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", Detail: "overlay selection is invalid"}}, nil
+		}
+		if _, duplicate := overlaySet[id]; duplicate {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", OverlayID: id, Detail: "overlay selection is duplicated"}}, nil
+		}
+		overlaySet[id] = struct{}{}
+	}
+	overlays := make([]string, 0, len(overlaySet))
+	for _, overlay := range recipe.Overlays {
+		if _, selected := overlaySet[overlay.ID]; selected {
+			overlays = append(overlays, overlay.ID)
+			delete(overlaySet, overlay.ID)
+		}
+	}
+	if len(overlaySet) != 0 {
+		for id := range overlaySet {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", OverlayID: id, Detail: "overlay is not declared by the Recipe"}}, nil
+		}
 	}
 
-	nodes := make([]GraphNode, 0, len(recipe.Nodes))
-	providers := make(map[string]GraphProviderInstance)
-	omitted := make(map[string]bool)
-	eligibleTopologies := append([]execution.Topology{}, hostTopologies...)
-	for _, node := range recipe.Nodes {
-		selectedAddOn := addOns[node.ID]
-		if node.Optional && !selectedAddOn {
-			omitted[node.ID] = true
+	choices := append([]AlternativeChoice{}, request.Alternatives...)
+	positions := make(map[string]int)
+	for slotIndex, slot := range recipe.Slots {
+		for stepIndex, step := range slot.Pipeline {
+			positions[string(slot.SlotID)+"\x00"+step.ID] = slotIndex*1000 + stepIndex
+		}
+	}
+	seenChoices := make(map[string]struct{}, len(choices))
+	providers := providerIndex(source.Providers())
+	for _, choice := range choices {
+		key := string(choice.SlotID) + "\x00" + choice.StepID
+		if _, duplicate := seenChoices[key]; duplicate {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", SlotID: choice.SlotID, StepID: choice.StepID, Detail: "alternative selection is duplicated"}}, nil
+		}
+		seenChoices[key] = struct{}{}
+		step, found := recipeStep(recipe, choice.SlotID, choice.StepID)
+		if !found || choice.AlternativeID != choice.Selector.BindingID || choice.Selector.ProviderID != step.Selector.ProviderID {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", SlotID: choice.SlotID, StepID: choice.StepID, AlternativeID: choice.AlternativeID, Detail: "alternative identity does not match the declared step"}}, nil
+		}
+		provider, found := providers[step.Selector.ProviderID]
+		if !found {
+			return Selection{}, nil, fmt.Errorf("PROFILE_TRUSTED_RECIPE_INVALID: Provider is unavailable")
+		}
+		binding, found := descriptorBinding(provider, step.Selector.BindingID)
+		if !found || !slices.Contains(binding.Alternatives, choice.AlternativeID) {
+			return Selection{}, []CompileDiagnostic{{Code: "PROFILE_SELECTION_INVALID", SlotID: choice.SlotID, StepID: choice.StepID, AlternativeID: choice.AlternativeID, Detail: "alternative is not declared by the selected Binding"}}, nil
+		}
+	}
+	sort.Slice(choices, func(left, right int) bool {
+		leftKey := string(choices[left].SlotID) + "\x00" + choices[left].StepID
+		rightKey := string(choices[right].SlotID) + "\x00" + choices[right].StepID
+		return positions[leftKey] < positions[rightKey]
+	})
+	selection := Selection{
+		Profile: profileName, RecipeID: recipe.ID, RecipeDigest: recipeDigest, Topology: request.Topology,
+		AddOns: addOns, Alternatives: choices, Overlays: overlays,
+	}
+	selection.Digest = selectionContentDigest(selection)
+	return selection, nil, nil
+}
+
+func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipeRecord, selection Selection) ([]CompiledSlot, []pendingIncidentRoute, []CompileDecision, []CompileDiagnostic, error) {
+	selectedAddOns := make(map[string]struct{}, len(selection.AddOns))
+	for _, id := range selection.AddOns {
+		selectedAddOns[id] = struct{}{}
+	}
+	choices := make(map[string]AlternativeChoice, len(selection.Alternatives))
+	for _, choice := range selection.Alternatives {
+		choices[string(choice.SlotID)+"\x00"+choice.StepID] = choice
+	}
+	selectedOverlays := make(map[string]struct{}, len(selection.Overlays))
+	for _, id := range selection.Overlays {
+		selectedOverlays[id] = struct{}{}
+	}
+	decisions := []CompileDecision{}
+	diagnostics := []CompileDiagnostic{}
+	context.decisions = &decisions
+	for _, overlay := range recipe.Overlays {
+		if _, selected := selectedOverlays[overlay.ID]; !selected {
 			continue
 		}
-		providerID := node.Selector.ProviderID
-		if binding, found := bindingIndex[selectorKey(node.Selector)]; found {
-			providerID = binding.PreferredProviderID
+		type overlayMatch struct {
+			slot catalog.SlotID
+			step catalog.PipelineStep
 		}
-		instance, found := verified.Provider(providerID)
-		if !found {
-			if selectedAddOn {
-				return ExecutionGraph{}, compileError("PROFILE_ADD_ON_INVALID", "add-on %q Provider %s is not verified", node.ID, providerID)
+		matches := []overlayMatch{}
+		for _, slot := range recipe.Slots {
+			for _, step := range slot.Pipeline {
+				provider := context.descriptors[step.Selector.ProviderID]
+				binding, found := descriptorBinding(provider, step.Selector.BindingID)
+				if found && slices.Contains(binding.Alternatives, overlay.SelectedAlternative) {
+					matches = append(matches, overlayMatch{slot: slot.SlotID, step: step})
+				}
 			}
-			return ExecutionGraph{}, compileCapabilityError(providerID, node.Selector.CapabilityID, "%s/%s is not verified", providerID, node.Selector.CapabilityID)
 		}
-		if instance.ProviderID != providerID {
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified provider identity %s does not match %s", instance.ProviderID, providerID)
+		if len(matches) != 1 {
+			diagnostics = append(diagnostics, CompileDiagnostic{Code: "OVERLAY_INVALID", OverlayID: overlay.ID, Detail: "overlay alternative does not identify exactly one declared step"})
+			continue
 		}
-		if instance.HostID != hostID {
-			return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Provider %s belongs to Host %q, not %q", providerID, instance.HostID, hostID)
+		match := matches[0]
+		key := string(match.slot) + "\x00" + match.step.ID
+		choice := AlternativeChoice{SlotID: match.slot, StepID: match.step.ID, AlternativeID: overlay.SelectedAlternative, Selector: catalog.BindingSelector{ProviderID: match.step.Selector.ProviderID, BindingID: overlay.SelectedAlternative}}
+		if explicit, found := choices[key]; found && explicit.Selector != choice.Selector {
+			diagnostics = append(diagnostics, CompileDiagnostic{Code: "PROFILE_SELECTION_INVALID", SlotID: match.slot, StepID: match.step.ID, OverlayID: overlay.ID, Detail: "overlay alternative conflicts with the explicit selection"})
+			continue
 		}
-		verifiedCapability, found := verified.Capability(providerID, node.Selector.CapabilityID)
-		if !found {
-			if selectedAddOn {
-				return ExecutionGraph{}, compileError("PROFILE_ADD_ON_INVALID", "add-on %q Capability %s/%s is not verified", node.ID, providerID, node.Selector.CapabilityID)
-			}
-			return ExecutionGraph{}, compileCapabilityError(providerID, node.Selector.CapabilityID, "%s/%s is not verified", providerID, node.Selector.CapabilityID)
-		}
-		if verifiedCapability.ID != node.Selector.CapabilityID {
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified capability identity %s does not match %s", verifiedCapability.ID, node.Selector.CapabilityID)
-		}
-		if verifiedCapability.Binding.Host != hostID {
-			return ExecutionGraph{}, compileError("HOST_PROVIDER_SCOPE_MISMATCH", "verified Binding for %s/%s belongs to Host %q, not %q", providerID, node.Selector.CapabilityID, verifiedCapability.Binding.Host, hostID)
-		}
-		descriptor, found := descriptors[providerID]
-		if !found {
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "provider descriptor %s is not available", providerID)
-		}
-		capability, found := descriptorCapability(descriptor, node.Selector.CapabilityID)
-		if !found {
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "capability descriptor %s/%s is not available", providerID, node.Selector.CapabilityID)
-		}
-		declaredBinding, found := declaredBinding(capability.HostBindings, verifiedCapability.Binding)
-		if !found {
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "verified binding for %s/%s is not declared", providerID, node.Selector.CapabilityID)
-		}
-		nodeTopologies, pinnedBinding, err := compileNodeTopologies(capability, declaredBinding, verifiedCapability)
-		if err != nil {
-			return ExecutionGraph{}, err
-		}
-		eligibleTopologies, err = execution.IntersectTopologies(eligibleTopologies, nodeTopologies)
-		if err != nil || len(eligibleTopologies) == 0 {
-			return ExecutionGraph{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "node %q leaves no eligible topology", node.ID)
-		}
-		if node.Responsibility != "" && !stringPresent(capability.Responsibilities, node.Responsibility) {
-			return ExecutionGraph{}, compileError("PROFILE_CAPABILITY_MISSING", "%s/%s does not own %s", providerID, node.Selector.CapabilityID, node.Responsibility)
-		}
-		if !requestModePresent(capability.RequestModes, catalog.RequestModeWorkflow) {
-			return ExecutionGraph{}, compileError("PROFILE_REQUEST_MODE_UNSUPPORTED", "%s/%s does not allow WORKFLOW", providerID, node.Selector.CapabilityID)
-		}
-		if err := validateCapabilityLimits(capability); err != nil {
-			return ExecutionGraph{}, err
-		}
-		transitions := make([]GraphTransition, len(node.Transitions))
-		for i, transition := range node.Transitions {
-			transitions[i] = GraphTransition{Signal: transition.Signal, Target: transition.Target}
-		}
-		sort.Slice(transitions, func(i, j int) bool { return transitionKey(transitions[i]) < transitionKey(transitions[j]) })
-		graphNode := GraphNode{
-			ID: node.ID, Kind: node.Kind, Responsibility: node.Responsibility, Phase: node.Phase, Optional: node.Optional,
-			ProviderID: providerID, ProviderInstanceDigest: instance.Digest, CapabilityID: capability.ID,
-			Binding: pinnedBinding, InputSchema: capability.InputSchema, OutcomeSchema: capability.OutcomeSchema,
-			MaximumEffects: sortedStrings(capability.MaximumEffects), Resources: sortedStrings(capability.Resources),
-			RequestModes: sortedRequestModes(capability.RequestModes), SupportedTopologies: nodeTopologies,
-			DelegationAllowList: sortedStrings(capability.DelegationAllowList), Transitions: transitions,
-		}
-		nodes = append(nodes, graphNode)
-		providers[providerID] = GraphProviderInstance{ProviderID: providerID, HostID: instance.HostID, InstanceDigest: instance.Digest}
-	}
-	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
-	if err := validateOwnership(nodes, recipe.RequiredResponsibilities); err != nil {
-		return ExecutionGraph{}, err
+		choices[key] = choice
+		decisions = append(decisions, CompileDecision{SlotID: match.slot, StepID: match.step.ID, AlternativeID: overlay.SelectedAlternative, OverlayID: overlay.ID, Disposition: DispatchByCoordinator, ReasonCode: "OVERLAY_ALTERNATIVE_SELECTED", Detail: "overlay selected the declared alternative"})
 	}
 
-	providerInstances := make([]GraphProviderInstance, 0, len(providers))
-	for _, provider := range providers {
-		providerInstances = append(providerInstances, provider)
+	// Expand every selected mainline and Add-on step before materialization. A
+	// multi-slot unit is retained once at its declared anchor; later Recipe
+	// references credit the same Unit ID instead of copying the Binding.
+	slots := make([]CompiledSlot, len(recipe.Slots))
+	pipelineByAnchor := make(map[catalog.SlotID][]ResolvedBinding, len(recipe.Slots))
+	stepUnits := make(map[string]string)
+	seenUnits := make(map[string]struct{})
+	multiUnits := make(map[string][]ResolvedBinding)
+	stepsBySlot := make(map[catalog.SlotID][]catalog.PipelineStep, len(recipe.Slots))
+	appendUnits := func(values []ResolvedBinding) {
+		for _, unit := range values {
+			if _, duplicate := seenUnits[unit.UnitID]; duplicate {
+				continue
+			}
+			seenUnits[unit.UnitID] = struct{}{}
+			pipelineByAnchor[unit.AnchorSlotID] = append(pipelineByAnchor[unit.AnchorSlotID], cloneResolvedBinding(unit))
+		}
 	}
-	sort.Slice(providerInstances, func(i, j int) bool { return providerInstances[i].ProviderID < providerInstances[j].ProviderID })
+	for _, slotRecipe := range recipe.Slots {
+		steps := append([]catalog.PipelineStep{}, slotRecipe.Pipeline...)
+		for stepIndex := range steps {
+			if choice, found := choices[string(slotRecipe.SlotID)+"\x00"+steps[stepIndex].ID]; found {
+				steps[stepIndex].Selector = choice.Selector
+				decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, StepID: steps[stepIndex].ID, AlternativeID: choice.AlternativeID, Disposition: DispatchByCoordinator, ReasonCode: "ALTERNATIVE_SELECTED", Detail: "explicit alternative selected"})
+			}
+		}
+		for _, addOn := range recipe.AddOns {
+			if addOn.SlotID != slotRecipe.SlotID {
+				continue
+			}
+			if _, selected := selectedAddOns[addOn.ID]; !selected {
+				decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, AddOnID: addOn.ID, Disposition: OmittedBySelection, ReasonCode: "ADD_ON_NOT_SELECTED", Detail: "optional Add-on omitted"})
+				continue
+			}
+			if addOn.Kind == catalog.AddOnIncidentHandler {
+				decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, AddOnID: addOn.ID, Disposition: DispatchByCoordinator, ReasonCode: "ADD_ON_SELECTED", Detail: "explicit incident-handler Add-on selected"})
+				continue
+			}
+			provider := context.descriptors[addOn.Selector.ProviderID]
+			binding, found := descriptorBinding(provider, addOn.Selector.BindingID)
+			if !found {
+				diagnostics = append(diagnostics, CompileDiagnostic{Code: "PROFILE_ADD_ON_INVALID", SlotID: slotRecipe.SlotID, AddOnID: addOn.ID, ProviderID: addOn.Selector.ProviderID, BindingID: addOn.Selector.BindingID, Detail: "selected Add-on Binding is unavailable"})
+				continue
+			}
+			steps = append(steps, catalog.PipelineStep{
+				ID: "add-on-" + addOn.ID, Selector: addOn.Selector, StageSpan: append([]catalog.SlotID{}, binding.StageSpan...),
+				RequiredInputArtifact: binding.InputArtifact, ProducedOutputArtifact: binding.OutputArtifact,
+			})
+			decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, AddOnID: addOn.ID, Disposition: DispatchByCoordinator, ReasonCode: "ADD_ON_SELECTED", Detail: "explicit Add-on selected"})
+		}
+		stepsBySlot[slotRecipe.SlotID] = clonePipelineSteps(steps)
+		for _, step := range steps {
+			stepKey := string(slotRecipe.SlotID) + "\x00" + step.ID
+			multiKey := selectorIdentity(step.Selector) + "\x00" + stageSpanIdentity(step.StageSpan)
+			if len(step.StageSpan) > 1 {
+				if prior, found := multiUnits[multiKey]; found {
+					for _, unit := range prior {
+						if unit.ParentUnitID == "" {
+							stepUnits[stepKey] = unit.UnitID
+							break
+						}
+					}
+					for _, unit := range prior {
+						decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, StepID: step.ID, UnitID: unit.UnitID, Disposition: CreditInternalOnly, ReasonCode: "MULTI_SLOT_CREDIT", Detail: "multi-slot Binding is anchored in an earlier slot"})
+					}
+					continue
+				}
+			}
+			units, values, err := context.resolveStep(slotRecipe.SlotID, step)
+			if err != nil {
+				return nil, nil, nil, nil, err
+			}
+			for index := range values {
+				if values[index].SlotID == "" {
+					values[index].SlotID = slotRecipe.SlotID
+				}
+			}
+			diagnostics = append(diagnostics, values...)
+			if len(units) == 0 {
+				continue
+			}
+			for _, unit := range units {
+				if unit.Disposition == CreditInternalOnly {
+					decisions = append(decisions, CompileDecision{SlotID: unit.AnchorSlotID, StepID: unit.StepID, UnitID: unit.UnitID, Disposition: CreditInternalOnly, ReasonCode: "MACRO_INTERNAL_CREDIT", Detail: "internal Binding is credited without Coordinator dispatch"})
+				}
+				if unit.ParentUnitID == "" {
+					stepUnits[stepKey] = unit.UnitID
+					break
+				}
+			}
+			if len(step.StageSpan) > 1 {
+				multiUnits[multiKey] = cloneResolvedBindings(units)
+				for _, unit := range units {
+					for _, creditedSlot := range unit.SlotIDs {
+						if creditedSlot != unit.AnchorSlotID {
+							decisions = append(decisions, CompileDecision{SlotID: creditedSlot, StepID: step.ID, UnitID: unit.UnitID, Disposition: CreditInternalOnly, ReasonCode: "MULTI_SLOT_CREDIT", Detail: "multi-slot Binding is credited at this slot"})
+						}
+					}
+				}
+			}
+			appendUnits(units)
+		}
+	}
 
-	incidentRoutes := make([]GraphIncidentRoute, len(recipe.IncidentRoutes))
-	incidentRoutes = incidentRoutes[:0]
+	// Apply overlay pauses only after all macros have been expanded. The same
+	// anchored unit can therefore be paused from any credited slot.
+	for _, overlay := range recipe.Overlays {
+		if _, selected := selectedOverlays[overlay.ID]; !selected {
+			continue
+		}
+		for anchor, pipeline := range pipelineByAnchor {
+			for unitIndex := range pipeline {
+				selector := catalog.BindingSelector{ProviderID: pipeline[unitIndex].ProviderID, BindingID: pipeline[unitIndex].BindingID}
+				if slices.ContainsFunc(overlay.PausedBindings, func(value catalog.BindingSelector) bool { return value == selector }) {
+					pipeline[unitIndex].Disposition = OmittedBySelection
+					decisions = append(decisions, CompileDecision{SlotID: anchor, StepID: pipeline[unitIndex].StepID, UnitID: pipeline[unitIndex].UnitID, OverlayID: overlay.ID, Disposition: OmittedBySelection, ReasonCode: "OVERLAY_PAUSED_BINDING", Detail: "overlay paused the Binding"})
+				}
+			}
+			pipelineByAnchor[anchor] = pipeline
+		}
+	}
+
+	pendingRoutes := []pendingIncidentRoute{}
 	for _, route := range recipe.IncidentRoutes {
-		if omitted[route.Handler] {
+		incidentAddOn, gatedByAddOn := incidentAddOnForRoute(recipe.AddOns, route)
+		if gatedByAddOn {
+			if _, selected := selectedAddOns[incidentAddOn.ID]; !selected {
+				pendingRoutes = append(pendingRoutes, pendingIncidentRoute{record: route})
+				decisions = append(decisions, CompileDecision{SlotID: catalog.SlotIncidentRecovery, AddOnID: incidentAddOn.ID, IncidentType: route.IncidentType, Disposition: OmittedBySelection, ReasonCode: "INCIDENT_ADD_ON_NOT_SELECTED", Detail: "incident-handler Add-on was not selected"})
+				continue
+			}
+		}
+		provider := context.descriptors[route.Handler.ProviderID]
+		binding, found := descriptorBinding(provider, route.Handler.BindingID)
+		if !found {
+			pendingRoutes = append(pendingRoutes, pendingIncidentRoute{record: route})
+			decisions = append(decisions, CompileDecision{SlotID: catalog.SlotIncidentRecovery, IncidentType: route.IncidentType, Disposition: OmittedBySelection, ReasonCode: "INCIDENT_HANDLER_UNAVAILABLE", Detail: "incident handler Binding is unavailable"})
 			continue
 		}
-		incidentRoutes = append(incidentRoutes, GraphIncidentRoute{Incident: route.Incident, Handler: route.Handler})
+		step := catalog.PipelineStep{ID: "incident-" + sanitizeUnitID(route.IncidentType), Selector: route.Handler, StageSpan: append([]catalog.SlotID{}, binding.StageSpan...), RequiredInputArtifact: binding.InputArtifact, ProducedOutputArtifact: binding.OutputArtifact}
+		units, values, err := context.resolveStep(catalog.SlotIncidentRecovery, step)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		if len(values) != 0 {
+			for index := range values {
+				values[index].IncidentType = route.IncidentType
+			}
+			if gatedByAddOn {
+				for index := range values {
+					values[index].AddOnID = incidentAddOn.ID
+				}
+				diagnostics = append(diagnostics, values...)
+			} else if route.IfUnavailable != catalog.IncidentStop && route.IfUnavailable != catalog.IncidentReplan {
+				diagnostics = append(diagnostics, values...)
+			}
+			detail := "incident handler Binding is unavailable"
+			if values[0].Code != "" {
+				detail = values[0].Code + ": " + values[0].Detail
+			}
+			decisions = append(decisions, CompileDecision{SlotID: catalog.SlotIncidentRecovery, IncidentType: route.IncidentType, Disposition: OmittedBySelection, ReasonCode: "INCIDENT_HANDLER_UNAVAILABLE", Detail: detail})
+			pendingRoutes = append(pendingRoutes, pendingIncidentRoute{record: route})
+			continue
+		}
+		unitIDs := make([]string, 0, len(units))
+		for _, unit := range units {
+			unitIDs = append(unitIDs, unit.UnitID)
+		}
+		appendUnits(units)
+		pendingRoutes = append(pendingRoutes, pendingIncidentRoute{record: route, unitIDs: unitIDs})
 	}
-	sort.Slice(incidentRoutes, func(i, j int) bool { return incidentRouteKey(incidentRoutes[i]) < incidentRouteKey(incidentRoutes[j]) })
 
-	graph := ExecutionGraph{
-		schemaVersion: ExecutionGraphSchemaV3, hostID: hostID, recipeID: recipe.ID, recipeVersion: recipe.RecipeVersion,
-		recipeDigest: recipeDigest, entry: recipe.Entry, bindings: normalizedBindings,
-		providerInstances: providerInstances, nodes: nodes, incidentRoutes: incidentRoutes,
-		terminalGates: sortedStrings(recipe.TerminalGates), stableBoundaries: sortedStrings(recipe.StableBoundaries),
-		eligibleTopologies: eligibleTopologies, environmentRequirements: requirements,
+	for slotIndex, slotRecipe := range recipe.Slots {
+		steps := stepsBySlot[slotRecipe.SlotID]
+		pipeline := cloneResolvedBindings(pipelineByAnchor[slotRecipe.SlotID])
+		compiled := CompiledSlot{SlotID: slotRecipe.SlotID, Applicability: slotRecipe.Applicability,
+			Active:   slotRecipe.Applicability == catalog.SlotMandatory || len(pipeline) != 0 || slotRecipe.HostAction != nil,
+			Pipeline: pipeline, Gates: compileGates(slotRecipe.Gates), Transitions: compileTransitions(slotRecipe.Transitions)}
+		if len(steps) != 0 {
+			compiled.EntryArtifact = steps[0].RequiredInputArtifact
+			compiled.OutcomeArtifact = steps[len(steps)-1].ProducedOutputArtifact
+			for stepIndex := 1; stepIndex < len(steps); stepIndex++ {
+				if steps[stepIndex-1].ProducedOutputArtifact != steps[stepIndex].RequiredInputArtifact {
+					diagnostics = append(diagnostics, CompileDiagnostic{Code: "PIPELINE_ARTIFACT_INCOMPATIBLE", SlotID: slotRecipe.SlotID, StepID: steps[stepIndex].ID, Detail: "pipeline edge is incompatible"})
+				}
+			}
+		}
+		if slotRecipe.HostAction != nil {
+			action, values := compileHostAction(context.host, *slotRecipe.HostAction, slotRecipe.SlotID, context.topology)
+			diagnostics = append(diagnostics, values...)
+			if len(values) == 0 {
+				compiled.HostAction = &action
+				compiled.EntryArtifact = slotRecipe.HostAction.InputArtifact
+				compiled.OutcomeArtifact = slotRecipe.HostAction.OutputArtifact
+			}
+		}
+		if slotRecipe.SlotID == catalog.SlotIncidentRecovery && compiled.Active {
+			compiled.EntryArtifact = firstPipelineArtifact(pipeline, true)
+			compiled.OutcomeArtifact = firstPipelineArtifact(pipeline, false)
+		}
+		if !compiled.Active {
+			decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, Disposition: OmittedBySelection, ReasonCode: "CONDITIONAL_SLOT_INACTIVE", Detail: "conditional slot has no selected or available pipeline"})
+		}
+		slots[slotIndex] = compiled
 	}
-	if err := validateExecutionGraph(graph, omitted); err != nil {
-		return ExecutionGraph{}, err
+	for slotIndex, slotRecipe := range recipe.Slots {
+		owner, values := compileOwner(slotRecipe, slots[slotIndex], stepUnits, pipelineByAnchor)
+		if !hasSlotDiagnostic(diagnostics, slotRecipe.SlotID) {
+			diagnostics = append(diagnostics, values...)
+		}
+		slots[slotIndex].OutcomeOwner = owner
+		slots[slotIndex].Terminal = slots[slotIndex].Active && slots[slotIndex].SlotID != catalog.SlotIncidentRecovery && len(slots[slotIndex].Transitions) == 0
 	}
-	digestRecord := executionGraphDigestRecord(graph)
-	graph.digest, _, err = canonicaljson.Digest(digestRecord)
-	if err != nil {
-		return ExecutionGraph{}, err
-	}
-	return graph, nil
+	return slots, pendingRoutes, decisions, diagnostics, nil
 }
 
-func validateBindingSelectors(bindings []ProfileBinding, nodes []catalog.RecipeNode) error {
-	selectors := make(map[string]struct{}, len(nodes))
-	for _, node := range nodes {
-		selectors[selectorKey(node.Selector)] = struct{}{}
-	}
-	for _, binding := range bindings {
-		if _, found := selectors[selectorKey(binding.Selector)]; !found {
-			return compileError("PROFILE_SELECTOR_NOT_FOUND", "selector %s/%s is not declared by the recipe", binding.Selector.ProviderID, binding.Selector.CapabilityID)
+func incidentAddOnForRoute(addOns []catalog.AddOnRecord, route catalog.IncidentRoute) (catalog.AddOnRecord, bool) {
+	for _, addOn := range addOns {
+		if addOn.Kind == catalog.AddOnIncidentHandler && addOn.Selector == route.Handler && slices.Contains(addOn.IncidentTypes, route.IncidentType) {
+			return addOn, true
 		}
 	}
-	return nil
+	return catalog.AddOnRecord{}, false
 }
 
-func indexAddOns(values []string, nodes []catalog.RecipeNode) (map[string]bool, error) {
-	available := make(map[string]catalog.RecipeNode, len(nodes))
-	for _, node := range nodes {
-		available[node.ID] = node
-	}
-	selected := make(map[string]bool, len(values))
-	for _, id := range values {
-		if selected[id] {
-			return nil, compileError("PROFILE_ADD_ON_INVALID", "add-on %q is duplicated", id)
-		}
-		node, found := available[id]
-		if !found {
-			return nil, compileError("PROFILE_ADD_ON_INVALID", "add-on %q is not declared", id)
-		}
-		if !node.Optional {
-			return nil, compileError("PROFILE_ADD_ON_INVALID", "node %q is required and cannot be selected as an add-on", id)
-		}
-		selected[id] = true
-	}
-	return selected, nil
-}
-
-func indexBindings(values []ProfileBinding) (map[string]ProfileBinding, []ProfileBinding, error) {
-	index := make(map[string]ProfileBinding, len(values))
-	normalized := cloneBindings(values)
-	for _, binding := range normalized {
-		key := selectorKey(binding.Selector)
-		if _, found := index[key]; found {
-			return nil, nil, compileError("PROFILE_SELECTOR_AMBIGUOUS", "selector %s/%s has multiple bindings", binding.Selector.ProviderID, binding.Selector.CapabilityID)
-		}
-		index[key] = binding
-	}
-	sort.Slice(normalized, func(i, j int) bool {
-		return bindingKey(normalized[i]) < bindingKey(normalized[j])
-	})
-	return index, normalized, nil
-}
-
-func selectorKey(value catalog.CapabilitySelector) string {
-	return value.ProviderID + "\x00" + value.CapabilityID
-}
-
-func bindingKey(value ProfileBinding) string {
-	return selectorKey(value.Selector) + "\x00" + value.PreferredProviderID
-}
-
-func descriptorCapability(descriptor catalog.ProviderDescriptorRecord, id string) (catalog.CapabilityRecord, bool) {
-	for _, capability := range descriptor.Capabilities {
-		if capability.ID == id {
-			return capability, true
-		}
-	}
-	return catalog.CapabilityRecord{}, false
-}
-
-func declaredBinding(values []catalog.HostBinding, wanted catalog.HostBinding) (catalog.HostBinding, bool) {
+func hasSlotDiagnostic(values []CompileDiagnostic, slotID catalog.SlotID) bool {
 	for _, value := range values {
-		if value.Host == wanted.Host && value.Kind == wanted.Kind && value.Reference == wanted.Reference {
-			return value, true
+		if value.SlotID == slotID {
+			return true
 		}
 	}
-	return catalog.HostBinding{}, false
+	return false
 }
 
-func compileNodeTopologies(capability catalog.CapabilityRecord, declared catalog.HostBinding, verified registry.VerifiedCapability) ([]execution.Topology, catalog.HostBinding, error) {
-	capabilityTopologies, err := execution.NormalizeTopologies(capability.SupportedTopologies)
-	if err != nil {
-		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid Capability topologies: %v", capability.ID, err)
+func firstPipelineArtifact(pipeline []ResolvedBinding, input bool) string {
+	if len(pipeline) == 0 {
+		return ""
 	}
-	bindingTopologies, err := execution.NormalizeTopologies(declared.Topologies)
-	if err != nil {
-		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid binding topologies: %v", capability.ID, err)
+	if input {
+		return pipeline[0].InputArtifact
 	}
-	verifiedTopologies, err := execution.NormalizeTopologies(verified.SupportedTopologies)
-	if err != nil {
-		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid verified topologies: %v", capability.ID, err)
-	}
-	verifiedBindingTopologies, err := execution.NormalizeTopologies(verified.Binding.Topologies)
-	if err != nil {
-		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has invalid verified binding topologies: %v", capability.ID, err)
-	}
-	if !topologySubset(verifiedTopologies, bindingTopologies) ||
-		!topologySubset(verifiedBindingTopologies, bindingTopologies) ||
-		!slices.Equal(verifiedTopologies, verifiedBindingTopologies) {
-		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s verified binding topology evidence does not match its descriptor", capability.ID)
-	}
-	eligible, err := execution.IntersectTopologies(capabilityTopologies, bindingTopologies, verifiedTopologies, verifiedBindingTopologies)
-	if err != nil || len(eligible) == 0 {
-		return nil, catalog.HostBinding{}, compileError("PROFILE_TOPOLOGY_UNAVAILABLE", "%s has no eligible binding topology", capability.ID)
-	}
-	declared.Topologies = bindingTopologies
-	return eligible, cloneHostBinding(declared), nil
+	return pipeline[len(pipeline)-1].OutputArtifact
 }
 
-func topologySubset(values, allowed []execution.Topology) bool {
-	if len(values) == 0 {
-		return false
+func stageSpanIdentity(values []catalog.SlotID) string {
+	parts := make([]string, len(values))
+	for index, value := range values {
+		parts[index] = string(value)
 	}
-	for _, value := range values {
-		if !slices.Contains(allowed, value) {
-			return false
-		}
-	}
-	return true
+	return strings.Join(parts, ",")
 }
 
-func cloneHostBinding(value catalog.HostBinding) catalog.HostBinding {
-	value.Topologies = append([]execution.Topology{}, value.Topologies...)
-	return value
-}
-
-func normalizeRecipe(recipe catalog.ProfileRecipeRecord) catalog.ProfileRecipeRecord {
-	recipe.RequiredResponsibilities = sortedStrings(recipe.RequiredResponsibilities)
-	recipe.IncidentRoutes = append([]catalog.IncidentRoute{}, recipe.IncidentRoutes...)
-	sort.Slice(recipe.IncidentRoutes, func(i, j int) bool {
-		return recipe.IncidentRoutes[i].Incident+"\x00"+recipe.IncidentRoutes[i].Handler < recipe.IncidentRoutes[j].Incident+"\x00"+recipe.IncidentRoutes[j].Handler
-	})
-	recipe.TerminalGates = sortedStrings(recipe.TerminalGates)
-	recipe.StableBoundaries = sortedStrings(recipe.StableBoundaries)
-	requirements, _ := execution.NormalizeRequirements(recipe.EnvironmentRequirements)
-	recipe.EnvironmentRequirements = requirements
-	recipe.Nodes = append([]catalog.RecipeNode{}, recipe.Nodes...)
-	for i := range recipe.Nodes {
-		recipe.Nodes[i].Transitions = append([]catalog.RecipeTransition{}, recipe.Nodes[i].Transitions...)
-		sort.Slice(recipe.Nodes[i].Transitions, func(left, right int) bool {
-			leftTransition := recipe.Nodes[i].Transitions[left]
-			rightTransition := recipe.Nodes[i].Transitions[right]
-			return leftTransition.Signal+"\x00"+leftTransition.Target < rightTransition.Signal+"\x00"+rightTransition.Target
-		})
+func compileHostAction(evidence HostEvidenceRecord, reference catalog.HostActionRef, slotID catalog.SlotID, topology execution.Topology) (CompiledHostAction, []CompileDiagnostic) {
+	observation, found := hostAction(evidence, reference.ID)
+	if !found || observation.State != host.AvailabilityAvailable || !liveSource(observation.Source) {
+		return CompiledHostAction{}, []CompileDiagnostic{{Code: "HOST_ACTION_UNATTESTED", SlotID: slotID, Topology: topology, Detail: "required Host action is not live and available"}}
 	}
-	sort.Slice(recipe.Nodes, func(i, j int) bool { return recipe.Nodes[i].ID < recipe.Nodes[j].ID })
-	return recipe
+	return CompiledHostAction{
+		ID: reference.ID, InputArtifact: reference.InputArtifact, OutputArtifact: reference.OutputArtifact,
+		InputSchema: observation.Action.InputSchema, OutcomeSchema: observation.Action.OutcomeSchema,
+		MaximumEffects: append([]string{}, observation.Action.MaximumEffects...), Resources: append([]string{}, observation.Action.Resources...),
+		ObservationDigest: observation.Digest,
+	}, nil
 }
 
-func sortedStrings(values []string) []string {
-	result := append([]string{}, values...)
-	sort.Strings(result)
+func compileGates(values []catalog.GateRecord) []CompiledGate {
+	result := make([]CompiledGate, len(values))
+	for index, gate := range values {
+		result[index] = CompiledGate{ID: gate.ID, Authority: gate.Authority, Predicate: gate.Predicate, EvidenceRequirements: append([]catalog.EvidenceRequirementRecord{}, gate.EvidenceRequirements...)}
+	}
 	return result
 }
 
-func sortedRequestModes(values []catalog.RequestMode) []catalog.RequestMode {
-	result := append([]catalog.RequestMode{}, values...)
-	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+func compileTransitions(values []catalog.RecipeTransition) []GraphTransition {
+	result := make([]GraphTransition, len(values))
+	for index, value := range values {
+		result[index] = GraphTransition{Signal: value.Signal, Target: value.Target}
+	}
 	return result
 }
 
-func transitionKey(value GraphTransition) string {
-	return value.Signal + "\x00" + value.Target
+func compileOwner(recipe catalog.SlotRecipe, slot CompiledSlot, stepUnits map[string]string, pipelines map[catalog.SlotID][]ResolvedBinding) (CompiledOwner, []CompileDiagnostic) {
+	switch recipe.OutcomeOwner.Kind {
+	case catalog.OwnerNone:
+		return CompiledOwner{Kind: catalog.OwnerNone}, nil
+	case catalog.OwnerHostAction:
+		if slot.HostAction == nil || slot.HostAction.ID != recipe.OutcomeOwner.HostAction {
+			return CompiledOwner{}, []CompileDiagnostic{{Code: "OUTCOME_OWNER_MISSING", SlotID: recipe.SlotID, Detail: "Host action owner is unavailable"}}
+		}
+		return CompiledOwner{Kind: catalog.OwnerHostAction, UnitID: slot.HostAction.ID, HostActionID: slot.HostAction.ID}, nil
+	case catalog.OwnerProviderBinding:
+		unitID := stepUnits[string(recipe.SlotID)+"\x00"+recipe.OutcomeOwner.StepID]
+		matches := []ResolvedBinding{}
+		for _, pipeline := range pipelines {
+			for _, unit := range pipeline {
+				if unit.UnitID == unitID && unit.ParentUnitID == "" && unit.Disposition != OmittedBySelection {
+					matches = append(matches, unit)
+				}
+			}
+		}
+		if len(matches) != 1 {
+			return CompiledOwner{}, []CompileDiagnostic{{Code: "OUTCOME_OWNER_MISSING", SlotID: recipe.SlotID, StepID: recipe.OutcomeOwner.StepID, Detail: "exactly one active Provider outcome owner is required"}}
+		}
+		owner := matches[0]
+		return CompiledOwner{Kind: catalog.OwnerProviderBinding, UnitID: owner.UnitID, ProviderID: owner.ProviderID, BindingID: owner.BindingID}, nil
+	default:
+		return CompiledOwner{}, []CompileDiagnostic{{Code: "OUTCOME_OWNER_MISSING", SlotID: recipe.SlotID, Detail: "outcome owner kind is invalid"}}
+	}
 }
 
-func incidentRouteKey(value GraphIncidentRoute) string {
-	return value.Incident + "\x00" + value.Handler
+func graphProviders(verified EffectiveRegistry, slots []CompiledSlot) ([]GraphProviderInstance, error) {
+	used := make(map[string]string)
+	for _, slot := range slots {
+		for _, unit := range slot.Pipeline {
+			if current, found := used[unit.ProviderID]; found && current != unit.ProviderInstanceDigest {
+				return nil, fmt.Errorf("PROFILE_TRUSTED_REGISTRY_INVALID: Provider Instance digest changed")
+			}
+			provider, found := verified.Provider(unit.ProviderID)
+			if !found || provider.Digest != unit.ProviderInstanceDigest {
+				return nil, fmt.Errorf("PROFILE_TRUSTED_REGISTRY_INVALID: Provider Instance is unavailable")
+			}
+			used[unit.ProviderID] = unit.ProviderInstanceDigest
+		}
+	}
+	result := make([]GraphProviderInstance, 0, len(used))
+	for providerID, digest := range used {
+		result = append(result, GraphProviderInstance{ProviderID: providerID, HostID: verified.HostID(), InstanceDigest: digest})
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left].ProviderID < result[right].ProviderID })
+	return result, nil
 }
 
-func executionGraphDigestRecord(graph ExecutionGraph) any {
-	return executionGraphRecordContent(graph.Record())
+func diagnosticCompileResult(values []CompileDiagnostic) (CompileResult, error) {
+	diagnostics := append([]CompileDiagnostic{}, values...)
+	sortCompileDiagnostics(diagnostics)
+	digest, _, err := canonicaljson.Digest(struct {
+		SchemaVersion string              `json:"schema_version"`
+		Diagnostics   []CompileDiagnostic `json:"diagnostics"`
+	}{"oaw.profile-compile-result/v1", diagnostics})
+	if err != nil {
+		return CompileResult{}, err
+	}
+	return CompileResult{diagnostics: diagnostics, digest: digest}, nil
+}
+
+func graphCompileResult(graph ExecutionGraph) (CompileResult, error) {
+	record := graph.Record()
+	digest, _, err := canonicaljson.Digest(struct {
+		SchemaVersion string               `json:"schema_version"`
+		Graph         ExecutionGraphRecord `json:"graph"`
+	}{"oaw.profile-compile-result/v1", record})
+	if err != nil {
+		return CompileResult{}, err
+	}
+	copy := ExecutionGraph{record: record}
+	return CompileResult{graph: &copy, diagnostics: []CompileDiagnostic{}, digest: digest}, nil
+}
+
+func selectionContentDigest(value Selection) string {
+	value = cloneSelection(value)
+	value.Digest = ""
+	digest, _, err := canonicaljson.Digest(value)
+	if err != nil {
+		return ""
+	}
+	return digest
+}
+
+func sortCompileDiagnostics(values []CompileDiagnostic) {
+	sort.SliceStable(values, func(left, right int) bool { return diagnosticKey(values[left]) < diagnosticKey(values[right]) })
+}
+
+func diagnosticKey(value CompileDiagnostic) string {
+	return strings.Join([]string{value.Code, string(value.SlotID), value.StepID, value.ProviderID, value.BindingID, value.AddOnID, value.AlternativeID, value.OverlayID, value.IncidentType, string(value.Topology), value.Detail}, "\x00")
+}
+
+func sortCompileDecisions(values []CompileDecision) {
+	positions := make(map[catalog.SlotID]int)
+	for index, slot := range catalog.CanonicalSlots() {
+		positions[slot.ID] = index
+	}
+	sort.SliceStable(values, func(left, right int) bool {
+		leftKey := fmt.Sprintf("%02d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", positions[values[left].SlotID], values[left].StepID, values[left].UnitID, values[left].AddOnID, values[left].AlternativeID, values[left].OverlayID, values[left].IncidentType, values[left].Disposition, values[left].ReasonCode, values[left].Detail)
+		rightKey := fmt.Sprintf("%02d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s\x00%s", positions[values[right].SlotID], values[right].StepID, values[right].UnitID, values[right].AddOnID, values[right].AlternativeID, values[right].OverlayID, values[right].IncidentType, values[right].Disposition, values[right].ReasonCode, values[right].Detail)
+		return leftKey < rightKey
+	})
+}
+
+func providerIndex(values []catalog.ProviderDescriptorRecord) map[string]catalog.ProviderDescriptorRecord {
+	result := make(map[string]catalog.ProviderDescriptorRecord, len(values))
+	for _, provider := range values {
+		result[provider.ID] = provider
+	}
+	return result
+}
+
+func recipeStep(recipe catalog.ProfileRecipeRecord, slotID catalog.SlotID, stepID string) (catalog.PipelineStep, bool) {
+	for _, slot := range recipe.Slots {
+		if slot.SlotID != slotID {
+			continue
+		}
+		for _, step := range slot.Pipeline {
+			if step.ID == stepID {
+				return step, true
+			}
+		}
+	}
+	return catalog.PipelineStep{}, false
+}
+
+func firstActiveSlot(slots []CompiledSlot) catalog.SlotID {
+	for _, slot := range slots {
+		if slot.Active {
+			return slot.SlotID
+		}
+	}
+	return ""
+}
+
+func sanitizeUnitID(value string) string {
+	value = strings.Map(func(char rune) rune {
+		if char >= 'a' && char <= 'z' || char >= 'A' && char <= 'Z' || char >= '0' && char <= '9' || char == '-' {
+			return char
+		}
+		return '-'
+	}, value)
+	return strings.Trim(value, "-")
 }

@@ -13,6 +13,7 @@ import (
 
 const (
 	ProviderDescriptorV4        = "https://open-agent-workflow.dev/schemas/v4/provider-descriptor.schema.json"
+	ExecutionGraphV4            = "https://open-agent-workflow.dev/schemas/v4/execution-graph.schema.json"
 	ProfileRecipeV3             = "https://open-agent-workflow.dev/schemas/v3/profile-recipe.schema.json"
 	ProfileAliasSetV1           = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
 	UserConfigV3                = "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json"
@@ -45,6 +46,7 @@ func New(files fs.FS) (*Registry, error) {
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	resources := []struct{ path, id string }{
 		{"schemas/v4/provider-descriptor.schema.json", ProviderDescriptorV4},
+		{"schemas/v4/execution-graph.schema.json", ExecutionGraphV4},
 		{"schemas/v3/user-config.schema.json", UserConfigV3},
 		{"schemas/v3/profile-recipe.schema.json", ProfileRecipeV3},
 		{"schemas/v1/profile-alias-set.schema.json", ProfileAliasSetV1},
