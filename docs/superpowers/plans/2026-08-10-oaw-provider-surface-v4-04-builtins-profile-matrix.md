@@ -59,21 +59,22 @@ Use these stable Distribution IDs in both the audit manifest and Descriptor asse
 
 Discovery remains diagnostic until Plan 02 intersects a complete Distribution/Binding tree and live Host observation. Use these exact built-in probes; no probe may treat its shared ancestor as provenance:
 
-| Probe ID | Host/surface | Kind | Candidate or prefix | Evidence |
+| Probe ID | Host / logical surface | Kind | Candidate or prefix | Evidence |
 | --- | --- | --- | --- | --- |
 | `matt-codex-skill-lock` | `codex` / `codex-user-skills` | `path-exists` | candidate `.agents` | `.skill-lock.json`; each selected skill must also match its exact manifest source/path and complete tree |
+| `matt-claude-official-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/mattpocock-skills` | `.claude-plugin/plugin.json` |
 | `sp-claude-direct` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/superpowers` | `skills/using-superpowers/SKILL.md` |
 | `sp-codex-direct` | `codex` / `codex-plugin` | `path-exists` | candidate `.codex/plugins/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-claude-marketplace` | `claude` / `claude-marketplace` | `path-exists` | candidate `.claude/plugins/marketplaces/superpowers-marketplace` | `skills/using-superpowers/SKILL.md` |
-| `sp-claude-official-cache` | `claude` / `claude-plugin-cache` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-claude-marketplace-cache` | `claude` / `claude-plugin-cache` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/superpowers-marketplace/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-codex-curated-cache` | `codex` / `codex-plugin-cache` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/openai-api-curated/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `ecc-claude-marketplace` | `claude` / `claude-marketplace` | `path-exists` | candidate `.claude/plugins/marketplaces/everything-claude-code/plugins/ecc` | `.codex-plugin/plugin.json` |
-| `ecc-claude-cache` | `claude` / `claude-plugin-cache` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
+| `sp-claude-marketplace` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/marketplaces/superpowers-marketplace` | `skills/using-superpowers/SKILL.md` |
+| `sp-claude-official-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `sp-claude-marketplace-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/superpowers-marketplace/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `sp-codex-curated-cache` | `codex` / `codex-plugin` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/openai-api-curated/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `ecc-claude-marketplace` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/marketplaces/everything-claude-code/plugins/ecc` | `.codex-plugin/plugin.json` |
+| `ecc-claude-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
 | `ecc-codex-direct` | `codex` / `codex-plugin` | `path-exists` | candidate `.codex/plugins/ecc` | `.codex-plugin/plugin.json` |
-| `ecc-codex-cache` | `codex` / `codex-plugin-cache` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
+| `ecc-codex-cache` | `codex` / `codex-plugin` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
 
-The Matt lock probe never verifies an unrelated same-name directory under `.agents/skills`; the lock entry must name `mattpocock/skills`, the pinned source, and the exact `skillPath`, followed by a complete content-equivalence check. ECC's old aggregate `~/.agents/skills/everything-claude-code/SKILL.md` probe is removed because it cannot prove the repository-root skill, Agent, Role, or instruction trees. A Host installation outside these exact channels is supplied through trusted user/project configuration and follows the same evidence rules.
+The Matt lock probe never verifies an unrelated same-name directory under `.agents/skills`; the lock entry must name `mattpocock/skills`, the pinned source, and the exact `skillPath`, followed by a complete content-equivalence check. Matt's pinned README and `.claude-plugin/plugin.json` establish the official Claude plugin distribution and its managed cache channel. Multiple probes for one Host share a logical surface (`claude-plugin` or `codex-plugin`); the probe ID/path records the installation channel, while the surface remains stable so one Host-qualified Binding can verify through any audited channel. ECC's old aggregate `~/.agents/skills/everything-claude-code/SKILL.md` probe is removed because it cannot prove the repository-root skill, Agent, Role, or instruction trees. A Host installation outside these exact channels is supplied through trusted user/project configuration and follows the same evidence rules.
 
 ### Exact audited Binding sets
 
@@ -110,16 +111,16 @@ Superpowers source roots are `skills/brainstorming`, `skills/writing-plans`, `sk
 | `codex-brainstorming`, `claude-brainstorming` | `superpowers:brainstorming` | `skill` / `model` | slots 1-3 macro envelope; parent owns slots 1-2 and dispatch-after `writing-plans` owns slot 3 after design approval |
 | `codex-writing-plans`, `claude-writing-plans` | `superpowers:writing-plans` | `skill` / `model` | slot 3 |
 | `codex-using-git-worktrees`, `claude-using-git-worktrees` | `superpowers:using-git-worktrees` | `skill` / `model` | slot 4; one workspace result |
-| `codex-subagent-driven-development`, `claude-subagent-driven-development` | `superpowers:subagent-driven-development` | `skill` / `model` | slots 4-10 macro envelope; dispatch-before workspace, credit-only TDD/per-task review, dispatch-after final verification/finish |
+| `codex-subagent-driven-development`, `claude-subagent-driven-development` | `superpowers:subagent-driven-development` | `skill` / `model` | slots 4-10 macro envelope; dispatch-before workspace and dispatch-after finish are its only cross-skill calls; the parent owns implementation plus its embedded per-task/final two-stage review responsibility |
 | `codex-executing-plans`, `claude-executing-plans` | `superpowers:executing-plans` | `skill` / `model` | slots 4-10 inline macro envelope; dispatch-before workspace and dispatch-after finish |
-| `codex-test-driven-development`, `claude-test-driven-development` | `superpowers:test-driven-development` | `skill` / `model` | slot 6 only on inline path; not a peer of SDD's credit-only TDD |
+| `codex-test-driven-development`, `claude-test-driven-development` | `superpowers:test-driven-development` | `skill` / `model` | standalone slot 6 procedure on both SDD and inline paths; SDD does not call this skill |
 | `codex-systematic-debugging`, `claude-systematic-debugging` | `superpowers:systematic-debugging` | `skill` / `model` | typed technical incident handler in slot 7 |
-| `codex-requesting-code-review`, `claude-requesting-code-review` | `superpowers:requesting-code-review` | `skill` / `model` | slot 8 review dispatch; reviewer child required |
+| `codex-requesting-code-review`, `claude-requesting-code-review` | `superpowers:requesting-code-review` | `skill` / `model` | standalone slot 8 review dispatch on the inline path; reviewer child required; SDD instead owns its documented embedded two-stage review |
 | `codex-receiving-code-review`, `claude-receiving-code-review` | `superpowers:receiving-code-review` | `skill` / `model` | slot 8 remediation procedure; one finding at a time and re-review |
-| `codex-verification-before-completion`, `claude-verification-before-completion` | `superpowers:verification-before-completion` | `skill` / `model` | slot 9 fresh proof |
+| `codex-verification-before-completion`, `claude-verification-before-completion` | `superpowers:verification-before-completion` | `skill` / `model` | standalone slot 9 fresh proof on both execution paths; SDD does not call this skill |
 | `codex-finishing-a-development-branch`, `claude-finishing-a-development-branch` | `superpowers:finishing-a-development-branch` | `skill` / `model` | slot 10; user-authority choice |
 
-All Superpowers references include the exact `superpowers:` namespace. SDD and `requesting-code-review` declare child, parallel-child, nested-child, and nested-parallel-child requirements according to the selected outer topology. Inline execution removes the implementation-child requirement but keeps the reviewer-child requirement. No lexical alternative is selected.
+All Superpowers references include the exact `superpowers:` namespace. SDD requires child delegation under `CURRENT` and nested-child delegation under outer `SUBAGENT`; its implementer, spec-review, and quality-review dispatches are embedded responsibilities described by SDD's own prompt assets, not invocations of `requesting-code-review`. Standalone `requesting-code-review` likewise requires a reviewer child or nested child according to the outer topology. Inline execution removes only SDD's implementation-child requirement and keeps the standalone reviewer-child requirement. Matt `code-review`, independently, retains its audited parallel review requirement. No lexical alternative is selected.
 
 `finishing-a-development-branch` includes `network-write` in its maximum
 effects because one user-selected closeout option can push/open a PR; a Recipe
@@ -182,14 +183,14 @@ The implementation descriptor never claims workspace creation, general delegatio
 
 ### SP-FULL / `oaw/delivery`
 
-The Recipe retains both audited Superpowers execution alternatives:
+The built-in Recipe uses the complete inline Superpowers path so it remains truthful under `CURRENT` without child delegation. The audited SDD Binding remains available to `USER-DEFINED` Recipes, but is not a single-step alternative inside `oaw/delivery`: SDD owns an embedded review/remediation responsibility, while the inline path uses a separate review pipeline, and Recipe v3 cannot atomically replace both the executor and that different owner/pipeline shape through one `AlternativeChoice`.
 
-| Alternative ID | Main implementation macro | Internal calls and resulting slot owners |
+| Recipe shape | Main implementation macro | Cross-skill calls and resulting slot owners |
 | --- | --- | --- |
-| `sp-sdd` | `subagent-driven-development` | dispatch-before `using-git-worktrees`; credit-only `test-driven-development` and per-task review; dispatch-after `verification-before-completion` and `finishing-a-development-branch` |
-| `sp-inline` | `executing-plans` | dispatch-before `using-git-worktrees`; standalone `test-driven-development`, `requesting-code-review -> receiving-code-review -> re-review`, `verification-before-completion`; dispatch-after `finishing-a-development-branch` |
+| built-in `SP-FULL` | `executing-plans` | dispatch-before `using-git-worktrees`; standalone `test-driven-development`, `requesting-code-review -> receiving-code-review`, and `verification-before-completion`; dispatch-after `finishing-a-development-branch` |
+| versioned `USER-DEFINED` SDD clone | `subagent-driven-development` | dispatch-before `using-git-worktrees`; SDD owns implementation and its embedded per-task/final review/remediation responsibility; standalone `test-driven-development` owns slot 6; standalone `verification-before-completion` owns slot 9; dispatch-after `finishing-a-development-branch` owns slot 10 |
 
-Slots 1-2 are one `brainstorming` run with user design approval; its `writing-plans` continuation is dispatch-after and owns slot 3 exactly once. Slot 7 routes typed technical failures to `systematic-debugging`. SDD is eligible under `CURRENT` only with live child/reviewer evidence and under outer `SUBAGENT` only with nested-child and nested-parallel-child evidence. The inline alternative needs no implementation child but still needs the reviewer child. Missing required delegation returns `HOST_FEATURE_UNATTESTED` or `PROFILE_TOPOLOGY_UNAVAILABLE`; it never becomes self-review or sequential simulation.
+Slots 1-2 are one `brainstorming` run with user design approval; its `writing-plans` continuation is dispatch-after and completes slot 3 exactly once under the enclosing brainstorming macro. Slot 7 routes typed technical failures to `systematic-debugging`. A user-defined SDD Recipe is eligible under `CURRENT` only with live child-delegation evidence and under outer `SUBAGENT` only with nested-child-delegation evidence. Its documented prompt-driven reviews remain inside the SDD responsibility and do not create a `requesting-code-review`, `test-driven-development`, or `verification-before-completion` InternalCall. The built-in inline path needs no implementation child but still needs the standalone reviewer child. Missing required delegation returns `HOST_FEATURE_UNATTESTED` or `PROFILE_TOPOLOGY_UNAVAILABLE`; it never becomes self-review or sequential simulation.
 
 ### ECC-FULL / `oaw/ecc-engineering`
 
@@ -226,7 +227,7 @@ This is the preserved core composition, not a compatibility alias for an old gra
 | 9 | SP `verification-before-completion` | fresh-evidence gate |
 | 10 | SP `finishing-a-development-branch` | explicit user-authority gate |
 
-The Recipe has no selected ECC Add-on. Its declared optional add-ons, when a user later creates a new versioned Recipe, are `ecc-build-repair` (ECC `build-error-resolver` on a Host that attests it) and `ecc-security-review` (ECC `security-review` or the exact verified Claude `security-reviewer` surface). Add-ons are incident/specialist checks only and cannot take implementation, TDD, review, verification, or closeout ownership. Selecting SDD while retaining Matt TDD is rejected with `MACRO_INTERNAL_CONFLICT`; changing any default choice creates a new `USER-DEFINED` Recipe and never mutates `oaw/reliable-feature`.
+The Recipe has no selected ECC Add-on. Its declared optional add-ons, when a user later creates a new versioned Recipe, are `ecc-build-repair` (ECC `build-error-resolver` on a Host that attests it) and `ecc-security-review` (ECC `security-review` or the exact verified Claude `security-reviewer` surface). Add-ons are incident/specialist checks only and cannot take implementation, TDD, review, verification, or closeout ownership. Selecting SDD creates a new versioned `USER-DEFINED` Recipe and requires live child or nested-child delegation; Matt remains the single TDD owner and Superpowers TDD remains paused. Changing any default choice never mutates `oaw/reliable-feature`.
 
 ## Task 1: Pin and verify the upstream source manifest
 
@@ -397,7 +398,7 @@ func TestLoadRejectsSourceAuditDrift(t *testing.T)
 func TestBuiltInAssetLoadIsDeterministic(t *testing.T)
 ```
 
-The tests must compare exact ID/reference/kind/Host/invocation/content-root/install-root/span/internal-call sets, not only capability counts. They assert the flattened Matt mappings and repository-style Superpowers/ECC mappings independently. `TestMattRejectsFictionalRequirementsVerificationAndCompletion` searches both `BindingRecord.ID` and `BindingRecord.Reference` and asserts that no Matt record contains `requirements`, `verification-loop`, or a completion binding. `TestECCSeparatesSkillAgentRoleInstructionAndHookEvidence` asserts that `kind=agent` appears only with `host=claude`, the three exact role IDs are the only Codex role records, `commands/plan.md` and `commands/feature-dev.md` are instructions, and no Hook appears in `Bindings`. `TestSuperpowersMacroModesAreExact` asserts the dispatch-before/credit-only/dispatch-after modes and rejects a second peer for each credited unit.
+The tests must compare exact ID/reference/kind/Host/invocation/content-root/install-root/span/internal-call sets, not only capability counts. They assert the flattened Matt mappings and repository-style Superpowers/ECC mappings independently. `TestMattRejectsFictionalRequirementsVerificationAndCompletion` searches both `BindingRecord.ID` and `BindingRecord.Reference` and asserts that no Matt record contains `requirements`, `verification-loop`, or a completion binding. `TestECCSeparatesSkillAgentRoleInstructionAndHookEvidence` asserts that `kind=agent` appears only with `host=claude`, the three exact role IDs are the only Codex role records, `commands/plan.md` and `commands/feature-dev.md` are instructions, and no Hook appears in `Bindings`. `TestSuperpowersMacroModesAreExact` asserts that SDD has exactly one dispatch-before workspace call and one dispatch-after finish call, that its embedded review is not encoded as another Binding call, and that TDD and fresh verification remain standalone Recipe units. It rejects fictional SDD calls to `test-driven-development`, `requesting-code-review`, or `verification-before-completion`.
 
 - [ ] **Step 2: Run RED against the complete package boundary.**
 
@@ -417,7 +418,7 @@ Set every Descriptor to `schema_version = oaw.provider-descriptor/v4` and `descr
 
 Encode the Matt rows and responsibilities exactly as the audit table: `grill-with-docs` credits `grilling` and `domain-modeling`; `to-spec`, `to-tickets`, and `implement` are `human-explicit`; `implement` uses the slots 5-8 macro envelope, calls `tdd` and `code-review` as credit-only internals, has no incident, completion, or workspace responsibility, and the internal `code-review` is the exact slot 8 owner; `diagnosing-bugs` accepts only functional/hard-bug/performance incident types; `code-review` requires child and parallel-child (nested equivalents for outer `SUBAGENT`).
 
-Encode the eleven Superpowers skill rows with the `superpowers:` reference namespace. `brainstorming` has a dispatch-after `writing-plans` call; SDD has dispatch-before workspace, credit-only TDD/per-task review, and dispatch-after verification/finish; inline execution has dispatch-before workspace and dispatch-after finish. `requesting-code-review` and Matt `code-review` carry the exact reviewer delegation requirements. No internal call is both credited and dispatched.
+Encode the eleven Superpowers skill rows with the `superpowers:` reference namespace. `brainstorming` has a dispatch-after `writing-plans` call. SDD has only dispatch-before workspace and dispatch-after finish cross-skill calls; it directly declares its embedded per-task/final two-stage review responsibility, while `test-driven-development` and `verification-before-completion` are standalone Recipe units. It must not claim calls to those skills or to `requesting-code-review`. Inline execution has dispatch-before workspace and dispatch-after finish, with standalone TDD, review/remediation, and verification units in the Recipe. `requesting-code-review` and Matt `code-review` carry their exact reviewer delegation requirements. No internal call is both credited and dispatched.
 
 Encode ECC's nine cross-Host skills, seven Claude Agents, three Codex Roles, and two exact instruction surfaces as separate Binding kinds. Do not create Codex Agent rows for `architect`, `planner`, `tdd-guide`, `build-error-resolver`, `code-reviewer`, `security-reviewer`, or `e2e-runner`; do not create a `delivery-gate` Binding. Capabilities reference `verification-loop` for broad verification, E2E only as an optional specialist, and `git-workflow` plus Host action/user gate for closeout.
 
@@ -434,7 +435,7 @@ Use these exact Recipe identities and provenance:
 | `oaw/ecc-engineering` | `ecc` | empty |
 | `oaw/reliable-feature` | `matt-superpowers` | `default` |
 
-The MATT-FULL, SP-FULL, ECC-FULL, and Hybrid slot contracts are the locked sections above. Encode Host alternatives through `BindingRecord.Alternatives`, stable Recipe step/overlay IDs, and exact selectors. Runtime requests pass `profile.AlternativeChoice` values for those declared identities; `AlternativeChoice` is not a second Recipe wire field. Never infer a Claude Agent from a same-named Codex role. The Hybrid's default `executing-plans` overlay pauses SDD and Superpowers TDD, retains Matt TDD, and uses the standalone Superpowers review pipeline. It is a suppression-only overlay with no `selected_alternative`; it does not invent a self-alternative for the already selected `executing-plans` Binding. Its optional ECC build-repair/security checks are add-ons, not active default units.
+The MATT-FULL, SP-FULL, ECC-FULL, and Hybrid slot contracts are the locked sections above. Encode like-shaped Host alternatives through `BindingRecord.Alternatives`, stable Recipe step/overlay IDs, and exact selectors. Runtime requests pass `profile.AlternativeChoice` values for those declared identities; `AlternativeChoice` is not a second Recipe wire field and must not represent a whole pipeline-shape replacement. Never infer a Claude Agent from a same-named Codex role. Built-in SP-FULL uses the inline executor; a different SDD ownership shape is created through a versioned USER-DEFINED Recipe. The Hybrid's default `executing-plans` overlay pauses SDD and Superpowers TDD, retains Matt TDD, and uses the standalone Superpowers review pipeline. It is a suppression-only overlay with no `selected_alternative`; it does not invent a self-alternative for the already selected `executing-plans` Binding. Its optional ECC build-repair/security checks are add-ons, not active default units.
 
 Delete `oaw-hardening.json` and assert no active Catalog or alias references it. Preserve exactly these aliases and no more: `SP-FULL -> oaw/delivery`, `MATT-FULL -> oaw/domain-engineering`, `ECC-FULL -> oaw/ecc-engineering`, and `MATT-SP-HYBRID -> oaw/reliable-feature`. `USER-DEFINED` is a selection action and never an alias.
 
@@ -636,13 +637,13 @@ func TestMattGraphRequiresFreshExplicitInvocationAttestation(t *testing.T)
 func TestMattGraphUsesNeutralHostActionsForWorkspaceVerificationAndCloseout(t *testing.T)
 func TestMattGraphHasNoFictionalRequirementsVerificationOrCompletionBinding(t *testing.T)
 func TestSuperpowersSDDRequiresChildAndNestedDelegation(t *testing.T)
-func TestSuperpowersInlineAlternativeKeepsReviewerChildRequirement(t *testing.T)
+func TestSuperpowersBuiltInInlineKeepsReviewerChildRequirement(t *testing.T)
 func TestSuperpowersMacroInternalsAreDispatchedExactlyOnce(t *testing.T)
 func TestECCCodexAndClaudeSurfaceChoicesRemainDistinct(t *testing.T)
 func TestECCCurrentCodexV1ReportsExactMissingFacts(t *testing.T)
 func TestECCNeverUsesE2EAsBroadVerificationOrReviewerAsCloseout(t *testing.T)
 func TestHybridDefaultUsesMattTDDAndSPInlineReview(t *testing.T)
-func TestHybridRejectsSDDAndMattTDDOverlap(t *testing.T)
+func TestHybridSDDCloneRetainsSingleMattTDD(t *testing.T)
 func TestHybridNoAddOnStopsBuildTypeAndDependencyIncidents(t *testing.T)
 func TestUSERDEFINEDCloneComposesVerifiedBindingsWithoutMutatingTemplate(t *testing.T)
 func TestUSERDEFINEDUntrustedSameNameBindingIsUnavailable(t *testing.T)
@@ -685,11 +686,11 @@ profile.ValidateExecutionGraphRecord(record) == nil
 
 `TestMattGraphRequiresFreshExplicitInvocationAttestation` checks `RequiresExplicitInvocation` on `grill-with-docs`, `to-spec`, `to-tickets`, and `implement` and verifies that the compiler does not treat Profile selection as a recorded human invocation. `TestMattGraphUsesNeutralHostActionsForWorkspaceVerificationAndCloseout` asserts no Provider owns those three control actions.
 
-`TestSuperpowersSDDRequiresChildAndNestedDelegation` removes one feature at a time and expects fail-closed diagnostics; `TestSuperpowersInlineAlternativeKeepsReviewerChildRequirement` proves inline execution removes only the implementation-child requirement. `TestSuperpowersMacroInternalsAreDispatchedExactlyOnce` counts cursors and confirms dispatch-before workspace, credit-only TDD/per-task review, and dispatch-after verification/finish have one cursor each.
+`TestSuperpowersSDDRequiresChildAndNestedDelegation` compiles a versioned USER-DEFINED SDD clone, removes one feature at a time, and expects fail-closed diagnostics. `TestSuperpowersBuiltInInlineKeepsReviewerChildRequirement` proves the built-in path has no implementation-child requirement but keeps the standalone reviewer child. `TestSuperpowersMacroInternalsAreDispatchedExactlyOnce` counts cursors in the SDD clone and confirms exactly one dispatch-before workspace cursor and one dispatch-after finish cursor, while TDD and fresh verification each have one standalone cursor and the embedded SDD review creates no fictional Binding cursor.
 
 `TestECCCodexAndClaudeSurfaceChoicesRemainDistinct` supplies a Codex Agent observation named `planner` and expects it not to satisfy the Claude Agent binding; it supplies the exact Codex `reviewer` role and accepts only the role path. It separately proves that a Claude Agent cannot satisfy a Codex skill selector. `TestECCNeverUsesE2EAsBroadVerificationOrReviewerAsCloseout` inspects the compiled owner kinds and rejects those substitutions.
 
-`TestHybridDefaultUsesMattTDDAndSPInlineReview` asserts the exact default overlay: `executing-plans`, Matt `tdd`, Matt functional debugging, standalone SP review/remediation, SP fresh verification/finish, SDD and SP TDD paused, and no ECC Provider unit. `TestHybridNoAddOnStopsBuildTypeAndDependencyIncidents` asserts the three routes have `if_unavailable=stop`; it does not silently add ECC.
+`TestHybridDefaultUsesMattTDDAndSPInlineReview` asserts the exact default overlay: `executing-plans`, Matt `tdd`, Matt functional debugging, standalone SP review/remediation, SP fresh verification/finish, SDD and SP TDD paused, and no ECC Provider unit. `TestHybridSDDCloneRetainsSingleMattTDD` proves that a versioned SDD clone keeps only Matt TDD, uses SDD's embedded review responsibility, and requires the exact delegation evidence. `TestHybridNoAddOnStopsBuildTypeAndDependencyIncidents` asserts the three routes have `if_unavailable=stop`; it does not silently add ECC.
 
 `TestUSERDEFINEDCloneComposesVerifiedBindingsWithoutMutatingTemplate` clones `oaw/reliable-feature` to a new versioned Recipe, replaces one ordered slot pipeline with two compatible audited Bindings, compiles it with the same compiler, and asserts the original Recipe digest, matrix, aliases, and default overlay are unchanged. `TestUSERDEFINEDUntrustedSameNameBindingIsUnavailable` inserts a same-name foreign Binding without a trusted Descriptor and expects `PROVIDER_PROVENANCE_MISMATCH` or `PROVIDER_BINDING_UNAVAILABLE`. The custom Recipe is not added to the built-in alias set.
 
