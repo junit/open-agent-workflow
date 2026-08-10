@@ -113,6 +113,25 @@ func TestRegistryValidatesHostScopedProviderDescriptorV4(t *testing.T) {
 	}
 }
 
+func TestRegistryProviderV4AcceptsExplicitNetworkWriteEffect(t *testing.T) {
+	registry, err := New(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := catalog.ProviderDescriptorRecord{}
+	if err := json.Unmarshal(validProviderV4JSON(t), &provider); err != nil {
+		t.Fatal(err)
+	}
+	provider.Bindings[0].MaximumEffects = append(provider.Bindings[0].MaximumEffects, "network-write")
+	raw, err := json.Marshal(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Validate(ProviderDescriptorV4, raw); err != nil {
+		t.Fatalf("Validate(network-write provider) error = %v", err)
+	}
+}
+
 func TestRegistryRejectsRetiredProviderAndRecipeSchemas(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {

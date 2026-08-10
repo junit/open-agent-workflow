@@ -157,6 +157,18 @@ func TestDecodeProviderV4RejectsInvalidDistributionBindingAndMacroShapes(t *test
 	}
 }
 
+func TestDecodeProviderV4AcceptsExplicitNetworkWriteEffect(t *testing.T) {
+	value := validProviderV4Record()
+	value.Bindings[0].MaximumEffects = append(value.Bindings[0].MaximumEffects, "network-write")
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeProvider(raw); err != nil {
+		t.Fatalf("DecodeProvider() rejected explicit network-write effect: %v", err)
+	}
+}
+
 func TestDecodeRecipeV3RejectsInvalidOwnerGateIncidentAndOverlayShapes(t *testing.T) {
 	tests := []struct {
 		name   string

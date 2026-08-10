@@ -606,7 +606,7 @@ func validateEffects(values []string) error {
 	}
 	for _, value := range values {
 		switch value {
-		case "read-project", "write-project", "run-process", "git-local", "network-read":
+		case "read-project", "write-project", "run-process", "git-local", "network-read", "network-write":
 		default:
 			return fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: invalid effect %q", value)
 		}

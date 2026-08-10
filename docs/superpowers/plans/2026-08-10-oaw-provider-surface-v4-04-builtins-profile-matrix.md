@@ -121,6 +121,10 @@ Superpowers source roots are `skills/brainstorming`, `skills/writing-plans`, `sk
 
 All Superpowers references include the exact `superpowers:` namespace. SDD and `requesting-code-review` declare child, parallel-child, nested-child, and nested-parallel-child requirements according to the selected outer topology. Inline execution removes the implementation-child requirement but keeps the reviewer-child requirement. No lexical alternative is selected.
 
+`finishing-a-development-branch` includes `network-write` in its maximum
+effects because one user-selected closeout option can push/open a PR; a Recipe
+user gate and Host approval remain mandatory before that option is exercised.
+
 ECC source roots and surfaces are intentionally separated:
 
 | Host/surface | Exact references and roots | Kind |
@@ -174,7 +178,7 @@ codex-or-claude grill-with-docs (calls grilling + domain-modeling)
   -> closeout.execute Host action + acceptance/user-authority gate
 ```
 
-The implementation descriptor never claims workspace creation, general delegation, broad verification, or completion. Its contiguous slots 5-8 span is a macro envelope, not an incident-recovery claim. Build, dependency, and type incidents have no Matt handler and stop by default. The descriptor's internal `code-review` is the slot 8 review procedure only; remediation is a distinct `implement` invocation, and that invocation performs the next internal review. Every `human-explicit` Binding pauses until an exact Host/user invocation attestation is supplied at PREPARE by Plan 05.
+The implementation descriptor never claims workspace creation, general delegation, broad verification, or completion. Its contiguous slots 5-8 span is a macro envelope, not an incident-recovery claim. Build, dependency, and type incidents have no Matt handler and stop by default. The descriptor's internal `code-review` is the slot 8 review procedure only; remediation is a distinct `implement` invocation, and that invocation performs the next internal review. Every `human-explicit` Binding pauses until an exact Host/user invocation attestation is supplied at PREPARE by Plan 05. Matt tracker-publishing Bindings declare `network-write` in their maximum effects, while the active invocation still requires user/Host authority.
 
 ### SP-FULL / `oaw/delivery`
 

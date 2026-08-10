@@ -601,6 +601,11 @@ Preserve pipeline, stage-span, internal-call, gate, transition, and
 overlay-precedence order. A credit-only internal call may reference a normally
 callable Binding because the parent performs it; dispatch-before/after requires
 a non-`internal` invocation disposition.
+`MaximumEffects` includes explicit `network-write` because audited Provider
+skills may publish issue-tracker records or push/open a PR after user approval;
+omitting that maximum effect would understate authority. Recipe gates, Host
+approvals, and Grants still decide whether a particular invocation may perform
+the effect.
 
 - [ ] **Step 6: Replace deep cloning, normalization, and Catalog digesting in the same change**
 
