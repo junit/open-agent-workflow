@@ -216,6 +216,19 @@ func TestBuiltInRecipeMatrixV3(t *testing.T) {
 	}
 }
 
+func TestBuiltInMainlineSkipsConditionalIncidentSlot(t *testing.T) {
+	for _, recipe := range loadCatalog(t).Recipes() {
+		tdd := recipe.Slots[5]
+		if tdd.SlotID != catalog.SlotImplementationTDD || len(tdd.Transitions) != 1 || tdd.Transitions[0].Signal != "succeeded" || tdd.Transitions[0].Target != catalog.SlotReviewRemediation {
+			t.Errorf("%s TDD success transition = %#v, want review-remediation", recipe.ID, tdd.Transitions)
+		}
+		incident := recipe.Slots[6]
+		if incident.SlotID != catalog.SlotIncidentRecovery || incident.Applicability != catalog.SlotConditional || len(incident.Transitions) != 0 {
+			t.Errorf("%s incident slot = %#v", recipe.ID, incident)
+		}
+	}
+}
+
 func TestHybridDefaultProvenanceAndPausedOwners(t *testing.T) {
 	recipe := requireRecipe(t, loadCatalog(t), "oaw/reliable-feature")
 	if recipe.Family != "matt-superpowers" || recipe.Template != "default" {

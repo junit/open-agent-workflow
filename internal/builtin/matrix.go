@@ -184,6 +184,22 @@ func projectRecipe(alias string, recipe catalog.ProfileRecipeRecord, recipeDiges
 	for _, route := range recipe.IncidentRoutes {
 		slot := matrixSlotPointer(profile.Slots, catalog.SlotIncidentRecovery)
 		slot.IncidentTypes = append(slot.IncidentTypes, route.IncidentType)
+		provider, found := providers[route.Handler.ProviderID]
+		if !found {
+			return MatrixProfile{}, matrixError("incident Provider is missing", nil)
+		}
+		binding, found := descriptorMatrixBinding(provider, route.Handler.BindingID)
+		if !found {
+			return MatrixProfile{}, matrixError("incident Binding is missing", nil)
+		}
+		if err := appendSelectorProjection(&profile, route.Handler, binding.StageSpan, "", false, providers, audit, map[string]bool{}); err != nil {
+			return MatrixProfile{}, err
+		}
+		for _, alternativeID := range binding.Alternatives {
+			if err := appendSelectorProjection(&profile, catalog.BindingSelector{ProviderID: route.Handler.ProviderID, BindingID: alternativeID}, binding.StageSpan, "", false, providers, audit, map[string]bool{}); err != nil {
+				return MatrixProfile{}, err
+			}
+		}
 	}
 	sort.Strings(matrixSlotPointer(profile.Slots, catalog.SlotIncidentRecovery).IncidentTypes)
 

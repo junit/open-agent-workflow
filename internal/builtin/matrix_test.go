@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 	"testing/fstest"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/provideraudit"
@@ -125,6 +127,18 @@ func TestProfileMatrixProjectionMarksHybridPausedBindings(t *testing.T) {
 	}
 }
 
+func TestProfileMatrixProjectionIncludesTypedIncidentHandlers(t *testing.T) {
+	matrix := buildMatrix(t)
+	sp := matrixProfile(t, matrix, "SP-FULL")
+	if got := matrixBindingIDs(matrixSlot(t, sp, catalog.SlotIncidentRecovery).Pipeline); !slices.Contains(got, "codex-systematic-debugging") || !slices.Contains(got, "claude-systematic-debugging") {
+		t.Fatalf("SP incident pipeline = %v", got)
+	}
+	matt := matrixProfile(t, matrix, "MATT-FULL")
+	if got := matrixBindingIDs(matrixSlot(t, matt, catalog.SlotIncidentRecovery).Pipeline); !slices.Contains(got, "codex-diagnosing-bugs") || !slices.Contains(got, "claude-diagnosing-bugs") {
+		t.Fatalf("Matt incident pipeline = %v", got)
+	}
+}
+
 func TestProfileMatrixProjectionRejectsFictionalOrHookBinding(t *testing.T) {
 	value := loadCatalog(t)
 	audit := loadAudit(t)
@@ -194,8 +208,10 @@ func TestWriteProfileMatrix(t *testing.T) {
 
 func buildMatrix(t *testing.T) ProfileMatrixRecord {
 	t.Helper()
-	value := loadCatalog(t)
-	audit := loadAudit(t)
+	value, audit, err := loadCatalogAndAuditFromFS(assets.FS())
+	if err != nil {
+		t.Fatal(err)
+	}
 	matrix, err := BuildProfileMatrix(value, audit)
 	if err != nil {
 		t.Fatal(err)
