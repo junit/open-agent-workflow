@@ -144,6 +144,33 @@ func TestCompileSelectedAlternativeUsesExactBinding(t *testing.T) {
 	}
 }
 
+func TestCompileSuppressionOnlyOverlayDoesNotRequireAlternative(t *testing.T) {
+	fixture := newProfileFixture(t, func(provider *catalog.ProviderDescriptorRecord, recipe *catalog.ProfileRecipeRecord) {
+		unused, _ := testBinding(provider.Bindings, "problem")
+		unused.ID = "unused"
+		unused.ContentRoot = "skills/unused"
+		unused.InstallRoot = "skills/unused"
+		unused.Reference = "test:unused"
+		unused.TreeDigest = "sha256:" + strings.Repeat("e", 64)
+		provider.Bindings = append(provider.Bindings, unused)
+		provider.Capabilities = append(provider.Capabilities, capabilityFor(unused))
+		recipe.Overlays = []catalog.OverlayRecord{{
+			ID: "suppress-unused", Precedence: []string{"suppress-unused"},
+			PausedBindings: []catalog.BindingSelector{{ProviderID: provider.ID, BindingID: unused.ID}},
+			Rationale:      "The selected template records an intentionally paused surface.",
+		}}
+	})
+	request := fixture.request
+	request.Overlays = []string{"suppress-unused"}
+	result, err := profile.CompileProfile(fixture.catalog, fixture.registry, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, found := result.Graph(); !found {
+		t.Fatalf("Diagnostics() = %#v", result.Diagnostics())
+	}
+}
+
 func TestCompileMacroCreditsInternalBindingAndTraversalSkipsIt(t *testing.T) {
 	fixture := newProfileFixture(t, func(provider *catalog.ProviderDescriptorRecord, _ *catalog.ProfileRecipeRecord) {
 		parent, _ := testBinding(provider.Bindings, "implementation")

@@ -204,19 +204,21 @@ func validateRecipeGraph(recipe *ProfileRecipeRecord, providers map[string]Provi
 		}
 	}
 	for _, overlay := range recipe.Overlays {
-		alternativeCount := 0
-		for active := range activeSteps {
-			providerID, bindingID, ok := splitSelectorKey(active)
-			if !ok {
-				continue
+		if overlay.SelectedAlternative != "" {
+			alternativeCount := 0
+			for active := range activeSteps {
+				providerID, bindingID, ok := splitSelectorKey(active)
+				if !ok {
+					continue
+				}
+				binding, exists := bindingByID(providers[providerID].Bindings, bindingID)
+				if exists && contains(binding.Alternatives, overlay.SelectedAlternative) {
+					alternativeCount++
+				}
 			}
-			binding, exists := bindingByID(providers[providerID].Bindings, bindingID)
-			if exists && contains(binding.Alternatives, overlay.SelectedAlternative) {
-				alternativeCount++
+			if alternativeCount != 1 {
+				return errors.New("OVERLAY_INVALID: selected alternative is not declared exactly once")
 			}
-		}
-		if alternativeCount != 1 {
-			return errors.New("OVERLAY_INVALID: selected alternative is not declared exactly once")
 		}
 		for _, paused := range overlay.PausedBindings {
 			provider, exists := providers[paused.ProviderID]

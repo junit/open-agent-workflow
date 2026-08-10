@@ -196,6 +196,19 @@ func TestCatalogV4AllowsInternalMacroOutcomeOwner(t *testing.T) {
 	}
 }
 
+func TestCatalogV4AllowsSuppressionOnlyOverlay(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	recipe.Overlays = []OverlayRecord{{
+		ID: "suppress-unused", Precedence: []string{"suppress-unused"},
+		PausedBindings: []BindingSelector{{ProviderID: provider.ID, BindingID: "binding"}},
+		Rationale:      "The selected template records an intentionally paused surface.",
+	}}
+	if _, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil); err != nil {
+		t.Fatalf("New() rejected suppression-only overlay: %v", err)
+	}
+}
+
 func TestCatalogV4NormalizesSetLikeOrder(t *testing.T) {
 	provider := validProviderV4Record()
 	recipe := validRecipeV3Record()

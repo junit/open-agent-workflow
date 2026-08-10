@@ -204,6 +204,22 @@ func TestDecodeRecipeV3RejectsInvalidOwnerGateIncidentAndOverlayShapes(t *testin
 	}
 }
 
+func TestDecodeRecipeV3AcceptsSuppressionOnlyOverlay(t *testing.T) {
+	value := validRecipeV3Record()
+	value.Overlays = []OverlayRecord{{
+		ID: "suppress-unused", Precedence: []string{"suppress-unused"},
+		PausedBindings: []BindingSelector{{ProviderID: "test/provider", BindingID: "binding"}},
+		Rationale:      "The selected template records an intentionally paused surface.",
+	}}
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeRecipe(raw); err != nil {
+		t.Fatalf("DecodeRecipe() rejected suppression-only overlay: %v", err)
+	}
+}
+
 func TestDecodedV4RecordsOwnAllNestedStorage(t *testing.T) {
 	providerRaw, _ := json.Marshal(validProviderV4Record())
 	firstProvider, err := DecodeProvider(providerRaw)

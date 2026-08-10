@@ -475,15 +475,17 @@ func validateRecipeMembers(record *ProfileRecipeRecord) error {
 
 	overlayIDs := make(map[string]struct{}, len(record.Overlays))
 	for _, overlay := range record.Overlays {
-		if _, err := ParseLocalID(overlay.ID); err != nil || overlay.Precedence == nil || len(overlay.Precedence) == 0 || overlay.PausedBindings == nil || overlay.SelectedAlternative == "" || overlay.Rationale == "" {
+		if _, err := ParseLocalID(overlay.ID); err != nil || overlay.Precedence == nil || len(overlay.Precedence) == 0 || overlay.PausedBindings == nil || overlay.Rationale == "" {
 			return errors.New("OVERLAY_INVALID: incomplete overlay")
 		}
 		if _, exists := overlayIDs[overlay.ID]; exists {
 			return errors.New("OVERLAY_INVALID: duplicate overlay id")
 		}
 		overlayIDs[overlay.ID] = struct{}{}
-		if _, err := ParseLocalID(overlay.SelectedAlternative); err != nil {
-			return errors.New("OVERLAY_INVALID: invalid selected alternative")
+		if overlay.SelectedAlternative != "" {
+			if _, err := ParseLocalID(overlay.SelectedAlternative); err != nil {
+				return errors.New("OVERLAY_INVALID: invalid selected alternative")
+			}
 		}
 		if err := uniqueStrings(overlay.Precedence, "OVERLAY_INVALID"); err != nil {
 			return err

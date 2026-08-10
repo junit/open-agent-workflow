@@ -204,6 +204,9 @@ func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipe
 		if _, selected := selectedOverlays[overlay.ID]; !selected {
 			continue
 		}
+		if overlay.SelectedAlternative == "" {
+			continue
+		}
 		type overlayMatch struct {
 			slot catalog.SlotID
 			step catalog.PipelineStep

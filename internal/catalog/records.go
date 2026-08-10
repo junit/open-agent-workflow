@@ -214,7 +214,7 @@ type OverlayRecord struct {
 	ID                  string            `json:"id" toml:"id"`
 	Precedence          []string          `json:"precedence" toml:"precedence"`
 	PausedBindings      []BindingSelector `json:"paused_bindings" toml:"paused_bindings"`
-	SelectedAlternative string            `json:"selected_alternative" toml:"selected_alternative"`
+	SelectedAlternative string            `json:"selected_alternative,omitempty" toml:"selected_alternative"`
 	Rationale           string            `json:"rationale" toml:"rationale"`
 }
 

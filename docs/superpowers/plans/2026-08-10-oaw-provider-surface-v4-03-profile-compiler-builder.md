@@ -450,6 +450,11 @@ Append decisions returned by selection, overlay, and Host-binding phases, then c
 
 Derive `ResolvedBinding.RequiredFeatures` from `DelegationRequirements` and the exact outer topology. Under `CURRENT`, evaluate only `Child` and `ParallelChild` against `child-delegation` and `parallel-child-delegation`. Under top-level `SUBAGENT`, evaluate only `NestedChild` and `NestedParallel` against `nested-child-delegation` and `nested-parallel-child-delegation`. Preserve the matching live observation digests in the same feature order. Never let evidence for one topology satisfy the other topology's delegation requirement.
 
+An overlay may be suppression-only: an omitted `selected_alternative` applies
+only its explicit `paused_bindings`. This records immutable template choices
+without fabricating a self-alternative; when `selected_alternative` is present,
+the existing exact-one alternative validation still applies.
+
 ## Locked Macro Rules
 
 - Expansion is depth-first with a recursion stack keyed by `provider_id + binding_id`.
