@@ -75,10 +75,10 @@ func DecodeIntegrationTOML(raw []byte) (IntegrationRecord, error) {
 }
 
 func rejectUnsupportedIntegrationSchema(record IntegrationRecord) error {
-	if record.SchemaVersion != HostIntegrationSchemaV2 {
+	if record.SchemaVersion != HostIntegrationSchemaV3 {
 		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Integration schema", nil)
 	}
-	if record.Manifest.SchemaVersion != HostManifestSchemaV2 {
+	if record.Manifest.SchemaVersion != HostManifestSchemaV3 {
 		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Manifest schema", nil)
 	}
 	return nil
@@ -88,7 +88,7 @@ func authoredIntegrationDigestsPresent(record IntegrationRecord) bool {
 	if !digestPattern.MatchString(record.Digest) || !digestPattern.MatchString(record.ManifestDigest) || !digestPattern.MatchString(record.Audit.Digest) {
 		return false
 	}
-	return record.Conformance == nil || digestPattern.MatchString(record.Conformance.Digest)
+	return digestPattern.MatchString(record.Manifest.Digest) && (record.Conformance == nil || digestPattern.MatchString(record.Conformance.Digest))
 }
 
 func validateEncodedIntegration(raw []byte) error {

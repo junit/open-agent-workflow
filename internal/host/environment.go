@@ -5,7 +5,6 @@ import (
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
@@ -81,34 +80,6 @@ func ValidateRequirements(requirements []execution.EnvironmentRequirement, repor
 	}
 	if err := execution.RequirementsSatisfied(requirements, report.Observations); err != nil {
 		return hostError("HOST_ENVIRONMENT_REQUIREMENT_UNMET", "environment requirements are not satisfied", err)
-	}
-	return nil
-}
-
-func validateStoredSessionSnapshot(value SessionSnapshot) error {
-	if value.SchemaVersion != HostSessionSchemaV2 || !validSessionID(value.SessionID) || !digestPattern.MatchString(value.Digest) {
-		return hostError("HOST_SESSION_CHANGED", "Host session identity is invalid", nil)
-	}
-	if _, err := catalog.ParseLocalID(value.HostID); err != nil {
-		return hostError("HOST_SESSION_CHANGED", "Host session has an invalid Host", err)
-	}
-	if _, err := catalog.ParseQualifiedID(value.IntegrationID); err != nil || !versionPattern.MatchString(value.IntegrationVersion) {
-		return hostError("HOST_SESSION_CHANGED", "Host session has an invalid integration", err)
-	}
-	if !digestPattern.MatchString(value.ProviderInventoryDigest) || !digestPattern.MatchString(value.EnvironmentReportDigest) ||
-		value.SandboxPolicyDigest != "" && !digestPattern.MatchString(value.SandboxPolicyDigest) ||
-		value.ApprovalPolicyDigest != "" && !digestPattern.MatchString(value.ApprovalPolicyDigest) {
-		return hostError("HOST_SESSION_CHANGED", "Host session has invalid fact digests", nil)
-	}
-	topologies, err := execution.NormalizeTopologies(value.SupportedTopologies)
-	if err != nil || !slices.Equal(topologies, value.SupportedTopologies) || !slices.Contains(topologies, execution.TopologyCurrent) {
-		return hostError("HOST_SESSION_CHANGED", "Host session topologies changed", err)
-	}
-	content := CloneSessionSnapshot(value)
-	content.Digest = ""
-	digest, _, err := canonicaljson.Digest(content)
-	if err != nil || digest != value.Digest {
-		return hostError("HOST_SESSION_CHANGED", "Host session digest changed", err)
 	}
 	return nil
 }

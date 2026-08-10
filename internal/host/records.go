@@ -6,17 +6,18 @@ import (
 	"sort"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 const (
-	HostManifestSchemaV2              = "oaw.host-manifest/v2"
-	HostIntegrationSchemaV2           = "oaw.host-integration/v2"
-	HostSessionSchemaV2               = "oaw.host-session/v2"
+	HostManifestSchemaV3              = "oaw.host-manifest/v3"
+	HostIntegrationSchemaV3           = "oaw.host-integration/v3"
+	HostSessionSchemaV3               = "oaw.host-session/v3"
 	HostEnvironmentReportSchemaV2     = "oaw.host-environment-report/v2"
 	HostInvocationReceiptSchemaV2     = "oaw.host-invocation-receipt/v2"
-	HostConformanceTranscriptSchemaV2 = "oaw.host-conformance-transcript/v2"
-	HostConformanceReportSchemaV2     = "oaw.host-conformance-report/v2"
+	HostConformanceTranscriptSchemaV3 = "oaw.host-conformance-transcript/v3"
+	HostConformanceReportSchemaV3     = "oaw.host-conformance-report/v3"
 	WorkflowProtocolV1                = "oaw.workflow/v1"
 )
 
@@ -39,28 +40,36 @@ const (
 )
 
 type Manifest struct {
-	SchemaVersion       string               `json:"schema_version" toml:"schema_version"`
-	ManifestVersion     string               `json:"manifest_version" toml:"manifest_version"`
-	HostID              string               `json:"host_id" toml:"host_id"`
-	ControlSurface      ControlSurface       `json:"control_surface" toml:"control_surface"`
-	Protocols           []string             `json:"protocols" toml:"protocols"`
-	BindingKinds        []string             `json:"binding_kinds" toml:"binding_kinds"`
-	SupportedTopologies []execution.Topology `json:"supported_topologies" toml:"supported_topologies"`
-	Features            []Feature            `json:"features" toml:"features"`
+	SchemaVersion       string                `json:"schema_version" toml:"schema_version"`
+	ManifestVersion     string                `json:"manifest_version" toml:"manifest_version"`
+	HostID              string                `json:"host_id" toml:"host_id"`
+	ControlSurface      ControlSurface        `json:"control_surface" toml:"control_surface"`
+	Protocols           []string              `json:"protocols" toml:"protocols"`
+	BindingKinds        []catalog.BindingKind `json:"binding_kinds" toml:"binding_kinds"`
+	SupportedTopologies []execution.Topology  `json:"supported_topologies" toml:"supported_topologies"`
+	Features            []Feature             `json:"features" toml:"features"`
+	DelegationFeatures  []FeatureID           `json:"delegation_features" toml:"delegation_features"`
+	HostActions         []HostActionContract  `json:"host_actions" toml:"host_actions"`
+	Digest              string                `json:"digest" toml:"digest"`
 }
 
 type SessionSnapshot struct {
-	SchemaVersion           string               `json:"schema_version"`
-	HostID                  string               `json:"host_id"`
-	IntegrationID           string               `json:"integration_id"`
-	IntegrationVersion      string               `json:"integration_version"`
-	SessionID               string               `json:"session_id"`
-	SupportedTopologies     []execution.Topology `json:"supported_topologies"`
-	ProviderInventoryDigest string               `json:"provider_inventory_digest"`
-	EnvironmentReportDigest string               `json:"environment_report_digest"`
-	SandboxPolicyDigest     string               `json:"sandbox_policy_digest"`
-	ApprovalPolicyDigest    string               `json:"approval_policy_digest"`
-	Digest                  string               `json:"digest"`
+	SchemaVersion           string                  `json:"schema_version"`
+	HostID                  string                  `json:"host_id"`
+	IntegrationID           string                  `json:"integration_id"`
+	IntegrationVersion      string                  `json:"integration_version"`
+	SessionID               string                  `json:"session_id"`
+	ManifestDigest          string                  `json:"manifest_digest"`
+	SupportedTopologies     []execution.Topology    `json:"supported_topologies"`
+	ProviderInventoryDigest string                  `json:"provider_inventory_digest"`
+	FeatureObservations     []FeatureObservation    `json:"feature_observations"`
+	FeatureDigest           string                  `json:"feature_digest"`
+	HostActionObservations  []HostActionObservation `json:"host_action_observations"`
+	HostActionDigest        string                  `json:"host_action_digest"`
+	EnvironmentReportDigest string                  `json:"environment_report_digest"`
+	SandboxPolicyDigest     string                  `json:"sandbox_policy_digest"`
+	ApprovalPolicyDigest    string                  `json:"approval_policy_digest"`
+	Digest                  string                  `json:"digest"`
 }
 
 type EnvironmentReport struct {
@@ -145,12 +154,14 @@ type AuditEvidence struct {
 }
 
 type ConformanceReport struct {
-	SchemaVersion    string    `json:"schema_version" toml:"schema_version"`
-	ManifestDigest   string    `json:"manifest_digest" toml:"manifest_digest"`
-	TranscriptDigest string    `json:"transcript_digest" toml:"transcript_digest"`
-	VerifiedFeatures []Feature `json:"verified_features" toml:"verified_features"`
-	Diagnostics      []string  `json:"diagnostics" toml:"diagnostics"`
-	Digest           string    `json:"digest" toml:"digest"`
+	SchemaVersion              string      `json:"schema_version" toml:"schema_version"`
+	ManifestDigest             string      `json:"manifest_digest" toml:"manifest_digest"`
+	TranscriptDigest           string      `json:"transcript_digest" toml:"transcript_digest"`
+	VerifiedFeatures           []Feature   `json:"verified_features" toml:"verified_features"`
+	VerifiedDelegationFeatures []FeatureID `json:"verified_delegation_features" toml:"verified_delegation_features"`
+	VerifiedHostActionIDs      []string    `json:"verified_host_action_ids" toml:"verified_host_action_ids"`
+	Diagnostics                []string    `json:"diagnostics" toml:"diagnostics"`
+	Digest                     string      `json:"digest" toml:"digest"`
 }
 
 type IntegrationRecord struct {
@@ -192,6 +203,8 @@ func hostError(code, detail string, cause error) error {
 }
 
 func (value Manifest) ContentDigest() string {
+	value = CloneManifest(value)
+	value.Digest = ""
 	digest, _, err := canonicaljson.Digest(value)
 	if err != nil {
 		return ""
@@ -201,14 +214,18 @@ func (value Manifest) ContentDigest() string {
 
 func CloneManifest(value Manifest) Manifest {
 	value.Protocols = append([]string{}, value.Protocols...)
-	value.BindingKinds = append([]string{}, value.BindingKinds...)
+	value.BindingKinds = append([]catalog.BindingKind{}, value.BindingKinds...)
 	value.SupportedTopologies = append([]execution.Topology{}, value.SupportedTopologies...)
 	value.Features = append([]Feature{}, value.Features...)
+	value.DelegationFeatures = append([]FeatureID{}, value.DelegationFeatures...)
+	value.HostActions = cloneHostActionContracts(value.HostActions)
 	return value
 }
 
 func CloneSessionSnapshot(value SessionSnapshot) SessionSnapshot {
 	value.SupportedTopologies = append([]execution.Topology{}, value.SupportedTopologies...)
+	value.FeatureObservations = cloneFeatureObservations(value.FeatureObservations)
+	value.HostActionObservations = cloneHostActionObservations(value.HostActionObservations)
 	return value
 }
 
@@ -244,11 +261,17 @@ func CloneAuditEvidence(value AuditEvidence) AuditEvidence {
 }
 
 func NewConformanceReport(value ConformanceReport) (ConformanceReport, error) {
+	if value.SchemaVersion != HostConformanceReportSchemaV3 {
+		return ConformanceReport{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Conformance Report schema", nil)
+	}
 	providedDigest := value.Digest
 	value.Digest = ""
-	value.VerifiedFeatures = append([]Feature{}, value.VerifiedFeatures...)
-	value.Diagnostics = append([]string{}, value.Diagnostics...)
+	value = CloneConformanceReport(value)
 	sort.Slice(value.VerifiedFeatures, func(left, right int) bool { return value.VerifiedFeatures[left] < value.VerifiedFeatures[right] })
+	sort.Slice(value.VerifiedDelegationFeatures, func(left, right int) bool {
+		return value.VerifiedDelegationFeatures[left] < value.VerifiedDelegationFeatures[right]
+	})
+	sort.Strings(value.VerifiedHostActionIDs)
 	sort.Strings(value.Diagnostics)
 	if err := validateConformanceReport(value); err != nil {
 		return ConformanceReport{}, err
@@ -266,12 +289,14 @@ func NewConformanceReport(value ConformanceReport) (ConformanceReport, error) {
 
 func CloneConformanceReport(value ConformanceReport) ConformanceReport {
 	value.VerifiedFeatures = append([]Feature{}, value.VerifiedFeatures...)
+	value.VerifiedDelegationFeatures = append([]FeatureID{}, value.VerifiedDelegationFeatures...)
+	value.VerifiedHostActionIDs = append([]string{}, value.VerifiedHostActionIDs...)
 	value.Diagnostics = append([]string{}, value.Diagnostics...)
 	return value
 }
 
 func NewIntegration(value IntegrationRecord) (IntegrationRecord, error) {
-	if value.SchemaVersion != HostIntegrationSchemaV2 {
+	if value.SchemaVersion != HostIntegrationSchemaV3 {
 		return IntegrationRecord{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Integration schema", nil)
 	}
 	providedDigest := value.Digest
@@ -284,7 +309,7 @@ func NewIntegration(value IntegrationRecord) (IntegrationRecord, error) {
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_INVALID", "invalid Manifest", err)
 	}
 	value.Manifest = manifest
-	if value.ManifestDigest != manifest.ContentDigest() {
+	if value.ManifestDigest != manifest.Digest {
 		return IntegrationRecord{}, hostError("HOST_INTEGRATION_INVALID", "Manifest digest mismatch", nil)
 	}
 	audit, err := NewAuditEvidence(value.Audit)

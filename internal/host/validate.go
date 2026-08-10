@@ -2,6 +2,7 @@ package host
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"regexp"
 	"slices"
@@ -9,12 +10,14 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 var versionPattern = regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$`)
 var digestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+var treeDigestPattern = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 var hostNativeFeatures = []Feature{
 	FeatureCancellation,
@@ -28,21 +31,40 @@ var hostNativeFeatures = []Feature{
 var knownFeatures = append([]Feature{}, hostNativeFeatures...)
 
 func NewManifest(value Manifest) (Manifest, error) {
-	value = CloneManifest(value)
-	if value.SchemaVersion != HostManifestSchemaV2 {
+	if value.SchemaVersion != HostManifestSchemaV3 {
 		return Manifest{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Manifest schema", nil)
 	}
+	providedDigest := value.Digest
+	value = CloneManifest(value)
+	value.Digest = ""
 	sort.Strings(value.Protocols)
-	sort.Strings(value.BindingKinds)
+	sort.Slice(value.BindingKinds, func(left, right int) bool { return value.BindingKinds[left] < value.BindingKinds[right] })
 	topologies, err := execution.NormalizeTopologies(value.SupportedTopologies)
 	if err != nil {
 		return Manifest{}, hostError("HOST_MANIFEST_INVALID", "invalid supported topologies", err)
 	}
 	value.SupportedTopologies = topologies
 	sort.Slice(value.Features, func(left, right int) bool { return value.Features[left] < value.Features[right] })
+	sort.Slice(value.DelegationFeatures, func(left, right int) bool { return value.DelegationFeatures[left] < value.DelegationFeatures[right] })
+	for index, action := range value.HostActions {
+		normalized, ok := normalizeHostActionContract(action)
+		if !ok {
+			return Manifest{}, hostError("HOST_MANIFEST_INVALID", "unknown or drifted Host action contract", nil)
+		}
+		value.HostActions[index] = normalized
+	}
+	sort.Slice(value.HostActions, func(left, right int) bool { return value.HostActions[left].ID < value.HostActions[right].ID })
 	if err := validateManifest(value); err != nil {
 		return Manifest{}, err
 	}
+	digest, _, err := canonicaljson.Digest(value)
+	if err != nil {
+		return Manifest{}, hostError("HOST_MANIFEST_INVALID", "Host Manifest cannot be canonicalized", err)
+	}
+	if providedDigest != "" && providedDigest != digest {
+		return Manifest{}, hostError("HOST_MANIFEST_INVALID", "Host Manifest digest mismatch", nil)
+	}
+	value.Digest = digest
 	return value, nil
 }
 
@@ -56,26 +78,27 @@ func validateManifest(value Manifest) error {
 	if err := uniqueStrings(value.Protocols, "protocol"); err != nil {
 		return err
 	}
-	if err := uniqueStrings(value.BindingKinds, "binding kind"); err != nil {
+	if err := uniqueBindingKinds(value.BindingKinds); err != nil {
 		return err
 	}
 	if err := uniqueFeatures(value.Features); err != nil {
 		return err
 	}
+	if err := uniqueDelegationFeatures(value.DelegationFeatures); err != nil {
+		return err
+	}
+	if err := uniqueHostActions(value.HostActions); err != nil {
+		return err
+	}
 	switch value.ControlSurface {
 	case SurfacePolicy:
-		if len(value.Protocols) != 0 || len(value.BindingKinds) != 0 || len(value.Features) != 0 ||
+		if len(value.Protocols) != 0 || len(value.BindingKinds) != 0 || len(value.Features) != 0 || len(value.DelegationFeatures) != 0 || len(value.HostActions) != 0 ||
 			!slices.Equal(value.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
 			return hostError("HOST_MANIFEST_INVALID", "policy integration declares Host-native capabilities", nil)
 		}
 	case SurfaceHostNative:
 		if !slices.Equal(value.Protocols, []string{WorkflowProtocolV1}) {
 			return hostError("HOST_MANIFEST_INVALID", "host-native integration must support Workflow Protocol v1", nil)
-		}
-		for _, kind := range value.BindingKinds {
-			if kind != "agent" && kind != "skill" && kind != "tool" {
-				return hostError("HOST_MANIFEST_INVALID", fmt.Sprintf("unsupported binding kind %q", kind), nil)
-			}
 		}
 		if len(value.BindingKinds) == 0 {
 			return hostError("HOST_MANIFEST_INVALID", "host-native integration has no binding kinds", nil)
@@ -99,8 +122,17 @@ func validateManifest(value Manifest) error {
 
 func uniqueStrings(values []string, kind string) error {
 	for index, value := range values {
-		if value == "" || index > 0 && values[index-1] == value {
+		if !validHostText(value, 512) || index > 0 && values[index-1] == value {
 			return hostError("HOST_MANIFEST_INVALID", fmt.Sprintf("invalid or duplicate %s", kind), nil)
+		}
+	}
+	return nil
+}
+
+func uniqueBindingKinds(values []catalog.BindingKind) error {
+	for index, value := range values {
+		if !validBindingKind(value) || index > 0 && values[index-1] == value {
+			return hostError("HOST_MANIFEST_INVALID", "unknown or duplicate binding kind", nil)
 		}
 	}
 	return nil
@@ -110,6 +142,24 @@ func uniqueFeatures(values []Feature) error {
 	for index, value := range values {
 		if !slices.Contains(knownFeatures, value) || index > 0 && values[index-1] == value {
 			return hostError("HOST_MANIFEST_INVALID", "unknown or duplicate feature", nil)
+		}
+	}
+	return nil
+}
+
+func uniqueDelegationFeatures(values []FeatureID) error {
+	for index, value := range values {
+		if !slices.Contains(knownDelegationFeatures, value) || index > 0 && values[index-1] == value {
+			return hostError("HOST_MANIFEST_INVALID", "unknown or duplicate delegation feature", nil)
+		}
+	}
+	return nil
+}
+
+func uniqueHostActions(values []HostActionContract) error {
+	for index, value := range values {
+		if _, ok := normalizeHostActionContract(value); !ok || index > 0 && values[index-1].ID == value.ID {
+			return hostError("HOST_MANIFEST_INVALID", "unknown, duplicate, or drifted Host action", nil)
 		}
 	}
 	return nil
@@ -128,8 +178,12 @@ func validateAuditEvidence(value AuditEvidence) error {
 	default:
 		return hostError("HOST_AUDIT_INVALID", "unknown audit status", nil)
 	}
+	if len(value.References) > 128 {
+		return hostError("HOST_AUDIT_INVALID", "audit contains too many evidence references", nil)
+	}
 	for index, reference := range value.References {
-		if strings.TrimSpace(reference.Reference) != reference.Reference || reference.Reference == "" || len(reference.Reference) > 2048 || strings.IndexFunc(reference.Reference, unicode.IsControl) >= 0 || !digestPattern.MatchString(reference.Digest) {
+		if strings.TrimSpace(reference.Reference) != reference.Reference || reference.Reference == "" || len(reference.Reference) > 2048 ||
+			strings.IndexFunc(reference.Reference, unicode.IsControl) >= 0 || filepath.IsAbs(reference.Reference) || !digestPattern.MatchString(reference.Digest) {
 			return hostError("HOST_AUDIT_INVALID", "invalid audit evidence reference", nil)
 		}
 		if index > 0 && value.References[index-1].Reference == reference.Reference {
@@ -140,9 +194,6 @@ func validateAuditEvidence(value AuditEvidence) error {
 }
 
 func validateConformanceReport(value ConformanceReport) error {
-	if value.SchemaVersion != HostConformanceReportSchemaV2 {
-		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Conformance Report schema", nil)
-	}
 	if !digestPattern.MatchString(value.ManifestDigest) || !digestPattern.MatchString(value.TranscriptDigest) {
 		return hostError("HOST_CONFORMANCE_REPORT_INVALID", "missing Conformance Report identity", nil)
 	}
@@ -151,7 +202,17 @@ func validateConformanceReport(value ConformanceReport) error {
 	}
 	for index, feature := range value.VerifiedFeatures {
 		if !slices.Contains(knownFeatures, feature) || index > 0 && value.VerifiedFeatures[index-1] == feature {
-			return hostError("HOST_CONFORMANCE_REPORT_INVALID", "unknown or duplicate verified feature", nil)
+			return hostError("HOST_CONFORMANCE_REPORT_INVALID", "unknown or duplicate verified control feature", nil)
+		}
+	}
+	for index, feature := range value.VerifiedDelegationFeatures {
+		if !slices.Contains(knownDelegationFeatures, feature) || index > 0 && value.VerifiedDelegationFeatures[index-1] == feature {
+			return hostError("HOST_CONFORMANCE_REPORT_INVALID", "unknown or duplicate verified delegation feature", nil)
+		}
+	}
+	for index, id := range value.VerifiedHostActionIDs {
+		if _, ok := hostActionByID(canonicalHostActions, id); !ok || index > 0 && value.VerifiedHostActionIDs[index-1] == id {
+			return hostError("HOST_CONFORMANCE_REPORT_INVALID", "unknown or duplicate verified Host action", nil)
 		}
 	}
 	for index, diagnostic := range value.Diagnostics {
@@ -163,9 +224,6 @@ func validateConformanceReport(value ConformanceReport) error {
 }
 
 func validateIntegration(value IntegrationRecord) error {
-	if value.SchemaVersion != HostIntegrationSchemaV2 {
-		return hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Integration schema", nil)
-	}
 	if !versionPattern.MatchString(value.IntegrationVersion) {
 		return hostError("HOST_INTEGRATION_INVALID", "invalid Integration version", nil)
 	}
@@ -184,8 +242,10 @@ func validateIntegration(value IntegrationRecord) error {
 		if value.Conformance.ManifestDigest != value.ManifestDigest {
 			return hostError("HOST_INTEGRATION_INVALID", "Conformance identity mismatch", nil)
 		}
-		if !slices.Equal(value.Manifest.Features, value.Conformance.VerifiedFeatures) {
-			return hostError("HOST_INTEGRATION_INVALID", "Conformance features do not match Manifest Features", nil)
+		if !slices.Equal(value.Manifest.Features, value.Conformance.VerifiedFeatures) ||
+			!slices.Equal(value.Manifest.DelegationFeatures, value.Conformance.VerifiedDelegationFeatures) ||
+			!slices.Equal(hostActionIDs(value.Manifest.HostActions), value.Conformance.VerifiedHostActionIDs) {
+			return hostError("HOST_INTEGRATION_INVALID", "Conformance surfaces do not match Host Manifest", nil)
 		}
 	default:
 		return hostError("HOST_INTEGRATION_INVALID", "unknown control surface", nil)
@@ -202,4 +262,12 @@ func ValidateIntegrationRecord(value IntegrationRecord) error {
 		return hostError("HOST_INTEGRATION_INVALID", "Integration record is not canonical", nil)
 	}
 	return nil
+}
+
+func hostActionIDs(values []HostActionContract) []string {
+	result := make([]string, len(values))
+	for index, value := range values {
+		result[index] = value.ID
+	}
+	return result
 }

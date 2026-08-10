@@ -103,7 +103,7 @@ func FuzzConformanceTranscriptFailsClosed(f *testing.F) {
 			invocations = append(invocations, invocations[0])
 		}
 		input := host.ConformanceTranscript{
-			SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
+			SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory,
 			EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt},
 			Invocations: invocations,
 		}

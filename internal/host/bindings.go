@@ -1,28 +1,33 @@
 package host
 
 import (
-	"fmt"
 	"path/filepath"
-	"slices"
+	"reflect"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
-const BindingInventorySchemaV2 = "oaw.host-binding-inventory/v2"
+const BindingInventorySchemaV3 = "oaw.host-binding-inventory/v3"
 
 type BindingObservation struct {
-	HostID            string               `json:"host_id"`
-	InstallationKey   string               `json:"installation_key"`
-	Binding           catalog.HostBinding  `json:"binding"`
-	Topologies        []execution.Topology `json:"topologies"`
-	Source            string               `json:"source"`
-	EvidenceReference string               `json:"evidence_reference"`
-	Digest            string               `json:"digest"`
+	HostID            string                        `json:"host_id"`
+	ProviderID        string                        `json:"provider_id"`
+	InstallationKey   string                        `json:"installation_key"`
+	DistributionID    string                        `json:"distribution_id"`
+	BindingID         string                        `json:"binding_id"`
+	Surface           string                        `json:"surface"`
+	Kind              catalog.BindingKind           `json:"kind"`
+	Reference         string                        `json:"reference"`
+	Invocation        catalog.InvocationDisposition `json:"invocation"`
+	BindingTreeDigest string                        `json:"binding_tree_digest"`
+	Topologies        []execution.Topology          `json:"topologies"`
+	Source            ObservationSource             `json:"source"`
+	EvidenceReference string                        `json:"evidence_reference"`
+	Digest            string                        `json:"digest"`
 }
 
 type BindingInventory struct {
@@ -32,36 +37,73 @@ type BindingInventory struct {
 	Digest        string               `json:"digest"`
 }
 
-func NewBindingInventory(hostID string, observations []BindingObservation) (BindingInventory, error) {
+func NewBindingObservation(input BindingObservation) (BindingObservation, error) {
+	providedDigest := input.Digest
+	input.Digest = ""
+	topologies, err := execution.NormalizeTopologies(input.Topologies)
+	if err != nil {
+		return BindingObservation{}, hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid observed Binding topologies", err)
+	}
+	input.Topologies = topologies
+	if err := validateBindingObservation(input); err != nil {
+		return BindingObservation{}, err
+	}
+	digest, _, err := canonicaljson.Digest(input)
+	if err != nil {
+		return BindingObservation{}, hostError("HOST_BINDING_OBSERVATION_INVALID", "Binding observation cannot be canonicalized", err)
+	}
+	if providedDigest != "" && providedDigest != digest {
+		return BindingObservation{}, hostError("HOST_BINDING_OBSERVATION_INVALID", "Binding observation digest mismatch", nil)
+	}
+	input.Digest = digest
+	return input, nil
+}
+
+func BuildBindingInventoryV3(hostID string, observations []BindingObservation) (BindingInventory, error) {
 	if _, err := catalog.ParseLocalID(hostID); err != nil {
 		return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid Host ID", err)
 	}
 	values := make([]BindingObservation, len(observations))
 	for index, observation := range observations {
-		normalized, err := normalizeBindingObservation(hostID, observation)
+		normalized, err := NewBindingObservation(observation)
 		if err != nil {
-			return BindingInventory{}, err
+			return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid Binding observation", err)
+		}
+		if normalized.HostID != hostID {
+			return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "observation Host does not match inventory Host", nil)
 		}
 		values[index] = normalized
 	}
-	sort.Slice(values, func(i, j int) bool {
-		return bindingObservationSortKey(values[i]) < bindingObservationSortKey(values[j])
+	sort.Slice(values, func(left, right int) bool {
+		return bindingObservationSortKey(values[left]) < bindingObservationSortKey(values[right])
 	})
-	for i := 1; i < len(values); i++ {
-		if bindingObservationIdentity(values[i-1]) == bindingObservationIdentity(values[i]) {
-			return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "duplicate Host Installation Binding observation", nil)
+	for index := 1; index < len(values); index++ {
+		if bindingObservationIdentity(values[index-1]) == bindingObservationIdentity(values[index]) {
+			return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "duplicate Host Binding observation", nil)
 		}
 	}
-	record := struct {
-		SchemaVersion string               `json:"schema_version"`
-		HostID        string               `json:"host_id"`
-		Observations  []BindingObservation `json:"observations"`
-	}{BindingInventorySchemaV2, hostID, values}
+	record := BindingInventory{SchemaVersion: BindingInventorySchemaV3, HostID: hostID, Observations: values}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "inventory cannot be canonicalized", err)
 	}
-	return BindingInventory{SchemaVersion: BindingInventorySchemaV2, HostID: hostID, Observations: values, Digest: digest}, nil
+	record.Digest = digest
+	return record, nil
+}
+
+func ValidateBindingInventory(record BindingInventory) (BindingInventory, error) {
+	if record.SchemaVersion != BindingInventorySchemaV3 {
+		return BindingInventory{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Binding Inventory schema", nil)
+	}
+	provided := CloneBindingInventory(record)
+	normalized, err := BuildBindingInventoryV3(record.HostID, record.Observations)
+	if err != nil {
+		return BindingInventory{}, err
+	}
+	if !reflect.DeepEqual(provided, normalized) {
+		return BindingInventory{}, hostError("HOST_BINDING_INVENTORY_INVALID", "Binding Inventory is not canonical", nil)
+	}
+	return normalized, nil
 }
 
 func CloneBindingInventory(value BindingInventory) BindingInventory {
@@ -73,94 +115,57 @@ func cloneBindingObservations(values []BindingObservation) []BindingObservation 
 	result := make([]BindingObservation, len(values))
 	for index, value := range values {
 		result[index] = value
-		result[index].Binding.Topologies = append([]execution.Topology{}, value.Binding.Topologies...)
 		result[index].Topologies = append([]execution.Topology{}, value.Topologies...)
 	}
 	return result
 }
 
-func normalizeBindingObservation(hostID string, value BindingObservation) (BindingObservation, error) {
-	declared, err := execution.NormalizeTopologies(value.Binding.Topologies)
-	if err != nil {
-		return BindingObservation{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid declared Binding topologies", err)
+func validateBindingObservation(value BindingObservation) error {
+	if _, err := catalog.ParseLocalID(value.HostID); err != nil {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Binding Host", err)
 	}
-	observed, err := execution.NormalizeTopologies(value.Topologies)
-	if err != nil {
-		return BindingObservation{}, hostError("HOST_BINDING_INVENTORY_INVALID", "invalid observed Binding topologies", err)
+	if _, err := catalog.ParseQualifiedID(value.ProviderID); err != nil {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Provider ID", err)
 	}
-	for _, topology := range observed {
-		if !slices.Contains(declared, topology) {
-			return BindingObservation{}, hostError("HOST_BINDING_INVENTORY_INVALID", "observed topology is not declared by the Binding", nil)
-		}
+	if _, err := catalog.ParseLocalID(value.DistributionID); err != nil {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Distribution ID", err)
 	}
-	value.Binding.Topologies = declared
-	value.Topologies = observed
-	if err := validateBindingObservation(hostID, value); err != nil {
-		return BindingObservation{}, err
+	if _, err := catalog.ParseLocalID(value.BindingID); err != nil {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Binding ID", err)
 	}
-	return value, nil
-}
-
-func validateBindingObservation(hostID string, value BindingObservation) error {
-	if value.HostID != hostID || value.Binding.Host != hostID {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", "observation Host does not match inventory Host", nil)
+	if !validHostText(value.InstallationKey, 512) || !validHostText(value.Surface, 128) || strings.ContainsAny(value.Surface, `/\\`) {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid installation or surface identity", nil)
 	}
-	if _, err := catalog.ParseLocalID(value.Binding.Host); err != nil {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", "invalid Binding Host", err)
+	if !validBindingKind(value.Kind) || !validBindingInvocation(value.Invocation) || !validHostText(value.Reference, 2048) || filepath.IsAbs(value.Reference) {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Host Binding identity", nil)
 	}
-	if value.InstallationKey == "" || hasBindingControl(value.InstallationKey) {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", "invalid Installation Key", nil)
+	if !treeDigestPattern.MatchString(value.BindingTreeDigest) || len(value.Topologies) == 0 {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Binding content or topology evidence", nil)
 	}
-	if value.Binding.Reference == "" || hasBindingControl(value.Binding.Reference) || (value.Binding.Kind != "skill" && value.Binding.Kind != "agent" && value.Binding.Kind != "tool") {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", "invalid Host Binding", nil)
+	if value.Source != SourceNativeAPI && value.Source != SourceLiveHostIndex && value.Source != SourceLiveFilesystem {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "Binding evidence is not live", nil)
 	}
-	if value.Source != "host-index" && value.Source != "host-filesystem" && value.Source != "native-probe" {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", fmt.Sprintf("unsupported observation source %q", value.Source), nil)
-	}
-	if !validEvidenceReference(value.Source, value.EvidenceReference) {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", "invalid evidence reference", nil)
-	}
-	if !validBindingDigest(value.Digest) {
-		return hostError("HOST_BINDING_INVENTORY_INVALID", "invalid evidence digest", nil)
+	if !validOpaqueEvidenceReference(value.EvidenceReference) {
+		return hostError("HOST_BINDING_OBSERVATION_INVALID", "invalid Binding evidence reference", nil)
 	}
 	return nil
 }
 
-func validEvidenceReference(source, value string) bool {
-	if value == "" || hasBindingControl(value) {
-		return false
-	}
-	if source == "native-probe" {
-		return strings.HasPrefix(value, "evidence://")
-	}
-	return filepath.IsAbs(value) && filepath.Clean(value) == value
+func validBindingKind(value catalog.BindingKind) bool {
+	return value == catalog.BindingSkill || value == catalog.BindingAgent || value == catalog.BindingRole || value == catalog.BindingInstruction || value == catalog.BindingTool
 }
 
-func validBindingDigest(value string) bool {
-	if len(value) != 64 {
-		return false
-	}
-	for _, character := range value {
-		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
-			return false
-		}
-	}
-	return true
+func validBindingInvocation(value catalog.InvocationDisposition) bool {
+	return value == catalog.InvocationHumanExplicit || value == catalog.InvocationModel || value == catalog.InvocationHost || value == catalog.InvocationInternal
 }
 
 func bindingObservationIdentity(value BindingObservation) string {
-	return value.HostID + "\x00" + value.InstallationKey + "\x00" + value.Binding.Host + "\x00" + value.Binding.Kind + "\x00" + value.Binding.Reference
+	return strings.Join([]string{
+		value.HostID, value.ProviderID, value.InstallationKey, value.DistributionID, value.BindingID,
+		value.Surface, string(value.Kind), value.Reference, string(value.Invocation),
+	}, "\x00")
 }
 
 func bindingObservationSortKey(value BindingObservation) string {
-	return bindingObservationIdentity(value) + "\x00" + value.Source + "\x00" + value.EvidenceReference + "\x00" + value.Digest
-}
-
-func hasBindingControl(value string) bool {
-	for _, character := range value {
-		if unicode.IsControl(character) {
-			return true
-		}
-	}
-	return false
+	return bindingObservationIdentity(value) + "\x00" + value.BindingTreeDigest + "\x00" + string(value.Source) + "\x00" + value.EvidenceReference + "\x00" + value.Digest
 }

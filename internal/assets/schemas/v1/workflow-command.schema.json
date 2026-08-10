@@ -64,7 +64,7 @@
         "input_digest": {"$ref": "#/$defs/digest"}, "active_ticket": {"$ref": "#/$defs/optional_text"},
         "proposal": {"$ref": "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json"},
         "selection": {"$ref": "#/$defs/selection"},
-        "host_session": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-session.schema.json"},
+        "host_session": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-session.schema.json"},
         "environment": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"}
       }
     },
@@ -93,7 +93,7 @@
     },
     "switch": {
       "type": "object", "additionalProperties": false, "required": ["boundary", "selection", "host_session", "environment"],
-      "properties": {"boundary": {"$ref": "#/$defs/text"}, "selection": {"$ref": "#/$defs/selection"}, "host_session": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-session.schema.json"}, "environment": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"}}
+      "properties": {"boundary": {"$ref": "#/$defs/text"}, "selection": {"$ref": "#/$defs/selection"}, "host_session": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-session.schema.json"}, "environment": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"}}
     },
     "cancel": {
       "type": "object", "additionalProperties": false, "required": ["reason", "invocation_terminal"],

@@ -4,370 +4,200 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func TestValidateEnvironmentReportPinsSessionAndRequirements(t *testing.T) {
-	report, err := host.NewEnvironmentReport(host.EnvironmentReport{
-		SchemaVersion: host.HostEnvironmentReportSchemaV2,
-		SessionID:     "session-current-1",
-		Topology:      execution.TopologyCurrent,
-		Observations: []execution.EnvironmentObservation{{
-			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-session", Digest: strings.Repeat("a", 64),
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manifest := runnerManifest(t)
-	manifest.ControlSurface = host.SurfaceHostNative
-	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
-	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion:           host.HostSessionSchemaV2,
-		HostID:                  "codex",
-		IntegrationID:           "acme/codex-runtime",
-		IntegrationVersion:      "1.0.0",
-		SessionID:               "session-current-1",
-		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-		ProviderInventoryDigest: strings.Repeat("b", 64),
-		EnvironmentReportDigest: report.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
+func TestHostV3EnvironmentValidationPinsSessionAndRequirements(t *testing.T) {
+	manifest := hostNativeManifest(t, []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory})
+	_, report, session := currentHostFacts(t, manifest)
 	if err := host.ValidateEnvironmentReport(session, report); err != nil {
 		t.Fatalf("ValidateEnvironmentReport() error = %v", err)
 	}
-	accepted := []execution.EnvironmentRequirement{{
-		Surface: "skills", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionInherited},
-	}}
-	if err := host.ValidateRequirements(accepted, report); err != nil {
+	if err := host.ValidateRequirements([]execution.EnvironmentRequirement{{Surface: "skills", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionInherited}}}, report); err != nil {
 		t.Fatalf("ValidateRequirements() error = %v", err)
 	}
-	rejected := []execution.EnvironmentRequirement{{
-		Surface: "skills", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionHostConfigured},
-	}}
-	if err := host.ValidateRequirements(rejected, report); host.ErrorCode(err) != "HOST_ENVIRONMENT_REQUIREMENT_UNMET" {
-		t.Fatalf("ValidateRequirements(rejected) error = %v", err)
-	}
-
-	changed, err := host.NewEnvironmentReport(host.EnvironmentReport{
-		SchemaVersion: host.HostEnvironmentReportSchemaV2,
-		SessionID:     "session-current-2",
-		Topology:      execution.TopologyCurrent,
-		Observations:  report.Observations,
-	})
+	changed := host.CloneEnvironmentReport(report)
+	changed.Digest = ""
+	changed.Observations[0].Digest = strings.Repeat("f", 64)
+	changed, err := host.NewEnvironmentReport(changed)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := host.ValidateEnvironmentReport(session, changed); host.ErrorCode(err) != "HOST_SESSION_CHANGED" {
-		t.Fatalf("ValidateEnvironmentReport(changed) error = %v", err)
+		t.Fatalf("changed environment error = %v", err)
+	}
+	if err := host.ValidateRequirements([]execution.EnvironmentRequirement{{Surface: "mcp", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionInherited}}}, report); host.ErrorCode(err) != "HOST_ENVIRONMENT_REQUIREMENT_UNMET" {
+		t.Fatalf("unmet requirement error = %v", err)
 	}
 }
 
-func TestValidateEnvironmentReportPinsSubagentParent(t *testing.T) {
-	report, err := host.NewEnvironmentReport(host.EnvironmentReport{
-		SchemaVersion:   host.HostEnvironmentReportSchemaV2,
-		SessionID:       "session-child-1",
-		ParentSessionID: "session-current-1",
-		Topology:        execution.TopologySubagent,
-		Observations: []execution.EnvironmentObservation{{
-			Surface: "skills", Disposition: execution.DispositionInherited, Source: "codex-subagent", Digest: strings.Repeat("a", 64),
-		}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	manifest := runnerManifest(t)
-	manifest.ControlSurface = host.SurfaceHostNative
-	manifest.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
-	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion:           host.HostSessionSchemaV2,
-		HostID:                  "codex",
-		IntegrationID:           "acme/codex-runtime",
-		IntegrationVersion:      "1.0.0",
-		SessionID:               "session-current-1",
-		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-		ProviderInventoryDigest: strings.Repeat("b", 64),
-		EnvironmentReportDigest: report.Digest,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := host.ValidateEnvironmentReport(session, report); err != nil {
-		t.Fatalf("ValidateEnvironmentReport(SUBAGENT) error = %v", err)
-	}
-}
-
-func TestHostManifestRejectsUnsupportedFeatureTopologyPairs(t *testing.T) {
-	policy, err := host.NewManifest(policyManifestValue("codex"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if policy.ControlSurface != host.SurfacePolicy || !slices.Equal(policy.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
-		t.Fatalf("policy Manifest = %#v", policy)
-	}
-	hostNative, err := host.NewManifest(hostNativeManifestValue("codex"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if hostNative.ControlSurface != host.SurfaceHostNative || !slices.Equal(hostNative.SupportedTopologies, []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}) {
-		t.Fatalf("host-native Manifest = %#v", hostNative)
-	}
-
+func TestHostV3ManifestRejectsInvalidSurfaceFeatureActionAndTopologyPairs(t *testing.T) {
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.Manifest)
 	}{
-		{name: "policy feature", mutate: func(value *host.Manifest) {
-			*value = policyManifestValue("codex")
-			value.Features = []host.Feature{host.FeatureNormalizedReceipts}
+		{"version", func(value *host.Manifest) { value.ManifestVersion = "latest" }},
+		{"host", func(value *host.Manifest) { value.HostID = "Bad Host" }},
+		{"protocol", func(value *host.Manifest) { value.Protocols = []string{"oaw.runtime/v1"} }},
+		{"binding kind", func(value *host.Manifest) { value.BindingKinds = []catalog.BindingKind{"hook"} }},
+		{"duplicate binding kind", func(value *host.Manifest) {
+			value.BindingKinds = []catalog.BindingKind{catalog.BindingSkill, catalog.BindingSkill}
 		}},
-		{name: "policy SUBAGENT", mutate: func(value *host.Manifest) {
-			*value = policyManifestValue("codex")
-			value.SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+		{"unknown control feature", func(value *host.Manifest) { value.Features = append(value.Features, "invented") }},
+		{"duplicate control feature", func(value *host.Manifest) { value.Features = append(value.Features, value.Features[0]) }},
+		{"unknown delegation feature", func(value *host.Manifest) { value.DelegationFeatures = append(value.DelegationFeatures, "invented") }},
+		{"duplicate delegation feature", func(value *host.Manifest) {
+			value.DelegationFeatures = append(value.DelegationFeatures, value.DelegationFeatures[0])
 		}},
-		{name: "host-native without CURRENT", mutate: func(value *host.Manifest) {
+		{"action drift", func(value *host.Manifest) { value.HostActions[0].MaximumEffects[0] = "delete-project" }},
+		{"duplicate action", func(value *host.Manifest) { value.HostActions = append(value.HostActions, value.HostActions[0]) }},
+		{"without CURRENT", func(value *host.Manifest) {
 			value.SupportedTopologies = []execution.Topology{execution.TopologySubagent}
 		}},
-		{name: "SUBAGENT without environment reporting", mutate: func(value *host.Manifest) {
+		{"SUBAGENT without environment", func(value *host.Manifest) {
 			value.Features = []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory}
 		}},
+		{"retired surface", func(value *host.Manifest) { value.ControlSurface = "runner-managed" }},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			value := hostNativeManifestValue("codex")
+			value := host.CloneManifest(runnerManifest(t))
+			value.Digest = ""
 			test.mutate(&value)
 			if _, err := host.NewManifest(value); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
 				t.Fatalf("NewManifest() error = %v", err)
 			}
 		})
 	}
+	policy := policyManifestValue("codex")
+	policy.Protocols = []string{host.WorkflowProtocolV1}
+	if _, err := host.NewManifest(policy); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
+		t.Fatalf("policy authority error = %v", err)
+	}
 }
 
-func TestHostV2RejectsRetiredSchemasAndControlSurfaces(t *testing.T) {
-	retiredManifest := policyManifestValue("codex")
-	retiredManifest.SchemaVersion = "oaw.host-manifest/v1"
-	if _, err := host.NewManifest(retiredManifest); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
-		t.Fatalf("NewManifest(v1) error = %v", err)
-	}
-	for _, surface := range []host.ControlSurface{"instruction-only", "runner-managed", "native-managed"} {
-		retiredSurface := policyManifestValue("codex")
-		retiredSurface.ControlSurface = surface
-		if _, err := host.NewManifest(retiredSurface); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
-			t.Fatalf("NewManifest(%s) error = %v", surface, err)
-		}
-	}
-	retiredProtocol := hostNativeManifestValue("codex")
-	retiredProtocol.Protocols = []string{"oaw.runtime/v1"}
-	if _, err := host.NewManifest(retiredProtocol); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
-		t.Fatalf("NewManifest(oaw.runtime/v1) error = %v", err)
-	}
-	for _, feature := range []host.Feature{
-		"isolated-executor", "exact-binding-invocation", "bundle-inheritance",
-		"evidence-return", "normalized-observation", "native-invocation",
-	} {
-		retiredFeature := hostNativeManifestValue("codex")
-		retiredFeature.Features = append(retiredFeature.Features, feature)
-		if _, err := host.NewManifest(retiredFeature); host.ErrorCode(err) != "HOST_MANIFEST_INVALID" {
-			t.Fatalf("NewManifest(%s) error = %v", feature, err)
-		}
-	}
-
-	manifest, err := host.NewManifest(policyManifestValue("codex"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	audit, err := host.NewAuditEvidence(host.AuditEvidence{Status: host.AuditPending})
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: "oaw.host-integration/v1", IntegrationVersion: "1.0.0", ID: "oaw/codex-policy",
-		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit,
-	})
-	if host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
-		t.Fatalf("NewIntegration(v1) error = %v", err)
-	}
-	legacyManifest := policyManifestValue("codex")
-	legacyManifest.SchemaVersion = "oaw.host-manifest/v1"
-	_, err = host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "oaw/codex-policy",
-		Manifest: legacyManifest, ManifestDigest: legacyManifest.ContentDigest(), Audit: audit,
-	})
-	if host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
-		t.Fatalf("NewIntegration(legacy Manifest) error = %v", err)
-	}
-	if _, err := host.DecodeIntegrationSetJSON([]byte(`{"schema_version":"oaw.host-integration-set/v1","integrations":[]}`)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
-		t.Fatalf("DecodeIntegrationSetJSON(v1) error = %v", err)
-	}
-
-	for _, test := range []struct {
+func TestHostV3HardCutRejectsV2AuthoritySchemas(t *testing.T) {
+	manifest := mustHostManifestV3(t)
+	tests := []struct {
 		name string
-		json string
-		toml string
-		code string
+		run  func() error
 	}{
-		{
-			name: "Integration v1",
-			json: `{"schema_version":"oaw.host-integration/v1"}`,
-			toml: `schema_version = "oaw.host-integration/v1"`,
-			code: "HOST_SCHEMA_UNSUPPORTED",
-		},
-		{
-			name: "Manifest v1",
-			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v1"}}`,
-			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v1\"",
-			code: "HOST_SCHEMA_UNSUPPORTED",
-		},
-		{
-			name: "Integration Level",
-			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v2","integration_level":"runner-managed"}}`,
-			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v2\"\nintegration_level = \"runner-managed\"",
-			code: "HOST_INTEGRATION_DECODE_INVALID",
-		},
-		{
-			name: "retired control surface",
-			json: `{"schema_version":"oaw.host-integration/v2","manifest":{"schema_version":"oaw.host-manifest/v2","control_surface":"runner-managed"}}`,
-			toml: "schema_version = \"oaw.host-integration/v2\"\n[manifest]\nschema_version = \"oaw.host-manifest/v2\"\ncontrol_surface = \"runner-managed\"",
-			code: "HOST_INTEGRATION_DECODE_INVALID",
-		},
-	} {
+		{"Manifest", func() error {
+			_, err := host.NewManifest(host.Manifest{SchemaVersion: "oaw.host-manifest/v2"})
+			return err
+		}},
+		{"Session", func() error {
+			_, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{SchemaVersion: "oaw.host-session/v2"})
+			return err
+		}},
+		{"Inventory", func() error {
+			_, err := host.ValidateBindingInventory(host.BindingInventory{SchemaVersion: "oaw.host-binding-inventory/v2"})
+			return err
+		}},
+		{"Integration", func() error {
+			_, err := host.NewIntegration(host.IntegrationRecord{SchemaVersion: "oaw.host-integration/v2"})
+			return err
+		}},
+		{"Integration Set", func() error {
+			_, err := host.DecodeIntegrationSetJSON([]byte(`{"schema_version":"oaw.host-integration-set/v2","integrations":[]}`))
+			return err
+		}},
+		{"Conformance Transcript", func() error {
+			_, err := host.NewConformanceTranscript(host.ConformanceTranscript{SchemaVersion: "oaw.host-conformance-transcript/v2"})
+			return err
+		}},
+		{"Conformance Report", func() error {
+			_, err := host.NewConformanceReport(host.ConformanceReport{SchemaVersion: "oaw.host-conformance-report/v2"})
+			return err
+		}},
+	}
+	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			if _, err := host.DecodeIntegrationJSON([]byte(test.json)); host.ErrorCode(err) != test.code {
-				t.Fatalf("DecodeIntegrationJSON() error = %v", err)
-			}
-			if _, err := host.DecodeIntegrationTOML([]byte(test.toml)); host.ErrorCode(err) != test.code {
-				t.Fatalf("DecodeIntegrationTOML() error = %v", err)
+			if err := test.run(); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+				t.Fatalf("error = %v, want HOST_SCHEMA_UNSUPPORTED", err)
 			}
 		})
 	}
-}
-
-func policyManifestValue(hostID string) host.Manifest {
-	return host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: hostID,
-		ControlSurface: host.SurfacePolicy, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+	for _, decode := range []func([]byte) error{
+		func(raw []byte) error { _, err := host.DecodeIntegrationJSON(raw); return err },
+		func(raw []byte) error { _, err := host.DecodeIntegrationTOML(raw); return err },
+	} {
+		if err := decode([]byte(`schema_version = "oaw.host-integration/v2"`)); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" && host.ErrorCode(err) != "HOST_INTEGRATION_DECODE_INVALID" {
+			t.Fatalf("retired Integration decode error = %v", err)
+		}
 	}
 }
 
-func hostNativeManifestValue(hostID string) host.Manifest {
-	return host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: hostID,
-		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
-		SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-		Features:            []host.Feature{host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
-	}
-}
-
-func TestAuditEvidenceRejectsInvalidRecords(t *testing.T) {
-	valid := host.AuditEvidence{
-		Status:     host.AuditPassed,
-		References: []host.AuditEvidenceReference{{Reference: "https://example.test/docs", Digest: strings.Repeat("a", 64)}},
-	}
+func TestHostV3AuditConformanceAndIntegrationRejectInvalidRecords(t *testing.T) {
+	validAudit := host.AuditEvidence{Status: host.AuditPassed, References: []host.AuditEvidenceReference{{Reference: "evidence://audit/docs", Digest: strings.Repeat("a", 64)}}}
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.AuditEvidence)
 	}{
 		{"status", func(value *host.AuditEvidence) { value.Status = "invented" }},
-		{"whitespace", func(value *host.AuditEvidence) { value.References[0].Reference = " https://example.test" }},
-		{"control", func(value *host.AuditEvidence) { value.References[0].Reference = "https://example.test\nsecret" }},
-		{"long", func(value *host.AuditEvidence) { value.References[0].Reference = strings.Repeat("x", 2049) }},
+		{"absolute", func(value *host.AuditEvidence) { value.References[0].Reference = "/private/audit" }},
 		{"digest", func(value *host.AuditEvidence) { value.References[0].Digest = "bad" }},
-		{"duplicate", func(value *host.AuditEvidence) {
-			value.References = append(value.References, host.AuditEvidenceReference{Reference: value.References[0].Reference, Digest: strings.Repeat("b", 64)})
-		}},
-		{"record digest", func(value *host.AuditEvidence) { value.Digest = strings.Repeat("0", 64) }},
+		{"duplicate", func(value *host.AuditEvidence) { value.References = append(value.References, value.References[0]) }},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			value := host.CloneAuditEvidence(valid)
+		t.Run("audit "+test.name, func(t *testing.T) {
+			value := validAudit
+			value.References = append([]host.AuditEvidenceReference{}, validAudit.References...)
 			test.mutate(&value)
 			if _, err := host.NewAuditEvidence(value); host.ErrorCode(err) != "HOST_AUDIT_INVALID" {
 				t.Fatalf("NewAuditEvidence() error = %v", err)
 			}
 		})
 	}
-}
 
-func TestConformanceReportRejectsInvalidRecords(t *testing.T) {
-	base := host.CloneConformanceReport(*hostNativeIntegration(t).Conformance)
+	reportBase := host.CloneConformanceReport(*hostNativeIntegration(t).Conformance)
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.ConformanceReport)
 		code   string
 	}{
-		{"schema", func(value *host.ConformanceReport) { value.SchemaVersion = "oaw.host-conformance-report/v1" }, "HOST_SCHEMA_UNSUPPORTED"},
-		{"Manifest digest", func(value *host.ConformanceReport) { value.ManifestDigest = "bad" }, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"transcript", func(value *host.ConformanceReport) { value.TranscriptDigest = "bad" }, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"unknown feature", func(value *host.ConformanceReport) { value.VerifiedFeatures[0] = "invented" }, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"duplicate feature", func(value *host.ConformanceReport) {
-			value.VerifiedFeatures = append(value.VerifiedFeatures, value.VerifiedFeatures[0])
-		}, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"invalid diagnostic", func(value *host.ConformanceReport) { value.Diagnostics = []string{"bad\nsecret"} }, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"duplicate diagnostic", func(value *host.ConformanceReport) { value.Diagnostics = []string{"missing", "missing"} }, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"too many diagnostics", func(value *host.ConformanceReport) {
-			value.Diagnostics = make([]string, 33)
-			for index := range value.Diagnostics {
-				value.Diagnostics[index] = fmt.Sprintf("missing evidence %02d", index)
-			}
-		}, "HOST_CONFORMANCE_REPORT_INVALID"},
-		{"record digest", func(value *host.ConformanceReport) { value.Digest = strings.Repeat("0", 64) }, "HOST_CONFORMANCE_INVALID"},
+		{"manifest digest", func(value *host.ConformanceReport) { value.ManifestDigest = "bad" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"control", func(value *host.ConformanceReport) { value.VerifiedFeatures[0] = "invented" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"delegation", func(value *host.ConformanceReport) { value.VerifiedDelegationFeatures[0] = "invented" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"action", func(value *host.ConformanceReport) { value.VerifiedHostActionIDs[0] = "invented" }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"diagnostic", func(value *host.ConformanceReport) { value.Diagnostics = []string{"bad\nsecret"} }, "HOST_CONFORMANCE_REPORT_INVALID"},
+		{"digest", func(value *host.ConformanceReport) { value.Digest = strings.Repeat("0", 64) }, "HOST_CONFORMANCE_INVALID"},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			value := host.CloneConformanceReport(base)
+		t.Run("report "+test.name, func(t *testing.T) {
+			value := host.CloneConformanceReport(reportBase)
 			test.mutate(&value)
 			if _, err := host.NewConformanceReport(value); host.ErrorCode(err) != test.code {
 				t.Fatalf("NewConformanceReport() error = %v", err)
 			}
 		})
 	}
-}
 
-func TestIntegrationRejectsInvalidRecords(t *testing.T) {
-	base := hostNativeIntegration(t)
+	integrationBase := hostNativeIntegration(t)
 	for _, test := range []struct {
 		name   string
 		mutate func(*host.IntegrationRecord)
-		code   string
 	}{
-		{"schema", func(value *host.IntegrationRecord) { value.SchemaVersion = "oaw.host-integration/v1" }, "HOST_SCHEMA_UNSUPPORTED"},
-		{"version", func(value *host.IntegrationRecord) { value.IntegrationVersion = "latest" }, "HOST_INTEGRATION_INVALID"},
-		{"ID", func(value *host.IntegrationRecord) { value.ID = "Bad" }, "HOST_INTEGRATION_INVALID"},
-		{"Manifest", func(value *host.IntegrationRecord) { value.Manifest.SchemaVersion = "oaw.host-manifest/v1" }, "HOST_SCHEMA_UNSUPPORTED"},
-		{"Manifest digest", func(value *host.IntegrationRecord) { value.ManifestDigest = strings.Repeat("0", 64) }, "HOST_INTEGRATION_INVALID"},
-		{"audit", func(value *host.IntegrationRecord) { value.Audit.Status = "invented" }, "HOST_INTEGRATION_INVALID"},
-		{"report schema", func(value *host.IntegrationRecord) {
-			value.Conformance.SchemaVersion = "oaw.host-conformance-report/v1"
-		}, "HOST_SCHEMA_UNSUPPORTED"},
-		{"report", func(value *host.IntegrationRecord) { value.Conformance.Digest = strings.Repeat("0", 64) }, "HOST_INTEGRATION_INVALID"},
-		{"pending", func(value *host.IntegrationRecord) { value.Audit = pendingAudit(t) }, "HOST_INTEGRATION_INVALID"},
-		{"missing report", func(value *host.IntegrationRecord) { value.Conformance = nil }, "HOST_INTEGRATION_INVALID"},
-		{"diagnostic report", func(value *host.IntegrationRecord) {
-			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.Diagnostics = []string{"missing evidence"} })
-		}, "HOST_INTEGRATION_INVALID"},
-		{"report Manifest", func(value *host.IntegrationRecord) {
-			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.ManifestDigest = strings.Repeat("0", 64) })
-		}, "HOST_INTEGRATION_INVALID"},
-		{"report features", func(value *host.IntegrationRecord) {
-			value.Conformance = rebuiltReport(t, *value.Conformance, func(report *host.ConformanceReport) { report.VerifiedFeatures = report.VerifiedFeatures[1:] })
-		}, "HOST_INTEGRATION_INVALID"},
-		{"record digest", func(value *host.IntegrationRecord) { value.Digest = strings.Repeat("0", 64) }, "HOST_INTEGRATION_INVALID"},
+		{"version", func(value *host.IntegrationRecord) { value.IntegrationVersion = "latest" }},
+		{"ID", func(value *host.IntegrationRecord) { value.ID = "Bad" }},
+		{"manifest digest", func(value *host.IntegrationRecord) { value.ManifestDigest = strings.Repeat("0", 64) }},
+		{"audit", func(value *host.IntegrationRecord) { value.Audit.Status = "invented" }},
+		{"missing report", func(value *host.IntegrationRecord) { value.Conformance = nil }},
+		{"record digest", func(value *host.IntegrationRecord) { value.Digest = strings.Repeat("0", 64) }},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			value := host.CloneIntegration(base)
+		t.Run("integration "+test.name, func(t *testing.T) {
+			value := host.CloneIntegration(integrationBase)
 			test.mutate(&value)
-			if _, err := host.NewIntegration(value); host.ErrorCode(err) != test.code {
+			if _, err := host.NewIntegration(value); host.ErrorCode(err) != "HOST_INTEGRATION_INVALID" {
 				t.Fatalf("NewIntegration() error = %v", err)
 			}
 		})
 	}
 }
 
-func TestDecodeIntegrationRejectsSizeSyntaxAndDigestFailures(t *testing.T) {
+func TestIntegrationV3DecodeRejectsSizeSyntaxAndDigestFailures(t *testing.T) {
 	integration := hostNativeIntegration(t)
 	oversized := []byte(strings.Repeat("x", (1<<20)+1))
 	for name, decode := range map[string]func() error{
@@ -400,7 +230,7 @@ func TestHostErrorContract(t *testing.T) {
 	}
 }
 
-func TestValidateIntegrationRecordRequiresCanonicalStoredBytes(t *testing.T) {
+func TestIntegrationV3StoredRecordRequiresCanonicalBytes(t *testing.T) {
 	valid := hostNativeIntegration(t)
 	if err := host.ValidateIntegrationRecord(valid); err != nil {
 		t.Fatalf("ValidateIntegrationRecord(valid) error = %v", err)
@@ -412,25 +242,12 @@ func TestValidateIntegrationRecordRequiresCanonicalStoredBytes(t *testing.T) {
 	}
 }
 
-func pendingAudit(t *testing.T) host.AuditEvidence {
-	t.Helper()
-	value, err := host.NewAuditEvidence(host.AuditEvidence{Status: host.AuditPending})
-	if err != nil {
-		t.Fatal(err)
+func policyManifestValue(hostID string) host.Manifest {
+	return host.Manifest{
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: hostID, ControlSurface: host.SurfacePolicy,
+		Protocols: []string{}, BindingKinds: []catalog.BindingKind{}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		Features: []host.Feature{}, DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	}
-	return value
-}
-
-func rebuiltReport(t *testing.T, value host.ConformanceReport, mutate func(*host.ConformanceReport)) *host.ConformanceReport {
-	t.Helper()
-	value = host.CloneConformanceReport(value)
-	value.Digest = ""
-	mutate(&value)
-	report, err := host.NewConformanceReport(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &report
 }
 
 func mustJSON(t *testing.T, value any) string {
@@ -440,4 +257,12 @@ func mustJSON(t *testing.T, value any) string {
 		t.Fatal(err)
 	}
 	return string(raw)
+}
+
+func diagnosticSet(size int) []string {
+	result := make([]string, size)
+	for index := range result {
+		result[index] = fmt.Sprintf("diagnostic %02d", index)
+	}
+	return result
 }

@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v3/host-manifest.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "manifest_version", "host_id", "control_surface", "protocols", "binding_kinds", "supported_topologies", "features", "delegation_features", "host_actions", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.host-manifest/v3"},
+    "manifest_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?$"},
+    "host_id": {"$ref": "#/$defs/local_id"},
+    "control_surface": {"enum": ["policy", "host-native"]},
+    "protocols": {"type": "array", "maxItems": 1, "uniqueItems": true, "items": {"const": "oaw.workflow/v1"}},
+    "binding_kinds": {"type": "array", "maxItems": 5, "uniqueItems": true, "items": {"$ref": "#/$defs/binding_kind"}},
+    "supported_topologies": {"$ref": "#/$defs/topologies"},
+    "features": {"type": "array", "maxItems": 6, "uniqueItems": true, "items": {"$ref": "#/$defs/control_feature"}},
+    "delegation_features": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"$ref": "#/$defs/delegation_feature"}},
+    "host_actions": {"type": "array", "maxItems": 3, "uniqueItems": true, "items": {"$ref": "#/$defs/host_action"}},
+    "digest": {"$ref": "#/$defs/digest"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"control_surface": {"const": "policy"}}},
+      "then": {"properties": {"protocols": {"maxItems": 0}, "binding_kinds": {"maxItems": 0}, "supported_topologies": {"const": ["CURRENT"]}, "features": {"maxItems": 0}, "delegation_features": {"maxItems": 0}, "host_actions": {"maxItems": 0}}}
+    },
+    {
+      "if": {"properties": {"control_surface": {"const": "host-native"}}},
+      "then": {"properties": {"protocols": {"const": ["oaw.workflow/v1"]}, "binding_kinds": {"minItems": 1}, "supported_topologies": {"contains": {"const": "CURRENT"}}, "features": {"minItems": 2, "allOf": [{"contains": {"const": "provider-binding-inventory"}}, {"contains": {"const": "normalized-receipts"}}]}}}
+    },
+    {
+      "if": {"properties": {"supported_topologies": {"contains": {"const": "SUBAGENT"}}}},
+      "then": {"properties": {"features": {"contains": {"const": "environment-reporting"}}}}
+    }
+  ],
+  "$defs": {
+    "local_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "text": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^\\S(?:.*\\S)?$"},
+    "binding_kind": {"enum": ["agent", "instruction", "role", "skill", "tool"]},
+    "control_feature": {"enum": ["cancellation", "environment-reporting", "invocation-deduplication", "normalized-receipts", "pause", "provider-binding-inventory"]},
+    "delegation_feature": {"enum": ["child-delegation", "nested-child-delegation", "nested-parallel-child-delegation", "parallel-child-delegation"]},
+    "topologies": {"type": "array", "minItems": 1, "maxItems": 2, "uniqueItems": true, "items": {"enum": ["CURRENT", "SUBAGENT"]}},
+    "host_action": {
+      "oneOf": [
+        {"const": {"id": "closeout.execute", "input_schema": "oaw.host-action.closeout-input/v1", "outcome_schema": "oaw.host-action.closeout-outcome/v1", "maximum_effects": ["git-local", "network-mutation", "read-project", "run-process"], "resources": ["git-repository", "network", "project-worktree"]}},
+        {"const": {"id": "verification.execute", "input_schema": "oaw.host-action.verification-input/v1", "outcome_schema": "oaw.host-action.verification-outcome/v1", "maximum_effects": ["read-project", "run-process"], "resources": ["project"]}},
+        {"const": {"id": "workspace.prepare-or-confirm", "input_schema": "oaw.host-action.workspace-input/v1", "outcome_schema": "oaw.host-action.workspace-outcome/v1", "maximum_effects": ["git-local", "read-project", "run-process", "write-project"], "resources": ["git-repository", "project-worktree"]}}
+      ]
+    }
+  }
+}

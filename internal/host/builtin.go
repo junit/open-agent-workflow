@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	HostIntegrationSetSchemaV2 = "oaw.host-integration-set/v2"
+	HostIntegrationSetSchemaV3 = "oaw.host-integration-set/v3"
 )
 
 type IntegrationSetRecord struct {
@@ -45,7 +45,7 @@ func DecodeIntegrationSetJSON(raw []byte) (IntegrationSetRecord, error) {
 	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
 		return IntegrationSetRecord{}, hostError("HOST_INTEGRATION_SET_INVALID", "trailing Integration Set JSON", err)
 	}
-	if set.SchemaVersion != HostIntegrationSetSchemaV2 {
+	if set.SchemaVersion != HostIntegrationSetSchemaV3 {
 		return IntegrationSetRecord{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Host Integration Set schema", nil)
 	}
 	if len(set.Integrations) == 0 {

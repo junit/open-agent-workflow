@@ -7,19 +7,12 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
-func TestGenerateCodexHostIsIdempotentAndPreservesPolicy(t *testing.T) {
+func TestGenerateCodexHostV3IsIdempotentAndPreservesPolicy(t *testing.T) {
 	root := t.TempDir()
-	for _, relative := range []string{
-		"internal/assets/audits/codex-host-v1.json",
-		"internal/assets/conformance/codex-host-v1.json",
-		"internal/assets/host-integrations.json",
-	} {
-		copyGeneratorFixture(t, root, relative)
-	}
+	copyGeneratorFixture(t, root, "internal/assets/host-integrations.json")
 	integrationsPath := filepath.Join(root, "internal", "assets", "host-integrations.json")
 	before := decodeIntegrationSetFile(t, integrationsPath)
 	policyBefore := generatorIntegrationByID(t, before.Integrations, "oaw/codex-policy")
@@ -27,27 +20,40 @@ func TestGenerateCodexHostIsIdempotentAndPreservesPolicy(t *testing.T) {
 	if err := generateCodexHost(root); err != nil {
 		t.Fatal(err)
 	}
-	first, err := os.ReadFile(integrationsPath)
+	firstSet, err := os.ReadFile(integrationsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcriptPath := filepath.Join(root, "internal", "assets", "conformance", "codex-host-v3.json")
+	firstTranscript, err := os.ReadFile(transcriptPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := generateCodexHost(root); err != nil {
 		t.Fatal(err)
 	}
-	second, err := os.ReadFile(integrationsPath)
+	secondSet, err := os.ReadFile(integrationsPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(first, second) {
-		t.Fatal("Codex Host Integration generation is not idempotent")
+	secondTranscript, err := os.ReadFile(transcriptPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(firstSet, secondSet) || !bytes.Equal(firstTranscript, secondTranscript) {
+		t.Fatal("Codex Host v3 generation is not idempotent")
 	}
 	after := decodeIntegrationSetFile(t, integrationsPath)
 	policyAfter := generatorIntegrationByID(t, after.Integrations, "oaw/codex-policy")
-	if !reflect.DeepEqual(policyBefore, policyAfter) {
-		t.Fatalf("Codex policy changed: before = %#v, after = %#v", policyBefore, policyAfter)
+	if policyBefore.ID != policyAfter.ID || policyBefore.Manifest.HostID != policyAfter.Manifest.HostID || policyAfter.Manifest.ControlSurface != host.SurfacePolicy {
+		t.Fatalf("Codex policy identity changed: before = %#v, after = %#v", policyBefore, policyAfter)
 	}
-	native := generatorIntegrationByID(t, after.Integrations, codexbridge.BridgeIntegrationID)
-	if native.Manifest.ControlSurface != host.SurfaceHostNative || native.Audit.Status != host.AuditPassed || native.Conformance == nil {
+	if !reflect.DeepEqual(policyAfter, generatorIntegrationByID(t, after.Integrations, "oaw/codex-policy")) {
+		t.Fatal("generated policy lookup is nondeterministic")
+	}
+	native := generatorIntegrationByID(t, after.Integrations, codexHostIntegrationID)
+	if native.Manifest.ControlSurface != host.SurfaceHostNative || native.Audit.Status != host.AuditPassed || native.Conformance == nil ||
+		len(native.Manifest.DelegationFeatures) != 0 || len(native.Manifest.HostActions) != 0 {
 		t.Fatalf("generated native Integration = %#v", native)
 	}
 }

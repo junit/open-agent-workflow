@@ -2,7 +2,6 @@ package host
 
 import (
 	"fmt"
-	"reflect"
 	"slices"
 	"sort"
 
@@ -11,22 +10,26 @@ import (
 )
 
 func NewConformanceTranscript(input ConformanceTranscript) (ConformanceTranscript, error) {
+	if input.SchemaVersion != HostConformanceTranscriptSchemaV3 {
+		return ConformanceTranscript{}, hostError("HOST_SCHEMA_UNSUPPORTED", "unsupported Conformance Transcript schema", nil)
+	}
 	providedDigest := input.Digest
+	input = CloneConformanceTranscript(input)
 	input.Digest = ""
 	if len(input.Receipts) > 256 || len(input.Invocations) > 256 {
 		return ConformanceTranscript{}, hostError("HOST_CONFORMANCE_TRANSCRIPT_INVALID", "Conformance Transcript exceeds collection limits", nil)
 	}
-	input = CloneConformanceTranscript(input)
-	if input.SchemaVersion != HostConformanceTranscriptSchemaV2 {
-		return ConformanceTranscript{}, hostError("HOST_CONFORMANCE_TRANSCRIPT_INVALID", "unsupported Conformance Transcript schema", nil)
-	}
 	if err := validateStoredSessionSnapshot(input.Session); err != nil {
 		return ConformanceTranscript{}, hostError("HOST_CONFORMANCE_TRANSCRIPT_INVALID", "invalid Host session", err)
 	}
-	normalizedInventory, err := NewBindingInventory(input.Inventory.HostID, input.Inventory.Observations)
-	if err != nil || !reflect.DeepEqual(normalizedInventory, input.Inventory) {
+	normalizedInventory, err := ValidateBindingInventory(input.Inventory)
+	if err != nil {
+		if ErrorCode(err) == "HOST_SCHEMA_UNSUPPORTED" {
+			return ConformanceTranscript{}, err
+		}
 		return ConformanceTranscript{}, hostError("HOST_CONFORMANCE_TRANSCRIPT_INVALID", "invalid Binding Inventory", err)
 	}
+	input.Inventory = normalizedInventory
 	if input.Inventory.HostID != input.Session.HostID || input.Inventory.Digest != input.Session.ProviderInventoryDigest {
 		return ConformanceTranscript{}, hostError("HOST_CONFORMANCE_TRANSCRIPT_INVALID", "Binding Inventory is not pinned to the Host session", nil)
 	}
@@ -67,6 +70,9 @@ func invocationRecordKey(value InvocationRecord) string {
 func ValidateConformanceTranscript(manifest Manifest, transcript ConformanceTranscript) (ConformanceReport, error) {
 	normalizedManifest, err := NewManifest(manifest)
 	if err != nil {
+		if ErrorCode(err) == "HOST_SCHEMA_UNSUPPORTED" {
+			return ConformanceReport{}, err
+		}
 		return ConformanceReport{}, hostError("HOST_CONFORMANCE_INVALID", "invalid Host Manifest", err)
 	}
 	if normalizedManifest.ControlSurface != SurfaceHostNative {
@@ -76,8 +82,8 @@ func ValidateConformanceTranscript(manifest Manifest, transcript ConformanceTran
 	if err != nil {
 		return ConformanceReport{}, err
 	}
-	if normalizedTranscript.Session.HostID != normalizedManifest.HostID {
-		return ConformanceReport{}, hostError("HOST_CONFORMANCE_INVALID", "Transcript Host does not match Manifest", nil)
+	if normalizedTranscript.Session.HostID != normalizedManifest.HostID || normalizedTranscript.Session.ManifestDigest != normalizedManifest.Digest {
+		return ConformanceReport{}, hostError("HOST_CONFORMANCE_INVALID", "Transcript Host or Manifest digest does not match", nil)
 	}
 	for _, topology := range normalizedTranscript.Session.SupportedTopologies {
 		if !slices.Contains(normalizedManifest.SupportedTopologies, topology) {
@@ -89,19 +95,14 @@ func ValidateConformanceTranscript(manifest Manifest, transcript ConformanceTran
 	}
 
 	verified := make([]Feature, 0, len(normalizedManifest.Features))
-	diagnostics := make([]string, 0)
 	if hasBindingInventoryEvidence(normalizedManifest, normalizedTranscript.Inventory) {
 		verified = append(verified, FeatureProviderBindingInventory)
-	} else {
-		diagnostics = append(diagnostics, "provider-binding-inventory evidence is incomplete")
 	}
 	if hasEnvironmentReportingEvidence(normalizedTranscript) {
 		verified = append(verified, FeatureEnvironmentReporting)
 	}
 	if hasNormalizedReceiptEvidence(normalizedTranscript) {
 		verified = append(verified, FeatureNormalizedReceipts)
-	} else {
-		diagnostics = append(diagnostics, "normalized-receipts evidence is incomplete")
 	}
 	if hasInvocationDeduplicationEvidence(normalizedTranscript.Invocations) {
 		verified = append(verified, FeatureInvocationDedup)
@@ -112,27 +113,46 @@ func ValidateConformanceTranscript(manifest Manifest, transcript ConformanceTran
 	if hasReceiptKind(normalizedTranscript.Receipts, ReceiptCancelled) {
 		verified = append(verified, FeatureCancellation)
 	}
+	verified = retainDeclaredFeatures(normalizedManifest.Features, verified)
 
-	missing := make(map[Feature]bool)
-	for _, feature := range normalizedManifest.Features {
-		missing[feature] = true
-	}
-	filtered := verified[:0]
-	for _, feature := range verified {
-		if missing[feature] {
-			filtered = append(filtered, feature)
+	verifiedDelegation := make([]FeatureID, 0, len(normalizedManifest.DelegationFeatures))
+	for _, observation := range normalizedTranscript.Session.FeatureObservations {
+		if observation.State == AvailabilityAvailable && isLiveObservationSource(observation.Source) && slices.Contains(normalizedManifest.DelegationFeatures, observation.Feature) {
+			verifiedDelegation = append(verifiedDelegation, observation.Feature)
 		}
 	}
-	verified = filtered
+	sort.Slice(verifiedDelegation, func(left, right int) bool { return verifiedDelegation[left] < verifiedDelegation[right] })
+
+	verifiedActions := make([]string, 0, len(normalizedManifest.HostActions))
+	for _, observation := range normalizedTranscript.Session.HostActionObservations {
+		if observation.State == AvailabilityAvailable && isLiveObservationSource(observation.Source) {
+			if declared, ok := hostActionByID(normalizedManifest.HostActions, observation.Action.ID); ok && hostActionContractEqual(declared, observation.Action) {
+				verifiedActions = append(verifiedActions, observation.Action.ID)
+			}
+		}
+	}
+	sort.Strings(verifiedActions)
+
+	diagnostics := make([]string, 0)
 	for _, feature := range normalizedManifest.Features {
 		if !slices.Contains(verified, feature) {
 			diagnostics = append(diagnostics, fmt.Sprintf("feature %q lacks transcript evidence", feature))
 		}
 	}
-	sort.Slice(verified, func(left, right int) bool { return verified[left] < verified[right] })
+	for _, feature := range normalizedManifest.DelegationFeatures {
+		if !slices.Contains(verifiedDelegation, feature) {
+			diagnostics = append(diagnostics, fmt.Sprintf("delegation feature %q lacks live available evidence", feature))
+		}
+	}
+	for _, action := range normalizedManifest.HostActions {
+		if !slices.Contains(verifiedActions, action.ID) {
+			diagnostics = append(diagnostics, fmt.Sprintf("Host action %q lacks live available evidence", action.ID))
+		}
+	}
 	return NewConformanceReport(ConformanceReport{
-		SchemaVersion: HostConformanceReportSchemaV2, ManifestDigest: normalizedManifest.ContentDigest(),
-		TranscriptDigest: normalizedTranscript.Digest, VerifiedFeatures: verified, Diagnostics: diagnostics,
+		SchemaVersion: HostConformanceReportSchemaV3, ManifestDigest: normalizedManifest.Digest,
+		TranscriptDigest: normalizedTranscript.Digest, VerifiedFeatures: verified,
+		VerifiedDelegationFeatures: verifiedDelegation, VerifiedHostActionIDs: verifiedActions, Diagnostics: diagnostics,
 	})
 }
 
@@ -151,7 +171,7 @@ func hasBindingInventoryEvidence(manifest Manifest, inventory BindingInventory) 
 	for _, kind := range manifest.BindingKinds {
 		found := false
 		for _, observation := range inventory.Observations {
-			if observation.Binding.Kind == kind && slices.Contains(observation.Topologies, execution.TopologyCurrent) {
+			if observation.Kind == kind && slices.Contains(observation.Topologies, execution.TopologyCurrent) {
 				found = true
 				break
 			}
@@ -231,4 +251,24 @@ func CloneConformanceTranscript(value ConformanceTranscript) ConformanceTranscri
 	value.Receipts = receipts
 	value.Invocations = append([]InvocationRecord{}, value.Invocations...)
 	return value
+}
+
+func retainDeclaredFeatures(declared, observed []Feature) []Feature {
+	result := make([]Feature, 0, len(observed))
+	for _, feature := range observed {
+		if slices.Contains(declared, feature) {
+			result = append(result, feature)
+		}
+	}
+	sort.Slice(result, func(left, right int) bool { return result[left] < result[right] })
+	return result
+}
+
+func isLiveObservationSource(source ObservationSource) bool {
+	return source == SourceNativeAPI || source == SourceLiveHostIndex || source == SourceLiveFilesystem
+}
+
+func hostActionContractEqual(left, right HostActionContract) bool {
+	return left.ID == right.ID && left.InputSchema == right.InputSchema && left.OutcomeSchema == right.OutcomeSchema &&
+		slices.Equal(left.MaximumEffects, right.MaximumEffects) && slices.Equal(left.Resources, right.Resources)
 }

@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v3/host-integration-set.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "integrations"],
+  "properties": {
+    "schema_version": {"const": "oaw.host-integration-set/v3"},
+    "integrations": {"type": "array", "minItems": 1, "maxItems": 128, "items": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-integration.schema.json"}}
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v3/host-conformance-transcript.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "session", "inventory", "environment_reports", "receipts", "invocations", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.host-conformance-transcript/v3"},
+    "session": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-session.schema.json"},
+    "inventory": {"$ref": "https://open-agent-workflow.dev/schemas/v3/host-binding-inventory.schema.json"},
+    "environment_reports": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json"}},
+    "receipts": {"type": "array", "maxItems": 256, "items": {"$ref": "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json"}},
+    "invocations": {"type": "array", "maxItems": 256, "items": {"$ref": "#/$defs/invocation"}},
+    "digest": {"$ref": "#/$defs/digest"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "^\\S(?:.*\\S)?$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "invocation": {"type": "object", "additionalProperties": false, "required": ["idempotency_key", "dispatch_digest", "receipt_digest"], "properties": {"idempotency_key": {"$ref": "#/$defs/text"}, "dispatch_digest": {"$ref": "#/$defs/digest"}, "receipt_digest": {"$ref": "#/$defs/digest"}}}
+  }
+}

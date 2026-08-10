@@ -1,12 +1,12 @@
 {
-  "schema_version": "oaw.host-integration-set/v2",
+  "schema_version": "oaw.host-integration-set/v3",
   "integrations": [
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/claude-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "claude",
         "control_surface": "policy",
@@ -15,22 +15,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "6b29659d3ccb3ed49d4b417f458bc06d36f7b1f146cc1e63bb00b87db053073b"
       },
-      "manifest_digest": "673220f3db0b3bbceb021a7297a9fd2ae97352d117ccb467c7d813859310b535",
+      "manifest_digest": "6b29659d3ccb3ed49d4b417f458bc06d36f7b1f146cc1e63bb00b87db053073b",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "44970fb31877084ad8ec0a5b4c9ce9d292e119b8e024117b61e1ad8528027a50"
+      "digest": "92d4cc3c002215834691df2902376f274c4eae4848c3b985f45f4329228c860b"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/cline-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "cline",
         "control_surface": "policy",
@@ -39,22 +42,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "c4726093cacc3544497c513cf023b741113cb1e624747212ec112f69bf326db0"
       },
-      "manifest_digest": "22d56a58fdfa15f380c7797a4aed5db2c04610621ef7c0c27063ebd0ccbe7bc3",
+      "manifest_digest": "c4726093cacc3544497c513cf023b741113cb1e624747212ec112f69bf326db0",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "2ff0c15f27e67e84ec44d7f799779805446eb1d81771a8283843835629e7b6ed"
+      "digest": "a09f241fea1e685a5d92e74ccff39ddfd5557ee5d7381cf4f72e2c5e9f35a71d"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "1.0.0",
       "id": "oaw/codex-host",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "1.0.0",
         "host_id": "codex",
         "control_surface": "host-native",
@@ -71,55 +77,48 @@
           "environment-reporting",
           "normalized-receipts",
           "provider-binding-inventory"
-        ]
+        ],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "8aeeea4e405bab3ef355e4ef79810f658e657c302060ac9c9ef56a9ddc85247d"
       },
-      "manifest_digest": "2f6f4c90909e7d23249e633057e1608dfc9bf2b506d60a9a6dcced87e829db38",
+      "manifest_digest": "8aeeea4e405bab3ef355e4ef79810f658e657c302060ac9c9ef56a9ddc85247d",
       "audit": {
         "status": "passed",
         "references": [
           {
-            "reference": "repo://docs/superpowers/specs/2026-08-07-oaw-codex-host-bridge-design.md",
-            "digest": "fa53a947f982fa3cdaa854c6297357f6421d985b755ce9771065004868ea7f3b"
+            "reference": "evidence://codex-host/checks/host-v3-security",
+            "digest": "aea77111be0924e51db4837c8fa94dfcad1dc51206465e3d05891c6a782caa54"
           },
           {
-            "reference": "repo://internal/assets/conformance/codex-host-v1.json",
-            "digest": "1c641f43459c3001b02ffebf5f83281129377ebe5bc00512b01b720aab015b93"
-          },
-          {
-            "reference": "repo://internal/codexbridge/appserver/security_test.go",
-            "digest": "029c35c8e129f48c3bb812b5aaf2e6711425be5e19bf8be0d895a57d49d5a60d"
-          },
-          {
-            "reference": "repo://internal/codexbridge/hook/input_test.go",
-            "digest": "f91e86eb1b8ac27a43eb7b34c4ab18b354e695f1b7fa229ecc5cb611cf8082a5"
-          },
-          {
-            "reference": "repo://internal/codexbridge/hook/output_test.go",
-            "digest": "c5c4a7afb550d66cbccacb3c0486aeaceafdb90f9f56c2de7e1363b9352f8ac1"
+            "reference": "evidence://codex-host/conformance/codex-host-v3",
+            "digest": "0b9ad49285fe50e41c68513a0921b5d24afc07e6c9ea4182242b0a171f04a058"
           }
         ],
-        "digest": "abf39513f433e0ac4e316d4b838a2a50fdbe3e270c907fc94b3f91766417a026"
+        "digest": "9c14a91d2e7d885cd0f1c8856c618aef437f68322a470c5c9027f29191cd0f61"
       },
       "conformance": {
-        "schema_version": "oaw.host-conformance-report/v2",
-        "manifest_digest": "2f6f4c90909e7d23249e633057e1608dfc9bf2b506d60a9a6dcced87e829db38",
-        "transcript_digest": "2e7b3ab6d3b06f299f067e97d6ad6e381bcc7a8a0449d38bbad8d47c192429c4",
+        "schema_version": "oaw.host-conformance-report/v3",
+        "manifest_digest": "8aeeea4e405bab3ef355e4ef79810f658e657c302060ac9c9ef56a9ddc85247d",
+        "transcript_digest": "0b9ad49285fe50e41c68513a0921b5d24afc07e6c9ea4182242b0a171f04a058",
         "verified_features": [
           "environment-reporting",
           "normalized-receipts",
           "provider-binding-inventory"
         ],
+        "verified_delegation_features": [],
+        "verified_host_action_ids": [],
         "diagnostics": [],
-        "digest": "bd305517dc6dda2679bf22cdfbe84460953d9d69fc19e9ccc54c9c15b41c7390"
+        "digest": "68b9f17c89cae41507df3786e78d4679f064e27282a63b34a56ad052cd7e7eb0"
       },
-      "digest": "760e749c338c2a39d7ddda344ab90ed259acd8b37b3c486f9ba88e8e119300b7"
+      "digest": "9af9785ae9e5c3eb5a5e281d0cac0db3a9e4ffe8faa0abbf591126649e0e58fd"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/codex-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "codex",
         "control_surface": "policy",
@@ -128,22 +127,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "d3477693479f2ea0e9e380090040bdd021f9d007ee87cf35822645d46ba6f29e"
       },
-      "manifest_digest": "c20a8730e9240d164a1ea07d373ec648db2a3c6cb8fa9997a828aca4235be3a2",
+      "manifest_digest": "d3477693479f2ea0e9e380090040bdd021f9d007ee87cf35822645d46ba6f29e",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "ff0d3f78e69caa272ca05fcfa525b9fa8e226a097373cc6a1457adfa1a97061e"
+      "digest": "7950658f37ddea714b313919282f6215a3aedd1886bb3541d68b0f3a5c1049d4"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/copilot-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "copilot",
         "control_surface": "policy",
@@ -152,22 +154,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "6dc909de7b011926398da7b9a47170688edcd38f7221af84fe9dca076f8dffd5"
       },
-      "manifest_digest": "85331976854723fead4a0e68f33ffb5a4219decb58e98c1a68901771425c79d1",
+      "manifest_digest": "6dc909de7b011926398da7b9a47170688edcd38f7221af84fe9dca076f8dffd5",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "bae6adc51767addfec895012815cd944b154a3a0d72f9269e27382fa10bed946"
+      "digest": "089a8a77ef8a24464d9c9fc97b33468d2ecf4285a75ea8880ff52eab0afa0d2e"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/cursor-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "cursor",
         "control_surface": "policy",
@@ -176,22 +181,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "380a3651dcd8dc1bf6d7b83327dfeee423ee3bd71f4ecca45b1e9b7369807040"
       },
-      "manifest_digest": "46e45fff28ca0109c0369c011f2a54bfa2743176c6bf04cf726bf2e6939e1f74",
+      "manifest_digest": "380a3651dcd8dc1bf6d7b83327dfeee423ee3bd71f4ecca45b1e9b7369807040",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "6272b91406bb2c6e0be2d509e0f30dbae149a49fe7607c3ef6840b9288768498"
+      "digest": "f67fd0048918df355441328b4e0f72861058a27448e2b70f88f23314e50e1d26"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/gemini-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "gemini",
         "control_surface": "policy",
@@ -200,22 +208,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "a3825e0704bc53e5d3db1b84437f273fd81329a589ce50e547ae6a9a4e53eb71"
       },
-      "manifest_digest": "9037a7100e8faa4df5c6b76c626ffa6b2edf0132d81bf3be04ee3502c6d02232",
+      "manifest_digest": "a3825e0704bc53e5d3db1b84437f273fd81329a589ce50e547ae6a9a4e53eb71",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "336e0a36281767cf50e300e884100f08da56e8fde094f5b69e0064a8b84d9f23"
+      "digest": "0cd82b13de9445a3c3bf22463af22f9160f8bdf1ef030455a25ff4c10c9ddd6e"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/opencode-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "opencode",
         "control_surface": "policy",
@@ -224,22 +235,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "5e6fb59404aad3c5fc56918a3c87c27a96d61d49ebed4db663f3cdff6d29a8a8"
       },
-      "manifest_digest": "6b4c0eaf4556045ee802ebbf7ad54bae7905be346164aca405f8b433e9931c07",
+      "manifest_digest": "5e6fb59404aad3c5fc56918a3c87c27a96d61d49ebed4db663f3cdff6d29a8a8",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "9daffaddaebdbd2d50e8d66526a3452fcbd5509162ac1a199e039971ef3829eb"
+      "digest": "e64733f04716ceb7682df75ce6cb78e03a8bf7d4fde8c1837a441a55074b30bd"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/roo-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "roo",
         "control_surface": "policy",
@@ -248,22 +262,25 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "ba6c5a6fbf8111dfc379c9ce35fe589766460ff25c684230082897086a4dac0d"
       },
-      "manifest_digest": "4e24840799e494beeefd14b69e468bbfda1d5368c9212c2cb5260f8f37a1be4d",
+      "manifest_digest": "ba6c5a6fbf8111dfc379c9ce35fe589766460ff25c684230082897086a4dac0d",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "4609c93f46a683cca0c2fedfdeab050c384030d1067c1b1fae977e2e9480b6a4"
+      "digest": "1789de05074ba340a26ef1b412266c2f1b05f7737a07917b18c10dc08594d0c7"
     },
     {
-      "schema_version": "oaw.host-integration/v2",
+      "schema_version": "oaw.host-integration/v3",
       "integration_version": "2.0.0",
       "id": "oaw/windsurf-policy",
       "manifest": {
-        "schema_version": "oaw.host-manifest/v2",
+        "schema_version": "oaw.host-manifest/v3",
         "manifest_version": "2.0.0",
         "host_id": "windsurf",
         "control_surface": "policy",
@@ -272,15 +289,18 @@
         "supported_topologies": [
           "CURRENT"
         ],
-        "features": []
+        "features": [],
+        "delegation_features": [],
+        "host_actions": [],
+        "digest": "c48dee35a84165d4e94a3e09e20932486680790eb7d6534b481d3a92b3a057fb"
       },
-      "manifest_digest": "c9d25d1968a6b776ec14f9534435792ccfb6dbb62d97d116e33973ab2cdff40f",
+      "manifest_digest": "c48dee35a84165d4e94a3e09e20932486680790eb7d6534b481d3a92b3a057fb",
       "audit": {
         "status": "pending",
         "references": [],
         "digest": "7c0b71d3cf7a4c3021707ee0e406853391147a770776a056f13239b045589652"
       },
-      "digest": "f3449a4983cec18f7544bcfc5bdd5aa1dbba88c6f4de8729ac20d68d05729efc"
+      "digest": "bf1593840495fbeedbee5ce3d9868fb31786c72977881b92050d5ff0639780f8"
     }
   ]
 }
