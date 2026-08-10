@@ -256,15 +256,16 @@ Requirements:
 `SP-FULL` remains the complete Superpowers methodology. It has two legal
 execution alternatives:
 
-1. SDD macro: `subagent-driven-development` expands workspace, implementer,
-   per-task review/remediation, final review, and branch finish.
-2. Inline macro: `executing-plans` expands workspace and execution, while
-   standalone Superpowers TDD, review/remediation, verification, and finish
-   provide the remaining outcomes.
+1. SDD macro: `subagent-driven-development` dispatches workspace preparation
+   before the parent, credits implementer TDD and per-task review inside the
+   parent, then dispatches final verification and branch finish after it.
+2. Inline macro: `executing-plans` dispatches workspace before execution and
+   branch finish after it, while standalone Superpowers TDD,
+   review/remediation, and verification provide the remaining outcomes.
 
-The compiler must not schedule SDD's internal task/final reviews or finish as
-additional peer invocations. `executing-plans` also calls branch finish; that
-internal call is credited once.
+The compiler must not schedule SDD's credit-only TDD/task-review internals as
+additional peer invocations. Dispatch-before/after macro children receive one
+cursor each and cannot also be scheduled as peers.
 
 Eligibility requirements:
 
@@ -407,6 +408,11 @@ Required invariants:
 - A slot pipeline is ordered; producer output must satisfy consumer input.
 - A macro's mandatory internal calls are part of compilation.
 - An internal call credited to a slot cannot also be scheduled as a peer.
+- Every internal call declares one execution mode: `credit-only` when the
+  parent Binding performs the procedure, `dispatch-before` for a separately
+  granted prerequisite, or `dispatch-after` for a separately granted
+  continuation. Credit-only calls never receive a Grant; dispatching calls
+  receive exactly one cursor/Grant and cannot also appear as peers.
 - An overlay may select a documented alternative or disable an optional call.
   It cannot contradict a mandatory upstream instruction.
 - Procedures attach to a stage and do not emit independent mainline
@@ -545,12 +551,14 @@ The authority-bearing contract set advances together:
 | Profile Recipe | `oaw.profile-recipe/v3` |
 | Host Manifest | `oaw.host-manifest/v3` |
 | Host Binding Inventory | `oaw.host-binding-inventory/v3` |
+| Host Invocation Receipt | `oaw.host-invocation-receipt/v3` |
+| Host Conformance Transcript / Report | v4 |
 | Provider Instance / Resolution / Registry | v4 |
 | Execution Graph | `oaw.execution-graph/v4` |
 | Lifecycle Bundle | `oaw.lifecycle-bundle/v4` |
 | Capability Grant | v3 |
 | Dispatch Packet | v2 |
-| Coordinator Snapshot/Result/Revision | v2 where they embed changed authority records |
+| Workflow Command/Result/Snapshot/Revision | v2 |
 
 Profile Alias Set v1 remains valid because all four aliases remain and its
 meaning does not change. User Config v3 remains readable because deny, pin,
@@ -562,7 +570,7 @@ Hard-cut rules:
 
 - Provider descriptor v3 is rejected.
 - Profile Recipe v2 is rejected.
-- Old execution graphs, Bundles, Grants, and Coordinator state cannot dispatch
+- Old execution graphs, Bundles, Grants, Host Receipts, and Coordinator state cannot dispatch
   under the new binary.
 - No dual reader, automatic conversion, silent fallback, or alias remapping is
   provided.
@@ -691,8 +699,8 @@ The migration is complete only when:
 12. MATT-SP-HYBRID/default uses Matt TDD and the compatible SP inline path;
 13. USER-DEFINED Profiles can combine verified compatible installed Bindings
     per slot and fail closed on every incompatible combination;
-14. v3 Provider descriptors, v2 Recipes, and old compiled authority cannot
-    execute;
+14. v3 Provider descriptors, v2 Recipes, old Host Receipts, and old compiled
+    authority cannot execute;
 15. current Host re-observation after implementation produces truthful
     eligibility and a new Coordinator START result;
 16. tests, coverage, security review, documentation parity, and fresh final
