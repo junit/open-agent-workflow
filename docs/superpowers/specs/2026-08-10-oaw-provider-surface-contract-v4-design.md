@@ -433,6 +433,8 @@ Each descriptor records:
 - Provider family and Distribution IDs;
 - immutable repository revision or content-addressed source;
 - complete Binding tree digest;
+- Distribution-relative `ContentRoot` and Host-installation-relative
+  `InstallRoot` for each Binding;
 - Host and surface;
 - Binding kind: `skill`, `agent`, `role`, `instruction`, or `tool`;
 - exact reference and invocation disposition;
@@ -449,12 +451,23 @@ Content digests use `sha256:<64 lowercase hex>`. A tree digest covers a sorted
 canonical list of relative paths, executable modes, sizes, and content hashes.
 Symlinks and escaping paths are rejected.
 
+`ContentRoot` locates the Binding tree inside the immutable Distribution.
+`InstallRoot` locates the observed tree relative to the Host installation
+root. Both are non-empty clean relative paths and must resolve within their
+respective roots. They may be identical for repository-style installations or
+different for flattened installations. For example, Matt's upstream
+`skills/engineering/to-spec` tree may be observed at `to-spec` beneath a
+Host's flat skills root. Provenance verification compares the complete tree at
+`ContentRoot` with the complete observed tree at `InstallRoot`; callers must
+not infer either path from the other.
+
 Accepted provenance dispositions:
 
 - `distribution-attested`: a Provider-specific installation root or manifest
   proves the Distribution and the tree digest matches.
 - `content-equivalent`: a flattened installation lacks origin metadata but the
-  complete Binding tree exactly matches the pinned Distribution member.
+  complete tree at `InstallRoot` exactly matches the pinned Distribution tree
+  at `ContentRoot`.
 
 Content equivalence proves behavior, not historical origin. Same-name foreign
 content does not satisfy either disposition.
