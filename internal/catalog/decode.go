@@ -533,7 +533,7 @@ func validateOwnerShape(slot *SlotRecipe) error {
 		}
 	case OwnerHostAction:
 		expected := expectedHostAction(slot.SlotID)
-		if providerRequired || expected == "" || slot.OutcomeOwner.StepID != "" || slot.OutcomeOwner.HostAction != expected || slot.HostAction == nil || slot.HostAction.ID != expected || slot.HostAction.InputArtifact == "" || slot.HostAction.OutputArtifact == "" || len(slot.Pipeline) != 0 {
+		if providerRequired || expected == "" || slot.OutcomeOwner.StepID != "" || slot.OutcomeOwner.HostAction != expected || slot.HostAction == nil || slot.HostAction.ID != expected || slot.HostAction.InputArtifact == "" || slot.HostAction.OutputArtifact == "" {
 			return errors.New("OUTCOME_OWNER_MISSING: invalid Host action owner")
 		}
 	case OwnerNone:

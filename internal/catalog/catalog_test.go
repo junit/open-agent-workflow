@@ -209,6 +209,26 @@ func TestCatalogV4AllowsSuppressionOnlyOverlay(t *testing.T) {
 	}
 }
 
+func TestCatalogV4AllowsSupportingPipelineWithHostActionOwner(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	workspace := &recipe.Slots[3]
+	workspace.Pipeline = []PipelineStep{{
+		ID: "workspace-guidance", Selector: BindingSelector{ProviderID: provider.ID, BindingID: "binding"},
+		StageSpan: []SlotID{SlotWorkspacePreparation}, RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact",
+	}}
+	if _, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil); err != nil {
+		t.Fatalf("New() rejected supporting pipeline with Host action owner: %v", err)
+	}
+
+	provider.Bindings[0].Responsibilities = append(provider.Bindings[0].Responsibilities, ResponsibilityClaim{
+		Namespace: OwnershipProcedure, Name: "workspace-owner", SlotID: SlotWorkspacePreparation, OutcomeOwner: true,
+	})
+	if _, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil); err == nil || !strings.Contains(err.Error(), "OUTCOME_OWNER_AMBIGUOUS") {
+		t.Fatalf("New() error = %v, want OUTCOME_OWNER_AMBIGUOUS", err)
+	}
+}
+
 func TestCatalogV4NormalizesSetLikeOrder(t *testing.T) {
 	provider := validProviderV4Record()
 	recipe := validRecipeV3Record()

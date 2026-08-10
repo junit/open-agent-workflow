@@ -181,6 +181,8 @@ func validateRecipeGraph(recipe *ProfileRecipeRecord, providers map[string]Provi
 			if ownerCount == 0 || !ownerFound {
 				return errors.New("OUTCOME_OWNER_MISSING: designated Provider step has no matching outcome claim")
 			}
+		} else if slot.OutcomeOwner.Kind == OwnerHostAction && ownerCount != 0 {
+			return errors.New("OUTCOME_OWNER_AMBIGUOUS: supporting pipeline competes with Host action outcome")
 		}
 	}
 
