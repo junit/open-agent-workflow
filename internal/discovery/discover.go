@@ -33,15 +33,20 @@ type InstallationHint struct {
 	DiscoveryProbeID string
 }
 
+type evidenceSeed struct {
+	probeID string
+	kind    string
+}
+
 type candidateAccumulator struct {
 	providerID   string
 	hostID       string
-	surfaceID    string
+	surface      string
 	distribution string
 	location     string
 	version      string
 	direct       bool
-	evidence     []Evidence
+	evidence     []evidenceSeed
 }
 
 func Discover(value catalog.Catalog, options Options) (Report, error) {
@@ -81,6 +86,10 @@ func Discover(value catalog.Catalog, options Options) (Report, error) {
 		return Report{}, err
 	}
 
+	providerIndex := make(map[string]catalog.ProviderDescriptorRecord, len(providers))
+	for _, provider := range providers {
+		providerIndex[provider.ID] = provider
+	}
 	keys := make([]string, 0, len(accumulators))
 	for key := range accumulators {
 		keys = append(keys, key)
@@ -88,7 +97,7 @@ func Discover(value catalog.Catalog, options Options) (Report, error) {
 	sort.Strings(keys)
 	candidates := make([]Candidate, 0, len(keys))
 	for _, key := range keys {
-		candidate, buildErr := buildCandidate(accumulators[key])
+		candidate, buildErr := buildCandidate(accumulators[key], providerIndex)
 		if buildErr != nil {
 			return Report{}, buildErr
 		}
@@ -109,15 +118,11 @@ func discoverDirect(accumulators map[string]*candidateAccumulator, root string, 
 	if err := requireDirectory(location, providerID, probe.ID); err != nil {
 		return err
 	}
-	data, physical, found, err := readEvidence(location, probe.EvidencePath, maximum)
-	if err != nil || !found {
+	if _, _, found, err := readEvidence(location, probe.EvidencePath, maximum); err != nil || !found {
 		return err
 	}
-	accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.Distribution, location, "", true)
-	accumulator.evidence = append(accumulator.evidence, Evidence{
-		ProviderID: providerID, HostID: hostID, SurfaceID: probe.Surface,
-		ProbeID: probe.ID, Kind: probe.Kind, Path: physical, ContentDigest: canonicaljson.DigestBytes(data),
-	})
+	accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.DistributionID, location, "", true)
+	accumulator.evidence = append(accumulator.evidence, evidenceSeed{probeID: probe.ID, kind: probe.Kind})
 	return nil
 }
 
@@ -145,18 +150,15 @@ func discoverVersions(accumulators map[string]*candidateAccumulator, root string
 		if !utf8.ValidString(entry.Name()) || hasControl(entry.Name()) {
 			return fmt.Errorf("DISCOVERY_VERSION_INVALID: %s/%s", providerID, probe.ID)
 		}
-		data, physical, found, err := readEvidence(versionDirectory, probe.EvidencePath, maximum)
+		_, _, found, err := readEvidence(versionDirectory, probe.EvidencePath, maximum)
 		if err != nil {
 			return err
 		}
 		if !found {
 			continue
 		}
-		accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.Distribution, versionDirectory, entry.Name(), false)
-		accumulator.evidence = append(accumulator.evidence, Evidence{
-			ProviderID: providerID, HostID: hostID, SurfaceID: probe.Surface,
-			ProbeID: probe.ID, Kind: probe.Kind, Path: physical, Version: entry.Name(), ContentDigest: canonicaljson.DigestBytes(data),
-		})
+		accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.DistributionID, versionDirectory, entry.Name(), false)
+		accumulator.evidence = append(accumulator.evidence, evidenceSeed{probeID: probe.ID, kind: probe.Kind})
 	}
 	return nil
 }
@@ -191,16 +193,13 @@ func discoverInstallations(accumulators map[string]*candidateAccumulator, provid
 		if probe.Kind != "one-level-version-path-exists" {
 			return fmt.Errorf("DISCOVERY_PROBE_UNSUPPORTED: %s/%s kind %q", provider.ID, probe.ID, probe.Kind)
 		}
-		data, physical, found, err := readEvidence(location, probe.EvidencePath, maximum)
+		_, _, found, err = readEvidence(location, probe.EvidencePath, maximum)
 		if err != nil || !found {
 			return err
 		}
 		version := filepath.Base(location)
-		accumulator := ensureAccumulator(accumulators, provider.ID, hostID, probe.Surface, probe.Distribution, location, version, false)
-		accumulator.evidence = append(accumulator.evidence, Evidence{
-			ProviderID: provider.ID, HostID: hostID, SurfaceID: probe.Surface,
-			ProbeID: probe.ID, Kind: probe.Kind, Path: physical, Version: version, ContentDigest: canonicaljson.DigestBytes(data),
-		})
+		accumulator := ensureAccumulator(accumulators, provider.ID, hostID, probe.Surface, probe.DistributionID, location, version, false)
+		accumulator.evidence = append(accumulator.evidence, evidenceSeed{probeID: probe.ID, kind: probe.Kind})
 	}
 	return nil
 }
@@ -214,68 +213,62 @@ func findProbe(probes []catalog.DiscoveryProbe, id string) (catalog.DiscoveryPro
 	return catalog.DiscoveryProbe{}, false
 }
 
-func ensureAccumulator(values map[string]*candidateAccumulator, providerID, hostID, surfaceID, distribution, location, version string, direct bool) *candidateAccumulator {
-	mapKey := strings.Join([]string{providerID, hostID, surfaceID, distribution, location, version}, "\x00")
+func ensureAccumulator(values map[string]*candidateAccumulator, providerID, hostID, surface, distribution, location, version string, direct bool) *candidateAccumulator {
+	mapKey := strings.Join([]string{providerID, hostID, surface, distribution, location, version}, "\x00")
 	if value, found := values[mapKey]; found {
 		return value
 	}
-	value := &candidateAccumulator{
-		providerID: providerID, hostID: hostID, surfaceID: surfaceID, distribution: distribution,
-		location: location, version: version, direct: direct, evidence: []Evidence{},
-	}
+	value := &candidateAccumulator{providerID: providerID, hostID: hostID, surface: surface, distribution: distribution, location: location, version: version, direct: direct, evidence: []evidenceSeed{}}
 	values[mapKey] = value
 	return value
 }
 
-func buildCandidate(value *candidateAccumulator) (Candidate, error) {
-	evidence := normalizeEvidence(value.evidence)
-	evidenceDigest, err := digestEvidence(evidence)
+func buildCandidate(value *candidateAccumulator, providers map[string]catalog.ProviderDescriptorRecord) (Candidate, error) {
+	provider, exists := providers[value.providerID]
+	if !exists {
+		return Candidate{}, errors.New("PROVIDER_PROVENANCE_MISMATCH: Provider descriptor is unavailable")
+	}
+	distribution, exists := findDistribution(provider.Distributions, value.distribution)
+	if !exists {
+		return Candidate{}, errors.New("PROVIDER_PROVENANCE_MISMATCH: Distribution is unavailable")
+	}
+	installationKey, err := deriveInstallationKey(value.providerID, value.hostID, value.surface, value.distribution, value.location)
 	if err != nil {
 		return Candidate{}, err
 	}
-	version := value.version
-	if value.direct {
-		version = "content-" + evidenceDigest
+	attestation := attestCandidate(provider, distribution, value.hostID, value.surface, value.location, value.version)
+	evidence := make([]Evidence, len(value.evidence))
+	for index, seed := range value.evidence {
+		evidence[index] = Evidence{ProviderID: value.providerID, HostID: value.hostID, Surface: value.surface, DistributionID: value.distribution, ObservedRevision: attestation.observedRevision, InstallationKey: installationKey, ProbeID: seed.probeID, Kind: seed.kind, BindingRoots: attestation.bindingRoots}
 	}
-	distributionKey, err := deriveDistributionKey(value.providerID, value.distribution, value.location, version, evidenceDigest)
+	normalizedEvidence := normalizeEvidence(evidence)
+	evidenceDigest, err := digestEvidence(normalizedEvidence)
 	if err != nil {
 		return Candidate{}, err
 	}
-	installationKey, err := deriveInstallationKey(value.hostID, value.surfaceID, distributionKey)
-	if err != nil {
-		return Candidate{}, err
+	for index := range normalizedEvidence {
+		normalizedEvidence[index].InstallationKey = installationKey
 	}
-	for i := range evidence {
-		evidence[i].DistributionKey = distributionKey
-		evidence[i].InstallationKey = installationKey
-	}
-	return Candidate{
-		ProviderID: value.providerID, HostID: value.hostID, SurfaceID: value.surfaceID,
-		DistributionKey: distributionKey, InstallationKey: installationKey,
-		Location: value.location, Version: version, EvidenceDigest: evidenceDigest, Evidence: evidence,
-	}, nil
+	return Candidate{ProviderID: value.providerID, HostID: value.hostID, Surface: value.surface, DistributionID: value.distribution, InstallationKey: installationKey, DiagnosticLocation: value.location, ObservedRevision: attestation.observedRevision, DistributionTreeDigest: attestation.distributionTreeDigest, Provenance: attestation.provenance, BindingRoots: normalizeBindingRoots(attestation.bindingRoots), EvidenceDigest: evidenceDigest, Evidence: normalizedEvidence}, nil
 }
 
-func deriveDistributionKey(providerID, distribution, location, version, evidenceDigest string) (string, error) {
+func findDistribution(values []catalog.DistributionRecord, id string) (catalog.DistributionRecord, bool) {
+	for _, value := range values {
+		if value.ID == id {
+			return value, true
+		}
+	}
+	return catalog.DistributionRecord{}, false
+}
+
+func deriveInstallationKey(providerID, hostID, surface, distributionID, location string) (string, error) {
 	digest, _, err := canonicaljson.Digest(struct {
 		ProviderID     string `json:"provider_id"`
-		Distribution   string `json:"distribution"`
+		HostID         string `json:"host_id"`
+		Surface        string `json:"surface"`
+		DistributionID string `json:"distribution_id"`
 		Location       string `json:"location"`
-		Version        string `json:"version"`
-		EvidenceDigest string `json:"evidence_digest"`
-	}{providerID, distribution, location, version, evidenceDigest})
-	if err != nil {
-		return "", err
-	}
-	return "distribution-" + digest, nil
-}
-
-func deriveInstallationKey(hostID, surfaceID, distributionKey string) (string, error) {
-	digest, _, err := canonicaljson.Digest(struct {
-		HostID          string `json:"host_id"`
-		SurfaceID       string `json:"surface_id"`
-		DistributionKey string `json:"distribution_key"`
-	}{hostID, surfaceID, distributionKey})
+	}{providerID, hostID, surface, distributionID, location})
 	if err != nil {
 		return "", err
 	}
@@ -305,7 +298,7 @@ func physicalInstallation(value string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("DISCOVERY_INSTALLATION_INVALID: %w", err)
 	}
-	return physical, nil
+	return filepath.Clean(physical), nil
 }
 
 func physicalDirectory(value string) (string, error) {
@@ -436,7 +429,7 @@ func resolveImmediateChild(root, prefix, name string) (string, error) {
 }
 
 func validateProbePath(value string) error {
-	if value == "" || path.IsAbs(value) || path.Clean(value) != value || strings.ContainsAny(value, `\*?[]{}()`) {
+	if value == "" || path.IsAbs(value) || path.Clean(value) != value || strings.ContainsAny(value, `\*?[]{}():`) {
 		return fmt.Errorf("DISCOVERY_PATH_INVALID: %q", value)
 	}
 	for _, segment := range strings.Split(value, "/") {
