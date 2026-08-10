@@ -103,6 +103,13 @@ func loadFromFS(files fs.FS) (catalog.Catalog, error) {
 	if err != nil {
 		return catalog.Catalog{}, fmt.Errorf("BUILTIN_CATALOG_INVALID: %w", err)
 	}
+	matrix, err := loadProfileMatrixFromFS(files)
+	if err != nil {
+		return catalog.Catalog{}, err
+	}
+	if err := ValidateProfileMatrix(result, audit, matrix); err != nil {
+		return catalog.Catalog{}, err
+	}
 	return result, nil
 }
 
