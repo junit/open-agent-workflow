@@ -636,7 +636,9 @@ Implementation must preserve unrelated user changes and untracked artifacts.
 - `grill-with-docs` credits `grilling + domain-modeling` once.
 - Matt `to-spec -> to-tickets` preserves ordered artifacts and separate
   explicit invocations.
-- SDD credits workspace, implementation, review, and finish internals once.
+- SDD dispatches workspace preparation before the parent, credits TDD and
+  per-task review internals once, and dispatches final verification and branch
+  finish after the parent.
 - the SP inline alternative requires standalone review and verification.
 - the default Hybrid pins Matt TDD, excludes SP TDD and SDD, and retains SP
   standalone review.
