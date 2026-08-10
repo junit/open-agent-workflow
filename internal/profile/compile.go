@@ -289,11 +289,8 @@ func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipe
 			multiKey := selectorIdentity(step.Selector) + "\x00" + stageSpanIdentity(step.StageSpan)
 			if len(step.StageSpan) > 1 {
 				if prior, found := multiUnits[multiKey]; found {
-					for _, unit := range prior {
-						if unit.ParentUnitID == "" {
-							stepUnits[stepKey] = unit.UnitID
-							break
-						}
+					if ownerUnitID, found := outcomeUnitID(prior, slotRecipe.SlotID); found {
+						stepUnits[stepKey] = ownerUnitID
 					}
 					for _, unit := range prior {
 						decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, StepID: step.ID, UnitID: unit.UnitID, Disposition: CreditInternalOnly, ReasonCode: "MULTI_SLOT_CREDIT", Detail: "multi-slot Binding is anchored in an earlier slot"})
@@ -318,10 +315,9 @@ func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipe
 				if unit.Disposition == CreditInternalOnly {
 					decisions = append(decisions, CompileDecision{SlotID: unit.AnchorSlotID, StepID: unit.StepID, UnitID: unit.UnitID, Disposition: CreditInternalOnly, ReasonCode: "MACRO_INTERNAL_CREDIT", Detail: "internal Binding is credited without Coordinator dispatch"})
 				}
-				if unit.ParentUnitID == "" {
-					stepUnits[stepKey] = unit.UnitID
-					break
-				}
+			}
+			if ownerUnitID, found := outcomeUnitID(units, slotRecipe.SlotID); found {
+				stepUnits[stepKey] = ownerUnitID
 			}
 			if len(step.StageSpan) > 1 {
 				multiUnits[multiKey] = cloneResolvedBindings(units)
@@ -420,6 +416,10 @@ func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipe
 				}
 			}
 		}
+		if len(pipeline) != 0 {
+			compiled.EntryArtifact = pipeline[0].InputArtifact
+			compiled.OutcomeArtifact = pipeline[len(pipeline)-1].OutputArtifact
+		}
 		if slotRecipe.HostAction != nil {
 			action, values := compileHostAction(context.host, *slotRecipe.HostAction, slotRecipe.SlotID, context.topology)
 			diagnostics = append(diagnostics, values...)
@@ -428,10 +428,6 @@ func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipe
 				compiled.EntryArtifact = slotRecipe.HostAction.InputArtifact
 				compiled.OutcomeArtifact = slotRecipe.HostAction.OutputArtifact
 			}
-		}
-		if slotRecipe.SlotID == catalog.SlotIncidentRecovery && compiled.Active {
-			compiled.EntryArtifact = firstPipelineArtifact(pipeline, true)
-			compiled.OutcomeArtifact = firstPipelineArtifact(pipeline, false)
 		}
 		if !compiled.Active {
 			decisions = append(decisions, CompileDecision{SlotID: slotRecipe.SlotID, Disposition: OmittedBySelection, ReasonCode: "CONDITIONAL_SLOT_INACTIVE", Detail: "conditional slot has no selected or available pipeline"})
@@ -447,6 +443,22 @@ func compileSelectedRecipe(context compilerContext, recipe catalog.ProfileRecipe
 		slots[slotIndex].Terminal = slots[slotIndex].Active && slots[slotIndex].SlotID != catalog.SlotIncidentRecovery && len(slots[slotIndex].Transitions) == 0
 	}
 	return slots, pendingRoutes, decisions, diagnostics, nil
+}
+
+func outcomeUnitID(units []ResolvedBinding, slotID catalog.SlotID) (string, bool) {
+	result := ""
+	for _, unit := range units {
+		if unit.Disposition == OmittedBySelection || !slices.ContainsFunc(unit.Responsibilities, func(claim catalog.ResponsibilityClaim) bool {
+			return claim.SlotID == slotID && claim.OutcomeOwner
+		}) {
+			continue
+		}
+		if result != "" {
+			return "", false
+		}
+		result = unit.UnitID
+	}
+	return result, result != ""
 }
 
 func incidentAddOnForRoute(addOns []catalog.AddOnRecord, route catalog.IncidentRoute) (catalog.AddOnRecord, bool) {
@@ -465,16 +477,6 @@ func hasSlotDiagnostic(values []CompileDiagnostic, slotID catalog.SlotID) bool {
 		}
 	}
 	return false
-}
-
-func firstPipelineArtifact(pipeline []ResolvedBinding, input bool) string {
-	if len(pipeline) == 0 {
-		return ""
-	}
-	if input {
-		return pipeline[0].InputArtifact
-	}
-	return pipeline[len(pipeline)-1].OutputArtifact
 }
 
 func stageSpanIdentity(values []catalog.SlotID) string {
@@ -528,7 +530,7 @@ func compileOwner(recipe catalog.SlotRecipe, slot CompiledSlot, stepUnits map[st
 		matches := []ResolvedBinding{}
 		for _, pipeline := range pipelines {
 			for _, unit := range pipeline {
-				if unit.UnitID == unitID && unit.ParentUnitID == "" && unit.Disposition != OmittedBySelection {
+				if unit.UnitID == unitID && unit.Disposition != OmittedBySelection {
 					matches = append(matches, unit)
 				}
 			}

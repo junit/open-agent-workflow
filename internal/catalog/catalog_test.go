@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -131,6 +132,13 @@ func TestCatalogV4RejectsCompleteInvariantMatrix(t *testing.T) {
 			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: InternalCreditOnly, StageSpan: []SlotID{SlotImplementation}}}
 			recipe.Slots[4].Pipeline = append(recipe.Slots[4].Pipeline, PipelineStep{ID: "helper", Selector: BindingSelector{ProviderID: provider.ID, BindingID: "helper"}, StageSpan: []SlotID{SlotImplementation}, RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact"})
 		}, "MACRO_INTERNAL_CONFLICT"},
+		{"macro child owner ambiguous", func(provider *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationModel, true)
+			helper := &provider.Bindings[len(provider.Bindings)-1]
+			helper.StageSpan = []SlotID{SlotImplementation}
+			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: InternalCreditOnly, StageSpan: []SlotID{SlotImplementation}}}
+			recipe.Slots[4].Pipeline[0].StageSpan = []SlotID{SlotImplementation}
+		}, "OUTCOME_OWNER_AMBIGUOUS"},
 		{"host action used as selector", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
 			recipe.Slots[0].Pipeline[0].Selector = BindingSelector{ProviderID: "host/actions", BindingID: "workspace.prepare-or-confirm"}
 		}, "PROVIDER_BINDING_NOT_FOUND"},
@@ -160,6 +168,31 @@ func TestCatalogV4RejectsCompleteInvariantMatrix(t *testing.T) {
 				t.Fatalf("New() error = %v, want %s", err, test.code)
 			}
 		})
+	}
+}
+
+func TestCatalogV4AllowsInternalMacroOutcomeOwner(t *testing.T) {
+	provider := validProviderV4Record()
+	provider.Bindings[0].Responsibilities = slices.DeleteFunc(provider.Bindings[0].Responsibilities, func(claim ResponsibilityClaim) bool {
+		return claim.SlotID == SlotReviewRemediation
+	})
+	addHelperBinding(&provider, "review", InvocationModel, true)
+	review := &provider.Bindings[len(provider.Bindings)-1]
+	review.Responsibilities = []ResponsibilityClaim{{Namespace: OwnershipAssurance, Name: "review", SlotID: SlotReviewRemediation, OutcomeOwner: true}}
+	review.StageSpan = []SlotID{SlotReviewRemediation}
+	provider.Bindings[0].StageSpan = []SlotID{SlotProblemFraming, SlotSolutionSpecification, SlotDeliveryPlanning, SlotWorkspacePreparation, SlotImplementation, SlotImplementationTDD, SlotIncidentRecovery, SlotReviewRemediation, SlotFreshVerification}
+	provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "review", Required: true, Mode: InternalCreditOnly, StageSpan: []SlotID{SlotReviewRemediation}}}
+
+	recipe := validRecipeV3Record()
+	recipe.Slots[7].Pipeline = []PipelineStep{{
+		ID: "implementation-review", Selector: BindingSelector{ProviderID: provider.ID, BindingID: "binding"},
+		StageSpan:             []SlotID{SlotProblemFraming, SlotSolutionSpecification, SlotDeliveryPlanning, SlotWorkspacePreparation, SlotImplementation, SlotImplementationTDD, SlotIncidentRecovery, SlotReviewRemediation, SlotFreshVerification},
+		RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact",
+	}}
+	recipe.Slots[7].OutcomeOwner = OutcomeOwner{Kind: OwnerProviderBinding, StepID: "implementation-review"}
+
+	if _, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, []ProfileAliasRecord{{Alias: "MATT-FULL", RecipeID: recipe.ID}}); err != nil {
+		t.Fatalf("New() rejected internal macro outcome owner: %v", err)
 	}
 }
 

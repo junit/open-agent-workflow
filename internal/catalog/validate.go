@@ -160,11 +160,13 @@ func validateRecipeGraph(recipe *ProfileRecipeRecord, providers map[string]Provi
 			step := &slot.Pipeline[stepIndex]
 			provider := providers[step.Selector.ProviderID]
 			binding := stepBindings[string(slot.SlotID)+"\x00"+step.ID]
-			if hasOutcomeClaim(binding.Responsibilities, slot.SlotID) {
-				ownerCount++
-				if slot.OutcomeOwner.Kind == OwnerProviderBinding && slot.OutcomeOwner.StepID == step.ID {
-					ownerFound = true
-				}
+			claims, err := expandedOutcomeClaimCount(provider, binding, slot.SlotID, map[string]bool{})
+			if err != nil {
+				return err
+			}
+			ownerCount += claims
+			if claims == 1 && slot.OutcomeOwner.Kind == OwnerProviderBinding && slot.OutcomeOwner.StepID == step.ID {
+				ownerFound = true
 			}
 			for _, call := range binding.InternalCalls {
 				if _, peer := activeSteps[provider.ID+"\x00"+call.BindingID]; peer {
@@ -173,11 +175,11 @@ func validateRecipeGraph(recipe *ProfileRecipeRecord, providers map[string]Provi
 			}
 		}
 		if slot.OutcomeOwner.Kind == OwnerProviderBinding {
-			if ownerCount == 0 || !ownerFound {
-				return errors.New("OUTCOME_OWNER_MISSING: designated Provider step has no matching outcome claim")
-			}
 			if ownerCount > 1 {
 				return errors.New("OUTCOME_OWNER_AMBIGUOUS: multiple active Bindings claim the slot outcome")
+			}
+			if ownerCount == 0 || !ownerFound {
+				return errors.New("OUTCOME_OWNER_MISSING: designated Provider step has no matching outcome claim")
 			}
 		}
 	}
@@ -237,6 +239,33 @@ func validateRecipeGraph(recipe *ProfileRecipeRecord, providers map[string]Provi
 		}
 	}
 	return nil
+}
+
+func expandedOutcomeClaimCount(provider ProviderDescriptorRecord, binding BindingRecord, slot SlotID, stack map[string]bool) (int, error) {
+	if stack[binding.ID] {
+		// Macro expansion owns cycle diagnostics; ownership validation only
+		// counts the acyclic prefix available at this Catalog boundary.
+		return 0, nil
+	}
+	stack[binding.ID] = true
+	defer delete(stack, binding.ID)
+
+	count := 0
+	if hasOutcomeClaim(binding.Responsibilities, slot) {
+		count++
+	}
+	for _, call := range binding.InternalCalls {
+		child, exists := bindingByID(provider.Bindings, call.BindingID)
+		if !exists {
+			return 0, errors.New("PROVIDER_BINDING_NOT_FOUND: internal-call Binding is missing")
+		}
+		childCount, err := expandedOutcomeClaimCount(provider, child, slot, stack)
+		if err != nil {
+			return 0, err
+		}
+		count += childCount
+	}
+	return count, nil
 }
 
 func splitSelectorKey(value string) (string, string, bool) {

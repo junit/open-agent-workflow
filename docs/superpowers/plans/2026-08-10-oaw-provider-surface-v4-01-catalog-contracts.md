@@ -589,15 +589,18 @@ fresh-verification     provider-binding or host-action:verification.execute
 closeout               provider-binding or host-action:closeout.execute
 ```
 
-The designated Provider owner must reference one pipeline step whose resolved
-Binding declares one matching `ResponsibilityClaim` with
-`OutcomeOwner=true`. No other active step may claim that slot outcome. A gate
-never counts as an owner. Require all ten slots exactly once and in canonical
-order. Require every span to be a non-empty contiguous subsequence of
-`CanonicalSlots()`. Preserve pipeline, stage-span, internal-call, gate,
-transition, and overlay-precedence order. A credit-only internal call may
-reference a normally callable Binding because the parent performs it;
-dispatch-before/after requires a non-`internal` invocation disposition.
+The designated Provider owner must reference one pipeline step whose expanded
+macro contains exactly one Binding with a matching `ResponsibilityClaim` and
+`OutcomeOwner=true`. That owner may be the pipeline Binding itself or one of
+its credited internal descendants; the Recipe still designates the enclosing
+step, while the compiled graph records the exact owning unit. No other active
+step or descendant may claim that slot outcome. A gate never counts as an
+owner. Require all ten slots exactly once and in canonical order. Require
+every span to be a non-empty contiguous subsequence of `CanonicalSlots()`.
+Preserve pipeline, stage-span, internal-call, gate, transition, and
+overlay-precedence order. A credit-only internal call may reference a normally
+callable Binding because the parent performs it; dispatch-before/after requires
+a non-`internal` invocation disposition.
 
 - [ ] **Step 6: Replace deep cloning, normalization, and Catalog digesting in the same change**
 

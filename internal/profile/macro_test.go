@@ -122,3 +122,50 @@ func TestCompileOptionalInternalUnavailablePersistsOmittedDecision(t *testing.T)
 	}
 	t.Fatalf("optional Binding omission was not persisted: %#v", graph.Decisions)
 }
+
+func TestCreditedInternalCanOwnItsDeclaredSlot(t *testing.T) {
+	fixture := newProfileFixture(t, func(provider *catalog.ProviderDescriptorRecord, recipe *catalog.ProfileRecipeRecord) {
+		parent, _ := testBinding(provider.Bindings, "implementation")
+		child, _ := testBinding(provider.Bindings, "review")
+		child.ID = "internal-review"
+		child.ContentRoot = "skills/internal-review"
+		child.InstallRoot = "skills/internal-review"
+		child.Reference = "test:internal-review"
+		child.TreeDigest = "sha256:" + strings.Repeat("e", 64)
+		child.Responsibilities = []catalog.ResponsibilityClaim{{Namespace: catalog.OwnershipAssurance, Name: "review", SlotID: catalog.SlotReviewRemediation, OutcomeOwner: true}}
+		child.StageSpan = []catalog.SlotID{catalog.SlotReviewRemediation}
+		provider.Bindings = append(provider.Bindings, child)
+		provider.Capabilities = append(provider.Capabilities, capabilityFor(child))
+		for index := range provider.Bindings {
+			if provider.Bindings[index].ID == parent.ID {
+				provider.Bindings[index].StageSpan = []catalog.SlotID{catalog.SlotImplementation, catalog.SlotImplementationTDD, catalog.SlotIncidentRecovery, catalog.SlotReviewRemediation}
+				provider.Bindings[index].InternalCalls = []catalog.InternalCall{{BindingID: child.ID, Required: true, Mode: catalog.InternalCreditOnly, StageSpan: child.StageSpan}}
+			}
+		}
+		span := []catalog.SlotID{catalog.SlotImplementation, catalog.SlotImplementationTDD, catalog.SlotIncidentRecovery, catalog.SlotReviewRemediation}
+		for index := range recipe.Slots {
+			slot := &recipe.Slots[index]
+			if slot.SlotID == catalog.SlotImplementation {
+				slot.Pipeline[0].StageSpan = span
+			}
+			if slot.SlotID == catalog.SlotReviewRemediation {
+				slot.Pipeline = []catalog.PipelineStep{{ID: "implementation-review", Selector: catalog.BindingSelector{ProviderID: provider.ID, BindingID: parent.ID}, StageSpan: span, RequiredInputArtifact: parent.InputArtifact, ProducedOutputArtifact: parent.OutputArtifact}}
+				slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: "implementation-review"}
+			}
+		}
+	})
+
+	result, err := profile.CompileProfile(fixture.catalog, fixture.registry, fixture.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, found := result.Graph()
+	if !found {
+		t.Fatalf("Diagnostics() = %#v", result.Diagnostics())
+	}
+	review := requireSlot(t, graph, catalog.SlotReviewRemediation)
+	implementation := requireSlot(t, graph, catalog.SlotImplementation)
+	if len(review.Pipeline) != 1 || review.OutcomeOwner.BindingID != "internal-review" || review.OutcomeOwner.UnitID != review.Pipeline[0].UnitID || review.Pipeline[0].Disposition != profile.CreditInternalOnly {
+		t.Fatalf("internal review ownership = implementation %#v / review %#v", implementation, review)
+	}
+}

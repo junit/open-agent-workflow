@@ -31,7 +31,7 @@ The other plans retain these boundaries:
 | --- | --- | --- |
 | Authority schemas and catalog records | Plan 01 | Consume only the exported v4/v3 records and constants. Do not add a second decoder or a compatibility reader. |
 | Integrity, Host v3 evidence, Host actions, and Registry v4 | Plan 02 | Build test fixtures through the exported constructors; do not duplicate production validation. |
-| Graph v4 compiler and USER-DEFINED Builder | Plan 03 | Call the locked public API; do not re-derive ownership, cursor order, or diagnostics in `builtin`. |
+| Graph v4 compiler and USER-DEFINED Builder | Plan 03 | Call the locked public API; do not re-derive ownership, cursor order, or diagnostics in `builtin`. Execution found and corrected one Plan 03 implementation deviation: a credited internal unit may be the exact owner designated through its enclosing Recipe step, as already required by the locked macro rules. |
 | Core, Admission, Host Receipt, Coordinator | Plan 05 | Consume the assets and graph; do not edit built-in fixtures or `profile_compiler_test.go`. |
 | Codex Bridge, generated Host Integration, public docs, and START | Plan 06 | May update only Host fixture/conformance assertions in `internal/builtin/load_test.go` while preserving this plan's Profile coverage; must not modify `internal/builtin/matrix_test.go` or `internal/integration/profile_compiler_test.go`. |
 
@@ -96,7 +96,7 @@ Matt source roots are `skills/engineering/grill-with-docs`, `skills/productivity
 | `codex-domain-modeling`, `claude-domain-modeling` | matching Host skill surface | `domain-modeling` | `skill` | `model` | slot 1 internal procedure |
 | `codex-to-spec`, `claude-to-spec` | matching Host skill surface | `to-spec` | `skill` | `human-explicit` | slot 2; synthesis only, never requirements elicitation |
 | `codex-to-tickets`, `claude-to-tickets` | matching Host skill surface | `to-tickets` | `skill` | `human-explicit` | slot 3; ticket decomposition and acceptance edges |
-| `codex-implement`, `claude-implement` | matching Host skill surface | `implement` | `skill` | `human-explicit` | slots 5-6 and explicit remediation; credit-only `tdd` and internal `code-review`; no completion claim |
+| `codex-implement`, `claude-implement` | matching Host skill surface | `implement` | `skill` | `human-explicit` | slots 5-8 macro envelope: implementation owner in slot 5, credit-only `tdd` owner in slot 6, no slot 7 claim, and credit-only internal `code-review` owner in slot 8; no completion claim |
 | `codex-tdd`, `claude-tdd` | matching Host skill surface | `tdd` | `skill` | `model` | slot 6 procedure; credit-only inside `implement` or standalone in Hybrid |
 | `codex-diagnosing-bugs`, `claude-diagnosing-bugs` | matching Host skill surface | `diagnosing-bugs` | `skill` | `model` | conditional slot 7 only for functional, hard-bug, or performance incidents |
 | `codex-code-review`, `claude-code-review` | matching Host skill surface | `code-review` | `skill` | `model` | slot 8; child plus parallel-child, or nested equivalents under outer `SUBAGENT` |
@@ -107,11 +107,11 @@ Superpowers source roots are `skills/brainstorming`, `skills/writing-plans`, `sk
 
 | Host-qualified ID pattern | Exact reference | Kind / invocation | Span / internal contract |
 | --- | --- | --- | --- |
-| `codex-brainstorming`, `claude-brainstorming` | `superpowers:brainstorming` | `skill` / `model` | slots 1-2; dispatch-after `writing-plans` after design approval |
+| `codex-brainstorming`, `claude-brainstorming` | `superpowers:brainstorming` | `skill` / `model` | slots 1-3 macro envelope; parent owns slots 1-2 and dispatch-after `writing-plans` owns slot 3 after design approval |
 | `codex-writing-plans`, `claude-writing-plans` | `superpowers:writing-plans` | `skill` / `model` | slot 3 |
 | `codex-using-git-worktrees`, `claude-using-git-worktrees` | `superpowers:using-git-worktrees` | `skill` / `model` | slot 4; one workspace result |
-| `codex-subagent-driven-development`, `claude-subagent-driven-development` | `superpowers:subagent-driven-development` | `skill` / `model` | slots 5-10 macro; dispatch-before workspace, credit-only TDD/per-task review, dispatch-after final verification/finish |
-| `codex-executing-plans`, `claude-executing-plans` | `superpowers:executing-plans` | `skill` / `model` | slots 5-10 inline alternative; dispatch-before workspace and dispatch-after finish |
+| `codex-subagent-driven-development`, `claude-subagent-driven-development` | `superpowers:subagent-driven-development` | `skill` / `model` | slots 4-10 macro envelope; dispatch-before workspace, credit-only TDD/per-task review, dispatch-after final verification/finish |
+| `codex-executing-plans`, `claude-executing-plans` | `superpowers:executing-plans` | `skill` / `model` | slots 4-10 inline macro envelope; dispatch-before workspace and dispatch-after finish |
 | `codex-test-driven-development`, `claude-test-driven-development` | `superpowers:test-driven-development` | `skill` / `model` | slot 6 only on inline path; not a peer of SDD's credit-only TDD |
 | `codex-systematic-debugging`, `claude-systematic-debugging` | `superpowers:systematic-debugging` | `skill` / `model` | typed technical incident handler in slot 7 |
 | `codex-requesting-code-review`, `claude-requesting-code-review` | `superpowers:requesting-code-review` | `skill` / `model` | slot 8 review dispatch; reviewer child required |
@@ -164,17 +164,17 @@ codex-or-claude grill-with-docs (calls grilling + domain-modeling)
   -> to-tickets (separate human-explicit invocation)
   -> ticket-approval gate
   -> workspace.prepare-or-confirm Host action
-  -> implement(ticket) spanning implementation + implementation-tdd
+  -> implement(ticket) spanning the slots 5-8 macro envelope
        -> credit-only tdd
-       -> credit-only internal code-review
-  -> standalone code-review with required review children
-       -> explicit implement remediation packet when findings exist
-       -> fresh standalone review
+       -> credit-only internal code-review with required review children
+       -> code-review owns slot 8 through the enclosing implement step
+       -> findings transition to an explicit implement remediation packet
+       -> the remediation implement run performs the fresh internal re-review
   -> verification.execute Host action + fresh-evidence gate
   -> closeout.execute Host action + acceptance/user-authority gate
 ```
 
-The implementation descriptor never claims workspace creation, general delegation, broad verification, or completion. Build, dependency, and type incidents have no Matt handler and stop by default. The descriptor's `code-review` is a review procedure only; remediation is a distinct `implement` invocation. Every `human-explicit` Binding pauses until an exact Host/user invocation attestation is supplied at PREPARE by Plan 05.
+The implementation descriptor never claims workspace creation, general delegation, broad verification, or completion. Its contiguous slots 5-8 span is a macro envelope, not an incident-recovery claim. Build, dependency, and type incidents have no Matt handler and stop by default. The descriptor's internal `code-review` is the slot 8 review procedure only; remediation is a distinct `implement` invocation, and that invocation performs the next internal review. Every `human-explicit` Binding pauses until an exact Host/user invocation attestation is supplied at PREPARE by Plan 05.
 
 ### SP-FULL / `oaw/delivery`
 
@@ -411,7 +411,7 @@ Expected: failure from the old v3/v2 assets and loader. This is the intended RED
 
 Set every Descriptor to `schema_version = oaw.provider-descriptor/v4` and `descriptor_version = 4.0.0`. Add one `DistributionRecord` per pinned source and one host-qualified `BindingRecord` per exact Host surface. A host-qualified ID is deterministic (`codex-` or `claude-` followed by the upstream reference with punctuation normalized to `-`); the `reference` field remains the exact upstream name. Every Binding's `ContentRoot`, `InstallRoot`, and `tree_digest` must equal the source audit manifest, and every `CapabilityRecord.binding_refs` must point only to Binding IDs in that same Descriptor.
 
-Encode the Matt rows and responsibilities exactly as the audit table: `grill-with-docs` credits `grilling` and `domain-modeling`; `to-spec`, `to-tickets`, and `implement` are `human-explicit`; `implement` calls `tdd` and `code-review` as credit-only internals, has no completion responsibility, and does not claim workspace creation; `diagnosing-bugs` accepts only functional/hard-bug/performance incident types; `code-review` requires child and parallel-child (nested equivalents for outer `SUBAGENT`).
+Encode the Matt rows and responsibilities exactly as the audit table: `grill-with-docs` credits `grilling` and `domain-modeling`; `to-spec`, `to-tickets`, and `implement` are `human-explicit`; `implement` uses the slots 5-8 macro envelope, calls `tdd` and `code-review` as credit-only internals, has no incident, completion, or workspace responsibility, and the internal `code-review` is the exact slot 8 owner; `diagnosing-bugs` accepts only functional/hard-bug/performance incident types; `code-review` requires child and parallel-child (nested equivalents for outer `SUBAGENT`).
 
 Encode the eleven Superpowers skill rows with the `superpowers:` reference namespace. `brainstorming` has a dispatch-after `writing-plans` call; SDD has dispatch-before workspace, credit-only TDD/per-task review, and dispatch-after verification/finish; inline execution has dispatch-before workspace and dispatch-after finish. `requesting-code-review` and Matt `code-review` carry the exact reviewer delegation requirements. No internal call is both credited and dispatched.
 
