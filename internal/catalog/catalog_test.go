@@ -1,180 +1,278 @@
 package catalog
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
-func TestNewCatalogOrdersAndCopiesRecords(t *testing.T) {
-	providers := []ProviderDescriptorRecord{testProvider("oaw/z", "z-cap", "implementation"), testProvider("oaw/a", "a-cap", "implementation")}
-	recipes := []ProfileRecipeRecord{testRecipe("oaw/z", "oaw/a", "a-cap")}
-	aliases := []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: "oaw/z"}}
-	catalog, err := New(providers, recipes, aliases)
+func TestCatalogV4PreservesSemanticOrderAndOwnsNestedStorage(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	recipe.AddOns = []AddOnRecord{
+		{ID: "first", Kind: AddOnSpecialistCheck, Selector: BindingSelector{ProviderID: provider.ID, BindingID: "binding"}, SlotID: SlotReviewRemediation, IncidentTypes: []string{}, EvidenceRequirements: []EvidenceRequirementRecord{}},
+		{ID: "second", Kind: AddOnSpecialistCheck, Selector: BindingSelector{ProviderID: provider.ID, BindingID: "binding"}, SlotID: SlotReviewRemediation, IncidentTypes: []string{}, EvidenceRequirements: []EvidenceRequirementRecord{}},
+	}
+	value, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: recipe.ID}})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	if got := catalog.Providers()[0].ID; got != "oaw/a" {
-		t.Fatalf("Providers()[0].ID = %q, want oaw/a", got)
+	digest := value.Digest()
+	providers := value.Providers()
+	providers[0].Bindings[0].StageSpan[0] = SlotCloseout
+	providers[0].Discovery[0].Hosts[0] = "changed"
+	recipes := value.Recipes()
+	recipes[0].AddOns[0].ID = "changed"
+	recipes[0].Slots[3].HostAction.ID = "changed"
+	if value.Providers()[0].Bindings[0].StageSpan[0] != SlotProblemFraming || value.Providers()[0].Discovery[0].Hosts[0] == "changed" || value.Recipes()[0].AddOns[0].ID != "first" || value.Recipes()[0].Slots[3].HostAction.ID == "changed" || value.Digest() != digest {
+		t.Fatal("Catalog exposed mutable nested storage")
 	}
-	if catalog.Digest() == "" {
-		t.Fatal("Digest() is empty")
-	}
-	providers[0].Capabilities[0].ID = "changed"
-	copy := catalog.Providers()
-	copy[0].Capabilities[0].ID = "changed-again"
-	if catalog.Providers()[0].Capabilities[0].ID == "changed-again" {
-		t.Fatal("Providers() exposed mutable storage")
-	}
-	if catalog.Digest() != catalog.Digest() {
-		t.Fatal("Digest() is not stable")
-	}
-}
 
-func TestNewCatalogPreservesEmptyCollectionsWhenCopying(t *testing.T) {
-	provider := testProvider("oaw/provider", "implementation", "implementation")
-	provider.Capabilities[0].DelegationAllowList = []string{}
-	recipe := testRecipe("oaw/recipe", "oaw/provider", "implementation")
-	catalog, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, []ProfileAliasRecord{})
+	reversed := recipe
+	reversed.AddOns = append([]AddOnRecord(nil), recipe.AddOns...)
+	reversed.AddOns[0], reversed.AddOns[1] = reversed.AddOns[1], reversed.AddOns[0]
+	reordered, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{reversed}, []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: recipe.ID}})
 	if err != nil {
-		t.Fatalf("New() error = %v", err)
+		t.Fatal(err)
 	}
-	if got := catalog.Providers()[0].Capabilities[0].DelegationAllowList; got == nil || len(got) != 0 {
-		t.Fatalf("DelegationAllowList = %#v, want non-nil empty slice", got)
-	}
-	if got := catalog.Aliases(); got == nil || len(got) != 0 {
-		t.Fatalf("Aliases = %#v, want non-nil empty slice", got)
+	if reordered.Digest() == digest {
+		t.Fatal("semantic Add-on declaration order did not change Catalog digest")
 	}
 }
 
-func TestNewCatalogRejectsCrossRecordInvariants(t *testing.T) {
-	baseProvider := testProvider("oaw/provider", "implementation", "implementation")
-	baseRecipe := testRecipe("oaw/recipe", "oaw/provider", "implementation")
+func TestCatalogV4RejectsCompleteInvariantMatrix(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord)
+		mutate func(*ProviderDescriptorRecord, *ProfileRecipeRecord, *[]ProfileAliasRecord)
 		code   string
 	}{
-		{"duplicate provider", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			return append(p, p[0]), r, a
-		}, "DUPLICATE_PROVIDER_ID"},
-		{"missing delegation target", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			p[0].Capabilities[0].DelegationAllowList = []string{"missing"}
-			return p, r, a
-		}, "DELEGATION_CAPABILITY_NOT_FOUND"},
-		{"missing recipe provider", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			r[0].Nodes[0].Selector.ProviderID = "oaw/missing"
-			return p, r, a
-		}, "RECIPE_PROVIDER_NOT_FOUND"},
-		{"missing recipe capability", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			r[0].Nodes[0].Selector.CapabilityID = "missing"
-			return p, r, a
-		}, "RECIPE_CAPABILITY_NOT_FOUND"},
-		{"missing responsibility", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			r[0].RequiredResponsibilities = []string{"missing"}
-			return p, r, a
-		}, "RESPONSIBILITY_OWNER_MISSING"},
-		{"missing node transition target", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			r[0].Nodes[0].Transitions[0].Target = "missing"
-			return p, r, a
-		}, "RECIPE_NODE_NOT_FOUND"},
-		{"invalid terminal gate", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			r[0].TerminalGates = []string{"implementation"}
-			return p, r, a
-		}, "TERMINAL_GATE_INVALID"},
-		{"missing alias recipe", func(p []ProviderDescriptorRecord, r []ProfileRecipeRecord, a []ProfileAliasRecord) ([]ProviderDescriptorRecord, []ProfileRecipeRecord, []ProfileAliasRecord) {
-			return p, r, []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: "oaw/missing"}}
+		{"discovery distribution missing", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Discovery[0].DistributionID = "missing"
+		}, "PROVIDER_DISTRIBUTION_NOT_FOUND"},
+		{"binding distribution missing", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Bindings[0].DistributionID = "missing"
+		}, "PROVIDER_DISTRIBUTION_NOT_FOUND"},
+		{"distribution revision branch", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Distributions[0].Revision = "main"
+		}, "PROVIDER_DISTRIBUTION_REVISION_INVALID"},
+		{"distribution revision uppercase", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Distributions[0].Revision = strings.Repeat("A", 40)
+		}, "PROVIDER_DISTRIBUTION_REVISION_INVALID"},
+		{"distribution digest unprefixed", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Distributions[0].TreeDigest = strings.Repeat("a", 64)
+		}, "PROVIDER_DISTRIBUTION_DIGEST_INVALID"},
+		{"binding digest uppercase", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Bindings[0].TreeDigest = "sha256:" + strings.Repeat("A", 64)
+		}, "PROVIDER_BINDING_DIGEST_INVALID"},
+		{"content root empty", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Bindings[0].ContentRoot = ""
+		}, "PROVIDER_BINDING_PATH_INVALID"},
+		{"install root dot", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Bindings[0].InstallRoot = "skill/./child"
+		}, "PROVIDER_BINDING_PATH_INVALID"},
+		{"capability binding missing", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Capabilities[0].BindingRefs[0] = "missing"
+		}, "PROVIDER_BINDING_NOT_FOUND"},
+		{"capability binding repeated", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Capabilities[0].BindingRefs = append(provider.Capabilities[0].BindingRefs, "binding")
+		}, "CAPABILITY_BINDING_AMBIGUOUS"},
+		{"taxonomy unsupported", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.TaxonomyVersion = "oaw.lifecycle-taxonomy/v2"
+		}, "RECIPE_TAXONOMY_UNSUPPORTED"},
+		{"slot omitted", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots = recipe.Slots[:len(recipe.Slots)-1]
+		}, "RECIPE_SLOT_COVERAGE_INVALID"},
+		{"slot duplicated", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots[1].SlotID = recipe.Slots[0].SlotID
+		}, "RECIPE_SLOT_COVERAGE_INVALID"},
+		{"mandatory owner none", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots[0].OutcomeOwner = OutcomeOwner{Kind: OwnerNone}
+		}, "OUTCOME_OWNER_MISSING"},
+		{"owner step missing", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots[0].OutcomeOwner.StepID = "missing"
+		}, "OUTCOME_OWNER_MISSING"},
+		{"owner ambiguous", func(provider *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "second-owner", InvocationModel, true)
+			provider.Bindings[len(provider.Bindings)-1].StageSpan = []SlotID{SlotProblemFraming}
+			recipe.Slots[0].Pipeline = append(recipe.Slots[0].Pipeline, PipelineStep{ID: "second", Selector: BindingSelector{ProviderID: provider.ID, BindingID: "second-owner"}, StageSpan: []SlotID{SlotProblemFraming}, RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact"})
+			provider.Bindings[len(provider.Bindings)-1].Responsibilities[0].SlotID = SlotProblemFraming
+		}, "OUTCOME_OWNER_AMBIGUOUS"},
+		{"pipeline artifact mismatch", func(provider *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationModel, false)
+			helper := &provider.Bindings[len(provider.Bindings)-1]
+			helper.StageSpan = []SlotID{SlotProblemFraming}
+			recipe.Slots[0].Pipeline = append(recipe.Slots[0].Pipeline, PipelineStep{ID: "second", Selector: BindingSelector{ProviderID: provider.ID, BindingID: "helper"}, StageSpan: []SlotID{SlotProblemFraming}, RequiredInputArtifact: "other", ProducedOutputArtifact: "artifact"})
+		}, "PIPELINE_ARTIFACT_INCOMPATIBLE"},
+		{"binding span empty", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Bindings[0].StageSpan = []SlotID{}
+		}, "STAGE_SPAN_INVALID"},
+		{"binding span reversed", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			provider.Bindings[0].StageSpan = []SlotID{SlotSolutionSpecification, SlotProblemFraming}
+		}, "STAGE_SPAN_INVALID"},
+		{"internal call span outside parent", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationModel, false)
+			provider.Bindings[0].StageSpan = []SlotID{SlotImplementation}
+			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: InternalCreditOnly, StageSpan: []SlotID{SlotCloseout}}}
+		}, "STAGE_SPAN_INVALID"},
+		{"internal call mode invalid", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationModel, false)
+			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: "invalid", StageSpan: []SlotID{SlotImplementation}}}
+		}, "INTERNAL_CALL_MODE_INVALID"},
+		{"dispatch target internal", func(provider *ProviderDescriptorRecord, _ *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationInternal, false)
+			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: InternalDispatchBefore, StageSpan: []SlotID{SlotImplementation}}}
+		}, "INTERNAL_CALL_NOT_HOST_CALLABLE"},
+		{"macro child peer conflict", func(provider *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationModel, false)
+			helper := &provider.Bindings[len(provider.Bindings)-1]
+			helper.StageSpan = []SlotID{SlotImplementation}
+			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: InternalCreditOnly, StageSpan: []SlotID{SlotImplementation}}}
+			recipe.Slots[4].Pipeline = append(recipe.Slots[4].Pipeline, PipelineStep{ID: "helper", Selector: BindingSelector{ProviderID: provider.ID, BindingID: "helper"}, StageSpan: []SlotID{SlotImplementation}, RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact"})
+		}, "MACRO_INTERNAL_CONFLICT"},
+		{"host action used as selector", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots[0].Pipeline[0].Selector = BindingSelector{ProviderID: "host/actions", BindingID: "workspace.prepare-or-confirm"}
+		}, "PROVIDER_BINDING_NOT_FOUND"},
+		{"incident handler missing", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.IncidentRoutes = []IncidentRoute{{IncidentType: "build-failure", Handler: BindingSelector{ProviderID: "test/provider", BindingID: "missing"}, ReturnTo: SlotImplementation, IfUnavailable: IncidentStop}}
+		}, "INCIDENT_HANDLER_UNAVAILABLE"},
+		{"overlay alternative missing", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Overlays = []OverlayRecord{{ID: "inline", Precedence: []string{"inline"}, PausedBindings: []BindingSelector{}, SelectedAlternative: "missing", Rationale: "test"}}
+		}, "OVERLAY_INVALID"},
+		{"overlay pauses mandatory call", func(provider *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			addHelperBinding(provider, "helper", InvocationModel, false)
+			provider.Bindings[0].InternalCalls = []InternalCall{{BindingID: "helper", Required: true, Mode: InternalCreditOnly, StageSpan: []SlotID{SlotImplementation}}}
+			provider.Bindings[0].Alternatives = []string{"helper"}
+			recipe.Overlays = []OverlayRecord{{ID: "inline", Precedence: []string{"inline"}, PausedBindings: []BindingSelector{{ProviderID: provider.ID, BindingID: "helper"}}, SelectedAlternative: "helper", Rationale: "test"}}
+		}, "OVERLAY_INVALID"},
+		{"alias recipe missing", func(_ *ProviderDescriptorRecord, _ *ProfileRecipeRecord, aliases *[]ProfileAliasRecord) {
+			*aliases = []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: "test/missing"}}
 		}, "ALIAS_RECIPE_NOT_FOUND"},
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			providers := cloneProviderList([]ProviderDescriptorRecord{baseProvider})
-			recipes := cloneRecipeList([]ProfileRecipeRecord{baseRecipe})
-			aliases := []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: "oaw/recipe"}}
-			providers, recipes, aliases = tt.mutate(providers, recipes, aliases)
-			_, err := New(providers, recipes, aliases)
-			if err == nil || !strings.Contains(err.Error(), tt.code) {
-				t.Fatalf("New() error = %v, want %s", err, tt.code)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			provider := validProviderV4Record()
+			recipe := validRecipeV3Record()
+			aliases := []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: recipe.ID}}
+			test.mutate(&provider, &recipe, &aliases)
+			if _, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, aliases); err == nil || !strings.Contains(err.Error(), test.code) {
+				t.Fatalf("New() error = %v, want %s", err, test.code)
 			}
 		})
 	}
 }
 
-func TestNewCatalogRejectsNodeAndBindingErrors(t *testing.T) {
-	provider := testProvider("oaw/provider", "implementation", "implementation")
-	recipe := testRecipe("oaw/recipe", "oaw/provider", "implementation")
-	cases := []struct {
-		name   string
-		mutate func(*ProviderDescriptorRecord, *ProfileRecipeRecord)
-		code   string
+func TestCatalogV4NormalizesSetLikeOrder(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	provider.Distributions = append(provider.Distributions, DistributionRecord{ID: "other", SourceURI: "https://example.test/other", Revision: strings.Repeat("b", 40), TreeDigest: "sha256:" + strings.Repeat("b", 64)})
+	provider.Discovery[0].Hosts = []string{"codex", "claude"}
+	provider.Bindings[0].MaximumEffects = []string{"read-project", "run-process"}
+	provider.Bindings[0].Resources = []string{"project", "project-worktree"}
+	provider.Bindings[0].SupportedTopologies = []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}
+	recipe.StableBoundaries = []string{"between-slots", "after-review"}
+	recipe.EnvironmentRequirements = []execution.EnvironmentRequirement{
+		{Surface: "skills", Required: true, AcceptedDispositions: []execution.EnvironmentDisposition{execution.DispositionInherited, execution.DispositionHostConfigured}},
+		{Surface: "tools", Required: false, AcceptedDispositions: []execution.EnvironmentDisposition{}},
+	}
+	first, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reorderedProvider := cloneProvider(provider)
+	reorderedRecipe := cloneRecipe(recipe)
+	reverse(reorderedProvider.Distributions)
+	reverse(reorderedProvider.Discovery[0].Hosts)
+	reverse(reorderedProvider.Bindings[0].MaximumEffects)
+	reverse(reorderedProvider.Bindings[0].Resources)
+	reverse(reorderedProvider.Bindings[0].SupportedTopologies)
+	reverse(reorderedRecipe.StableBoundaries)
+	reverse(reorderedRecipe.EnvironmentRequirements)
+	reverse(reorderedRecipe.EnvironmentRequirements[1].AcceptedDispositions)
+	second, err := New([]ProviderDescriptorRecord{reorderedProvider}, []ProfileRecipeRecord{reorderedRecipe}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Digest() != second.Digest() {
+		t.Fatalf("set-like reorder changed digest: %s != %s", first.Digest(), second.Digest())
+	}
+	if reflect.DeepEqual(provider, first.Providers()[0]) {
+		t.Fatal("fixture did not exercise canonical set ordering")
+	}
+}
+
+func TestNormalizeAndDigestRecipeMatchesCatalogRecord(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	normalized, digest, err := NormalizeAndDigestRecipe([]ProviderDescriptorRecord{provider}, recipe)
+	if err != nil {
+		t.Fatalf("NormalizeAndDigestRecipe() error = %v", err)
+	}
+	value, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fromCatalog := value.Recipes()[0]
+	if normalized.ID != fromCatalog.ID || digest == "" {
+		t.Fatalf("normalized = %#v, digest = %q", normalized, digest)
+	}
+	normalized.Slots[0].Pipeline[0].ID = "changed"
+	if value.Recipes()[0].Slots[0].Pipeline[0].ID == "changed" {
+		t.Fatal("normalized Recipe shares Catalog storage")
+	}
+}
+
+func TestCatalogV4RejectsMissingBindingAliasAndOwner(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	tests := []struct {
+		name    string
+		mutate  func(*ProviderDescriptorRecord, *ProfileRecipeRecord, *[]ProfileAliasRecord)
+		wantErr string
 	}{
-		{"duplicate capability", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			p.Capabilities = append(p.Capabilities, p.Capabilities[0])
-		}, "DUPLICATE_CAPABILITY_ID"},
-		{"duplicate probe", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			p.Discovery = append(p.Discovery, p.Discovery[0])
-		}, "DUPLICATE_DISCOVERY_PROBE_ID"},
-		{"duplicate binding", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			p.Capabilities[0].HostBindings = append(p.Capabilities[0].HostBindings, p.Capabilities[0].HostBindings[0])
-		}, "DUPLICATE_HOST_BINDING"},
-		{"empty supported topology", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			p.Capabilities[0].SupportedTopologies = []execution.Topology{}
-		}, "EXECUTION_TOPOLOGY_INVALID"},
-		{"binding topology outside capability", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			p.Capabilities[0].SupportedTopologies = []execution.Topology{execution.TopologyCurrent}
-			p.Capabilities[0].HostBindings[0].Topologies = []execution.Topology{execution.TopologySubagent}
-		}, "binding topology is outside capability"},
-		{"missing environment requirements", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			r.EnvironmentRequirements = nil
-		}, "environment requirements are required"},
-		{"duplicate node", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) { r.Nodes = append(r.Nodes, r.Nodes[0]) }, "DUPLICATE_RECIPE_NODE_ID"},
-		{"procedure phase invalid", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			r.Nodes[0].Kind = ProcedureNode
-			r.Nodes[0].Phase = "missing"
-		}, "PROCEDURE_PHASE_INVALID"},
-		{"procedure transition forbidden", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			r.Nodes = append(r.Nodes, RecipeNode{ID: "procedure", Kind: ProcedureNode, Responsibility: "implementation", Selector: r.Nodes[0].Selector, Phase: "implementation", Transitions: []RecipeTransition{{Signal: "succeeded", Target: "completion"}}})
-		}, "PROCEDURE_TRANSITION_FORBIDDEN"},
-		{"incident handler invalid", func(p *ProviderDescriptorRecord, r *ProfileRecipeRecord) {
-			r.IncidentRoutes = []IncidentRoute{{Incident: "build-failure", Handler: "implementation"}}
-		}, "INCIDENT_HANDLER_INVALID"},
+		{"missing binding", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots[0].Pipeline[0].Selector.BindingID = "missing"
+		}, "PROVIDER_BINDING_NOT_FOUND"},
+		{"missing owner", func(_ *ProviderDescriptorRecord, recipe *ProfileRecipeRecord, _ *[]ProfileAliasRecord) {
+			recipe.Slots[0].OutcomeOwner.StepID = "missing"
+		}, "OUTCOME_OWNER_MISSING"},
+		{"missing alias recipe", func(_ *ProviderDescriptorRecord, _ *ProfileRecipeRecord, aliases *[]ProfileAliasRecord) {
+			*aliases = []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: "test/missing"}}
+		}, "ALIAS_RECIPE_NOT_FOUND"},
 	}
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			p := cloneProviderList([]ProviderDescriptorRecord{provider})[0]
-			r := cloneRecipeList([]ProfileRecipeRecord{recipe})[0]
-			tt.mutate(&p, &r)
-			if _, err := New([]ProviderDescriptorRecord{p}, []ProfileRecipeRecord{r}, nil); err == nil || !strings.Contains(err.Error(), tt.code) {
-				t.Fatalf("New() error = %v, want %s", err, tt.code)
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			providerCopy := cloneProvider(provider)
+			recipeCopy := cloneRecipe(recipe)
+			aliases := []ProfileAliasRecord{{Alias: "SP-FULL", RecipeID: recipe.ID}}
+			test.mutate(&providerCopy, &recipeCopy, &aliases)
+			if _, err := New([]ProviderDescriptorRecord{providerCopy}, []ProfileRecipeRecord{recipeCopy}, aliases); err == nil || !strings.Contains(err.Error(), test.wantErr) {
+				t.Fatalf("New() error = %v, want %s", err, test.wantErr)
 			}
 		})
 	}
 }
 
-func testProvider(id, capabilityID, responsibility string) ProviderDescriptorRecord {
-	return ProviderDescriptorRecord{
-		SchemaVersion:     ProviderDescriptorSchemaV3,
-		DescriptorVersion: "3.0.0",
-		ID:                id,
-		DisplayName:       id,
-		Discovery: []DiscoveryProbe{{
-			ID: "probe", Hosts: []string{"codex"}, Surface: "codex-skills", Distribution: "test",
-			Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills/test", EvidencePath: "SKILL.md",
-		}},
-		Capabilities: []CapabilityRecord{{
-			ID: capabilityID, InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"},
-			Resources: []string{"project"}, RequestModes: []RequestMode{RequestModeWorkflow},
-			Responsibilities:    []string{responsibility, "completion"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-			HostBindings: []HostBinding{{
-				Host: "codex", Kind: "skill", Reference: "test",
-				Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-			}},
-		}},
+func TestCatalogV4DigestIncludesInstallRoot(t *testing.T) {
+	provider := validProviderV4Record()
+	recipe := validRecipeV3Record()
+	first, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider.Bindings[0].InstallRoot = "other-skill"
+	second, err := New([]ProviderDescriptorRecord{provider}, []ProfileRecipeRecord{recipe}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Digest() == second.Digest() {
+		t.Fatal("InstallRoot did not affect Catalog digest")
 	}
 }
 
-func testRecipe(id, providerID, capabilityID string) ProfileRecipeRecord {
-	return ProfileRecipeRecord{SchemaVersion: ProfileRecipeSchemaV2, RecipeVersion: "2.0.0", ID: id, DisplayName: id, RequiredResponsibilities: []string{"implementation", "completion"}, Nodes: []RecipeNode{{ID: "implementation", Kind: PhaseNode, Responsibility: "implementation", Selector: CapabilitySelector{ProviderID: providerID, CapabilityID: capabilityID}, Transitions: []RecipeTransition{{Signal: "succeeded", Target: "completion"}}}, {ID: "completion", Kind: GateNode, Responsibility: "completion", Selector: CapabilitySelector{ProviderID: providerID, CapabilityID: capabilityID}, Transitions: []RecipeTransition{}}}, Entry: "implementation", TerminalGates: []string{"completion"}, StableBoundaries: []string{"complete"}, EnvironmentRequirements: []execution.EnvironmentRequirement{}}
+func reverse[T any](values []T) {
+	for left, right := 0, len(values)-1; left < right; left, right = left+1, right-1 {
+		values[left], values[right] = values[right], values[left]
+	}
 }
