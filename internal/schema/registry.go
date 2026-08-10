@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	ProviderDescriptorV3        = "https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json"
-	ProfileRecipeV2             = "https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json"
+	ProviderDescriptorV4        = "https://open-agent-workflow.dev/schemas/v4/provider-descriptor.schema.json"
+	ProfileRecipeV3             = "https://open-agent-workflow.dev/schemas/v3/profile-recipe.schema.json"
 	ProfileAliasSetV1           = "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json"
 	UserConfigV3                = "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json"
 	ProjectConfigV1             = "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json"
@@ -44,9 +44,9 @@ func New(files fs.FS) (*Registry, error) {
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft2020)
 	resources := []struct{ path, id string }{
-		{"schemas/v3/provider-descriptor.schema.json", ProviderDescriptorV3},
+		{"schemas/v4/provider-descriptor.schema.json", ProviderDescriptorV4},
 		{"schemas/v3/user-config.schema.json", UserConfigV3},
-		{"schemas/v2/profile-recipe.schema.json", ProfileRecipeV2},
+		{"schemas/v3/profile-recipe.schema.json", ProfileRecipeV3},
 		{"schemas/v1/profile-alias-set.schema.json", ProfileAliasSetV1},
 		{"schemas/v1/project-config.schema.json", ProjectConfigV1},
 		{"schemas/v1/classification-proposal.schema.json", ClassificationProposalV1},

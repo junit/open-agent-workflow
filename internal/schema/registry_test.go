@@ -1,11 +1,14 @@
 package schema
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 func TestNewCompilesEmbeddedSchemas(t *testing.T) {
@@ -49,8 +52,8 @@ func TestRegistryValidatesKnownSchemaAndRejectsUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	valid := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV3, valid); err != nil {
+	valid := validProviderV4JSON(t)
+	if err := registry.Validate(ProviderDescriptorV4, valid); err != nil {
 		t.Fatalf("Validate(valid) error = %v", err)
 	}
 	if err := registry.Validate("oaw.capability-input/v1", valid); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
@@ -78,46 +81,58 @@ func TestRegistryValidatesHostNeutralGrantAndDispatchSchemas(t *testing.T) {
 	}
 }
 
-func TestRegistryUsesProviderV3AndRecipeV2Only(t *testing.T) {
+func TestRegistryUsesProviderV4AndRecipeV3Only(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV3, provider); err != nil {
-		t.Fatalf("Validate(provider v3) error = %v", err)
+	provider := validProviderV4JSON(t)
+	if err := registry.Validate(ProviderDescriptorV4, provider); err != nil {
+		t.Fatalf("Validate(provider v4) error = %v", err)
 	}
-	recipe := []byte(`{"schema_version":"oaw.profile-recipe/v2","recipe_version":"2.0.0","id":"oaw/test","display_name":"Test","required_responsibilities":[],"nodes":[],"incident_routes":[],"entry":"start","terminal_gates":[],"stable_boundaries":[],"environment_requirements":[]}`)
-	if err := registry.Validate(ProfileRecipeV2, recipe); err != nil {
-		t.Fatalf("Validate(recipe v2) error = %v", err)
+	recipe := validRecipeV3JSON(t)
+	if err := registry.Validate(ProfileRecipeV3, recipe); err != nil {
+		t.Fatalf("Validate(recipe v3) error = %v", err)
 	}
-	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v2/provider-descriptor.schema.json", provider); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
-		t.Fatalf("Validate(retired Provider v2) error = %v", err)
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json", provider); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Provider v3) error = %v", err)
 	}
-	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v1/profile-recipe.schema.json", recipe); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
-		t.Fatalf("Validate(retired Recipe v1) error = %v", err)
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json", recipe); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("Validate(retired Recipe v2) error = %v", err)
 	}
 }
 
-func TestRegistryValidatesHostScopedProviderDescriptorV3(t *testing.T) {
+func TestRegistryValidatesHostScopedProviderDescriptorV4(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[{"id":"codex","hosts":["codex"],"surface":"codex-skills","distribution":"acme","kind":"path-exists","root":"user-home","candidate_path":".agents/skills/acme","evidence_path":"review/SKILL.md"}],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV3, raw); err != nil {
-		t.Fatalf("Validate(v3 descriptor) error = %v", err)
+	raw := validProviderV4JSON(t)
+	if err := registry.Validate(ProviderDescriptorV4, raw); err != nil {
+		t.Fatalf("Validate(v4 descriptor) error = %v", err)
 	}
 }
 
-func TestRegistryRejectsV2ProviderDescriptorFromActiveV3Schema(t *testing.T) {
+func TestRegistryRejectsRetiredProviderAndRecipeSchemas(t *testing.T) {
 	registry, err := New(assets.FS())
 	if err != nil {
 		t.Fatal(err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v2","descriptor_version":"2.0.0","id":"acme/suite","display_name":"Acme Suite","discovery":[],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV3, raw); err == nil {
-		t.Fatal("v2 descriptor unexpectedly validated against v3")
+	provider := validProviderV4JSON(t)
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v3/provider-descriptor.schema.json", provider); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("retired provider schema error = %v", err)
+	}
+	recipe := validRecipeV3JSON(t)
+	if err := registry.Validate("https://open-agent-workflow.dev/schemas/v2/profile-recipe.schema.json", recipe); err == nil || !strings.Contains(err.Error(), "UNKNOWN_SCHEMA") {
+		t.Fatalf("retired recipe schema error = %v", err)
+	}
+	providerV3 := []byte(`{"schema_version":"oaw.provider-descriptor/v3"}`)
+	if err := registry.Validate(ProviderDescriptorV4, providerV3); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("provider v3 wire error = %v", err)
+	}
+	recipeV2 := []byte(`{"schema_version":"oaw.profile-recipe/v2"}`)
+	if err := registry.Validate(ProfileRecipeV3, recipeV2); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+		t.Fatalf("recipe v2 wire error = %v", err)
 	}
 }
 
@@ -255,8 +270,8 @@ func TestRegistryRejectsTrailingJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	raw := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[]} {}`)
-	if err := registry.Validate(ProviderDescriptorV3, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_INPUT_INVALID") {
+	raw := append(validProviderV4JSON(t), []byte(` {}`)...)
+	if err := registry.Validate(ProviderDescriptorV4, raw); err == nil || !strings.Contains(err.Error(), "SCHEMA_INPUT_INVALID") {
 		t.Fatalf("Validate(trailing) error = %v", err)
 	}
 }
@@ -266,14 +281,59 @@ func TestRegistryRejectsSchemaViolations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	unknownField := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[],"capabilities":[],"extra":true}`)
-	if err := registry.Validate(ProviderDescriptorV3, unknownField); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	unknownField := append(validProviderV4JSON(t)[:len(validProviderV4JSON(t))-1], []byte(`,"extra":true}`)...)
+	if err := registry.Validate(ProviderDescriptorV4, unknownField); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(unknown field) error = %v", err)
 	}
-	unsafePath := []byte(`{"schema_version":"oaw.provider-descriptor/v3","descriptor_version":"3.0.0","id":"oaw/test","display_name":"Test","discovery":[{"id":"p","hosts":["codex"],"surface":"codex-skills","distribution":"test","kind":"path-exists","root":"user-home","candidate_path":".agents/../secret","evidence_path":"SKILL.md"}],"capabilities":[]}`)
-	if err := registry.Validate(ProviderDescriptorV3, unsafePath); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
+	unsafePath := append(validProviderV4JSON(t)[:len(validProviderV4JSON(t))-1], []byte(`,"discovery":[{"id":"probe","hosts":["codex"],"surface":"codex-skills","distribution_id":"distribution","kind":"path-exists","root":"user-home","candidate_path":".agents/../secret","evidence_path":"skill/SKILL.md"}]}`)...)
+	if err := registry.Validate(ProviderDescriptorV4, unsafePath); err == nil || !strings.Contains(err.Error(), "SCHEMA_VALIDATION_FAILED") {
 		t.Fatalf("Validate(unsafe path) error = %v", err)
 	}
+}
+
+func validProviderV4JSON(t *testing.T) []byte {
+	t.Helper()
+	record := catalog.ProviderDescriptorRecord{
+		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: "test/provider", DisplayName: "Test Provider",
+		Distributions: []catalog.DistributionRecord{{ID: "distribution", SourceURI: "https://example.test/provider", Revision: strings.Repeat("a", 40), TreeDigest: "sha256:" + strings.Repeat("a", 64)}},
+		Discovery:     []catalog.DiscoveryProbe{{ID: "probe", Hosts: []string{"codex"}, Surface: "codex-skills", DistributionID: "distribution", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills", EvidencePath: "skill/SKILL.md"}},
+		Bindings: []catalog.BindingRecord{{
+			ID: "binding", DistributionID: "distribution", ContentRoot: "skills/skill", InstallRoot: "skill", TreeDigest: "sha256:" + strings.Repeat("a", 64), Host: "codex", Surface: "codex-skills", Kind: catalog.BindingSkill, Reference: "skill", Invocation: catalog.InvocationModel,
+			Responsibilities: []catalog.ResponsibilityClaim{{Namespace: catalog.OwnershipStage, Name: "implementation", SlotID: catalog.SlotImplementation, OutcomeOwner: true}}, InputArtifact: "artifact", OutputArtifact: "artifact", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, StageSpan: []catalog.SlotID{catalog.SlotImplementation}, InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
+		}},
+		Capabilities: []catalog.CapabilityRecord{{ID: "workflow", InputSchema: "artifact", OutcomeSchema: "artifact", RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"binding"}}},
+	}
+	raw, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func validRecipeV3JSON(t *testing.T) []byte {
+	t.Helper()
+	slots := make([]catalog.SlotRecipe, len(catalog.CanonicalSlots()))
+	for index, definition := range catalog.CanonicalSlots() {
+		slot := catalog.SlotRecipe{SlotID: definition.ID, Applicability: catalog.SlotMandatory, Pipeline: []catalog.PipelineStep{}, Gates: []catalog.GateRecord{}, Transitions: []catalog.RecipeTransition{}}
+		if definition.ID == catalog.SlotIncidentRecovery {
+			slot.Applicability = catalog.SlotConditional
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerNone}
+		} else {
+			step := catalog.PipelineStep{ID: "main", Selector: catalog.BindingSelector{ProviderID: "test/provider", BindingID: "binding"}, StageSpan: []catalog.SlotID{definition.ID}, RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact"}
+			slot.Pipeline = []catalog.PipelineStep{step}
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: step.ID}
+		}
+		if index+1 < len(slots) {
+			slot.Transitions = []catalog.RecipeTransition{{Signal: "succeeded", Target: catalog.CanonicalSlots()[index+1].ID}}
+		}
+		slots[index] = slot
+	}
+	record := catalog.ProfileRecipeRecord{SchemaVersion: catalog.ProfileRecipeSchemaV3, TaxonomyVersion: catalog.TaxonomyVersionV1, RecipeVersion: "3.0.0", ID: "test/recipe", DisplayName: "Test Recipe", Family: "test", Slots: slots, AddOns: []catalog.AddOnRecord{}, IncidentRoutes: []catalog.IncidentRoute{}, Overlays: []catalog.OverlayRecord{}, StableBoundaries: []string{"between-slots"}, EnvironmentRequirements: []execution.EnvironmentRequirement{}}
+	raw, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func TestRegistryValidatesNormalizedConfigurationSchemas(t *testing.T) {

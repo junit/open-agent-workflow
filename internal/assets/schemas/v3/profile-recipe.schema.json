@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v3/profile-recipe.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "taxonomy_version", "recipe_version", "id", "display_name", "family", "slots", "add_ons", "incident_routes", "overlays", "stable_boundaries", "environment_requirements"],
+  "properties": {
+    "schema_version": {"const": "oaw.profile-recipe/v3"},
+    "taxonomy_version": {"const": "oaw.lifecycle-taxonomy/v1"},
+    "recipe_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "id": {"$ref": "#/$defs/qualified_id"}, "display_name": {"type": "string", "minLength": 1}, "family": {"$ref": "#/$defs/local_id"}, "template": {"$ref": "#/$defs/local_id"},
+    "slots": {"type": "array", "minItems": 10, "maxItems": 10, "items": {"$ref": "#/$defs/slot"}},
+    "add_ons": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/add_on"}}, "incident_routes": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/incident_route"}}, "overlays": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/overlay"}},
+    "stable_boundaries": {"type": "array", "minItems": 0, "items": {"type": "string", "minLength": 1}}, "environment_requirements": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/environment_requirement"}}
+  },
+  "$defs": {
+    "qualified_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._-]*$"}, "local_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "slot_id": {"enum": ["problem-framing", "solution-specification", "delivery-planning", "workspace-preparation", "implementation", "implementation-tdd", "incident-recovery", "review-remediation", "fresh-verification", "closeout"]},
+    "selector": {"type": "object", "additionalProperties": false, "required": ["provider_id", "binding_id"], "properties": {"provider_id": {"$ref": "#/$defs/qualified_id"}, "binding_id": {"$ref": "#/$defs/local_id"}}},
+    "span": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/slot_id"}},
+    "owner": {"type": "object", "additionalProperties": false, "required": ["kind"], "properties": {"kind": {"enum": ["provider-binding", "host-action", "none"]}, "step_id": {"$ref": "#/$defs/local_id"}, "host_action": {"type": "string", "minLength": 1}}},
+    "host_action": {"type": "object", "additionalProperties": false, "required": ["id", "input_artifact", "output_artifact"], "properties": {"id": {"$ref": "#/$defs/local_id"}, "input_artifact": {"type": "string", "minLength": 1}, "output_artifact": {"type": "string", "minLength": 1}}},
+    "pipeline_step": {"type": "object", "additionalProperties": false, "required": ["id", "binding_selector", "stage_span", "required_input_artifact", "produced_output_artifact"], "properties": {"id": {"$ref": "#/$defs/local_id"}, "binding_selector": {"$ref": "#/$defs/selector"}, "stage_span": {"$ref": "#/$defs/span"}, "required_input_artifact": {"type": "string", "minLength": 1}, "produced_output_artifact": {"type": "string", "minLength": 1}}},
+    "evidence": {"type": "object", "additionalProperties": false, "required": ["kind", "minimum", "description"], "properties": {"kind": {"type": "string", "minLength": 1}, "minimum": {"type": "integer", "minimum": 1}, "description": {"type": "string", "minLength": 1}}},
+    "gate": {"type": "object", "additionalProperties": false, "required": ["id", "authority", "predicate", "evidence_requirements"], "properties": {"id": {"$ref": "#/$defs/local_id"}, "authority": {"enum": ["oaw-core", "host", "user"]}, "predicate": {"type": "string", "minLength": 1}, "evidence_requirements": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/evidence"}}}},
+    "transition": {"type": "object", "additionalProperties": false, "required": ["signal", "target"], "properties": {"signal": {"type": "string", "minLength": 1}, "target": {"$ref": "#/$defs/slot_id"}}},
+    "slot": {"type": "object", "additionalProperties": false, "required": ["slot_id", "applicability", "outcome_owner", "pipeline", "gates", "transitions"], "properties": {"slot_id": {"$ref": "#/$defs/slot_id"}, "applicability": {"enum": ["mandatory", "conditional"]}, "outcome_owner": {"$ref": "#/$defs/owner"}, "pipeline": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/pipeline_step"}}, "host_action": {"$ref": "#/$defs/host_action"}, "gates": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/gate"}}, "transitions": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/transition"}}}},
+    "incident_route": {"type": "object", "additionalProperties": false, "required": ["incident_type", "handler", "return_to", "if_unavailable"], "properties": {"incident_type": {"type": "string", "minLength": 1}, "handler": {"$ref": "#/$defs/selector"}, "return_to": {"$ref": "#/$defs/slot_id"}, "if_unavailable": {"enum": ["stop", "replan"]}}},
+    "overlay": {"type": "object", "additionalProperties": false, "required": ["id", "precedence", "paused_bindings", "selected_alternative", "rationale"], "properties": {"id": {"$ref": "#/$defs/local_id"}, "precedence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/local_id"}}, "paused_bindings": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/selector"}}, "selected_alternative": {"$ref": "#/$defs/local_id"}, "rationale": {"type": "string", "minLength": 1}}},
+    "add_on": {"type": "object", "additionalProperties": false, "required": ["id", "kind", "binding_selector", "slot_id", "incident_types", "evidence_requirements"], "properties": {"id": {"$ref": "#/$defs/local_id"}, "kind": {"enum": ["incident-handler", "specialist-check"]}, "binding_selector": {"$ref": "#/$defs/selector"}, "slot_id": {"$ref": "#/$defs/slot_id"}, "incident_types": {"type": "array", "minItems": 0, "items": {"type": "string", "minLength": 1}}, "evidence_requirements": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/evidence"}}}},
+    "environment_requirement": {"type": "object", "additionalProperties": false, "required": ["surface", "required", "accepted_dispositions"], "properties": {"surface": {"$ref": "#/$defs/local_id"}, "required": {"type": "boolean"}, "accepted_dispositions": {"type": "array", "minItems": 0, "items": {"enum": ["inherited", "host-configured", "restricted", "unknown", "unavailable"]}}}}
+  }
+}

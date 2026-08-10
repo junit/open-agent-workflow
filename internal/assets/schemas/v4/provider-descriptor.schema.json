@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v4/provider-descriptor.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "descriptor_version", "id", "display_name", "distributions", "discovery", "bindings", "capabilities"],
+  "properties": {
+    "schema_version": {"const": "oaw.provider-descriptor/v4"},
+    "descriptor_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "id": {"$ref": "#/$defs/qualified_id"},
+    "display_name": {"type": "string", "minLength": 1},
+    "distributions": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/distribution"}},
+    "discovery": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/discovery"}},
+    "bindings": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/binding"}},
+    "capabilities": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/capability"}}
+  },
+  "$defs": {
+    "qualified_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._-]*$"},
+    "local_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]*$"},
+    "slot_id": {"enum": ["problem-framing", "solution-specification", "delivery-planning", "workspace-preparation", "implementation", "implementation-tdd", "incident-recovery", "review-remediation", "fresh-verification", "closeout"]},
+    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "revision": {"type": "string", "pattern": "^(?:[0-9a-f]{40}|sha256:[0-9a-f]{64})$"},
+    "path": {
+      "type": "string",
+      "allOf": [
+        {"pattern": "^[^/\\\\\\x00-\\x1f\\x7f:]+(?:/[^/\\\\\\x00-\\x1f\\x7f:]+)*$"},
+        {"not": {"anyOf": [{"pattern": "(^|/)\\.(/|$)"}, {"pattern": "(^|/)\\.\\.(/|$)"}, {"pattern": "[*?\\[\\]{}()]"}]}}
+      ]
+    },
+    "topologies": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["CURRENT", "SUBAGENT"]}},
+    "distribution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "source_uri", "revision", "tree_digest"],
+      "properties": {
+        "id": {"$ref": "#/$defs/local_id"},
+        "source_uri": {"type": "string", "minLength": 1},
+        "revision": {"$ref": "#/$defs/revision"},
+        "tree_digest": {"$ref": "#/$defs/digest"}
+      }
+    },
+    "discovery": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "hosts", "surface", "distribution_id", "kind", "root"],
+      "properties": {
+        "id": {"$ref": "#/$defs/local_id"},
+        "hosts": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/local_id"}},
+        "surface": {"$ref": "#/$defs/local_id"},
+        "distribution_id": {"$ref": "#/$defs/local_id"},
+        "kind": {"enum": ["path-exists", "one-level-version-path-exists"]},
+        "root": {"enum": ["user-home", "xdg-config-home", "project-root"]},
+        "candidate_path": {"$ref": "#/$defs/path"},
+        "evidence_path": {"$ref": "#/$defs/path"},
+        "prefix": {"$ref": "#/$defs/path"}
+      },
+      "allOf": [
+        {"if": {"properties": {"kind": {"const": "path-exists"}}}, "then": {"required": ["candidate_path", "evidence_path"], "not": {"required": ["prefix"]}}},
+        {"if": {"properties": {"kind": {"const": "one-level-version-path-exists"}}}, "then": {"required": ["prefix", "evidence_path"], "not": {"required": ["candidate_path"]}}}
+      ]
+    },
+    "responsibility": {
+      "type": "object", "additionalProperties": false,
+      "required": ["namespace", "name", "slot_id", "outcome_owner"],
+      "properties": {
+        "namespace": {"enum": ["stage", "procedure", "incident", "assurance", "host-action", "gate"]},
+        "name": {"type": "string", "minLength": 1},
+        "slot_id": {"$ref": "#/$defs/slot_id"},
+        "outcome_owner": {"type": "boolean"}
+      }
+    },
+    "delegation": {
+      "type": "object", "additionalProperties": false,
+      "required": ["child", "parallel_child", "nested_child", "nested_parallel_child"],
+      "properties": {"child": {"type": "boolean"}, "parallel_child": {"type": "boolean"}, "nested_child": {"type": "boolean"}, "nested_parallel_child": {"type": "boolean"}}
+    },
+    "internal_call": {
+      "type": "object", "additionalProperties": false,
+      "required": ["binding_id", "required", "mode", "stage_span"],
+      "properties": {"binding_id": {"$ref": "#/$defs/local_id"}, "required": {"type": "boolean"}, "mode": {"enum": ["credit-only", "dispatch-before", "dispatch-after"]}, "stage_span": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/slot_id"}}}
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "distribution_id", "content_root", "install_root", "tree_digest", "host", "surface", "kind", "reference", "invocation", "responsibilities", "input_artifact", "output_artifact", "maximum_effects", "resources", "supported_topologies", "delegation", "stage_span", "internal_calls", "alternatives", "conflicts"],
+      "properties": {
+        "id": {"$ref": "#/$defs/local_id"}, "distribution_id": {"$ref": "#/$defs/local_id"}, "content_root": {"$ref": "#/$defs/path"}, "install_root": {"$ref": "#/$defs/path"}, "tree_digest": {"$ref": "#/$defs/digest"},
+        "host": {"$ref": "#/$defs/local_id"}, "surface": {"$ref": "#/$defs/local_id"}, "kind": {"enum": ["skill", "agent", "role", "instruction", "tool"]}, "reference": {"type": "string", "minLength": 1}, "invocation": {"enum": ["human-explicit", "model", "host", "internal"]},
+        "responsibilities": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/responsibility"}}, "input_artifact": {"type": "string", "minLength": 1}, "output_artifact": {"type": "string", "minLength": 1},
+        "maximum_effects": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["read-project", "write-project", "run-process", "git-local", "network-read"]}}, "resources": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["project", "project-worktree", "git-repository"]}}, "supported_topologies": {"$ref": "#/$defs/topologies"}, "delegation": {"$ref": "#/$defs/delegation"}, "stage_span": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/slot_id"}}, "internal_calls": {"type": "array", "minItems": 0, "items": {"$ref": "#/$defs/internal_call"}}, "alternatives": {"type": "array", "minItems": 0, "uniqueItems": true, "items": {"$ref": "#/$defs/local_id"}}, "conflicts": {"type": "array", "minItems": 0, "uniqueItems": true, "items": {"$ref": "#/$defs/local_id"}}
+      }
+    },
+    "capability": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "input_schema", "outcome_schema", "request_modes", "binding_refs"],
+      "properties": {"id": {"$ref": "#/$defs/local_id"}, "input_schema": {"type": "string", "minLength": 1}, "outcome_schema": {"type": "string", "minLength": 1}, "request_modes": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"enum": ["BOUNDED", "WORKFLOW"]}}, "binding_refs": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"$ref": "#/$defs/local_id"}}}
+    }
+  }
+}
