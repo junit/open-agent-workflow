@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"slices"
 	"sort"
 	"strings"
 	"unicode"
@@ -17,31 +16,60 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
-const lifecycleBundleSchemaV3 = "oaw.lifecycle-bundle/v3"
-
 type profileCandidate struct {
-	Profile  string
-	RecipeID string
-	Recipe   catalog.ProfileRecipeRecord
+	Profile      string
+	RecipeID     string
+	Recipe       catalog.ProfileRecipeRecord
+	RecipeDigest string
 }
 
 func Compile(request CompilationRequest) (CompilationResult, error) {
-	hostTopologies, observations, err := validateCompilationRequest(request)
+	hostRecord, candidates, err := validateCompilationRequest(request)
 	if err != nil {
 		return CompilationResult{}, err
 	}
-	candidates := compilationCandidates(request.Configuration.Catalog())
-	profiles := compileProfileEligibility(request, candidates, hostTopologies, observations)
+
+	profiles, err := compileProfileEligibility(request, candidates)
+	if err != nil {
+		return CompilationResult{}, err
+	}
 	markRecommendation(profiles, request.Classification)
-	addOns := compileAddOnEligibility(request, candidates, hostTopologies, observations)
+	addOns, err := compileAddOnEligibility(request, candidates)
+	if err != nil {
+		return CompilationResult{}, err
+	}
 	result := CompilationResult{EligibleProfiles: profiles, EligibleAddOns: addOns}
+
 	if request.Selection != nil {
-		bundle, err := compileBundle(request, candidates, hostTopologies, observations)
+		candidate, selection, err := normalizeRequestedSelection(*request.Selection, candidates, hostRecord.Topology)
 		if err != nil {
 			return CompilationResult{}, err
 		}
-		result.Bundle = &bundle
+		suppliedConfirmation := selection.ConfirmationDigest
+		preview, err := compileSelectionPreview(request, candidate, selection)
+		if err != nil {
+			return CompilationResult{}, err
+		}
+		result.SelectionPreview = &preview
+		if suppliedConfirmation != "" {
+			if preview.Graph == nil || preview.Selection.ConfirmationDigest != suppliedConfirmation {
+				return CompilationResult{}, coreError("PROFILE_SELECTION_INVALID", "selection confirmation does not match the current trusted preview")
+			}
+			if request.Selection.RecipeDigest != preview.Selection.RecipeDigest ||
+				request.Selection.GraphSelectionDigest != preview.Selection.GraphSelectionDigest {
+				return CompilationResult{}, coreError("PROFILE_SELECTION_INVALID", "selection pins do not match the current trusted preview")
+			}
+			if request.Selection.ProfileSource != SelectionUser || request.Selection.TopologySource != SelectionUser {
+				return CompilationResult{}, coreError("PROFILE_SELECTION_INVALID", "Profile and topology require explicit user selection")
+			}
+			bundle, err := compileBundle(request, candidate, preview, hostRecord)
+			if err != nil {
+				return CompilationResult{}, err
+			}
+			result.Bundle = &bundle
+		}
 	}
+
 	result.Digest, err = compilationResultDigest(result)
 	if err != nil {
 		return CompilationResult{}, err
@@ -49,43 +77,34 @@ func Compile(request CompilationRequest) (CompilationResult, error) {
 	return result, nil
 }
 
-func validateCompilationRequest(request CompilationRequest) ([]execution.Topology, []execution.EnvironmentObservation, error) {
-	if !validIdentifier(request.DeliverableID) || !validDigest(request.InputDigest) || request.Generation == 0 {
-		return nil, nil, coreError("CORE_INPUT_INVALID", "invalid Deliverable identity")
-	}
-	if _, err := catalog.ParseLocalID(request.HostID); err != nil {
-		return nil, nil, coreError("HOST_PROVIDER_SCOPE_MISMATCH", "invalid Host %q", request.HostID)
-	}
-	if !validDigest(request.HostSessionDigest) || !validDigest(request.HostEnvironmentReportDigest) || !validDigest(request.HostProviderInventoryDigest) {
-		return nil, nil, coreError("CORE_INPUT_INVALID", "Host snapshot digests are invalid")
+func validateCompilationRequest(request CompilationRequest) (profile.HostEvidenceRecord, []profileCandidate, error) {
+	if !validIdentifier(request.DeliverableID) || !validDigest(request.InputDigest) || request.Generation == 0 || !validDigest(request.ResolutionDigest) {
+		return profile.HostEvidenceRecord{}, nil, coreError("CORE_INPUT_INVALID", "invalid Deliverable or resolution identity")
 	}
 	if err := validateClassification(request.Classification); err != nil {
-		return nil, nil, err
+		return profile.HostEvidenceRecord{}, nil, err
 	}
 	if request.Classification.RequestMode != classification.RequestModeWorkflow {
-		return nil, nil, coreError("CORE_INPUT_INVALID", "Lifecycle compilation requires WORKFLOW classification")
+		return profile.HostEvidenceRecord{}, nil, coreError("CORE_INPUT_INVALID", "Lifecycle compilation requires WORKFLOW classification")
 	}
 	if err := validateConfiguration(request.Configuration); err != nil {
-		return nil, nil, err
+		return profile.HostEvidenceRecord{}, nil, err
 	}
-	if request.Resolutions.HostID() != request.HostID || request.Registry.HostID() != request.HostID {
-		return nil, nil, coreError("HOST_PROVIDER_SCOPE_MISMATCH", "Resolution Report and Registry do not match Host %q", request.HostID)
+	hostRecord := request.Host.Record()
+	if err := profile.ValidateHostEvidenceRecord(hostRecord); err != nil {
+		return profile.HostEvidenceRecord{}, nil, err
 	}
-	if !validDigest(request.Resolutions.Digest()) || !validDigest(request.Registry.Digest()) {
-		return nil, nil, coreError("CORE_INPUT_INVALID", "Resolution or Registry digest is invalid")
+	if request.Registry == nil {
+		return profile.HostEvidenceRecord{}, nil, coreError("CORE_INPUT_INVALID", "Registry is required")
 	}
-	if err := validateResolutionPair(request); err != nil {
-		return nil, nil, err
+	if err := validateRegistry(request.Configuration.Catalog(), request.Registry, hostRecord); err != nil {
+		return profile.HostEvidenceRecord{}, nil, err
 	}
-	hostTopologies, err := execution.NormalizeTopologies(request.HostTopologies)
+	candidates, err := compilationCandidates(request.Configuration.Catalog())
 	if err != nil {
-		return nil, nil, err
+		return profile.HostEvidenceRecord{}, nil, err
 	}
-	observations, err := normalizeObservations(request.EnvironmentObservations)
-	if err != nil {
-		return nil, nil, err
-	}
-	return hostTopologies, observations, nil
+	return hostRecord, candidates, nil
 }
 
 func validateConfiguration(snapshot config.Snapshot) error {
@@ -113,45 +132,67 @@ func validateClassification(value classification.ClassificationDecision) error {
 	return nil
 }
 
-func validateResolutionPair(request CompilationRequest) error {
-	verified := make(map[string]string)
-	for _, resolution := range request.Resolutions.Resolutions() {
-		if resolution.State != registry.Verified {
-			if resolution.Instance != nil {
-				return coreError("RESOLUTION_DIGEST_INVALID", "non-verified Provider %s has an Instance", resolution.ProviderID)
-			}
-			continue
-		}
-		if resolution.Instance == nil {
-			return coreError("RESOLUTION_DIGEST_INVALID", "verified Provider %s has no Instance", resolution.ProviderID)
-		}
-		provider, found := request.Registry.Provider(resolution.ProviderID)
-		if !found || provider.Digest != resolution.Instance.Digest || provider.HostID != request.HostID {
-			return coreError("RESOLUTION_DIGEST_INVALID", "Resolution and Registry disagree for %s", resolution.ProviderID)
-		}
-		verified[resolution.ProviderID] = provider.Digest
+func validateRegistry(available catalog.Catalog, effective profile.EffectiveRegistry, hostRecord profile.HostEvidenceRecord) error {
+	if effective.HostID() != hostRecord.HostID || !validDigest(effective.Digest()) {
+		return coreError("HOST_PROVIDER_SCOPE_MISMATCH", "Registry does not match Host %q", hostRecord.HostID)
 	}
 	descriptors := make(map[string]catalog.ProviderDescriptorRecord)
-	for _, descriptor := range request.Configuration.Catalog().Providers() {
+	for _, descriptor := range available.Providers() {
 		descriptors[descriptor.ID] = descriptor
 	}
-	for _, provider := range request.Registry.Providers() {
-		if verified[provider.ProviderID] != provider.Digest || provider.BindingInventoryDigest != request.HostProviderInventoryDigest {
-			return coreError("RESOLUTION_DIGEST_INVALID", "Registry Provider %s is not pinned to the supplied resolution and inventory", provider.ProviderID)
+	providers := effective.Providers()
+	sort.Slice(providers, func(left, right int) bool { return providers[left].ProviderID < providers[right].ProviderID })
+	for index, provider := range providers {
+		if index > 0 && providers[index-1].ProviderID == provider.ProviderID || provider.HostID != hostRecord.HostID || provider.BindingInventoryDigest != hostRecord.InventoryDigest {
+			return coreError("RESOLUTION_DIGEST_INVALID", "Registry Provider %s is not pinned to current Host evidence", provider.ProviderID)
 		}
 		descriptor, found := descriptors[provider.ProviderID]
-		if !found {
-			return coreError("RESOLUTION_DIGEST_INVALID", "Registry Provider %s has no configured descriptor", provider.ProviderID)
+		descriptorDigest, _, digestErr := canonicaljson.Digest(descriptor)
+		if !found || digestErr != nil || descriptorDigest != provider.DescriptorDigest || providerInstanceDigest(provider) != provider.Digest {
+			return coreError("RESOLUTION_DIGEST_INVALID", "Registry Provider %s is malformed or stale", provider.ProviderID)
 		}
-		digest, _, err := canonicaljson.Digest(descriptor)
-		if err != nil || digest != provider.DescriptorDigest {
-			return coreError("RESOLUTION_DIGEST_INVALID", "Registry Provider %s descriptor digest is invalid", provider.ProviderID)
+		lookedUp, found := effective.Provider(provider.ProviderID)
+		if !found || lookedUp.Digest != provider.Digest {
+			return coreError("RESOLUTION_DIGEST_INVALID", "Registry Provider %s lookup disagrees with enumeration", provider.ProviderID)
 		}
+	}
+	record := struct {
+		SchemaVersion string                      `json:"schema_version"`
+		HostID        string                      `json:"host_id"`
+		Providers     []registry.ProviderInstance `json:"providers"`
+	}{"oaw.effective-registry/v4", hostRecord.HostID, providers}
+	digest, _, err := canonicaljson.Digest(record)
+	if err != nil || digest != effective.Digest() {
+		return coreError("RESOLUTION_DIGEST_INVALID", "Registry digest is invalid")
 	}
 	return nil
 }
 
-func compilationCandidates(available catalog.Catalog) []profileCandidate {
+func providerInstanceDigest(instance registry.ProviderInstance) string {
+	record := struct {
+		SchemaVersion          string                        `json:"schema_version"`
+		ProviderID             string                        `json:"provider_id"`
+		HostID                 string                        `json:"host_id"`
+		DescriptorDigest       string                        `json:"descriptor_digest"`
+		DistributionID         string                        `json:"distribution_id"`
+		DistributionRevision   string                        `json:"distribution_revision"`
+		DistributionTreeDigest string                        `json:"distribution_tree_digest"`
+		InstallationKey        string                        `json:"installation_key"`
+		ConfigurationDigest    string                        `json:"configuration_digest"`
+		BindingInventoryDigest string                        `json:"binding_inventory_digest"`
+		EvidenceDigest         string                        `json:"evidence_digest"`
+		Bindings               []registry.VerifiedBinding    `json:"bindings"`
+		Capabilities           []registry.VerifiedCapability `json:"capabilities"`
+	}{
+		"oaw.provider-instance/v4", instance.ProviderID, instance.HostID, instance.DescriptorDigest,
+		instance.DistributionID, instance.DistributionRevision, instance.DistributionTreeDigest, instance.InstallationKey,
+		instance.ConfigurationDigest, instance.BindingInventoryDigest, instance.EvidenceDigest, instance.Bindings, instance.Capabilities,
+	}
+	digest, _, _ := canonicaljson.Digest(record)
+	return digest
+}
+
+func compilationCandidates(available catalog.Catalog) ([]profileCandidate, error) {
 	recipes := make(map[string]catalog.ProfileRecipeRecord)
 	for _, recipe := range available.Recipes() {
 		recipes[recipe.ID] = recipe
@@ -159,91 +200,236 @@ func compilationCandidates(available catalog.Catalog) []profileCandidate {
 	aliased := make(map[string]struct{})
 	result := make([]profileCandidate, 0, len(recipes))
 	for _, alias := range available.Aliases() {
-		if recipe, found := recipes[alias.RecipeID]; found {
-			result = append(result, profileCandidate{Profile: alias.Alias, RecipeID: alias.RecipeID, Recipe: recipe})
-			aliased[alias.RecipeID] = struct{}{}
+		recipe, found := recipes[alias.RecipeID]
+		if !found {
+			return nil, fmt.Errorf("PROFILE_TRUSTED_ALIAS_INVALID: missing Recipe %s", alias.RecipeID)
 		}
+		normalized, digest, err := catalog.NormalizeAndDigestRecipe(available.Providers(), recipe)
+		if err != nil {
+			return nil, fmt.Errorf("PROFILE_TRUSTED_RECIPE_INVALID: %w", err)
+		}
+		result = append(result, profileCandidate{Profile: alias.Alias, RecipeID: alias.RecipeID, Recipe: normalized, RecipeDigest: digest})
+		aliased[alias.RecipeID] = struct{}{}
 	}
 	for _, recipe := range recipes {
 		if _, found := aliased[recipe.ID]; found || strings.HasPrefix(recipe.ID, "oaw/") {
 			continue
 		}
-		result = append(result, profileCandidate{Profile: recipe.ID, RecipeID: recipe.ID, Recipe: recipe})
+		normalized, digest, err := catalog.NormalizeAndDigestRecipe(available.Providers(), recipe)
+		if err != nil {
+			return nil, fmt.Errorf("PROFILE_TRUSTED_RECIPE_INVALID: %w", err)
+		}
+		result = append(result, profileCandidate{Profile: UserDefinedProfile, RecipeID: recipe.ID, Recipe: normalized, RecipeDigest: digest})
 	}
-	sort.Slice(result, func(left, right int) bool { return result[left].Profile < result[right].Profile })
-	return result
+	sort.Slice(result, func(left, right int) bool {
+		if result[left].Profile == result[right].Profile {
+			return result[left].RecipeID < result[right].RecipeID
+		}
+		return result[left].Profile < result[right].Profile
+	})
+	return result, nil
 }
 
-func compileProfileEligibility(request CompilationRequest, candidates []profileCandidate, hostTopologies []execution.Topology, observations []execution.EnvironmentObservation) []ProfileEligibility {
+func compileProfileEligibility(request CompilationRequest, candidates []profileCandidate) ([]ProfileEligibility, error) {
 	result := make([]ProfileEligibility, 0, len(candidates))
 	for _, candidate := range candidates {
-		graph, err := profile.CompileProfile(request.Configuration.Catalog(), request.Registry, profile.CompileRequest{
-			Profile: candidate.Profile, HostTopologies: hostTopologies, EnvironmentObservations: observations,
-		})
-		eligibility := ProfileEligibility{Profile: candidate.Profile, RecipeID: candidate.RecipeID, EligibleTopologies: []execution.Topology{}, Diagnostics: []EligibilityDiagnostic{}}
+		selection, err := defaultCandidateSelection(candidate, request.Host.Record().Topology)
 		if err != nil {
-			eligibility.Diagnostics = diagnosticsForCompileError(request.Resolutions, err)
-		} else {
-			eligibility.Eligible = true
-			eligibility.EligibleTopologies = graph.EligibleTopologies()
+			return nil, err
 		}
-		result = append(result, eligibility)
+		preview, err := compileSelectionPreview(request, candidate, selection)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ProfileEligibility{
+			Profile: candidate.Profile, RecipeID: candidate.RecipeID, Eligible: preview.Graph != nil,
+			Topology: selection.Topology, Diagnostics: append([]profile.CompileDiagnostic{}, preview.Diagnostics...), Preview: preview,
+		})
 	}
-	return result
+	return result, nil
 }
 
-func compileAddOnEligibility(request CompilationRequest, candidates []profileCandidate, hostTopologies []execution.Topology, observations []execution.EnvironmentObservation) []AddOnEligibility {
-	seen := make(map[string]struct{})
+func compileAddOnEligibility(request CompilationRequest, candidates []profileCandidate) ([]AddOnEligibility, error) {
 	result := []AddOnEligibility{}
 	for _, candidate := range candidates {
-		for _, node := range candidate.Recipe.Nodes {
-			if !node.Optional {
-				continue
-			}
-			key := node.ID + "\x00" + node.Selector.ProviderID + "\x00" + node.Selector.CapabilityID
-			if _, found := seen[key]; found {
-				continue
-			}
-			seen[key] = struct{}{}
-			entry := AddOnEligibility{NodeID: node.ID, ProviderID: node.Selector.ProviderID, CapabilityID: node.Selector.CapabilityID, EligibleTopologies: []execution.Topology{}, Diagnostics: []EligibilityDiagnostic{}}
-			graph, err := profile.CompileProfile(request.Configuration.Catalog(), request.Registry, profile.CompileRequest{
-				Profile: candidate.Profile, AddOns: []string{node.ID}, HostTopologies: hostTopologies, EnvironmentObservations: observations,
-			})
+		for _, addOn := range candidate.Recipe.AddOns {
+			selection, err := defaultCandidateSelection(candidate, request.Host.Record().Topology)
 			if err != nil {
-				entry.Diagnostics = diagnosticsForCompileError(request.Resolutions, err)
-			} else {
-				entry.EligibleTopologies = graph.EligibleTopologies()
-				for _, graphNode := range graph.Nodes() {
-					if graphNode.ID == node.ID {
-						entry.ProviderID = graphNode.ProviderID
-						entry.CapabilityID = graphNode.CapabilityID
-						break
-					}
-				}
+				return nil, err
 			}
-			result = append(result, entry)
+			selection.AddOns = []string{addOn.ID}
+			preview, err := compileSelectionPreview(request, candidate, selection)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, AddOnEligibility{
+				Profile: candidate.Profile, RecipeID: candidate.RecipeID, AddOnID: addOn.ID, Kind: addOn.Kind, SlotID: addOn.SlotID,
+				Eligible: preview.Graph != nil, Diagnostics: append([]profile.CompileDiagnostic{}, preview.Diagnostics...), Preview: preview,
+			})
 		}
 	}
 	sort.Slice(result, func(left, right int) bool {
-		return addOnKey(result[left]) < addOnKey(result[right])
+		leftKey := result[left].Profile + "\x00" + result[left].RecipeID + "\x00" + result[left].AddOnID
+		rightKey := result[right].Profile + "\x00" + result[right].RecipeID + "\x00" + result[right].AddOnID
+		return leftKey < rightKey
 	})
-	return result
+	return result, nil
 }
 
-func diagnosticsForCompileError(report registry.ResolutionReport, err error) []EligibilityDiagnostic {
-	diagnostic := EligibilityDiagnostic{Code: "PROFILE_UNAVAILABLE", Detail: err.Error()}
-	if compileErr, ok := err.(*profile.CompileError); ok {
-		diagnostic.Code = compileErr.Code
-		diagnostic.ProviderID = compileErr.ProviderID
-		diagnostic.CapabilityID = compileErr.CapabilityID
-		if compileErr.ProviderID != "" {
-			if resolution, found := report.Resolution(compileErr.ProviderID); found && resolution.State != registry.Verified {
-				diagnostic.Code = resolution.Reason
-				diagnostic.Detail = fmt.Sprintf("%s: %s", resolution.Reason, err)
-			}
+func defaultCandidateSelection(candidate profileCandidate, topology execution.Topology) (Selection, error) {
+	overlays, err := selectedRecipeOverlays(candidate.Recipe, nil)
+	if err != nil {
+		return Selection{}, err
+	}
+	return Selection{
+		Profile: candidate.Profile, RecipeID: candidate.RecipeID, RecipeDigest: candidate.RecipeDigest,
+		Topology: topology, AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: overlays,
+	}, nil
+}
+
+func normalizeRequestedSelection(value Selection, candidates []profileCandidate, topology execution.Topology) (profileCandidate, Selection, error) {
+	if value.Profile != UserDefinedProfile && value.Profile == "" || value.RecipeID == "" || strings.TrimSpace(value.Profile) != value.Profile || strings.TrimSpace(value.RecipeID) != value.RecipeID {
+		return profileCandidate{}, Selection{}, coreError("PROFILE_SELECTION_INVALID", "Profile and Recipe identity are required")
+	}
+	if value.ProfileSource != "" && value.ProfileSource != SelectionUser || value.TopologySource != "" && value.TopologySource != SelectionUser {
+		return profileCandidate{}, Selection{}, coreError("PROFILE_SELECTION_INVALID", "invalid selection source")
+	}
+	if value.Topology != topology {
+		return profileCandidate{}, Selection{}, coreError("PROFILE_TOPOLOGY_UNAVAILABLE", "selection topology differs from current Host evidence")
+	}
+	if _, err := execution.NormalizeTopologies([]execution.Topology{value.Topology}); err != nil {
+		return profileCandidate{}, Selection{}, coreError("PROFILE_TOPOLOGY_UNAVAILABLE", "selection topology is invalid")
+	}
+	var candidate profileCandidate
+	found := false
+	for _, available := range candidates {
+		if available.Profile == value.Profile && available.RecipeID == value.RecipeID {
+			candidate = available
+			found = true
+			break
 		}
 	}
-	return []EligibilityDiagnostic{diagnostic}
+	if !found {
+		return profileCandidate{}, Selection{}, coreError("PROFILE_SELECTION_INVALID", "Profile %q and Recipe %q are not selectable", value.Profile, value.RecipeID)
+	}
+	addOns, valid := sortedUniqueStrings(value.AddOns)
+	if !valid {
+		return profileCandidate{}, Selection{}, coreError("PROFILE_SELECTION_INVALID", "Add-on selection is invalid or duplicated")
+	}
+	overlays, err := selectedRecipeOverlays(candidate.Recipe, value.Overlays)
+	if err != nil {
+		return profileCandidate{}, Selection{}, err
+	}
+	value.AddOns = addOns
+	value.Overlays = overlays
+	value.Alternatives = append([]profile.AlternativeChoice{}, value.Alternatives...)
+	return candidate, value, nil
+}
+
+func compileSelectionPreview(request CompilationRequest, candidate profileCandidate, selection Selection) (SelectionPreview, error) {
+	addOns, valid := sortedUniqueStrings(selection.AddOns)
+	if !valid {
+		return SelectionPreview{}, coreError("PROFILE_SELECTION_INVALID", "Add-on selection is invalid or duplicated")
+	}
+	overlays, err := selectedRecipeOverlays(candidate.Recipe, selection.Overlays)
+	if err != nil {
+		return SelectionPreview{}, err
+	}
+	compileRequest := profile.CompileRequest{
+		Profile: candidate.Profile, Topology: selection.Topology, AddOns: addOns,
+		Alternatives: append([]profile.AlternativeChoice{}, selection.Alternatives...), Overlays: overlays, Host: request.Host,
+	}
+	var compiled profile.CompileResult
+	if candidate.Profile == UserDefinedProfile {
+		compiled, err = profile.CompileRecipe(request.Configuration.Catalog(), request.Registry, candidate.Recipe, compileRequest)
+	} else {
+		compiled, err = profile.CompileProfile(request.Configuration.Catalog(), request.Registry, compileRequest)
+	}
+	if err != nil {
+		return SelectionPreview{}, err
+	}
+	preview := SelectionPreview{
+		Selection: Selection{
+			Profile: candidate.Profile, RecipeID: candidate.RecipeID, RecipeDigest: candidate.RecipeDigest,
+			ProfileSource: selection.ProfileSource, Topology: selection.Topology, TopologySource: selection.TopologySource,
+			AddOns: addOns, Alternatives: append([]profile.AlternativeChoice{}, selection.Alternatives...), Overlays: overlays,
+		},
+		Recipe: candidate.Recipe, ProviderInstances: []profile.GraphProviderInstance{}, Diagnostics: compiled.Diagnostics(),
+	}
+	if graph, found := compiled.Graph(); found {
+		preview.Selection.RecipeDigest = graph.RecipeDigest
+		preview.Selection.AddOns = append([]string{}, graph.Selection.AddOns...)
+		preview.Selection.Alternatives = append([]profile.AlternativeChoice{}, graph.Selection.Alternatives...)
+		preview.Selection.Overlays = append([]string{}, graph.Selection.Overlays...)
+		preview.Selection.GraphSelectionDigest = graph.Selection.Digest
+		preview.ProviderInstances = append([]profile.GraphProviderInstance{}, graph.ProviderInstances...)
+		preview.Graph = &graph
+		preview.Selection.ConfirmationDigest = selectionConfirmationDigest(request.Registry.Digest(), request.Host.Digest(), preview)
+	}
+	preview.Digest = selectionPreviewDigest(preview)
+	return preview, nil
+}
+
+func selectedRecipeOverlays(recipe catalog.ProfileRecipeRecord, requested []string) ([]string, error) {
+	roots := append([]string{}, requested...)
+	if len(roots) == 0 && recipe.Template == "default" {
+		for _, overlay := range recipe.Overlays {
+			roots = append(roots, overlay.ID)
+		}
+	}
+	declared := make(map[string]catalog.OverlayRecord, len(recipe.Overlays))
+	for _, overlay := range recipe.Overlays {
+		declared[overlay.ID] = overlay
+	}
+	selected := make(map[string]struct{})
+	for _, root := range roots {
+		overlay, found := declared[root]
+		if !found {
+			return nil, coreError("PROFILE_SELECTION_INVALID", "overlay %q is not declared by Recipe %q", root, recipe.ID)
+		}
+		for _, id := range overlay.Precedence {
+			if _, found := declared[id]; !found {
+				return nil, fmt.Errorf("PROFILE_TRUSTED_RECIPE_INVALID: overlay %q has unknown precedence %q", root, id)
+			}
+			selected[id] = struct{}{}
+		}
+		selected[root] = struct{}{}
+	}
+	result := make([]string, 0, len(selected))
+	for _, overlay := range recipe.Overlays {
+		if _, found := selected[overlay.ID]; found {
+			result = append(result, overlay.ID)
+		}
+	}
+	return result, nil
+}
+
+func compileBundle(request CompilationRequest, candidate profileCandidate, preview SelectionPreview, hostRecord profile.HostEvidenceRecord) (LifecycleBundle, error) {
+	graph := *preview.Graph
+	selection := preview.Selection
+	selection.ProfileSource = request.Selection.ProfileSource
+	selection.TopologySource = request.Selection.TopologySource
+	bundle := LifecycleBundle{
+		SchemaVersion: LifecycleBundleSchemaV4, DeliverableID: request.DeliverableID, InputDigest: request.InputDigest, Generation: request.Generation,
+		Classification: cloneClassification(request.Classification), ClassificationDigest: request.Classification.Digest(),
+		Selection: selection, Recipe: candidate.Recipe, RecipeDigest: candidate.RecipeDigest,
+		HostID: hostRecord.HostID, HostSessionDigest: hostRecord.SessionDigest, HostManifestDigest: hostRecord.ManifestDigest,
+		EnvironmentReportDigest: hostRecord.EnvironmentDigest, ProviderInventoryDigest: hostRecord.InventoryDigest,
+		HostFeatureDigest: hostRecord.FeatureDigest, HostActionDigest: hostRecord.ActionDigest, HostEvidenceDigest: hostRecord.Digest,
+		Configuration: request.Configuration.Record(), ResolutionDigest: request.ResolutionDigest, RegistryDigest: request.Registry.Digest(),
+		ProviderInstances: append([]profile.GraphProviderInstance{}, graph.ProviderInstances...), Graph: graph, Topology: graph.Topology,
+		EnvironmentRequirements: cloneRequirements(graph.EnvironmentRequirements), AddOns: append([]string{}, selection.AddOns...),
+	}
+	seedDigest, _, err := canonicaljson.Digest(bundle)
+	if err != nil {
+		return LifecycleBundle{}, err
+	}
+	bundle.ID = "bundle-" + seedDigest[:32]
+	bundle.Digest, _, err = canonicaljson.Digest(bundle)
+	if err != nil {
+		return LifecycleBundle{}, err
+	}
+	return bundle, nil
 }
 
 func markRecommendation(values []ProfileEligibility, decision classification.ClassificationDecision) {
@@ -271,101 +457,27 @@ func markRecommendation(values []ProfileEligibility, decision classification.Cla
 	}
 }
 
-func compileBundle(request CompilationRequest, candidates []profileCandidate, hostTopologies []execution.Topology, observations []execution.EnvironmentObservation) (LifecycleBundle, error) {
-	selection, err := normalizeSelection(*request.Selection)
-	if err != nil {
-		return LifecycleBundle{}, err
-	}
-	if !candidatePresent(candidates, selection.Profile) {
-		return LifecycleBundle{}, coreError("PROFILE_SELECTION_INVALID", "Profile %q is not selectable", selection.Profile)
-	}
-	graph, err := profile.CompileProfile(request.Configuration.Catalog(), request.Registry, profile.CompileRequest{
-		Profile: selection.Profile, Bindings: selection.Bindings, AddOns: selection.AddOns,
-		HostTopologies: hostTopologies, EnvironmentObservations: observations,
-	})
-	if err != nil {
-		if compileErr, ok := err.(*profile.CompileError); ok && compileErr.Code == "PROFILE_ADD_ON_INVALID" {
-			return LifecycleBundle{}, err
-		}
-		return LifecycleBundle{}, coreError("PROFILE_SELECTION_INVALID", "%v", err)
-	}
-	eligibleTopologies := graph.EligibleTopologies()
-	if !slices.Contains(eligibleTopologies, selection.Topology) {
-		return LifecycleBundle{}, coreError("PROFILE_TOPOLOGY_UNAVAILABLE", "Profile %q does not support %s", selection.Profile, selection.Topology)
-	}
-	if len(eligibleTopologies) == 1 && eligibleTopologies[0] == execution.TopologyCurrent {
-		if selection.TopologySource != SelectionHostOnlyOption {
-			return LifecycleBundle{}, coreError("PROFILE_TOPOLOGY_SOURCE_INVALID", "CURRENT is the sole Host option")
-		}
-	} else if selection.TopologySource != SelectionUser {
-		return LifecycleBundle{}, coreError("PROFILE_TOPOLOGY_SOURCE_INVALID", "topology requires explicit user selection")
-	}
-	selection.Bindings = graph.Bindings()
-	graphRecord := graph.Record()
-	bundle := LifecycleBundle{
-		SchemaVersion: lifecycleBundleSchemaV3, DeliverableID: request.DeliverableID, InputDigest: request.InputDigest, Generation: request.Generation,
-		Classification: cloneClassification(request.Classification), ClassificationDigest: request.Classification.Digest(), Selection: selection,
-		HostID: request.HostID, HostSessionDigest: request.HostSessionDigest, EnvironmentReportDigest: request.HostEnvironmentReportDigest,
-		ProviderInventoryDigest: request.HostProviderInventoryDigest,
-		Configuration:           request.Configuration.Record(), ResolutionDigest: request.Resolutions.Digest(), RegistryDigest: request.Registry.Digest(),
-		ProviderInstances: append([]profile.GraphProviderInstance{}, graphRecord.ProviderInstances...), Graph: graphRecord, Topology: selection.Topology,
-		EnvironmentRequirements: cloneRequirements(graphRecord.EnvironmentRequirements), EnvironmentObservations: append([]execution.EnvironmentObservation{}, observations...),
-		AddOns: append([]string{}, selection.AddOns...),
-	}
-	seedDigest, _, err := canonicaljson.Digest(bundle)
-	if err != nil {
-		return LifecycleBundle{}, err
-	}
-	bundle.ID = "bundle-" + seedDigest[:32]
-	bundle.Digest, _, err = canonicaljson.Digest(bundle)
-	if err != nil {
-		return LifecycleBundle{}, err
-	}
-	return bundle, nil
+func selectionConfirmationDigest(registryDigest, hostEvidenceDigest string, preview SelectionPreview) string {
+	selection := preview.Selection
+	selection.ProfileSource = ""
+	selection.TopologySource = ""
+	selection.ConfirmationDigest = ""
+	value := struct {
+		Selection          Selection                       `json:"selection"`
+		Recipe             catalog.ProfileRecipeRecord     `json:"recipe"`
+		RegistryDigest     string                          `json:"registry_digest"`
+		HostEvidenceDigest string                          `json:"host_evidence_digest"`
+		ProviderInstances  []profile.GraphProviderInstance `json:"provider_instances"`
+		Graph              *profile.ExecutionGraphRecord   `json:"execution_graph"`
+	}{selection, preview.Recipe, registryDigest, hostEvidenceDigest, preview.ProviderInstances, preview.Graph}
+	digest, _, _ := canonicaljson.Digest(value)
+	return digest
 }
 
-func normalizeSelection(value Selection) (Selection, error) {
-	if value.ProfileSource != SelectionUser || value.Profile == "" || strings.TrimSpace(value.Profile) != value.Profile || strings.ContainsAny(value.Profile, "\r\n\x00") {
-		return Selection{}, coreError("PROFILE_SELECTION_INVALID", "Profile and source are invalid")
-	}
-	if _, err := execution.NormalizeTopologies([]execution.Topology{value.Topology}); err != nil {
-		return Selection{}, err
-	}
-	value.AddOns = append([]string{}, value.AddOns...)
-	sort.Strings(value.AddOns)
-	for index, addOn := range value.AddOns {
-		if addOn == "" || strings.TrimSpace(addOn) != addOn || index > 0 && value.AddOns[index-1] == addOn {
-			return Selection{}, coreError("PROFILE_ADD_ON_INVALID", "add-on selection is invalid or duplicated")
-		}
-	}
-	value.Bindings = append([]profile.ProfileBinding{}, value.Bindings...)
-	sort.Slice(value.Bindings, func(left, right int) bool {
-		return bindingKey(value.Bindings[left]) < bindingKey(value.Bindings[right])
-	})
-	for index, binding := range value.Bindings {
-		if _, err := catalog.ParseQualifiedID(binding.Selector.ProviderID); err != nil {
-			return Selection{}, coreError("PROFILE_SELECTION_INVALID", "invalid binding Provider")
-		}
-		if _, err := catalog.ParseLocalID(binding.Selector.CapabilityID); err != nil {
-			return Selection{}, coreError("PROFILE_SELECTION_INVALID", "invalid binding Capability")
-		}
-		if _, err := catalog.ParseQualifiedID(binding.PreferredProviderID); err != nil {
-			return Selection{}, coreError("PROFILE_SELECTION_INVALID", "invalid preferred Provider")
-		}
-		if index > 0 && selectorKey(value.Bindings[index-1]) == selectorKey(binding) {
-			return Selection{}, coreError("PROFILE_SELECTION_INVALID", "duplicate Profile Binding")
-		}
-	}
-	return value, nil
-}
-
-func normalizeObservations(values []execution.EnvironmentObservation) ([]execution.EnvironmentObservation, error) {
-	result := append([]execution.EnvironmentObservation{}, values...)
-	if err := execution.RequirementsSatisfied([]execution.EnvironmentRequirement{}, result); err != nil {
-		return nil, err
-	}
-	sort.Slice(result, func(left, right int) bool { return result[left].Surface < result[right].Surface })
-	return result, nil
+func selectionPreviewDigest(value SelectionPreview) string {
+	value.Digest = ""
+	digest, _, _ := canonicaljson.Digest(value)
+	return digest
 }
 
 func compilationResultDigest(value CompilationResult) (string, error) {
@@ -397,25 +509,15 @@ func cloneRequirements(values []execution.EnvironmentRequirement) []execution.En
 	return result
 }
 
-func candidatePresent(values []profileCandidate, wanted string) bool {
-	for _, value := range values {
-		if value.Profile == wanted {
-			return true
+func sortedUniqueStrings(values []string) ([]string, bool) {
+	result := append([]string{}, values...)
+	sort.Strings(result)
+	for index := range result {
+		if strings.TrimSpace(result[index]) != result[index] || result[index] == "" || index > 0 && result[index-1] == result[index] {
+			return nil, false
 		}
 	}
-	return false
-}
-
-func addOnKey(value AddOnEligibility) string {
-	return value.NodeID + "\x00" + value.ProviderID + "\x00" + value.CapabilityID
-}
-
-func bindingKey(value profile.ProfileBinding) string {
-	return selectorKey(value) + "\x00" + value.PreferredProviderID
-}
-
-func selectorKey(value profile.ProfileBinding) string {
-	return value.Selector.ProviderID + "\x00" + value.Selector.CapabilityID
+	return result, true
 }
 
 func validIdentifier(value string) bool {
