@@ -169,3 +169,53 @@ func TestCreditedInternalCanOwnItsDeclaredSlot(t *testing.T) {
 		t.Fatalf("internal review ownership = implementation %#v / review %#v", implementation, review)
 	}
 }
+
+func TestDispatchBeforeChildAnchorsBeforeParentOutcomeResponsibility(t *testing.T) {
+	fixture := newProfileFixture(t, func(provider *catalog.ProviderDescriptorRecord, recipe *catalog.ProfileRecipeRecord) {
+		parent, _ := testBinding(provider.Bindings, "implementation")
+		workspace := parent
+		workspace.ID = "workspace"
+		workspace.ContentRoot = "skills/workspace"
+		workspace.InstallRoot = "skills/workspace"
+		workspace.Reference = "test:workspace"
+		workspace.TreeDigest = "sha256:" + strings.Repeat("e", 64)
+		workspace.Responsibilities = []catalog.ResponsibilityClaim{{Namespace: catalog.OwnershipStage, Name: "workspace", SlotID: catalog.SlotWorkspacePreparation, OutcomeOwner: true}}
+		workspace.InputArtifact = "plan"
+		workspace.OutputArtifact = "workspace"
+		workspace.StageSpan = []catalog.SlotID{catalog.SlotWorkspacePreparation}
+		provider.Bindings = append(provider.Bindings, workspace)
+		provider.Capabilities = append(provider.Capabilities, capabilityFor(workspace))
+		span := []catalog.SlotID{catalog.SlotWorkspacePreparation, catalog.SlotImplementation}
+		for index := range provider.Bindings {
+			if provider.Bindings[index].ID == parent.ID {
+				provider.Bindings[index].StageSpan = span
+				provider.Bindings[index].InternalCalls = []catalog.InternalCall{{BindingID: workspace.ID, Required: true, Mode: catalog.InternalDispatchBefore, StageSpan: workspace.StageSpan}}
+			}
+		}
+		for index := range recipe.Slots {
+			slot := &recipe.Slots[index]
+			switch slot.SlotID {
+			case catalog.SlotWorkspacePreparation:
+				slot.HostAction = nil
+				slot.Pipeline = []catalog.PipelineStep{{ID: "executor-workspace", Selector: catalog.BindingSelector{ProviderID: provider.ID, BindingID: parent.ID}, StageSpan: span, RequiredInputArtifact: parent.InputArtifact, ProducedOutputArtifact: parent.OutputArtifact}}
+				slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: "executor-workspace"}
+			case catalog.SlotImplementation:
+				slot.Pipeline[0].StageSpan = span
+			}
+		}
+	})
+
+	result, err := profile.CompileProfile(fixture.catalog, fixture.registry, fixture.request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	graph, found := result.Graph()
+	if !found {
+		t.Fatalf("Diagnostics() = %#v", result.Diagnostics())
+	}
+	workspace := requireSlot(t, graph, catalog.SlotWorkspacePreparation)
+	implementation := requireSlot(t, graph, catalog.SlotImplementation)
+	if len(workspace.Pipeline) != 1 || workspace.Pipeline[0].BindingID != "workspace" || len(implementation.Pipeline) != 1 || implementation.Pipeline[0].BindingID != "implementation" {
+		t.Fatalf("macro anchors = workspace %#v / implementation %#v", workspace.Pipeline, implementation.Pipeline)
+	}
+}

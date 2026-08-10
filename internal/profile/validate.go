@@ -127,7 +127,7 @@ func validateCompiledSlot(slot CompiledSlot, providers map[string]string, topolo
 			unit.Disposition != DispatchByCoordinator && unit.Disposition != CreditInternalOnly && unit.Disposition != OmittedBySelection {
 			return fmt.Errorf("PROFILE_GRAPH_RECORD_INVALID")
 		}
-		if len(unit.SlotIDs) == 0 || unit.SlotIDs[0] != unit.AnchorSlotID || !contiguousSlotIDs(unit.SlotIDs) {
+		if len(unit.SlotIDs) == 0 || !slices.Contains(unit.SlotIDs, unit.AnchorSlotID) || !contiguousSlotIDs(unit.SlotIDs) {
 			return fmt.Errorf("PROFILE_GRAPH_RECORD_INVALID")
 		}
 		if _, err := catalog.ParseQualifiedID(unit.ProviderID); err != nil {

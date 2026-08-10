@@ -157,7 +157,7 @@ func (context compilerContext) resolveExactBinding(selector catalog.BindingSelec
 		return ResolvedBinding{}, catalog.BindingRecord{}, diagnostics, nil
 	}
 	resolved := ResolvedBinding{
-		UnitID: unitID, StepID: stepID, AnchorSlotID: span[0], SlotIDs: append([]catalog.SlotID{}, span...),
+		UnitID: unitID, StepID: stepID, AnchorSlotID: bindingAnchorSlot(span, declared.Responsibilities), SlotIDs: append([]catalog.SlotID{}, span...),
 		ProviderID: selector.ProviderID, ProviderInstanceDigest: instance.Digest, BindingID: declared.ID,
 		DistributionID: verified.DistributionID, DistributionRevision: verified.DistributionRevision, DistributionTreeDigest: verified.DistributionTreeDigest,
 		Surface: verified.Surface, Kind: verified.Kind, Reference: verified.Reference, Invocation: verified.Invocation, BindingTreeDigest: verified.BindingTreeDigest,
@@ -168,6 +168,24 @@ func (context compilerContext) resolveExactBinding(selector catalog.BindingSelec
 		RequiresExplicitInvocation: declared.Invocation == catalog.InvocationHumanExplicit, BindingEvidenceDigest: verified.BindingEvidenceDigest,
 	}
 	return resolved, declared, nil, nil
+}
+
+func bindingAnchorSlot(span []catalog.SlotID, responsibilities []catalog.ResponsibilityClaim) catalog.SlotID {
+	positions := make(map[catalog.SlotID]int, len(catalog.CanonicalSlots()))
+	for index, slot := range catalog.CanonicalSlots() {
+		positions[slot.ID] = index
+	}
+	anchor := span[0]
+	anchorPosition := len(positions)
+	for _, claim := range responsibilities {
+		position, found := positions[claim.SlotID]
+		if !claim.OutcomeOwner || !found || !slices.Contains(span, claim.SlotID) || position >= anchorPosition {
+			continue
+		}
+		anchor = claim.SlotID
+		anchorPosition = position
+	}
+	return anchor
 }
 
 func (context compilerContext) bindDelegation(selector catalog.BindingSelector, stepID string, requirements catalog.DelegationRequirements) ([]host.FeatureID, []string, []CompileDiagnostic) {
