@@ -14,8 +14,12 @@ const ExecutionGraphSchemaV3 = "oaw.execution-graph/v3"
 
 type EffectiveRegistry interface {
 	HostID() string
+	Providers() []registry.ProviderInstance
 	Provider(id string) (registry.ProviderInstance, bool)
+	Binding(providerID, bindingID string) (registry.VerifiedBinding, bool)
+	Bindings(providerID string) []registry.VerifiedBinding
 	Capability(providerID, capabilityID string) (registry.VerifiedCapability, bool)
+	Digest() string
 }
 
 type CatalogSource interface {
