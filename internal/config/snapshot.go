@@ -454,10 +454,8 @@ func providerHosts(provider catalog.ProviderDescriptorRecord) []string {
 			hosts[hostID] = struct{}{}
 		}
 	}
-	for _, capability := range provider.Capabilities {
-		for _, binding := range capability.HostBindings {
-			hosts[binding.Host] = struct{}{}
-		}
+	for _, binding := range provider.Bindings {
+		hosts[binding.Host] = struct{}{}
 	}
 	result := make([]string, 0, len(hosts))
 	for hostID := range hosts {
@@ -497,20 +495,24 @@ func validateSettingsAgainstCatalog(settings ProviderSettings, value catalog.Cat
 	}
 	for _, preference := range settings.Preferences {
 		capability, found := capabilities[preference.CapabilityID]
-		if !found || !containsBinding(capability.HostBindings, preference) {
+		if !found || preference.ProviderID != provider.ID || preference.HostID != settings.HostID || !resolvesOneBinding(*provider, capability, preference) {
 			return fmt.Errorf("BINDING_PREFERENCE_UNDECLARED: %s/%s", settings.ProviderID, preference.CapabilityID)
 		}
 	}
 	return nil
 }
 
-func containsBinding(values []catalog.HostBinding, preference BindingPreference) bool {
-	for _, value := range values {
-		if value.Host == preference.HostID && value.Kind == preference.Kind && value.Reference == preference.Reference {
-			return true
+func resolvesOneBinding(provider catalog.ProviderDescriptorRecord, capability catalog.CapabilityRecord, preference BindingPreference) bool {
+	matches := 0
+	for _, bindingID := range capability.BindingRefs {
+		for _, binding := range provider.Bindings {
+			if binding.ID == bindingID && binding.Host == preference.HostID && binding.Kind == catalog.BindingKind(preference.Kind) && binding.Reference == preference.Reference {
+				matches++
+				break
+			}
 		}
 	}
-	return false
+	return matches == 1
 }
 
 func (snapshot Snapshot) Digest() string { return snapshot.digest }

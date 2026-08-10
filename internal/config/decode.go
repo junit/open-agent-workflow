@@ -67,19 +67,21 @@ func DecodeProvider(raw []byte, registry *schema.Registry) (Decoded[catalog.Prov
 	if err := strictDescriptorContent(raw, &record); err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, err
 	}
-	normalizeProvider(&record)
 	_, encoded, err := canonicaljson.Digest(record)
 	if err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, err
-	}
-	if err := registry.Validate(schema.ProviderDescriptorV3, encoded); err != nil {
-		return Decoded[catalog.ProviderDescriptorRecord]{}, fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
 	}
 	validated, err := catalog.DecodeProvider(encoded)
 	if err != nil {
 		return Decoded[catalog.ProviderDescriptorRecord]{}, err
 	}
 	digest, canonical, err := canonicaljson.Digest(validated)
+	if err != nil {
+		return Decoded[catalog.ProviderDescriptorRecord]{}, err
+	}
+	if err := registry.Validate(schema.ProviderDescriptorV4, canonical); err != nil {
+		return Decoded[catalog.ProviderDescriptorRecord]{}, fmt.Errorf("INVALID_PROVIDER_DESCRIPTOR: %w", err)
+	}
 	return Decoded[catalog.ProviderDescriptorRecord]{Record: validated, CanonicalJSON: canonical, Digest: digest}, err
 }
 
@@ -88,19 +90,21 @@ func DecodeRecipe(raw []byte, registry *schema.Registry) (Decoded[catalog.Profil
 	if err := strictDescriptorContent(raw, &record); err != nil {
 		return Decoded[catalog.ProfileRecipeRecord]{}, err
 	}
-	normalizeRecipe(&record)
 	_, encoded, err := canonicaljson.Digest(record)
 	if err != nil {
 		return Decoded[catalog.ProfileRecipeRecord]{}, err
-	}
-	if err := registry.Validate(schema.ProfileRecipeV2, encoded); err != nil {
-		return Decoded[catalog.ProfileRecipeRecord]{}, fmt.Errorf("INVALID_PROFILE_RECIPE: %w", err)
 	}
 	validated, err := catalog.DecodeRecipe(encoded)
 	if err != nil {
 		return Decoded[catalog.ProfileRecipeRecord]{}, err
 	}
 	digest, canonical, err := canonicaljson.Digest(validated)
+	if err != nil {
+		return Decoded[catalog.ProfileRecipeRecord]{}, err
+	}
+	if err := registry.Validate(schema.ProfileRecipeV3, canonical); err != nil {
+		return Decoded[catalog.ProfileRecipeRecord]{}, fmt.Errorf("INVALID_PROFILE_RECIPE: %w", err)
+	}
 	return Decoded[catalog.ProfileRecipeRecord]{Record: validated, CanonicalJSON: canonical, Digest: digest}, err
 }
 
@@ -296,7 +300,7 @@ func normalizeUser(record *UserConfigRecord) error {
 		if _, err := catalog.ParseLocalID(preference.CapabilityID); err != nil {
 			return fmt.Errorf("INVALID_BINDING_PREFERENCE: %w", err)
 		}
-		if _, err := catalog.ParseLocalID(preference.HostID); err != nil || preference.Reference == "" || (preference.Kind != "skill" && preference.Kind != "agent" && preference.Kind != "tool") {
+		if _, err := catalog.ParseLocalID(preference.HostID); err != nil || preference.Reference == "" || !validBindingPreferenceKind(preference.Kind) {
 			return fmt.Errorf("INVALID_BINDING_PREFERENCE: %s/%s", preference.ProviderID, preference.CapabilityID)
 		}
 	}
@@ -385,67 +389,6 @@ func normalizeProject(record *ProjectConfigRecord) error {
 	return uniqueBy(len(record.CapabilityLimits), func(i int) string { return record.CapabilityLimits[i].ProviderID }, "DUPLICATE_CAPABILITY_LIMIT")
 }
 
-func normalizeProvider(record *catalog.ProviderDescriptorRecord) {
-	if record.Discovery == nil {
-		record.Discovery = []catalog.DiscoveryProbe{}
-	}
-	if record.Capabilities == nil {
-		record.Capabilities = []catalog.CapabilityRecord{}
-	}
-	for i := range record.Discovery {
-		normalizeStringSlice(&record.Discovery[i].Hosts)
-	}
-	sort.Slice(record.Discovery, func(i, j int) bool { return record.Discovery[i].ID < record.Discovery[j].ID })
-	for i := range record.Capabilities {
-		capability := &record.Capabilities[i]
-		normalizeStringSlice(&capability.MaximumEffects)
-		normalizeStringSlice(&capability.Resources)
-		if capability.RequestModes == nil {
-			capability.RequestModes = []catalog.RequestMode{}
-		}
-		sort.Slice(capability.RequestModes, func(i, j int) bool { return capability.RequestModes[i] < capability.RequestModes[j] })
-		normalizeStringSlice(&capability.Responsibilities)
-		normalizeStringSlice(&capability.DelegationAllowList)
-		if capability.HostBindings == nil {
-			capability.HostBindings = []catalog.HostBinding{}
-		}
-		sort.Slice(capability.HostBindings, func(i, j int) bool {
-			return hostBindingKey(capability.HostBindings[i]) < hostBindingKey(capability.HostBindings[j])
-		})
-	}
-	sort.Slice(record.Capabilities, func(i, j int) bool { return record.Capabilities[i].ID < record.Capabilities[j].ID })
-}
-
-func normalizeRecipe(record *catalog.ProfileRecipeRecord) {
-	normalizeStringSlice(&record.RequiredResponsibilities)
-	if record.Nodes == nil {
-		record.Nodes = []catalog.RecipeNode{}
-	}
-	for i := range record.Nodes {
-		if record.Nodes[i].Transitions == nil {
-			record.Nodes[i].Transitions = []catalog.RecipeTransition{}
-		}
-		sort.Slice(record.Nodes[i].Transitions, func(left, right int) bool {
-			first := record.Nodes[i].Transitions[left]
-			second := record.Nodes[i].Transitions[right]
-			return first.Signal+"\x00"+first.Target < second.Signal+"\x00"+second.Target
-		})
-	}
-	sort.Slice(record.Nodes, func(i, j int) bool { return record.Nodes[i].ID < record.Nodes[j].ID })
-	if record.IncidentRoutes == nil {
-		record.IncidentRoutes = []catalog.IncidentRoute{}
-	}
-	sort.Slice(record.IncidentRoutes, func(i, j int) bool {
-		return record.IncidentRoutes[i].Incident+"\x00"+record.IncidentRoutes[i].Handler < record.IncidentRoutes[j].Incident+"\x00"+record.IncidentRoutes[j].Handler
-	})
-	normalizeStringSlice(&record.TerminalGates)
-	normalizeStringSlice(&record.StableBoundaries)
-}
-
-func hostBindingKey(value catalog.HostBinding) string {
-	return value.Host + "\x00" + value.Kind + "\x00" + value.Reference
-}
-
 func normalizeUserCollections(record *UserConfigRecord) {
 	normalizeStringSlice(&record.DeniedProviders)
 	if record.ProviderDescriptors == nil {
@@ -472,6 +415,11 @@ func normalizeUserCollections(record *UserConfigRecord) {
 	if record.ProjectTrust == nil {
 		record.ProjectTrust = []ProjectTrust{}
 	}
+}
+
+func validBindingPreferenceKind(value string) bool {
+	kind := catalog.BindingKind(value)
+	return kind == catalog.BindingSkill || kind == catalog.BindingAgent || kind == catalog.BindingRole || kind == catalog.BindingInstruction || kind == catalog.BindingTool
 }
 
 func normalizeReferences(values []ContentReference, duplicateCode string) error {

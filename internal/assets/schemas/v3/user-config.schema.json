@@ -59,7 +59,7 @@
         "provider_id": {"$ref": "#/$defs/qualified_id"},
         "capability_id": {"$ref": "#/$defs/local_id"},
         "host_id": {"$ref": "#/$defs/local_id"},
-        "kind": {"enum": ["skill", "agent", "tool"]},
+        "kind": {"enum": ["skill", "agent", "role", "instruction", "tool"]},
         "reference": {"type": "string", "minLength": 1}
       }
     },

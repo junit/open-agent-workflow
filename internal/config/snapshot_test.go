@@ -10,6 +10,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
@@ -208,8 +209,10 @@ func TestEquivalentHostIntegrationOrderProducesSameSnapshot(t *testing.T) {
 func configTestHostIntegration(t *testing.T) host.IntegrationRecord {
 	t.Helper()
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
-		ControlSurface: host.SurfacePolicy, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex",
+		ControlSurface: host.SurfacePolicy, Protocols: []string{}, BindingKinds: []catalog.BindingKind{},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: []host.Feature{},
+		DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -221,8 +224,8 @@ func configTestHostIntegration(t *testing.T) host.IntegrationRecord {
 		t.Fatal(err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "acme/codex-policy",
-		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit,
+		SchemaVersion: host.HostIntegrationSchemaV3, IntegrationVersion: "3.0.0", ID: "acme/codex-policy",
+		Manifest: manifest, ManifestDigest: manifest.Digest, Audit: audit,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -8,7 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/BurntSushi/toml"
+
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
 
@@ -128,46 +132,138 @@ capability_ids = ["review"]
 	}
 }
 
+func TestDecodeProviderV4TOMLUsesCatalogContract(t *testing.T) {
+	decoded, err := DecodeProvider(embeddedCatalogTOML(t, "providers/oaw-matt.json"), testRegistry(t))
+	if err != nil {
+		t.Fatalf("DecodeProvider(v4 TOML) error = %v", err)
+	}
+	if decoded.Record.SchemaVersion != catalog.ProviderDescriptorSchemaV4 || decoded.Record.ID != "test/provider" || decoded.Digest == "" {
+		t.Fatalf("decoded Provider = %#v", decoded)
+	}
+}
+
+func TestDecodeRecipeV3TOMLUsesCatalogContract(t *testing.T) {
+	decoded, err := DecodeRecipe(embeddedCatalogTOML(t, "recipes/oaw-delivery.json"), testRegistry(t))
+	if err != nil {
+		t.Fatalf("DecodeRecipe(v3 TOML) error = %v", err)
+	}
+	if decoded.Record.SchemaVersion != catalog.ProfileRecipeSchemaV3 || decoded.Record.ID != "oaw/delivery" || len(decoded.Record.Slots) != len(catalog.CanonicalSlots()) || decoded.Digest == "" {
+		t.Fatalf("decoded Recipe = %#v", decoded)
+	}
+}
+
+func TestReferencedAuthorityHardCutRejectsV3AndV2(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		raw  []byte
+		code string
+		call func([]byte) error
+	}{
+		{name: "Provider v3", raw: []byte(`schema_version = "oaw.provider-descriptor/v3"`), code: "UNSUPPORTED_PROVIDER_SCHEMA", call: func(raw []byte) error {
+			_, err := DecodeProvider(raw, testRegistry(t))
+			return err
+		}},
+		{name: "Provider v2", raw: []byte(`schema_version = "oaw.provider-descriptor/v2"`), code: "UNSUPPORTED_PROVIDER_SCHEMA", call: func(raw []byte) error {
+			_, err := DecodeProvider(raw, testRegistry(t))
+			return err
+		}},
+		{name: "Recipe v2", raw: []byte(`schema_version = "oaw.profile-recipe/v2"`), code: "UNSUPPORTED_RECIPE_SCHEMA", call: func(raw []byte) error {
+			_, err := DecodeRecipe(raw, testRegistry(t))
+			return err
+		}},
+		{name: "Recipe v1", raw: []byte(`schema_version = "oaw.profile-recipe/v1"`), code: "UNSUPPORTED_RECIPE_SCHEMA", call: func(raw []byte) error {
+			_, err := DecodeRecipe(raw, testRegistry(t))
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.call(test.raw); err == nil || !strings.Contains(err.Error(), test.code) {
+				t.Fatalf("decode error = %v, want %s", err, test.code)
+			}
+		})
+	}
+}
+
+func TestV4BindingPreferenceResolvesByBindingID(t *testing.T) {
+	provider := configProviderV4Record()
+	if len(provider.Capabilities) == 0 || len(provider.Capabilities[0].BindingRefs) == 0 {
+		t.Fatalf("Provider has no Binding-backed Capability: %#v", provider)
+	}
+	bindingID := provider.Capabilities[0].BindingRefs[0]
+	var binding catalog.BindingRecord
+	for _, candidate := range provider.Bindings {
+		if candidate.ID == bindingID {
+			binding = candidate
+			break
+		}
+	}
+	if binding.ID == "" {
+		t.Fatalf("Binding %q not found", bindingID)
+	}
+	effective, err := catalog.New([]catalog.ProviderDescriptorRecord{provider}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings, err := buildProviderSettings(effective, UserConfigRecord{BindingPreferences: []BindingPreference{{
+		ProviderID: provider.ID, CapabilityID: provider.Capabilities[0].ID, HostID: binding.Host, Kind: string(binding.Kind), Reference: binding.Reference,
+	}}}, emptyProjectConfig())
+	if err != nil {
+		t.Fatalf("buildProviderSettings() error = %v", err)
+	}
+	value := settingsFor(settings, provider.ID, binding.Host)
+	if len(value.Preferences) != 1 || value.Preferences[0].Reference != binding.Reference {
+		t.Fatalf("resolved settings = %#v", value)
+	}
+
+	missing := UserConfigRecord{BindingPreferences: []BindingPreference{{
+		ProviderID: provider.ID, CapabilityID: provider.Capabilities[0].ID, HostID: binding.Host, Kind: string(binding.Kind), Reference: "missing",
+	}}}
+	if _, err := buildProviderSettings(effective, missing, emptyProjectConfig()); err == nil || !strings.Contains(err.Error(), "BINDING_PREFERENCE_UNDECLARED") {
+		t.Fatalf("zero-match preference error = %v", err)
+	}
+
+	ambiguousProvider := configProviderV4Record()
+	duplicate := ambiguousProvider.Bindings[0]
+	duplicate.ID = "binding-second"
+	ambiguousProvider.Bindings = append(ambiguousProvider.Bindings, duplicate)
+	ambiguousProvider.Capabilities[0].BindingRefs = append(ambiguousProvider.Capabilities[0].BindingRefs, duplicate.ID)
+	ambiguousCatalog, err := catalog.New([]catalog.ProviderDescriptorRecord{ambiguousProvider}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildProviderSettings(ambiguousCatalog, UserConfigRecord{BindingPreferences: []BindingPreference{{
+		ProviderID: ambiguousProvider.ID, CapabilityID: ambiguousProvider.Capabilities[0].ID, HostID: duplicate.Host, Kind: string(duplicate.Kind), Reference: duplicate.Reference,
+	}}}, emptyProjectConfig()); err == nil || !strings.Contains(err.Error(), "BINDING_PREFERENCE_UNDECLARED") {
+		t.Fatalf("multi-match preference error = %v", err)
+	}
+}
+
+func TestUserConfigV3AcceptsAllV4BindingKinds(t *testing.T) {
+	kinds := []string{"skill", "agent", "role", "instruction", "tool"}
+	var raw strings.Builder
+	raw.WriteString("schema_version = \"oaw.user-config/v3\"\n")
+	for index, kind := range kinds {
+		fmt.Fprintf(&raw, "\n[[binding_preferences]]\nprovider_id = \"acme/suite\"\ncapability_id = \"cap-%d\"\nhost_id = \"codex\"\nkind = \"%s\"\nreference = \"acme:%s\"\n", index, kind, kind)
+	}
+	decoded, err := DecodeUser([]byte(raw.String()), testRegistry(t))
+	if err != nil {
+		t.Fatalf("DecodeUser(all v4 Binding kinds) error = %v", err)
+	}
+	if len(decoded.Record.BindingPreferences) != len(kinds) {
+		t.Fatalf("BindingPreferences = %#v", decoded.Record.BindingPreferences)
+	}
+	hook := strings.Replace(raw.String(), `kind = "tool"`, `kind = "hook"`, 1)
+	if _, err := DecodeUser([]byte(hook), testRegistry(t)); err == nil || !strings.Contains(err.Error(), "INVALID_BINDING_PREFERENCE") {
+		t.Fatalf("DecodeUser(hook) error = %v", err)
+	}
+}
+
 func TestDecodeProviderTOMLUsesCatalogContract(t *testing.T) {
-	registry := testRegistry(t)
-	raw := []byte(`
-schema_version = "oaw.provider-descriptor/v3"
-descriptor_version = "3.0.0"
-id = "acme/suite"
-display_name = "Acme Suite"
-
-[[discovery]]
-id = "acme-skill"
-hosts = ["codex"]
-surface = "codex-user-skills"
-distribution = "acme"
-kind = "path-exists"
-root = "user-home"
-candidate_path = ".agents/skills/acme"
-evidence_path = "SKILL.md"
-
-[[capabilities]]
-id = "review"
-input_schema = "oaw.capability-input/v1"
-outcome_schema = "oaw.capability-outcome/v1"
-maximum_effects = ["read-project"]
-resources = ["project"]
-request_modes = ["BOUNDED"]
-responsibilities = ["review"]
-supported_topologies = ["CURRENT", "SUBAGENT"]
-delegation_allow_list = []
-
-[[capabilities.host_bindings]]
-host = "codex"
-kind = "skill"
-reference = "acme:review"
-topologies = ["CURRENT", "SUBAGENT"]
-`)
-	decoded, err := DecodeProvider(raw, registry)
+	decoded, err := DecodeProvider(embeddedCatalogTOML(t, "providers/oaw-matt.json"), testRegistry(t))
 	if err != nil {
 		t.Fatalf("DecodeProvider() error = %v", err)
 	}
-	if decoded.Record.ID != "acme/suite" || decoded.Record.Capabilities[0].ID != "review" || decoded.Digest == "" {
+	if decoded.Record.ID != "test/provider" || decoded.Record.Capabilities[0].BindingRefs[0] != "binding" || decoded.Digest == "" {
 		t.Fatalf("decoded = %#v", decoded)
 	}
 }
@@ -371,34 +467,11 @@ reference = "superpowers:requesting-code-review"
 }
 
 func TestDecodeRecipeTOMLUsesCatalogContract(t *testing.T) {
-	registry := testRegistry(t)
-	raw := []byte(`
-schema_version = "oaw.profile-recipe/v2"
-recipe_version = "2.0.0"
-id = "acme/review"
-display_name = "Acme Review"
-required_responsibilities = ["review"]
-incident_routes = []
-entry = "review"
-terminal_gates = ["review"]
-stable_boundaries = ["complete"]
-environment_requirements = []
-
-[[nodes]]
-id = "review"
-kind = "gate"
-responsibility = "review"
-transitions = []
-
-[nodes.selector]
-provider_id = "acme/suite"
-capability_id = "review"
-`)
-	decoded, err := DecodeRecipe(raw, registry)
+	decoded, err := DecodeRecipe(embeddedCatalogTOML(t, "recipes/oaw-delivery.json"), testRegistry(t))
 	if err != nil {
 		t.Fatalf("DecodeRecipe() error = %v", err)
 	}
-	if decoded.Record.ID != "acme/review" || decoded.Record.Nodes[0].Selector.ProviderID != "acme/suite" || decoded.Digest == "" {
+	if decoded.Record.ID != "oaw/delivery" || decoded.Record.Slots[0].Pipeline[0].Selector.ProviderID != "test/provider" || decoded.Digest == "" {
 		t.Fatalf("decoded = %#v", decoded)
 	}
 }
@@ -940,69 +1013,120 @@ func projectTrustTableTOML(fingerprint ProjectFingerprint) string {
 }
 
 const testProviderTOML = `
-schema_version = "oaw.provider-descriptor/v3"
-descriptor_version = "3.0.0"
+schema_version = "oaw.provider-descriptor/v4"
+descriptor_version = "4.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
-discovery = []
-capabilities = []
+[[distributions]]
+id = "distribution"
+source_uri = "https://example.test/acme"
+revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+tree_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+[[discovery]]
+id = "probe"
+hosts = ["codex"]
+surface = "codex-skills"
+distribution_id = "distribution"
+kind = "path-exists"
+root = "user-home"
+candidate_path = ".agents/skills/acme"
+evidence_path = "SKILL.md"
+[[bindings]]
+id = "binding"
+distribution_id = "distribution"
+content_root = "skills/acme"
+install_root = "acme"
+tree_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+host = "codex"
+surface = "codex-skills"
+kind = "skill"
+reference = "acme:review"
+invocation = "model"
+input_artifact = "artifact"
+output_artifact = "artifact"
+maximum_effects = ["read-project"]
+resources = ["project"]
+supported_topologies = ["CURRENT"]
+responsibilities = [{namespace = "stage", name = "problem-framing", slot_id = "problem-framing", outcome_owner = true}]
+delegation = {child = false, parallel_child = false, nested_child = false, nested_parallel_child = false}
+stage_span = ["problem-framing"]
+internal_calls = []
+alternatives = []
+conflicts = []
+[[capabilities]]
+id = "review"
+input_schema = "oaw.capability-input/v1"
+outcome_schema = "oaw.capability-outcome/v1"
+request_modes = ["BOUNDED"]
+binding_refs = ["binding"]
 `
 
 const testReviewProviderTOML = `
-schema_version = "oaw.provider-descriptor/v3"
-descriptor_version = "3.0.0"
+schema_version = "oaw.provider-descriptor/v4"
+descriptor_version = "4.0.0"
 id = "acme/suite"
 display_name = "Acme Suite"
+
+[[distributions]]
+id = "distribution"
+source_uri = "https://example.test/acme"
+revision = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+tree_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 [[discovery]]
 id = "acme-skill"
 hosts = ["codex"]
 surface = "codex-user-skills"
-distribution = "acme"
+distribution_id = "distribution"
 kind = "path-exists"
 root = "user-home"
 candidate_path = ".agents/skills/acme"
 evidence_path = "SKILL.md"
 
+[[bindings]]
+id = "binding"
+distribution_id = "distribution"
+content_root = "skills/acme"
+install_root = "acme"
+tree_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+host = "codex"
+surface = "codex-user-skills"
+kind = "skill"
+reference = "acme:review"
+invocation = "model"
+input_artifact = "artifact"
+output_artifact = "artifact"
+maximum_effects = ["read-project"]
+resources = ["project"]
+supported_topologies = ["CURRENT"]
+responsibilities = [{namespace = "stage", name = "problem-framing", slot_id = "problem-framing", outcome_owner = true}]
+delegation = {child = false, parallel_child = false, nested_child = false, nested_parallel_child = false}
+stage_span = ["problem-framing"]
+internal_calls = []
+alternatives = []
+conflicts = []
+
 [[capabilities]]
 id = "review"
 input_schema = "oaw.capability-input/v1"
 outcome_schema = "oaw.capability-outcome/v1"
-maximum_effects = ["read-project"]
-resources = ["project"]
 request_modes = ["BOUNDED"]
-responsibilities = ["review"]
-supported_topologies = ["CURRENT", "SUBAGENT"]
-delegation_allow_list = []
-
-[[capabilities.host_bindings]]
-host = "codex"
-kind = "skill"
-reference = "acme:review"
-topologies = ["CURRENT", "SUBAGENT"]
+binding_refs = ["binding"]
 `
 
 const testReviewRecipeTOML = `
-schema_version = "oaw.profile-recipe/v2"
-recipe_version = "2.0.0"
+schema_version = "oaw.profile-recipe/v3"
+taxonomy_version = "oaw.lifecycle-taxonomy/v1"
+recipe_version = "3.0.0"
 id = "acme/review"
 display_name = "Acme Review"
-required_responsibilities = ["review"]
+family = "review"
+slots = []
+add_ons = []
 incident_routes = []
-entry = "review"
-terminal_gates = ["review"]
+overlays = []
 stable_boundaries = ["complete"]
 environment_requirements = []
-
-[[nodes]]
-id = "review"
-kind = "gate"
-responsibility = "review"
-transitions = []
-
-[nodes.selector]
-provider_id = "acme/suite"
-capability_id = "review"
 `
 
 func testRegistry(t *testing.T) *schema.Registry {
@@ -1012,4 +1136,101 @@ func testRegistry(t *testing.T) *schema.Registry {
 		t.Fatalf("schema.New() error = %v", err)
 	}
 	return registry
+}
+
+func embeddedCatalogTOML(t *testing.T, name string) []byte {
+	t.Helper()
+	var value any
+	switch name {
+	case "providers/oaw-matt.json":
+		value = configProviderV4Record()
+	case "recipes/oaw-delivery.json":
+		value = configRecipeV3Record()
+	default:
+		t.Fatalf("unknown catalog test fixture %q", name)
+	}
+	var encoded bytes.Buffer
+	if err := toml.NewEncoder(&encoded).Encode(value); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.Bytes()
+}
+
+func configProviderV4Record() catalog.ProviderDescriptorRecord {
+	claims := []catalog.ResponsibilityClaim{
+		{Namespace: catalog.OwnershipStage, Name: "problem-framing", SlotID: catalog.SlotProblemFraming, OutcomeOwner: true},
+		{Namespace: catalog.OwnershipStage, Name: "solution-specification", SlotID: catalog.SlotSolutionSpecification, OutcomeOwner: true},
+		{Namespace: catalog.OwnershipStage, Name: "delivery-planning", SlotID: catalog.SlotDeliveryPlanning, OutcomeOwner: true},
+		{Namespace: catalog.OwnershipStage, Name: "implementation", SlotID: catalog.SlotImplementation, OutcomeOwner: true},
+		{Namespace: catalog.OwnershipProcedure, Name: "implementation-tdd", SlotID: catalog.SlotImplementationTDD, OutcomeOwner: true},
+		{Namespace: catalog.OwnershipAssurance, Name: "review-remediation", SlotID: catalog.SlotReviewRemediation, OutcomeOwner: true},
+		{Namespace: catalog.OwnershipProcedure, Name: "fresh-verification", SlotID: catalog.SlotFreshVerification, OutcomeOwner: true},
+	}
+	return catalog.ProviderDescriptorRecord{
+		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: "test/provider", DisplayName: "Test Provider",
+		Distributions: []catalog.DistributionRecord{{ID: "distribution", SourceURI: "https://example.test/provider", Revision: strings.Repeat("a", 40), TreeDigest: "sha256:" + strings.Repeat("a", 64)}},
+		Discovery:     []catalog.DiscoveryProbe{{ID: "probe", Hosts: []string{"codex"}, Surface: "codex-skills", DistributionID: "distribution", Kind: "path-exists", Root: "user-home", CandidatePath: ".agents/skills", EvidencePath: "skill/SKILL.md"}},
+		Bindings: []catalog.BindingRecord{{
+			ID: "binding", DistributionID: "distribution", ContentRoot: "skills/skill", InstallRoot: "skill", TreeDigest: "sha256:" + strings.Repeat("a", 64),
+			Host: "codex", Surface: "codex-skills", Kind: catalog.BindingSkill, Reference: "skill", Invocation: catalog.InvocationModel,
+			Responsibilities: claims, InputArtifact: "artifact", OutputArtifact: "artifact", MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{},
+			StageSpan: configCanonicalSlotIDs(), InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
+		}},
+		Capabilities: []catalog.CapabilityRecord{{ID: "workflow", InputSchema: "artifact", OutcomeSchema: "artifact", RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"binding"}}},
+	}
+}
+
+func configRecipeV3Record() catalog.ProfileRecipeRecord {
+	definitions := catalog.CanonicalSlots()
+	record := catalog.ProfileRecipeRecord{
+		SchemaVersion: catalog.ProfileRecipeSchemaV3, TaxonomyVersion: catalog.TaxonomyVersionV1, RecipeVersion: "3.0.0", ID: "oaw/delivery", DisplayName: "Delivery", Family: "delivery",
+		Slots: make([]catalog.SlotRecipe, len(definitions)), AddOns: []catalog.AddOnRecord{}, IncidentRoutes: []catalog.IncidentRoute{}, Overlays: []catalog.OverlayRecord{},
+		StableBoundaries: []string{"between-slots"}, EnvironmentRequirements: []execution.EnvironmentRequirement{},
+	}
+	for index, definition := range definitions {
+		transitions := []catalog.RecipeTransition{}
+		if index+1 < len(definitions) {
+			transitions = []catalog.RecipeTransition{{Signal: "succeeded", Target: definitions[index+1].ID}}
+		}
+		slot := catalog.SlotRecipe{SlotID: definition.ID, Applicability: catalog.SlotMandatory, Pipeline: []catalog.PipelineStep{}, Gates: []catalog.GateRecord{}, Transitions: transitions}
+		switch definition.ID {
+		case catalog.SlotWorkspacePreparation:
+			slot.HostAction = &catalog.HostActionRef{ID: "workspace.prepare-or-confirm", InputArtifact: "artifact", OutputArtifact: "artifact"}
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerHostAction, HostAction: slot.HostAction.ID}
+		case catalog.SlotIncidentRecovery:
+			slot.Applicability = catalog.SlotConditional
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerNone}
+		case catalog.SlotFreshVerification:
+			slot.HostAction = &catalog.HostActionRef{ID: "verification.execute", InputArtifact: "artifact", OutputArtifact: "artifact"}
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerHostAction, HostAction: slot.HostAction.ID}
+		case catalog.SlotCloseout:
+			slot.HostAction = &catalog.HostActionRef{ID: "closeout.execute", InputArtifact: "artifact", OutputArtifact: "artifact"}
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerHostAction, HostAction: slot.HostAction.ID}
+		default:
+			step := catalog.PipelineStep{ID: "main", Selector: catalog.BindingSelector{ProviderID: "test/provider", BindingID: "binding"}, StageSpan: []catalog.SlotID{definition.ID}, RequiredInputArtifact: "artifact", ProducedOutputArtifact: "artifact"}
+			slot.Pipeline = []catalog.PipelineStep{step}
+			slot.OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: step.ID}
+		}
+		record.Slots[index] = slot
+	}
+	return record
+}
+
+func configCanonicalSlotIDs() []catalog.SlotID {
+	definitions := catalog.CanonicalSlots()
+	result := make([]catalog.SlotID, len(definitions))
+	for index, definition := range definitions {
+		result[index] = definition.ID
+	}
+	return result
+}
+
+func settingsFor(values []ProviderSettings, providerID, hostID string) ProviderSettings {
+	for _, value := range values {
+		if value.ProviderID == providerID && value.HostID == hostID {
+			return value
+		}
+	}
+	return ProviderSettings{}
 }
