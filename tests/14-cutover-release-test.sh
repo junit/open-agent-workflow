@@ -268,6 +268,15 @@ run_release_contract() {
 
 run_docker_contract() {
   linux_smoke=$REPOSITORY/scripts/smoke-linux.sh
+  for retired_authority in 'oaw.workflow-command/v1' 'oaw.host-session/v2'; do
+    if grep -F "$retired_authority" "$linux_smoke" >/dev/null; then
+      fail "Linux smoke contains retired authority: $retired_authority"
+    fi
+  done
+  for current_authority in 'oaw.workflow-command/v2' 'oaw.host-session/v3'; do
+    grep -F "$current_authority" "$linux_smoke" >/dev/null ||
+      fail "Linux smoke omits current authority: $current_authority"
+  done
   grep -F 'workflow exchange' "$linux_smoke" >/dev/null ||
     fail "Linux smoke does not exercise CURRENT Workflow exchange"
   grep -F 'model-executed' "$linux_smoke" >/dev/null ||

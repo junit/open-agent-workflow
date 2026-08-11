@@ -137,11 +137,13 @@ assert_parity_output_contains "installed claude: not-installed" "empty user defa
 
 run_check_pair "explicit target normalization" --target opencode,claude,codex,claude,gemini
 
-for matt_skill in to-spec to-tickets tdd; do
+for matt_skill in to-spec to-tickets tdd diagnosing-bugs; do
   make_parity_indicator "$OAW_HOME/.agents/skills/$matt_skill/SKILL.md"
 done
-run_check_pair "partial Matt bundle" --target claude
-assert_parity_output_contains "provider matt: missing" "partial Matt bundle"
+make_parity_indicator "$OAW_HOME/.agents/skills/everything-claude-code/SKILL.md"
+run_check_pair "retired Matt and ECC Skill probes" --target claude
+assert_parity_output_contains "provider matt: missing" "retired Matt Skill probes"
+assert_parity_output_contains "provider ecc: missing" "retired ECC Skill probe"
 
 new_parity_fixture
 make_parity_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/.hidden/skills/using-superpowers/SKILL.md"
@@ -149,10 +151,8 @@ run_check_pair "hidden Provider version directory" --target claude
 assert_parity_output_contains "provider superpowers: missing" "hidden Provider version directory"
 
 new_parity_fixture
-for matt_skill in to-spec to-tickets tdd diagnosing-bugs; do
-  make_parity_indicator "$OAW_HOME/.agents/skills/$matt_skill/SKILL.md"
-done
-make_parity_indicator "$OAW_HOME/.agents/skills/everything-claude-code/SKILL.md"
+make_parity_indicator "$OAW_HOME/.agents/.skill-lock.json"
+make_parity_indicator "$OAW_HOME/.codex/plugins/ecc/.codex-plugin/plugin.json"
 make_parity_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/test-build/skills/using-superpowers/SKILL.md"
 run_check_pair "complete built-in Provider diagnostics" --target claude
 assert_parity_output_contains "provider superpowers: detected" "Provider diagnostics"

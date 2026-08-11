@@ -82,20 +82,40 @@ assert_empty_xdg_roots
 
 make_indicator "$OAW_HOME/.agents/skills/diagnosing-bugs/SKILL.md"
 run_oaw check --target claude
-assert_status 0 "the complete Matt bundle is diagnostic only"
-assert_contains "provider matt: detected" "Matt is detected only with all four skills"
+assert_status 0 "the retired Matt bundle is diagnostic only"
+assert_contains "provider matt: missing" "the retired four-Skill Matt bundle stays missing"
 assert_contains "provider superpowers: missing" "the Matt-only fixture leaves Superpowers missing"
 assert_contains "provider ecc: missing" "the Matt-only fixture leaves ECC missing"
 assert_contains "target claude: missing (user, project)" "provider presence does not imply tool presence"
 assert_empty_xdg_roots
-pass "Matt capability detection is exact"
+pass "retired Matt compatibility is rejected"
+
+make_indicator "$OAW_HOME/.agents/.skill-lock.json"
+run_oaw check --target claude
+assert_status 0 "the Matt v4 probe is diagnostic only"
+assert_contains "provider matt: detected" "Matt is detected from the v4 Skill lock"
+assert_contains "provider superpowers: missing" "the Matt v4 fixture leaves Superpowers missing"
+assert_contains "provider ecc: missing" "the Matt v4 fixture leaves ECC missing"
+assert_empty_xdg_roots
+pass "Matt v4 capability detection is exact"
 
 new_fixture
-for matt_skill in to-spec to-tickets tdd diagnosing-bugs; do
-  make_indicator "$OAW_HOME/.agents/skills/$matt_skill/SKILL.md"
-done
-make_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/test-build/skills/using-superpowers/SKILL.md"
 make_indicator "$OAW_HOME/.agents/skills/everything-claude-code/SKILL.md"
+run_oaw check --target claude
+assert_status 0 "the retired ECC Skill is diagnostic only"
+assert_contains "provider ecc: missing" "the retired generic ECC Skill stays missing"
+
+make_indicator "$OAW_HOME/.codex/plugins/ecc/.codex-plugin/plugin.json"
+run_oaw check --target claude
+assert_status 0 "the ECC v4 probe is diagnostic only"
+assert_contains "provider ecc: detected" "ECC is detected from the v4 Plugin manifest"
+assert_empty_xdg_roots
+pass "ECC v4 capability detection is exact"
+
+new_fixture
+make_indicator "$OAW_HOME/.agents/.skill-lock.json"
+make_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/test-build/skills/using-superpowers/SKILL.md"
+make_indicator "$OAW_HOME/.codex/plugins/ecc/.codex-plugin/plugin.json"
 
 for core_tool in claude codex gemini opencode; do
   make_fake_executable "$core_tool"

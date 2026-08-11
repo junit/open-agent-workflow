@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 
 detect_provider_matt() {
-  [ -f "$HOME/.agents/skills/to-spec/SKILL.md" ] &&
-    [ -f "$HOME/.agents/skills/to-tickets/SKILL.md" ] &&
-    [ -f "$HOME/.agents/skills/tdd/SKILL.md" ] &&
-    [ -f "$HOME/.agents/skills/diagnosing-bugs/SKILL.md" ]
+  local matt_indicator=
+
+  for matt_indicator in \
+    "$HOME"/.agents/.skill-lock.json \
+    "$HOME"/.claude/plugins/cache/claude-plugins-official/mattpocock-skills/*/.claude-plugin/plugin.json
+  do
+    if [ -f "$matt_indicator" ]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 detect_provider_superpowers() {
@@ -29,8 +37,20 @@ detect_provider_superpowers() {
 }
 
 detect_provider_ecc() {
-  # ECC's cross-client global skill is the provider indicator.
-  [ -f "$HOME/.agents/skills/everything-claude-code/SKILL.md" ]
+  local ecc_indicator=
+
+  for ecc_indicator in \
+    "$HOME"/.claude/plugins/marketplaces/everything-claude-code/plugins/ecc/.codex-plugin/plugin.json \
+    "$HOME"/.claude/plugins/cache/everything-claude-code/ecc/*/.codex-plugin/plugin.json \
+    "$HOME"/.codex/plugins/ecc/.codex-plugin/plugin.json \
+    "$HOME"/.codex/plugins/cache/everything-claude-code/ecc/*/.codex-plugin/plugin.json
+  do
+    if [ -f "$ecc_indicator" ]; then
+      return 0
+    fi
+  done
+
+  return 1
 }
 
 detect_provider() {
