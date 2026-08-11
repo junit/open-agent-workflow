@@ -37,18 +37,17 @@ func TestRunCatalogTextOutputMatchesContract(t *testing.T) {
 		{
 			name: "providers",
 			args: []string{"catalog", "list", "providers"},
-			want: "provider oaw/ecc version=3.0.0 capabilities=11\n" +
-				"provider oaw/matt version=3.0.0 capabilities=9\n" +
-				"provider oaw/superpowers version=3.0.0 capabilities=10\n",
+			want: "provider oaw/ecc version=4.0.0 capabilities=10\n" +
+				"provider oaw/matt version=4.0.0 capabilities=7\n" +
+				"provider oaw/superpowers version=4.0.0 capabilities=11\n",
 		},
 		{
 			name: "recipes",
 			args: []string{"catalog", "list", "recipes"},
-			want: "recipe oaw/delivery version=2.0.0\n" +
-				"recipe oaw/domain-engineering version=2.0.0\n" +
-				"recipe oaw/ecc-engineering version=2.0.0\n" +
-				"recipe oaw/hardening version=2.0.0\n" +
-				"recipe oaw/reliable-feature version=2.0.0\n",
+			want: "recipe oaw/delivery version=3.0.0\n" +
+				"recipe oaw/domain-engineering version=3.0.0\n" +
+				"recipe oaw/ecc-engineering version=3.0.0\n" +
+				"recipe oaw/reliable-feature version=3.0.0\n",
 		},
 		{
 			name: "aliases",
@@ -61,7 +60,7 @@ func TestRunCatalogTextOutputMatchesContract(t *testing.T) {
 		{
 			name: "validation",
 			args: []string{"catalog", "validate"},
-			want: "catalog valid providers=3 recipes=5 aliases=4\n",
+			want: "catalog valid providers=3 recipes=4 aliases=4\n",
 		},
 	}
 	for _, tt := range tests {

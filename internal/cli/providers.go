@@ -214,19 +214,19 @@ func providerInspectionProjection(inputs providerInputs) providerInspectionOutpu
 		if resolution.Instance != nil {
 			instance := *resolution.Instance
 			provider.Instance = &providerInspectionInstance{
-				HostID: instance.HostID, DistributionKey: instance.DistributionKey, InstallationKey: instance.InstallationKey,
-				Location: instance.Location, Version: instance.Version, DescriptorDigest: instance.DescriptorDigest,
+				HostID: instance.HostID, DistributionKey: instance.DistributionID, InstallationKey: instance.InstallationKey,
+				Version: instance.DistributionRevision, DescriptorDigest: instance.DescriptorDigest,
 				ConfigurationDigest: instance.ConfigurationDigest, BindingInventoryDigest: instance.BindingInventoryDigest,
 				EvidenceDigest: instance.EvidenceDigest, Digest: instance.Digest,
 			}
 		}
 		for _, candidate := range resolution.Candidates {
 			var pin *config.ProviderPin
-			if resolution.State == registry.Ambiguous {
+			if resolution.State == registry.ProviderAmbiguous {
 				value := config.ProviderPin{
 					ProviderID: resolution.ProviderID, HostID: inputs.HostID,
 					InstallationKey: candidate.InstallationKey, EvidenceDigest: candidate.EvidenceDigest,
-					Location: candidate.Location, Version: candidate.Version,
+					Location: candidate.DiagnosticLocation, Version: candidate.ObservedRevision,
 				}
 				pin = &value
 			}
@@ -268,8 +268,8 @@ func providerInspectionProjection(inputs providerInputs) providerInspectionOutpu
 
 func inspectionCandidate(candidate discovery.Candidate, pin *config.ProviderPin) providerInspectionCandidate {
 	return providerInspectionCandidate{
-		HostID: candidate.HostID, SurfaceID: candidate.SurfaceID, DistributionKey: candidate.DistributionKey,
-		InstallationKey: candidate.InstallationKey, Version: candidate.Version, Location: candidate.Location,
+		HostID: candidate.HostID, SurfaceID: candidate.Surface, DistributionKey: candidate.DistributionID,
+		InstallationKey: candidate.InstallationKey, Version: candidate.ObservedRevision, Location: candidate.DiagnosticLocation,
 		EvidenceDigest: candidate.EvidenceDigest, ProviderPin: pin,
 	}
 }

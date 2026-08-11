@@ -73,7 +73,7 @@ func TestProvidersInspectV3SeparatesCurrentDiscoveryFromForeignDiagnostics(t *te
 		t.Fatalf("current Host = %#v", output)
 	}
 	current := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
-	if current.State != registry.CandidateState || current.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || current.Instance != nil || len(current.Candidates) != 1 {
+	if current.State != registry.ProviderCandidate || current.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || current.Instance != nil || len(current.Candidates) != 1 {
 		t.Fatalf("current Provider = %#v", current)
 	}
 	if candidate := current.Candidates[0]; candidate.HostID != "codex" || candidate.SurfaceID == "" || candidate.DistributionKey == "" || candidate.InstallationKey == "" || strings.Contains(candidate.Location, ".claude") || candidate.ProviderPin != nil {
@@ -99,7 +99,7 @@ func TestProvidersInspectForeignOnlyLeavesCurrentResolutionNotFound(t *testing.T
 		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
 	}
 	current := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
-	if current.State != registry.NotFound || current.Reason != "PROVIDER_NOT_FOUND" || len(current.Candidates) != 0 {
+	if current.State != registry.ProviderNotFound || current.Reason != "PROVIDER_NOT_FOUND" || len(current.Candidates) != 0 {
 		t.Fatalf("current Provider = %#v", current)
 	}
 	if len(output.ForeignHosts) != 1 {
@@ -125,7 +125,7 @@ func TestProvidersInspectSupportsPolicyOnlyHost(t *testing.T) {
 		t.Fatalf("policy-only current Host = %#v", output.CurrentHost)
 	}
 	provider := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/superpowers")
-	if provider.State != registry.CandidateState || provider.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || provider.Instance != nil || len(provider.Candidates) != 1 || provider.Candidates[0].ProviderPin != nil {
+	if provider.State != registry.ProviderCandidate || provider.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || provider.Instance != nil || len(provider.Candidates) != 1 || provider.Candidates[0].ProviderPin != nil {
 		t.Fatalf("policy-only Provider = %#v", provider)
 	}
 }
@@ -193,7 +193,7 @@ func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 			continue
 		}
 		found = true
-		if provider.State != registry.Ambiguous || len(provider.Candidates) != 3 {
+		if provider.State != registry.ProviderAmbiguous || len(provider.Candidates) != 3 {
 			t.Fatalf("superpowers = %#v", provider)
 		}
 		for _, candidate := range provider.Candidates {

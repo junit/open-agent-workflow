@@ -36,10 +36,8 @@ func TestCheckManagementDomainExercisesDiagnosticsAndHealth(t *testing.T) {
 	t.Run("detected providers and project targets", func(t *testing.T) {
 		fixture := newPrepareFixture(t)
 		writePrepareFile(t, filepath.Join(fixture.environment.Home, ".codex", "plugins", "superpowers", "skills", "using-superpowers", "SKILL.md"), []byte("skill\n"), 0o644)
-		for _, skill := range []string{"to-spec", "to-tickets", "tdd", "diagnosing-bugs"} {
-			writePrepareFile(t, filepath.Join(fixture.environment.Home, ".agents", "skills", skill, "SKILL.md"), []byte("skill\n"), 0o644)
-		}
-		writePrepareFile(t, filepath.Join(fixture.environment.Home, ".agents", "skills", "everything-claude-code", "SKILL.md"), []byte("skill\n"), 0o644)
+		writePrepareFile(t, filepath.Join(fixture.environment.Home, ".agents", ".skill-lock.json"), []byte("{}\n"), 0o644)
+		writePrepareFile(t, filepath.Join(fixture.environment.Home, ".codex", "plugins", "ecc", ".codex-plugin", "plugin.json"), []byte("{}\n"), 0o644)
 		for _, executable := range []string{"claude", "codex", "gemini", "opencode"} {
 			path := filepath.Join(fixture.environment.Path, executable)
 			writePrepareFile(t, path, []byte("#!/bin/sh\nexit 0\n"), 0o755)

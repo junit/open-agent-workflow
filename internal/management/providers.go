@@ -21,17 +21,22 @@ var providerCompatibilityRules = [...]providerCompatibilityRule{
 		name:       "superpowers",
 		providerID: "oaw/superpowers",
 		probeIDs: []string{
-			"claude-direct", "codex-direct", "claude-marketplace-checkout",
-			"claude-official-cache", "claude-marketplace-cache", "codex-curated-cache",
+			"sp-claude-direct", "sp-codex-direct", "sp-claude-marketplace",
+			"sp-claude-official-cache", "sp-claude-marketplace-cache", "sp-codex-curated-cache",
 		},
 	},
 	{
 		name:       "matt",
 		providerID: "oaw/matt",
-		probeIDs:   []string{"matt-to-spec", "matt-to-tickets", "matt-tdd", "matt-diagnosing-bugs"},
-		requireAll: true,
+		probeIDs:   []string{"matt-codex-skill-lock", "matt-claude-official-cache"},
 	},
-	{name: "ecc", providerID: "oaw/ecc", probeIDs: []string{"ecc-global-skill"}},
+	{
+		name:       "ecc",
+		providerID: "oaw/ecc",
+		probeIDs: []string{
+			"ecc-claude-marketplace", "ecc-claude-cache", "ecc-codex-direct", "ecc-codex-cache",
+		},
+	},
 }
 
 func providerLines(value catalog.Catalog, home string) ([]string, error) {
