@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
 type ProviderFixture struct {
@@ -27,6 +27,7 @@ type ProviderFixture struct {
 // discovered Providers. Production binding inventories are supplied by Hosts.
 func ObserveProviderBindings(t testing.TB, value catalog.Catalog, report discovery.Report, home string, providerIDs ...string) host.BindingInventory {
 	t.Helper()
+	_ = home
 	selected := make(map[string]struct{}, len(providerIDs))
 	for _, providerID := range providerIDs {
 		selected[providerID] = struct{}{}
@@ -41,64 +42,65 @@ func ObserveProviderBindings(t testing.TB, value catalog.Catalog, report discove
 			t.Fatalf("Provider %s candidates = %d, want one", provider.ID, len(candidates))
 		}
 		candidate := candidates[0]
-		for _, capability := range provider.Capabilities {
-			for _, binding := range capability.HostBindings {
-				if binding.Host != report.HostID() || !slices.Contains(binding.Topologies, execution.TopologyCurrent) {
-					continue
-				}
-				observation, found := observeFixtureBinding(t, report.HostID(), candidate, binding)
-				if found {
-					observations = append(observations, observation)
-				}
+		for _, binding := range provider.Bindings {
+			if binding.Host != report.HostID() || binding.DistributionID != candidate.DistributionID ||
+				binding.Surface != candidate.Surface || !slices.Contains(binding.SupportedTopologies, execution.TopologyCurrent) {
+				continue
+			}
+			observation, found := observeFixtureBinding(t, report.HostID(), provider.ID, candidate, binding)
+			if found {
+				observations = append(observations, observation)
 			}
 		}
 	}
-	inventory, err := host.NewBindingInventory(report.HostID(), observations)
+	inventory, err := host.BuildBindingInventoryV3(report.HostID(), observations)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return inventory
 }
 
-func observeFixtureBinding(t testing.TB, hostID string, candidate discovery.Candidate, binding catalog.HostBinding) (host.BindingObservation, bool) {
+func observeFixtureBinding(t testing.TB, hostID, providerID string, candidate discovery.Candidate, binding catalog.BindingRecord) (host.BindingObservation, bool) {
 	t.Helper()
-	name, relative, source := binding.Reference, "", "host-filesystem"
+	name, relative := binding.Reference, ""
 	switch binding.Kind {
-	case "skill":
+	case catalog.BindingSkill:
 		if _, suffix, found := strings.Cut(binding.Reference, ":"); found {
 			name = suffix
 			relative = filepath.Join("skills", suffix, "SKILL.md")
 		} else {
 			relative = filepath.Join(binding.Reference, "SKILL.md")
 		}
-	case "agent":
-		relative = filepath.Join("agents", binding.Reference+".toml")
-		source = "host-index"
 	default:
 		return host.BindingObservation{}, false
 	}
-	path := filepath.Join(candidate.Location, relative)
+	root := candidate.DiagnosticLocation
+	path := filepath.Join(root, relative)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		content := "name = \"" + name + "\"\n"
-		if binding.Kind == "skill" {
+		if binding.Kind == catalog.BindingSkill {
 			content = "---\nname: " + name + "\n---\n"
 		}
-		writeProviderFixtureFile(t, candidate.Location, relative, content)
+		writeProviderFixtureFile(t, root, relative, content)
 	} else if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+	var treeDigest string
+	for _, evidence := range candidate.BindingRoots {
+		if evidence.BindingID == binding.ID {
+			treeDigest = evidence.Tree.RootDigest
+			break
+		}
 	}
-	physical, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		t.Fatal(err)
+	if treeDigest == "" {
+		return host.BindingObservation{}, false
 	}
 	return host.BindingObservation{
-		HostID: hostID, InstallationKey: candidate.InstallationKey, Binding: binding,
-		Topologies: []execution.Topology{execution.TopologyCurrent}, Source: source,
-		EvidenceReference: physical, Digest: canonicaljson.DigestBytes(data),
+		HostID: hostID, ProviderID: providerID, InstallationKey: candidate.InstallationKey,
+		DistributionID: binding.DistributionID, BindingID: binding.ID, Surface: binding.Surface,
+		Kind: binding.Kind, Reference: binding.Reference, Invocation: binding.Invocation,
+		BindingTreeDigest: treeDigest, Topologies: []execution.Topology{execution.TopologyCurrent},
+		Source: host.SourceLiveFilesystem, EvidenceReference: "evidence://hosttest/" + binding.ID,
 	}, true
 }
 
@@ -108,20 +110,35 @@ func BuildProviderFixture(t testing.TB) ProviderFixture {
 	home := t.TempDir()
 	writeProviderFixtureFile(t, home, ".codex/plugins/acme/marker.txt", "acme")
 	writeProviderFixtureFile(t, home, ".codex/plugins/acme/skills/review/SKILL.md", "---\nname: review\n---\n")
+	installRoot := filepath.Join(home, ".codex", "plugins", "acme")
+	bindingTree, err := integrity.DigestTree(filepath.Join(installRoot, "skills", "review"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	distributionTree, err := integrity.DigestTree(installRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
 	descriptor := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV3, DescriptorVersion: "3.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		Distributions: []catalog.DistributionRecord{{
+			ID: "acme", SourceURI: "https://example.test/acme/suite", Revision: strings.Repeat("a", 40), TreeDigest: distributionTree.RootDigest,
+		}},
 		Discovery: []catalog.DiscoveryProbe{{
-			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", Distribution: "acme", Kind: "path-exists", Root: "user-home",
+			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", DistributionID: "acme", Kind: "path-exists", Root: "user-home",
 			CandidatePath: ".codex/plugins/acme", EvidencePath: "marker.txt",
 		}},
+		Bindings: []catalog.BindingRecord{{
+			ID: "codex-review", DistributionID: "acme", ContentRoot: "skills/review", InstallRoot: "skills/review", TreeDigest: bindingTree.RootDigest,
+			Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:review", Invocation: catalog.InvocationModel,
+			Responsibilities: []catalog.ResponsibilityClaim{{Namespace: catalog.OwnershipStage, Name: string(catalog.SlotImplementation), SlotID: catalog.SlotImplementation, OutcomeOwner: true}},
+			InputArtifact:    "artifact", OutputArtifact: "artifact", MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{},
+			StageSpan: []catalog.SlotID{catalog.SlotImplementation}, InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
+		}},
 		Capabilities: []catalog.CapabilityRecord{{
-			ID: "review", InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
-			RequestModes: []catalog.RequestMode{catalog.RequestModeBounded, catalog.RequestModeWorkflow}, Responsibilities: []string{"review"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}, DelegationAllowList: []string{},
-			HostBindings: []catalog.HostBinding{{
-				Host: "codex", Kind: "skill", Reference: "acme:review",
-				Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-			}},
+			ID: "review", InputSchema: "artifact", OutcomeSchema: "artifact",
+			RequestModes: []catalog.RequestMode{catalog.RequestModeBounded, catalog.RequestModeWorkflow}, BindingRefs: []string{"codex-review"},
 		}},
 	}
 	value, err := catalog.New([]catalog.ProviderDescriptorRecord{descriptor}, []catalog.ProfileRecipeRecord{}, []catalog.ProfileAliasRecord{})

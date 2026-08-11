@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,7 +18,7 @@ func TestGenerateCodexHostV3IsIdempotentAndPreservesPolicy(t *testing.T) {
 	before := decodeIntegrationSetFile(t, integrationsPath)
 	policyBefore := generatorIntegrationByID(t, before.Integrations, "oaw/codex-policy")
 
-	if err := generateCodexHost(root); err != nil {
+	if err := generateActiveAssets(root); err != nil {
 		t.Fatal(err)
 	}
 	firstSet, err := os.ReadFile(integrationsPath)
@@ -29,7 +30,7 @@ func TestGenerateCodexHostV3IsIdempotentAndPreservesPolicy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := generateCodexHost(root); err != nil {
+	if err := generateActiveAssets(root); err != nil {
 		t.Fatal(err)
 	}
 	secondSet, err := os.ReadFile(integrationsPath)
@@ -53,8 +54,17 @@ func TestGenerateCodexHostV3IsIdempotentAndPreservesPolicy(t *testing.T) {
 	}
 	native := generatorIntegrationByID(t, after.Integrations, codexHostIntegrationID)
 	if native.Manifest.ControlSurface != host.SurfaceHostNative || native.Audit.Status != host.AuditPassed || native.Conformance == nil ||
+		native.IntegrationVersion != "2.0.0" || native.Manifest.SchemaVersion != host.HostManifestSchemaV3 ||
+		native.Conformance.SchemaVersion != host.HostConformanceReportSchemaV4 ||
 		len(native.Manifest.DelegationFeatures) != 0 || len(native.Manifest.HostActions) != 0 {
 		t.Fatalf("generated native Integration = %#v", native)
+	}
+	var transcript host.ConformanceTranscript
+	if err := json.Unmarshal(secondTranscript, &transcript); err != nil {
+		t.Fatal(err)
+	}
+	if transcript.SchemaVersion != host.HostConformanceTranscriptSchemaV4 || len(transcript.Receipts) == 0 || transcript.Receipts[0].SchemaVersion != host.HostInvocationReceiptSchemaV3 {
+		t.Fatalf("generated Transcript = %#v", transcript)
 	}
 }
 

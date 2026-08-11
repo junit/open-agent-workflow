@@ -23,7 +23,7 @@ func NewMCPServer(service *Service, version string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "oaw-codex-bridge", Version: version}, nil)
 	server.AddTool(closedTool[ObserveCurrentInput, ObserveCurrentOutput]("observe_current", "Observe the current Codex Host facts", true), service.observeTool)
 	server.AddTool(closedTool[CoreInspectInput, CoreInspectOutput]("core_inspect", "Inspect verified Providers and Profile eligibility", true), service.inspectTool)
-	server.AddTool(closedTool[CoreCompileInput, core.CompilationResult]("core_compile", "Compile one explicit Lifecycle Bundle", true), service.compileTool)
+	server.AddTool(closedTool[CoreCompileInput, core.LifecycleBundle]("core_compile", "Compile one explicit Lifecycle Bundle", true), service.compileTool)
 	server.AddTool(closedTool[WorkflowExchangeInput, coordinator.Result]("workflow_exchange", "Exchange one Coordinator command", false), service.workflowTool)
 	return server
 }
@@ -154,7 +154,7 @@ func observeArguments(request *mcp.CallToolRequest) ([]byte, HookContext, error)
 }
 
 func validInjectedHookContext(value HookContext) bool {
-	if value.SchemaVersion != HookContextSchemaV1 || value.BridgeProtocolVersion != BridgeProtocolVersion {
+	if value.SchemaVersion != HookContextSchemaV2 || value.BridgeProtocolVersion != BridgeProtocolVersion {
 		return false
 	}
 	if _, _, err := ContextDigestHeaders(value); err != nil {

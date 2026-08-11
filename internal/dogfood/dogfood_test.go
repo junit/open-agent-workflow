@@ -1,6 +1,7 @@
 package dogfood
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -8,9 +9,13 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
+	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
 func TestDogfoodRejectsUnsafeRootsAndApproval(t *testing.T) {
@@ -36,6 +41,13 @@ func TestDogfoodRejectsProductionAndFingerprintChanges(t *testing.T) {
 	fingerprint, err := inspectRepository(repository)
 	if err != nil {
 		t.Fatal(err)
+	}
+	tree, err := integrity.DigestTree(filepath.Dir(fingerprint.SkillPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fingerprint.SkillTreeDigest != tree.RootDigest || fingerprint.SkillTreeDigest == fingerprint.SkillDigest {
+		t.Fatalf("repository fingerprint does not pin the complete Binding tree: %#v", fingerprint)
 	}
 	if _, err := verifyRepository(fingerprint); err != nil {
 		t.Fatalf("clean repository rejected: %v", err)
@@ -108,16 +120,18 @@ func TestDogfoodValidatesReceiptPinsAndEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	packet := coordinator.DispatchPacket{
-		WorkflowID: "workflow-11111111111111111111111111111111", BundleGeneration: 1,
-		BundleDigest: strings.Repeat("a", 64), NodeID: node, Topology: execution.TopologyCurrent,
+		SchemaVersion: coordinator.DispatchPacketSchemaV2, ID: "dispatch-11111111111111111111111111111111",
+		WorkflowID: "workflow-11111111111111111111111111111111", BundleID: "bundle-11111111111111111111111111111111", BundleGeneration: 1,
+		BundleDigest: strings.Repeat("a", 64), Cursor: execution.GraphCursor{SlotID: "review-remediation", Kind: execution.CursorBinding, UnitID: node, Ordinal: 1}, Topology: execution.TopologyCurrent,
 		HostSessionDigest: strings.Repeat("b", 64), EnvironmentReportDigest: strings.Repeat("c", 64), Digest: strings.Repeat("d", 64),
 	}
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
-		WorkflowID: packet.WorkflowID, BundleGeneration: packet.BundleGeneration, BundleDigest: packet.BundleDigest,
-		NodeID: packet.NodeID, Topology: packet.Topology, HostSessionDigest: packet.HostSessionDigest,
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted,
+		WorkflowID: packet.WorkflowID, BundleID: packet.BundleID, BundleGeneration: packet.BundleGeneration, BundleDigest: packet.BundleDigest,
+		Cursor: packet.Cursor, Topology: packet.Topology, HostSessionDigest: packet.HostSessionDigest,
 		DispatchDigest: packet.Digest, ContextFreshness: host.ContextShared, EnvironmentReportDigest: packet.EnvironmentReportDigest,
-		Outcome: "succeeded", Evidence: []host.EvidenceReference{{Kind: "report", Reference: "file://" + reportPath, Digest: canonicaljson.DigestBytes(report)}},
+		Outcome: "succeeded", Outputs: []host.OutputReference{{ArtifactID: "artifact-review", Schema: "oaw.workflow-artifact/v1", Reference: "file://" + reportPath, Digest: canonicaljson.DigestBytes(report)}},
+		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "file://" + reportPath, Digest: canonicaljson.DigestBytes(report)}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -143,6 +157,103 @@ func TestDogfoodValidatesReceiptPinsAndEvidence(t *testing.T) {
 func TestDogfoodRejectsMalformedReceipt(t *testing.T) {
 	if _, err := decodeReceiptCommand([]byte("{"), "workflow-11111111111111111111111111111111", 1, "review-scope", "succeeded", "scope-complete"); err == nil {
 		t.Fatal("malformed Receipt unexpectedly accepted")
+	}
+}
+
+func TestDogfoodStartsWithProviderV4HostV3AndWorkflowV2(t *testing.T) {
+	repository := makeDogfoodRepository(t, true)
+	evidence := filepath.Join(t.TempDir(), "evidence")
+	if err := startPilot(repository, evidence, repository, "session-dogfood-v4"); err != nil {
+		t.Fatalf("startPilot() error = %#v, cause=%v", err, errors.Unwrap(err))
+	}
+	var result coordinator.Result
+	if _, err := readCanonical(filepath.Join(evidence, "start-result.json"), &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.SchemaVersion != coordinator.WorkflowResultSchemaV2 || result.Snapshot == nil || result.Snapshot.SchemaVersion != coordinator.WorkflowSnapshotSchemaV2 {
+		t.Fatalf("Workflow Result = %#v", result)
+	}
+	if len(result.Snapshot.Bundles) != 1 || result.Snapshot.Bundles[0].SchemaVersion != core.LifecycleBundleSchemaV4 || result.Snapshot.Bundles[0].Graph.SchemaVersion != profile.ExecutionGraphSchemaV4 {
+		t.Fatalf("Lifecycle Bundle = %#v", result.Snapshot.Bundles)
+	}
+	if node, err := dogfoodNode(result.Snapshot.Cursor); err != nil || node != "review-scope" {
+		t.Fatalf("initial cursor = %#v, node=%q, error=%v", result.Snapshot.Cursor, node, err)
+	}
+	var session host.SessionSnapshot
+	if _, err := readCanonical(filepath.Join(evidence, "session.json"), &session); err != nil {
+		t.Fatal(err)
+	}
+	var inventory host.BindingInventory
+	if _, err := readCanonical(filepath.Join(evidence, "inventory.json"), &inventory); err != nil {
+		t.Fatal(err)
+	}
+	if session.SchemaVersion != host.HostSessionSchemaV3 || inventory.SchemaVersion != host.BindingInventorySchemaV3 || len(inventory.Observations) != 3 {
+		t.Fatalf("Host evidence = session %#v inventory %#v", session, inventory)
+	}
+}
+
+func TestDogfoodWorkflowV2ClosesThroughReceiptV3AndUserGate(t *testing.T) {
+	repository := makeDogfoodRepository(t, true)
+	evidence := filepath.Join(t.TempDir(), "evidence")
+	if err := startPilot(repository, evidence, repository, "session-dogfood-closeout"); err != nil {
+		t.Fatal(err)
+	}
+	pilot, err := loadPilot(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	evidence = pilot.EvidenceRoot
+	for _, node := range []string{"review-scope", "code-review", "verification"} {
+		if err := preparePilot(evidence); err != nil {
+			t.Fatalf("prepare %s: %v", node, err)
+		}
+		var packet coordinator.DispatchPacket
+		if _, err := readCanonical(filepath.Join(evidence, "dispatch-"+node+".json"), &packet); err != nil {
+			t.Fatal(err)
+		}
+		reportPath := filepath.Join(evidence, "evidence", node+".md")
+		if err := os.MkdirAll(filepath.Dir(reportPath), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		report := []byte(node + " report\n")
+		if err := os.WriteFile(reportPath, report, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if packet.Grant.Target.ProviderBinding == nil {
+			t.Fatalf("Dispatch target = %#v", packet.Grant.Target)
+		}
+		receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
+			SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted,
+			WorkflowID: packet.WorkflowID, BundleID: packet.BundleID, BundleGeneration: packet.BundleGeneration, BundleDigest: packet.BundleDigest,
+			Cursor: packet.Cursor, Topology: packet.Topology, HostSessionDigest: packet.HostSessionDigest,
+			DispatchDigest: packet.Digest, ContextFreshness: host.ContextShared, EnvironmentReportDigest: packet.EnvironmentReportDigest,
+			Outcome: "succeeded", Outputs: []host.OutputReference{{
+				ArtifactID: packet.Grant.Target.ProviderBinding.OutputArtifact, Schema: packet.Grant.Target.ProviderBinding.OutcomeSchema,
+				Reference: "file://" + reportPath, Digest: canonicaljson.DigestBytes(report),
+			}},
+			Evidence: []host.EvidenceReference{{Kind: "report", Reference: "file://" + reportPath, Digest: canonicaljson.DigestBytes(report)}},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		receiptPath := filepath.Join(evidence, "receipt-"+node+".json")
+		if err := writeCanonical(receiptPath, receipt); err != nil {
+			t.Fatal(err)
+		}
+		if err := receivePilot(evidence, receiptPath); err != nil {
+			t.Fatalf("receipt %s: %v", node, err)
+		}
+	}
+	engine, err := openPilotEngine(pilot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := inspectWorkflow(engine, pilot.WorkflowID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Snapshot == nil || result.Snapshot.Status != coordinator.StatusFinished || len(result.Snapshot.GateAttestations) != 1 || result.Snapshot.GateAttestations[0].Authority != catalog.GateUser {
+		t.Fatalf("final Workflow Result = %#v", result)
 	}
 }
 

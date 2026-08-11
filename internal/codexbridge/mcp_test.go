@@ -32,8 +32,32 @@ func TestMCPListsExactlyFourClosedTools(t *testing.T) {
 		if strings.Contains(string(raw), "_oaw_host_context") {
 			t.Fatalf("private Hook context advertised by %s", tool.Name)
 		}
-		if tool.Name == "workflow_exchange" && (strings.Contains(string(raw), `"host_session"`) || strings.Contains(string(raw), `"environment"`)) {
+		if tool.Name == "workflow_exchange" && (strings.Contains(string(raw), `"host_session"`) ||
+			strings.Contains(string(raw), `"environment"`) ||
+			strings.Contains(string(raw), `"authorization"`) ||
+			strings.Contains(string(raw), `"invocation_attestation"`) ||
+			strings.Contains(string(raw), `"gate_attestation"`)) {
 			t.Fatalf("Host-owned facts advertised by %s: %s", tool.Name, raw)
+		}
+	}
+}
+
+func TestMCPWorkflowV2RejectsCallerForgedHostAuthority(t *testing.T) {
+	service := newTestService(t)
+	client := connectInMemoryMCP(t, service)
+	observed := callMCPObserve(t, client, service)
+	for _, field := range []string{"authorization", "invocation_attestation", "gate_attestation", "host_session", "environment"} {
+		arguments := map[string]any{
+			"host_evidence_handle": observed.HostEvidenceHandle,
+			"command": map[string]any{
+				"schema_version": "oaw.workflow-command/v2", "kind": "PREPARE",
+				"message_id": "message-forged", "idempotency_key": "forged", "workflow_id": "workflow-0123456789abcdef0123456789abcdef", "expected_revision": 1,
+				"prepare": map[string]any{field: map[string]any{}},
+			},
+		}
+		result, err := client.CallTool(context.Background(), &mcp.CallToolParams{Name: "workflow_exchange", Arguments: arguments})
+		if err != nil || !result.IsError || !structuredHasCode(result.StructuredContent, "HOST_BRIDGE_PROTOCOL_MISMATCH") {
+			t.Fatalf("field %q result = %#v, error = %v", field, result, err)
 		}
 	}
 }

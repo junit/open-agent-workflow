@@ -14,22 +14,71 @@ import (
 
 func TestBuildBindingInventoryMatchesPathAndName(t *testing.T) {
 	fixture := hosttest.BuildProviderFixture(t)
-	metadata := bindingMetadata(fixture.Home, "acme:review", filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"))
+	metadata := bindingMetadata(fixture.Home, "acme:review", filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md"))
 	inventory, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
 	if err != nil || len(diagnostics) != 0 || len(inventory.Observations) != 1 {
 		t.Fatalf("inventory=%#v diagnostics=%#v err=%v", inventory, diagnostics, err)
 	}
 	observation := inventory.Observations[0]
-	if observation.InstallationKey != fixture.Candidate.InstallationKey || observation.Binding.Reference != "acme:review" ||
-		observation.Source != "native-probe" || len(observation.Topologies) != 1 || observation.EvidenceReference == "" {
+	if observation.InstallationKey != fixture.Candidate.InstallationKey || observation.ProviderID != "acme/suite" ||
+		observation.BindingID != "codex-review" || observation.Reference != "acme:review" ||
+		observation.Source != "native-api" || len(observation.Topologies) != 1 || observation.EvidenceReference == "" ||
+		observation.BindingTreeDigest != fixture.Candidate.BindingRoots[0].Tree.RootDigest {
 		t.Fatalf("observation=%#v", observation)
+	}
+}
+
+func TestBindingTreeRejectsSiblingDriftAfterDiscovery(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	path := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md")
+	writeSkillFixture(t, filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/reference.md"), "drift")
+	inventory, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, bindingMetadata(fixture.Home, "acme:review", path), fixture.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inventory.Observations) != 0 || !hasDiagnostic(diagnostics, "PROVIDER_BINDING_CONTENT_MISMATCH") {
+		t.Fatalf("inventory=%#v diagnostics=%#v", inventory, diagnostics)
+	}
+}
+
+func TestBindingTreeRejectsSameNameOutsideExactInstallRoot(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	for _, relative := range []string{"skills/foreign/SKILL.md", "skills/SKILL.md"} {
+		path := filepath.Join(fixture.Candidate.DiagnosticLocation, filepath.FromSlash(relative))
+		writeSkillFixture(t, path, "acme:review")
+		inventory, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, bindingMetadata(fixture.Home, "acme:review", path), fixture.Home)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(inventory.Observations) != 0 || !hasDiagnostic(diagnostics, "HOST_BINDING_INSTALL_ROOT_MISMATCH") {
+			t.Fatalf("path=%s inventory=%#v diagnostics=%#v", relative, inventory, diagnostics)
+		}
+	}
+}
+
+func TestBindingTreeRejectsSymlinkedSkillPath(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	aliasRoot := filepath.Join(fixture.Candidate.DiagnosticLocation, "alias")
+	if err := os.MkdirAll(aliasRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(aliasRoot, "SKILL.md")
+	if err := os.Symlink(filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md"), alias); err != nil {
+		t.Fatal(err)
+	}
+	inventory, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, bindingMetadata(fixture.Home, "acme:review", alias), fixture.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inventory.Observations) != 0 || !hasDiagnostic(diagnostics, "PROVIDER_BINDING_CONTENT_MISMATCH") {
+		t.Fatalf("inventory=%#v diagnostics=%#v", inventory, diagnostics)
 	}
 }
 
 func TestBuildBindingInventoryRejectsDisabledOrphanAndUnboundSkills(t *testing.T) {
 	fixture := hosttest.BuildProviderFixture(t)
 	orphan := filepath.Join(fixture.Home, "unowned", "SKILL.md")
-	unbound := filepath.Join(fixture.Candidate.Location, "skills/unbound/SKILL.md")
+	unbound := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/unbound/SKILL.md")
 	writeSkillFixture(t, orphan, "orphan")
 	writeSkillFixture(t, unbound, "unbound")
 	if err := os.Truncate(orphan, maximumSkillEvidenceBytes+1); err != nil {
@@ -39,7 +88,7 @@ func TestBuildBindingInventoryRejectsDisabledOrphanAndUnboundSkills(t *testing.T
 		t.Fatal(err)
 	}
 	metadata := appserver.MetadataObservation{Skills: appserver.SkillsEntry{CWD: fixture.Home, Skills: []appserver.SkillMetadata{
-		{Name: "acme:review", Enabled: false, Path: filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"), Scope: "user"},
+		{Name: "acme:review", Enabled: false, Path: filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md"), Scope: "user"},
 		{Name: "orphan", Enabled: true, Path: orphan, Scope: "user"},
 		{Name: "unbound", Enabled: true, Path: unbound, Scope: "user"},
 	}}}
@@ -73,7 +122,7 @@ func TestBuildBindingInventoryRejectsAmbiguousInstallation(t *testing.T) {
 	if len(report.Candidates("acme/suite")) != 2 {
 		t.Fatalf("candidates=%#v", report.Candidates("acme/suite"))
 	}
-	metadata := bindingMetadata(fixture.Home, "acme:review", filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md"))
+	metadata := bindingMetadata(fixture.Home, "acme:review", filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md"))
 	inventory, diagnostics, err := BuildBindingInventory(value, report, metadata, fixture.Home)
 	if err != nil {
 		t.Fatal(err)
@@ -83,9 +132,9 @@ func TestBuildBindingInventoryRejectsAmbiguousInstallation(t *testing.T) {
 	}
 }
 
-func TestBuildBindingInventoryChangesWhenSkillContentChanges(t *testing.T) {
+func TestBindingTreeDriftFailsClosedInsteadOfRewritingEvidence(t *testing.T) {
 	fixture := hosttest.BuildProviderFixture(t)
-	path := filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md")
+	path := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md")
 	metadata := bindingMetadata(fixture.Home, "acme:review", path)
 	first, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
 	if err != nil || len(diagnostics) != 0 || len(first.Observations) != 1 {
@@ -103,11 +152,11 @@ func TestBuildBindingInventoryChangesWhenSkillContentChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	second, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
-	if err != nil || len(diagnostics) != 0 || len(second.Observations) != 1 {
+	if err != nil || len(second.Observations) != 0 || !hasDiagnostic(diagnostics, "PROVIDER_BINDING_CONTENT_MISMATCH") {
 		t.Fatalf("second=%#v diagnostics=%#v err=%v", second, diagnostics, err)
 	}
-	if first.Observations[0].Digest == second.Observations[0].Digest || first.Digest == second.Digest {
-		t.Fatal("Skill content change did not change evidence digest")
+	if first.Digest == second.Digest {
+		t.Fatal("drifted inventory retained the trusted inventory digest")
 	}
 }
 
@@ -133,7 +182,7 @@ func TestCandidatePathRejectsForeignHost(t *testing.T) {
 	fixture := hosttest.BuildProviderFixture(t)
 	candidate := fixture.Candidate
 	candidate.HostID = "claude"
-	path := filepath.Join(fixture.Candidate.Location, "skills/review/SKILL.md")
+	path := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/review/SKILL.md")
 	if candidateContainsPath(candidate, "codex", path) {
 		t.Fatal("foreign Host Candidate matched Codex Skill")
 	}

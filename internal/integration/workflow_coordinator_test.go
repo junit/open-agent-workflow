@@ -10,52 +10,63 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
-	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
 func TestWorkflowCoordinatorVerticalSliceNeverInvokesHostBinding(t *testing.T) {
-	projectRoot := t.TempDir()
-	stateRoot := filepath.Join(t.TempDir(), "workflows")
-	snapshot, integration := hosttest.LoadManagedSnapshot(t, projectRoot)
 	home := t.TempDir()
+	providerRoot := filepath.Join(home, ".agents", "acme")
 	marker := filepath.Join(t.TempDir(), "host-binding-invoked")
-	writeWorkflowFile(t, home, ".codex/plugins/superpowers/skills/using-superpowers/SKILL.md", "using-superpowers")
-	writeWorkflowFile(t, home, ".codex/plugins/superpowers/skills/brainstorming/SKILL.md", "#!/bin/sh\ntouch \""+marker+"\"\nexit 97\n")
+	writeWorkflowFile(t, providerRoot, "SKILL.md", "acme")
+	skillRoot := filepath.Join(providerRoot, "skills", "zeta-review")
+	writeWorkflowFile(t, skillRoot, "SKILL.md", "#!/bin/sh\ntouch \""+marker+"\"\nexit 97\n")
+	providerDocument := testProviderDocument(t, "acme/suite", digestIntegrationTree(t, skillRoot), digestIntegrationTree(t, providerRoot))
+	snapshot, _, _, projectRoot := buildTrustedFixture(t, providerDocument)
+	stateRoot := filepath.Join(t.TempDir(), "workflows")
+	integration, found := snapshot.HostIntegration("oaw/codex-host")
+	if !found {
+		t.Fatal("built-in Codex Host integration missing")
+	}
 
 	discovered, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory := workflowBindingInventory(t, snapshot.Catalog(), discovered, "oaw/superpowers")
+	inventory := workflowBindingInventory(t, snapshot.Catalog(), discovered, "acme/suite")
 	resolutions, effective, err := registry.Resolve(snapshot, "codex", discovered, &inventory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertVerifiedProvider(t, resolutions, "oaw/superpowers")
+	assertVerifiedProvider(t, resolutions, "acme/suite")
 
 	environment, session := workflowHostFacts(t, integration, inventory)
+	hostEvidence, err := profile.NewHostEvidence(integration.Manifest, session, inventory, environment)
+	if err != nil {
+		t.Fatal(err)
+	}
 	engine, err := coordinator.NewEngine(coordinator.Options{
 		StateRoot: stateRoot, PhysicalProjectRoot: projectRoot,
 		Configuration: snapshot, Resolutions: resolutions, Registry: effective,
+		Host: hostEvidence,
 		Authority: admission.AuthorityCeiling{
-			Effects:         []string{"git-local", "network-read", "read-project", "run-process", "write-project"},
-			Resources:       []string{"git-repository", "project", "project-worktree"},
+			Effects:         []string{"read-project"},
+			Resources:       []string{"project"},
 			ResourceLeases:  true,
-			AllowDelegation: true,
+			AllowDelegation: false,
 		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	started := exchangeWorkflow(t, engine, workflowStartCommand(session, environment))
+	started := exchangeWorkflow(t, engine, workflowStartCommand(t, snapshot, resolutions, effective, hostEvidence, session, environment))
 	if started.Kind != coordinator.ResultState || started.Snapshot == nil || started.Snapshot.Status != coordinator.StatusReady {
 		t.Fatalf("START Result = %#v", started)
 	}
@@ -69,7 +80,7 @@ func TestWorkflowCoordinatorVerticalSliceNeverInvokesHostBinding(t *testing.T) {
 	}
 	completed := exchangeWorkflow(t, engine, workflowReceiptCommand(t, prepared, host.ReceiptCompleted, inFlight.Revision))
 	if completed.Snapshot == nil || completed.Snapshot.Status != coordinator.StatusReady || completed.Snapshot.ActiveGrant != nil ||
-		completed.Snapshot.ActiveNodeID == started.Snapshot.ActiveNodeID || len(completed.Snapshot.Receipts) != 2 {
+		completed.Snapshot.Cursor == started.Snapshot.Cursor || len(completed.Snapshot.Receipts) != 2 {
 		t.Fatalf("COMPLETED Receipt Result = %#v", completed)
 	}
 	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
@@ -79,50 +90,8 @@ func TestWorkflowCoordinatorVerticalSliceNeverInvokesHostBinding(t *testing.T) {
 
 func workflowBindingInventory(t *testing.T, available catalog.Catalog, discovered discovery.Report, providerID string) host.BindingInventory {
 	t.Helper()
-	hostID := discovered.HostID()
-	candidates := discovered.Candidates(providerID)
-	if len(candidates) != 1 {
-		t.Fatalf("Provider %s candidates = %d, want one", providerID, len(candidates))
-	}
-	observations := make([]host.BindingObservation, 0)
-	seen := make(map[string]struct{})
-	for _, provider := range available.Providers() {
-		if provider.ID != providerID {
-			continue
-		}
-		for _, capability := range provider.Capabilities {
-			for _, binding := range capability.HostBindings {
-				key := binding.Host + "\x00" + binding.Kind + "\x00" + binding.Reference
-				if binding.Host != hostID || !workflowBindingSupportsCurrent(binding) {
-					continue
-				}
-				if _, found := seen[key]; found {
-					continue
-				}
-				seen[key] = struct{}{}
-				observations = append(observations, host.BindingObservation{
-					HostID: hostID, InstallationKey: candidates[0].InstallationKey, Binding: binding,
-					Topologies: append([]execution.Topology{}, binding.Topologies...), Source: "host-filesystem",
-					EvidenceReference: filepath.Join(candidates[0].Location, "binding-evidence", binding.Kind+"-"+strings.ReplaceAll(binding.Reference, ":", "-")),
-					Digest:            strings.Repeat("b", 64),
-				})
-			}
-		}
-	}
-	inventory, err := host.NewBindingInventory(hostID, observations)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return inventory
-}
-
-func workflowBindingSupportsCurrent(binding catalog.HostBinding) bool {
-	for _, topology := range binding.Topologies {
-		if topology == execution.TopologyCurrent {
-			return true
-		}
-	}
-	return false
+	inventory := integrationInventory(t, available, discovered, map[string][]string{providerID: {"codex-zeta-review"}})
+	return *inventory
 }
 
 func workflowHostFacts(t *testing.T, integration host.IntegrationRecord, inventory host.BindingInventory) (host.EnvironmentReport, host.SessionSnapshot) {
@@ -137,10 +106,12 @@ func workflowHostFacts(t *testing.T, integration host.IntegrationRecord, invento
 		t.Fatal(err)
 	}
 	session, err := host.NewSessionSnapshot(integration.Manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: integration.ID,
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: integration.ID,
 		IntegrationVersion: integration.IntegrationVersion, SessionID: "session-current",
+		ManifestDigest:          integration.Manifest.Digest,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: environment.Digest,
+		FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -148,20 +119,45 @@ func workflowHostFacts(t *testing.T, integration host.IntegrationRecord, invento
 	return environment, session
 }
 
-func workflowStartCommand(session host.SessionSnapshot, environment host.EnvironmentReport) coordinator.Command {
+func workflowStartCommand(
+	t *testing.T,
+	snapshot config.Snapshot,
+	resolutions registry.ResolutionReport,
+	effective registry.Registry,
+	evidence profile.HostEvidence,
+	session host.SessionSnapshot,
+	environment host.EnvironmentReport,
+) coordinator.Command {
+	t.Helper()
+	proposal := classification.ClassificationProposal{
+		SchemaVersion: classification.ProposalSchemaV1, Traits: []classification.TraitObservation{},
+		Resources: []classification.Resource{}, Evidence: []classification.ProposalEvidence{},
+	}
+	decision, err := core.Classify(&proposal, classification.ClassificationRules{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := core.Compile(core.CompilationRequest{
+		DeliverableID: "deliverable-integration", InputDigest: strings.Repeat("a", 64), Generation: 1,
+		Classification: decision, Configuration: snapshot, ResolutionDigest: resolutions.Digest(), Registry: effective, Host: evidence,
+		Selection: &core.Selection{
+			Profile: core.UserDefinedProfile, RecipeID: "acme/review", ProfileSource: core.SelectionUser,
+			Topology: execution.TopologyCurrent, TopologySource: core.SelectionUser,
+			AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.SelectionPreview == nil || preview.SelectionPreview.Selection.ConfirmationDigest == "" {
+		t.Fatalf("selection preview = %#v", preview.SelectionPreview)
+	}
 	return coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
 		MessageID: "message-start", IdempotencyKey: "integration-workflow-start",
 		Start: &coordinator.StartInput{
 			RequestID: "request-integration", DeliverableID: "deliverable-integration", InputDigest: strings.Repeat("a", 64), ActiveTicket: "ticket-1",
-			Proposal: classification.ClassificationProposal{
-				SchemaVersion: classification.ProposalSchemaV1, Traits: []classification.TraitObservation{},
-				Resources: []classification.Resource{}, Evidence: []classification.ProposalEvidence{},
-			},
-			Selection: core.Selection{
-				Profile: "SP-FULL", ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
-				TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Bindings: []profile.ProfileBinding{},
-			},
+			Proposal: proposal, Selection: preview.SelectionPreview.Selection,
 			HostSession: session, Environment: environment,
 		},
 	}
@@ -169,11 +165,11 @@ func workflowStartCommand(session host.SessionSnapshot, environment host.Environ
 
 func workflowPrepareCommand(started coordinator.Result) coordinator.Command {
 	return coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandPrepare,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
 		MessageID: "message-prepare", IdempotencyKey: "integration-workflow-prepare",
 		WorkflowID: started.WorkflowID, ExpectedRevision: started.Revision,
 		Prepare: &coordinator.PrepareInput{
-			RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"},
+			RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"},
 			TerminationCondition: "complete the active workflow node", InputReferences: []coordinator.ArtifactReference{},
 			EvidenceRequirements: []coordinator.EvidenceRequirement{{Kind: "report", Minimum: 1, Description: "completion report"}},
 		},
@@ -184,23 +180,25 @@ func workflowReceiptCommand(t *testing.T, prepared coordinator.Result, kind host
 	t.Helper()
 	packet := prepared.Dispatch
 	receipt := host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: kind, WorkflowID: packet.WorkflowID,
-		BundleGeneration: packet.BundleGeneration, BundleDigest: packet.BundleDigest, NodeID: packet.NodeID,
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: kind, WorkflowID: packet.WorkflowID,
+		BundleID: packet.BundleID, BundleGeneration: packet.BundleGeneration, BundleDigest: packet.BundleDigest, Cursor: packet.Cursor,
 		Topology: packet.Topology, HostSessionDigest: packet.HostSessionDigest, DispatchDigest: packet.Digest,
 		ContextFreshness: host.ContextShared, EnvironmentReportDigest: packet.EnvironmentReportDigest,
+		Outputs: []host.OutputReference{}, Evidence: []host.EvidenceReference{},
 	}
 	signal := ""
 	if kind == host.ReceiptCompleted {
 		receipt.Outcome = "succeeded"
+		receipt.Outputs = cutoverDispatchOutputs(t, *packet, "evidence://integration/output")
 		receipt.Evidence = []host.EvidenceReference{{Kind: "report", Reference: "evidence://integration/report", Digest: strings.Repeat("e", 64)}}
-		signal = "succeeded"
+		signal = cutoverCompletionSignal(t, prepared.Snapshot)
 	}
 	normalized, err := host.NewInvocationReceipt(receipt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
 		MessageID: "message-receipt-" + strings.ToLower(string(kind)), IdempotencyKey: "integration-receipt-" + strings.ToLower(string(kind)),
 		WorkflowID: prepared.WorkflowID, ExpectedRevision: revision,
 		Receipt: &coordinator.ReceiptInput{Receipt: normalized, Signal: signal},
@@ -219,7 +217,7 @@ func exchangeWorkflow(t *testing.T, engine *coordinator.Engine, command coordina
 func assertVerifiedProvider(t *testing.T, report registry.ResolutionReport, providerID string) {
 	t.Helper()
 	resolution, found := report.Resolution(providerID)
-	if !found || resolution.State != registry.Verified {
+	if !found || resolution.State != registry.ProviderVerified {
 		t.Fatalf("Provider %s resolution = %#v", providerID, resolution)
 	}
 }

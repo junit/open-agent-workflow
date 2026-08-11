@@ -69,14 +69,29 @@ func validHookText(value string, maximumRunes int) bool {
 }
 
 func isBridgeTool(value string) bool {
+	_, ok := bridgeToolOperation(value)
+	return ok
+}
+
+func bridgeToolOperation(value string) (codexbridge.Operation, bool) {
+	var candidate string
 	switch value {
-	case "mcp__oaw_codex_bridge__observe_current", "mcp__oaw_codex_bridge__core_inspect", "mcp__oaw_codex_bridge__core_compile", "mcp__oaw_codex_bridge__workflow_exchange":
-		return true
+	case "mcp__oaw_codex_bridge__observe_current":
+		candidate = string(codexbridge.OperationObserveCurrent)
+	case "mcp__oaw_codex_bridge__core_inspect":
+		candidate = string(codexbridge.OperationCoreInspect)
+	case "mcp__oaw_codex_bridge__core_compile":
+		candidate = string(codexbridge.OperationCoreCompile)
+	case "mcp__oaw_codex_bridge__workflow_exchange":
+		candidate = string(codexbridge.OperationWorkflowExchange)
 	default:
-		return false
+		return "", false
 	}
+	operation, err := codexbridge.ParseOperation(candidate)
+	return operation, err == nil
 }
 
 func isObservationTool(value string) bool {
-	return value == "mcp__oaw_codex_bridge__observe_current"
+	operation, ok := bridgeToolOperation(value)
+	return ok && operation == codexbridge.OperationObserveCurrent
 }

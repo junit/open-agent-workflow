@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
@@ -13,12 +14,12 @@ import (
 func CurrentSession(t testing.TB, hostID string, inventoryDigest string) host.SessionSnapshot {
 	t.Helper()
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion:       host.HostManifestSchemaV2,
-		ManifestVersion:     "2.0.0",
+		SchemaVersion:       host.HostManifestSchemaV3,
+		ManifestVersion:     "3.0.0",
 		HostID:              hostID,
 		ControlSurface:      host.SurfaceHostNative,
 		Protocols:           []string{host.WorkflowProtocolV1},
-		BindingKinds:        []string{"agent", "skill", "tool"},
+		BindingKinds:        []catalog.BindingKind{catalog.BindingAgent, catalog.BindingSkill, catalog.BindingTool},
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
 		Features: []host.Feature{
 			host.FeatureCancellation,
@@ -28,6 +29,8 @@ func CurrentSession(t testing.TB, hostID string, inventoryDigest string) host.Se
 			host.FeaturePause,
 			host.FeatureProviderBindingInventory,
 		},
+		DelegationFeatures: []host.FeatureID{},
+		HostActions:        []host.HostActionContract{},
 	})
 	if err != nil {
 		t.Fatalf("hosttest manifest: %v", err)
@@ -36,13 +39,16 @@ func CurrentSession(t testing.TB, hostID string, inventoryDigest string) host.Se
 	sessionID := "session-" + hostID
 	environment := currentEnvironment(t, sessionID)
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion:           host.HostSessionSchemaV2,
+		SchemaVersion:           host.HostSessionSchemaV3,
 		HostID:                  hostID,
 		IntegrationID:           "oaw-test/" + hostID,
-		IntegrationVersion:      "2.0.0",
+		IntegrationVersion:      "3.0.0",
 		SessionID:               sessionID,
+		ManifestDigest:          manifest.Digest,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: inventoryDigest,
+		FeatureObservations:     []host.FeatureObservation{},
+		HostActionObservations:  []host.HostActionObservation{},
 		EnvironmentReportDigest: environment.Digest,
 	})
 	if err != nil {
@@ -58,9 +64,10 @@ func CurrentEnvironment(t testing.TB, session host.SessionSnapshot) host.Environ
 
 type ReceiptIdentity struct {
 	WorkflowID              string
+	BundleID                string
 	BundleGeneration        uint64
 	BundleDigest            string
-	NodeID                  string
+	Cursor                  execution.GraphCursor
 	Topology                execution.Topology
 	HostSessionDigest       string
 	DispatchDigest          string
@@ -69,17 +76,17 @@ type ReceiptIdentity struct {
 
 func StartedReceipt(t testing.TB, identity ReceiptIdentity, handle string) host.InvocationReceipt {
 	t.Helper()
-	return newReceipt(t, identity, host.ReceiptStarted, handle, "", "", nil)
+	return newReceipt(t, identity, host.ReceiptStarted, handle, "", "", nil, nil)
 }
 
-func CompletedReceipt(t testing.TB, identity ReceiptIdentity, handle string, evidence []host.EvidenceReference) host.InvocationReceipt {
+func CompletedReceipt(t testing.TB, identity ReceiptIdentity, handle string, outputs []host.OutputReference, evidence []host.EvidenceReference) host.InvocationReceipt {
 	t.Helper()
-	return newReceipt(t, identity, host.ReceiptCompleted, handle, "succeeded", "", evidence)
+	return newReceipt(t, identity, host.ReceiptCompleted, handle, "succeeded", "", outputs, evidence)
 }
 
 func FailedReceipt(t testing.TB, identity ReceiptIdentity, handle, code string) host.InvocationReceipt {
 	t.Helper()
-	return newReceipt(t, identity, host.ReceiptFailed, handle, "failed", code, []host.EvidenceReference{{
+	return newReceipt(t, identity, host.ReceiptFailed, handle, "failed", code, nil, []host.EvidenceReference{{
 		Kind: "diagnostic", Reference: "evidence://hosttest/failure", Digest: strings.Repeat("f", 64),
 	}})
 }
@@ -98,7 +105,7 @@ func currentEnvironment(t testing.TB, sessionID string) host.EnvironmentReport {
 	return report
 }
 
-func newReceipt(t testing.TB, identity ReceiptIdentity, kind host.ReceiptKind, handle, outcome, failureCode string, evidence []host.EvidenceReference) host.InvocationReceipt {
+func newReceipt(t testing.TB, identity ReceiptIdentity, kind host.ReceiptKind, handle, outcome, failureCode string, outputs []host.OutputReference, evidence []host.EvidenceReference) host.InvocationReceipt {
 	t.Helper()
 	contextFreshness := host.ContextShared
 	if identity.Topology == execution.TopologySubagent {
@@ -107,12 +114,13 @@ func newReceipt(t testing.TB, identity ReceiptIdentity, kind host.ReceiptKind, h
 		t.Fatalf("CURRENT receipt cannot contain an invocation handle")
 	}
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion:           host.HostInvocationReceiptSchemaV2,
+		SchemaVersion:           host.HostInvocationReceiptSchemaV3,
 		Kind:                    kind,
 		WorkflowID:              identity.WorkflowID,
+		BundleID:                identity.BundleID,
 		BundleGeneration:        identity.BundleGeneration,
 		BundleDigest:            identity.BundleDigest,
-		NodeID:                  identity.NodeID,
+		Cursor:                  identity.Cursor,
 		Topology:                identity.Topology,
 		HostSessionDigest:       identity.HostSessionDigest,
 		DispatchDigest:          identity.DispatchDigest,
@@ -121,6 +129,7 @@ func newReceipt(t testing.TB, identity ReceiptIdentity, kind host.ReceiptKind, h
 		InvocationHandle:        handle,
 		Outcome:                 outcome,
 		FailureCode:             failureCode,
+		Outputs:                 append([]host.OutputReference{}, outputs...),
 		Evidence:                append([]host.EvidenceReference{}, evidence...),
 	})
 	if err != nil {

@@ -12,20 +12,22 @@ import (
 )
 
 type Facts struct {
-	Session       host.SessionSnapshot
-	Inventory     host.BindingInventory
-	Environment   host.EnvironmentReport
-	Configuration config.Snapshot
-	Discovery     discovery.Report
-	Resolutions   registry.ResolutionReport
-	Registry      registry.Registry
-	FactDigests   FactDigests
+	Session         host.SessionSnapshot
+	Inventory       host.BindingInventory
+	Environment     host.EnvironmentReport
+	Configuration   config.Snapshot
+	Discovery       discovery.Report
+	Resolutions     registry.ResolutionReport
+	Registry        registry.Registry
+	VersionEvidence VersionEvidence
+	FactDigests     FactDigests
 }
 
 func cloneFacts(value Facts) Facts {
 	value.Session = host.CloneSessionSnapshot(value.Session)
 	value.Inventory = host.CloneBindingInventory(value.Inventory)
 	value.Environment = host.CloneEnvironmentReport(value.Environment)
+	value.VersionEvidence = cloneVersionEvidence(value.VersionEvidence)
 	return value
 }
 
@@ -38,7 +40,7 @@ func validateFacts(value Facts) error {
 	if err != nil || normalizedSession.Digest != value.Session.Digest {
 		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host session facts are not canonical", err)
 	}
-	normalizedInventory, err := host.NewBindingInventory(value.Inventory.HostID, value.Inventory.Observations)
+	normalizedInventory, err := host.ValidateBindingInventory(value.Inventory)
 	if err != nil || normalizedInventory.Digest != value.Inventory.Digest {
 		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host binding facts are not canonical", err)
 	}
@@ -47,10 +49,15 @@ func validateFacts(value Facts) error {
 		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host environment facts are not canonical", err)
 	}
 	if value.Session.ProviderInventoryDigest != value.Inventory.Digest ||
+		value.Session.FeatureDigest != value.FactDigests.Features ||
+		value.Session.HostActionDigest != value.FactDigests.Actions ||
 		value.Session.EnvironmentReportDigest != value.Environment.Digest ||
 		value.Environment.SessionID != value.Session.SessionID ||
 		value.Environment.Topology != execution.TopologyCurrent {
 		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host facts are not pinned to the same session", nil)
+	}
+	if _, err := Negotiate(value.VersionEvidence); err != nil {
+		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "VersionEvidence is not canonical", err)
 	}
 	if err := validateFactDigests(value); err != nil {
 		return err
@@ -78,10 +85,13 @@ func validateFactDigests(value Facts) error {
 		{"session", value.FactDigests.Session, value.Session.Digest},
 		{"inventory", value.FactDigests.Inventory, value.Inventory.Digest},
 		{"environment", value.FactDigests.Environment, value.Environment.Digest},
+		{"features", value.FactDigests.Features, value.Session.FeatureDigest},
+		{"actions", value.FactDigests.Actions, value.Session.HostActionDigest},
 		{"configuration", value.FactDigests.Configuration, value.Configuration.Digest()},
 		{"discovery", value.FactDigests.Discovery, value.Discovery.Digest()},
 		{"resolution", value.FactDigests.Resolution, value.Resolutions.Digest()},
 		{"registry", value.FactDigests.Registry, value.Registry.Digest()},
+		{"version evidence", value.FactDigests.Version, value.VersionEvidence.Digest},
 	}
 	for _, item := range values {
 		if item.declared != item.actual || item.actual != "" && (len(item.actual) != 64 || strings.Trim(item.actual, "0123456789abcdef") != "") {

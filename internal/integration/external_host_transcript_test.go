@@ -215,7 +215,7 @@ func validateExternalHostNativeTranscript(transcript host.ConformanceTranscript)
 	}
 	bindingVisible := false
 	for _, observation := range transcript.Inventory.Observations {
-		if slices.Contains(observation.Binding.Topologies, execution.TopologySubagent) && slices.Contains(observation.Topologies, execution.TopologySubagent) {
+		if observation.BindingID != "" && slices.Contains(observation.Topologies, execution.TopologySubagent) {
 			bindingVisible = true
 			break
 		}
@@ -253,28 +253,31 @@ func validateExternalHostNativeTranscript(transcript host.ConformanceTranscript)
 
 func externalReceiptExecutionKey(receipt host.InvocationReceipt) string {
 	return strings.Join([]string{
-		receipt.WorkflowID, fmt.Sprint(receipt.BundleGeneration), receipt.BundleDigest,
-		receipt.NodeID, receipt.DispatchDigest, receipt.InvocationHandle,
+		receipt.WorkflowID, receipt.BundleID, fmt.Sprint(receipt.BundleGeneration), receipt.BundleDigest,
+		receipt.Cursor.SlotID, string(receipt.Cursor.Kind), receipt.Cursor.UnitID, fmt.Sprint(receipt.Cursor.Ordinal),
+		receipt.DispatchDigest, receipt.InvocationHandle,
 	}, "\x00")
 }
 
 func externalHostNativeTranscriptFixture(t *testing.T) host.ConformanceTranscript {
 	t.Helper()
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
-		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
 		Features:            []host.Feature{host.FeatureProviderBindingInventory, host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts},
+		DelegationFeatures:  []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
-		HostID: "codex", InstallationKey: "installation-codex", Binding: catalog.HostBinding{
-			Host: "codex", Kind: "skill", Reference: "acme:implementation",
-			Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
-		}, Topologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}, Source: "native-probe",
-		EvidenceReference: "evidence://codex/implementation", Digest: strings.Repeat("1", 64),
+	inventory, err := host.BuildBindingInventoryV3("codex", []host.BindingObservation{{
+		HostID: "codex", ProviderID: "acme/suite", InstallationKey: "installation-codex",
+		DistributionID: "acme", BindingID: "codex-implementation", Surface: "codex-plugin",
+		Kind: catalog.BindingSkill, Reference: "acme:implementation", Invocation: catalog.InvocationModel,
+		BindingTreeDigest: "sha256:" + strings.Repeat("1", 64),
+		Topologies:        []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent}, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex/implementation",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -289,35 +292,41 @@ func externalHostNativeTranscriptFixture(t *testing.T) host.ConformanceTranscrip
 		t.Fatal(err)
 	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "2.0.0",
-		SessionID: "session-parent", SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "3.0.0",
+		SessionID: "session-parent", ManifestDigest: manifest.Digest, SupportedTopologies: []execution.Topology{execution.TopologyCurrent, execution.TopologySubagent},
 		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: report.Digest,
+		FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	started, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
-		WorkflowID: "workflow-external", BundleGeneration: 1, BundleDigest: strings.Repeat("3", 64), NodeID: "implementation",
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptStarted,
+		WorkflowID: "workflow-0123456789abcdef0123456789abcdef", BundleID: "bundle-0123456789abcdef0123456789abcdef",
+		BundleGeneration: 1, BundleDigest: strings.Repeat("3", 64),
+		Cursor:   execution.GraphCursor{SlotID: "implementation", Kind: execution.CursorBinding, UnitID: "implementation", Ordinal: 1},
 		Topology: execution.TopologySubagent, HostSessionDigest: session.Digest, InvocationHandle: "child-invocation-1",
 		ContextFreshness: host.ContextFresh, EnvironmentReportDigest: report.Digest, DispatchDigest: strings.Repeat("8", 64),
+		Outputs: []host.OutputReference{}, Evidence: []host.EvidenceReference{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	completed, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
-		WorkflowID: started.WorkflowID, BundleGeneration: started.BundleGeneration, BundleDigest: started.BundleDigest, NodeID: started.NodeID,
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted,
+		WorkflowID: started.WorkflowID, BundleID: started.BundleID, BundleGeneration: started.BundleGeneration, BundleDigest: started.BundleDigest, Cursor: started.Cursor,
 		Topology: execution.TopologySubagent, HostSessionDigest: session.Digest, InvocationHandle: started.InvocationHandle,
 		ContextFreshness: host.ContextFresh, EnvironmentReportDigest: report.Digest, DispatchDigest: started.DispatchDigest,
-		Outcome: "succeeded", Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("4", 64)}},
+		Outcome:  "succeeded",
+		Outputs:  []host.OutputReference{{ArtifactID: "implementation", Schema: "oaw.workflow-artifact/v1", Reference: "evidence://output", Digest: strings.Repeat("5", 64)}},
+		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("4", 64)}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
-		SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
-		EnvironmentReports: []host.EnvironmentReport{report}, Receipts: []host.InvocationReceipt{started, completed},
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{report}, Receipts: []host.InvocationReceipt{started, completed}, Invocations: []host.InvocationRecord{},
 	})
 	if err != nil {
 		t.Fatal(err)

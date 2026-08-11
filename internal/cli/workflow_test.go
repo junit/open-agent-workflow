@@ -14,7 +14,7 @@ import (
 func TestWorkflowExchangeEmitsOneCanonicalResult(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "workflows")
 	command := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2,
 		Kind:          coordinator.CommandInspect,
 		WorkflowID:    "workflow-missing",
 	}
@@ -55,6 +55,25 @@ func TestWorkflowExchangeInvalidCommandReturnsCanonicalRejection(t *testing.T) {
 	assertCanonicalWorkflowResult(t, stdout.Bytes(), coordinator.ResultRejected, "SCHEMA_UNSUPPORTED")
 	if !strings.Contains(stderr.String(), "SCHEMA_UNSUPPORTED") {
 		t.Fatalf("workflow exchange stderr = %q", stderr.String())
+	}
+}
+
+func TestWorkflowV2CLIRejectsV1CommandBeforeStateLoad(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "workflows")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	status := RunWithInput(
+		[]string{"workflow", "exchange", "--state-root", stateRoot},
+		strings.NewReader(`{"schema_version":"oaw.workflow-command/v1","kind":"INSPECT","workflow_id":"workflow-0123456789abcdef0123456789abcdef"}`),
+		&stdout,
+		&stderr,
+	)
+	if status != 65 {
+		t.Fatalf("workflow exchange status = %d; stderr=%q", status, stderr.String())
+	}
+	assertCanonicalWorkflowResult(t, stdout.Bytes(), coordinator.ResultRejected, "SCHEMA_UNSUPPORTED")
+	if _, err := os.Stat(stateRoot); !os.IsNotExist(err) {
+		t.Fatalf("v1 command caused state access: %v", err)
 	}
 }
 

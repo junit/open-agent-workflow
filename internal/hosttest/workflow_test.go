@@ -16,7 +16,7 @@ func TestCurrentSessionFixtureIsSecretFree(t *testing.T) {
 	if err := host.ValidateEnvironmentReport(session, environment); err != nil {
 		t.Fatalf("CurrentEnvironment() is not pinned to CurrentSession(): %v", err)
 	}
-	if session.HostID != "codex-test" || session.SupportedTopologies[0] != execution.TopologyCurrent {
+	if session.SchemaVersion != host.HostSessionSchemaV3 || session.HostID != "codex-test" || session.SupportedTopologies[0] != execution.TopologyCurrent || session.FeatureDigest == "" || session.HostActionDigest == "" {
 		t.Fatalf("CurrentSession() = %#v", session)
 	}
 
@@ -43,18 +43,20 @@ func TestCompletedReceiptPinsDispatchIdentity(t *testing.T) {
 		Kind: "report", Reference: "evidence://hosttest/completed", Digest: strings.Repeat("e", 64),
 	}}
 	identity := hosttest.ReceiptIdentity{
-		WorkflowID:              "workflow-hosttest",
+		WorkflowID:              "workflow-0123456789abcdef0123456789abcdef",
+		BundleID:                "bundle-0123456789abcdef0123456789abcdef",
 		BundleGeneration:        3,
 		BundleDigest:            strings.Repeat("b", 64),
-		NodeID:                  "verification",
+		Cursor:                  execution.GraphCursor{SlotID: "fresh-verification", Kind: execution.CursorBinding, UnitID: "verification", Ordinal: 1},
 		Topology:                execution.TopologyCurrent,
 		HostSessionDigest:       strings.Repeat("c", 64),
 		DispatchDigest:          strings.Repeat("d", 64),
 		EnvironmentReportDigest: strings.Repeat("e", 64),
 	}
-	receipt := hosttest.CompletedReceipt(t, identity, "", evidence)
+	outputs := []host.OutputReference{{ArtifactID: "artifact-hosttest", Schema: "oaw.workflow-artifact/v1", Reference: "evidence://hosttest/output", Digest: strings.Repeat("d", 64)}}
+	receipt := hosttest.CompletedReceipt(t, identity, "", outputs, evidence)
 	if receipt.WorkflowID != identity.WorkflowID || receipt.BundleGeneration != identity.BundleGeneration ||
-		receipt.BundleDigest != identity.BundleDigest || receipt.NodeID != identity.NodeID ||
+		receipt.BundleID != identity.BundleID || receipt.BundleDigest != identity.BundleDigest || receipt.Cursor != identity.Cursor ||
 		receipt.Topology != identity.Topology || receipt.HostSessionDigest != identity.HostSessionDigest ||
 		receipt.DispatchDigest != identity.DispatchDigest || receipt.EnvironmentReportDigest != identity.EnvironmentReportDigest {
 		t.Fatalf("CompletedReceipt() lost dispatch identity: %#v", receipt)
@@ -62,7 +64,7 @@ func TestCompletedReceiptPinsDispatchIdentity(t *testing.T) {
 	if receipt.Kind != host.ReceiptCompleted || receipt.ContextFreshness != host.ContextShared || receipt.Outcome != "succeeded" || receipt.Digest == "" {
 		t.Fatalf("CompletedReceipt() = %#v", receipt)
 	}
-	if len(receipt.Evidence) != 1 || receipt.Evidence[0] != evidence[0] {
+	if len(receipt.Outputs) != 1 || receipt.Outputs[0] != outputs[0] || len(receipt.Evidence) != 1 || receipt.Evidence[0] != evidence[0] {
 		t.Fatalf("CompletedReceipt() evidence = %#v", receipt.Evidence)
 	}
 }
@@ -86,20 +88,23 @@ func TestHostFixturesReturnDefensiveCopies(t *testing.T) {
 	}
 
 	identity := hosttest.ReceiptIdentity{
-		WorkflowID:              "workflow-hosttest",
+		WorkflowID:              "workflow-0123456789abcdef0123456789abcdef",
+		BundleID:                "bundle-0123456789abcdef0123456789abcdef",
 		BundleGeneration:        1,
 		BundleDigest:            strings.Repeat("b", 64),
-		NodeID:                  "implementation",
+		Cursor:                  execution.GraphCursor{SlotID: "implementation", Kind: execution.CursorBinding, UnitID: "implementation", Ordinal: 1},
 		Topology:                execution.TopologyCurrent,
 		HostSessionDigest:       strings.Repeat("c", 64),
 		DispatchDigest:          strings.Repeat("d", 64),
 		EnvironmentReportDigest: strings.Repeat("e", 64),
 	}
 	evidence := []host.EvidenceReference{{Kind: "report", Reference: "evidence://hosttest", Digest: strings.Repeat("e", 64)}}
-	receipt := hosttest.CompletedReceipt(t, identity, "", evidence)
+	outputs := []host.OutputReference{{ArtifactID: "artifact-hosttest", Schema: "oaw.workflow-artifact/v1", Reference: "evidence://hosttest/output", Digest: strings.Repeat("d", 64)}}
+	receipt := hosttest.CompletedReceipt(t, identity, "", outputs, evidence)
+	outputs[0].Reference = "changed"
 	evidence[0].Reference = "changed"
-	if receipt.Evidence[0].Reference != "evidence://hosttest" {
-		t.Fatal("CompletedReceipt() shares evidence storage")
+	if receipt.Outputs[0].Reference != "evidence://hosttest/output" || receipt.Evidence[0].Reference != "evidence://hosttest" {
+		t.Fatal("CompletedReceipt() shares output or evidence storage")
 	}
 
 	started := hosttest.StartedReceipt(t, identity, "")

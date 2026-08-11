@@ -95,11 +95,16 @@ func TestBridgeHookObservationWritesOfficialAllowEnvelope(t *testing.T) {
 	if document.HookSpecificOutput.HookEventName != "PreToolUse" || document.HookSpecificOutput.PermissionDecision != "allow" || len(document.HookSpecificOutput.UpdatedInput["_oaw_host_context"]) == 0 {
 		t.Fatalf("output = %s", stdout.Bytes())
 	}
+	var hostContext codexbridge.HookContext
+	if err := json.Unmarshal(document.HookSpecificOutput.UpdatedInput["_oaw_host_context"], &hostContext); err != nil ||
+		hostContext.SchemaVersion != codexbridge.HookContextSchemaV2 || hostContext.BridgeProtocolVersion != codexbridge.BridgeProtocolVersion {
+		t.Fatalf("Hook Context = %#v, error = %v", hostContext, err)
+	}
 }
 
 func TestBridgeHookValidLaterOperationWritesNoStdout(t *testing.T) {
 	context := codexbridge.HookContext{
-		SchemaVersion: codexbridge.HookContextSchemaV1, BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
+		SchemaVersion: codexbridge.HookContextSchemaV2, BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
 		SessionID: "session-a", TurnID: "turn-a", ToolUseID: "tool-a", CWD: "/repo", Model: "gpt-test", PermissionMode: "default",
 	}
 	sessionDigest, cwdDigest, err := codexbridge.ContextDigestHeaders(context)
@@ -188,6 +193,12 @@ func TestBridgeCheckTextRedactsExactPaths(t *testing.T) {
 	}
 	if strings.Contains(stdout.String(), "/private/user") || !strings.Contains(stdout.String(), "abc123") {
 		t.Fatalf("text output = %q", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "proof_scope: installation-integrity") || !strings.Contains(stdout.String(), "live_protocol_proof: false") {
+		t.Fatalf("installation check did not state its evidence boundary: %q", stdout.String())
+	}
+	if strings.Contains(stdout.String(), "version_evidence") || strings.Contains(stdout.String(), "oaw.codex-bridge/v2") {
+		t.Fatalf("installation check claimed live protocol evidence: %q", stdout.String())
 	}
 	stdout.Reset()
 	if err := writeBridgeCheck(result, "json", stdout); err != nil {

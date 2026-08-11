@@ -302,7 +302,10 @@ func loadPilot(evidencePath string) (pilotRecord, error) {
 	if pilot.EvidenceRoot != evidence || pilot.ConfigRoot != filepath.Join(evidence, "runtime", "config") || pilot.StateRoot != filepath.Join(evidence, "runtime", "state", "workflows") {
 		return pilotRecord{}, errors.New("pilot paths do not match the evidence root")
 	}
-	if pilot.SchemaVersion != pilotSchema || !validText(pilot.WorkflowID, 512) || !validText(pilot.Profile, 512) || !validDigest(pilot.Digest) || !validDigest(pilot.HostSessionDigest) || !validDigest(pilot.EnvironmentReportDigest) || !validDigest(pilot.InventoryDigest) || !validDigest(pilot.ConfigurationDigest) || !validDigest(pilot.ResolutionDigest) || !validDigest(pilot.RegistryDigest) || !validDigest(pilot.BundleDigest) {
+	if pilot.SchemaVersion != pilotSchema || !validText(pilot.WorkflowID, 512) || !validText(pilot.Profile, 512) || !validDigest(pilot.Digest) ||
+		!validDigest(pilot.Repository.SkillDigest) || !validTreeDigest(pilot.Repository.SkillTreeDigest) ||
+		!validDigest(pilot.HostSessionDigest) || !validDigest(pilot.EnvironmentReportDigest) || !validDigest(pilot.InventoryDigest) ||
+		!validDigest(pilot.ConfigurationDigest) || !validDigest(pilot.ResolutionDigest) || !validDigest(pilot.RegistryDigest) || !validDigest(pilot.BundleDigest) {
 		return pilotRecord{}, errors.New("pilot record identity is invalid")
 	}
 	unsigned := pilot
@@ -337,4 +340,9 @@ func loadPilot(evidencePath string) (pilotRecord, error) {
 		return pilotRecord{}, fmt.Errorf("pilot repository root: %w", err)
 	}
 	return pilot, nil
+}
+
+func validTreeDigest(value string) bool {
+	const prefix = "sha256:"
+	return strings.HasPrefix(value, prefix) && validDigest(strings.TrimPrefix(value, prefix))
 }

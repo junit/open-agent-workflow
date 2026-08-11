@@ -1,7 +1,7 @@
 package codexbridge
 
 import (
-	"io"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -15,6 +15,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
 const maximumSkillEvidenceBytes int64 = 4 << 20
@@ -24,9 +25,13 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 	add := func(code, detail string) {
 		diagnostics = append(diagnostics, NewDiagnostic(code, "binding", detail, true))
 	}
+	empty := func() (host.BindingInventory, []Diagnostic, error) {
+		inventory, err := host.BuildBindingInventoryV3("codex", nil)
+		return inventory, diagnostics, err
+	}
 	if report.HostID() != "codex" || !validCanonicalPath(cwd) || metadata.Skills.CWD != cwd {
-		inventory, err := host.NewBindingInventory("codex", nil)
-		return inventory, append(diagnostics, NewDiagnostic("HOST_OBSERVATION_FAILED", "binding", "Skill metadata CWD does not match the requested canonical CWD", true)), err
+		add("HOST_OBSERVATION_FAILED", "Skill metadata CWD does not match the requested canonical CWD")
+		return empty()
 	}
 
 	observations := make([]host.BindingObservation, 0)
@@ -40,7 +45,7 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 		}
 		path, err := canonicalSkillPath(entry.Path)
 		if err != nil {
-			add("HOST_OBSERVATION_FAILED", "Skill path is not a canonical regular SKILL.md")
+			add("PROVIDER_BINDING_CONTENT_MISMATCH", "enabled Skill path is not a physical regular SKILL.md")
 			continue
 		}
 		candidates := candidatesContaining(value, report, path)
@@ -53,58 +58,77 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 			continue
 		}
 		candidate := candidates[0]
-		bindings := skillBindings(value, candidate.ProviderID, entry.Name)
+		bindings := skillBindings(value, candidate, entry.Name)
 		if len(bindings) == 0 {
 			add("HOST_BINDING_EVIDENCE_REQUIRED", "no declared Skill binding matches the enabled Skill")
 			continue
 		}
-		type availableBinding struct {
-			binding    catalog.HostBinding
-			topologies []execution.Topology
-		}
-		available := make([]availableBinding, 0, len(bindings))
+
+		matchedRoot := false
 		for _, binding := range bindings {
-			topologies := intersectTopologies(binding.Topologies, []execution.Topology{execution.TopologyCurrent})
+			topologies := intersectTopologies(binding.SupportedTopologies, []execution.Topology{execution.TopologyCurrent})
 			if len(topologies) == 0 {
 				add("HOST_BINDING_TOPOLOGY_UNAVAILABLE", "declared Skill binding does not support CURRENT")
 				continue
 			}
-			available = append(available, availableBinding{binding: binding, topologies: topologies})
-		}
-		if len(available) == 0 {
-			continue
-		}
-		content, err := readSkillEvidence(path)
-		if err != nil {
-			add("HOST_OBSERVATION_FAILED", "enabled Skill content could not be read")
-			continue
-		}
-		for _, admitted := range available {
-			record := struct {
-				Name            string `json:"name"`
-				Scope           string `json:"scope"`
-				Path            string `json:"path"`
-				ContentDigest   string `json:"content_digest"`
-				InstallationKey string `json:"installation_key"`
-				Source          string `json:"source"`
-				Enabled         bool   `json:"enabled"`
-			}{
-				Name: entry.Name, Scope: entry.Scope, Path: path,
-				ContentDigest: canonicaljson.DigestBytes(content), InstallationKey: candidate.InstallationKey,
-				Source: "native-probe", Enabled: true,
+			rootEvidence, found := bindingRoot(candidate.BindingRoots, binding.ID)
+			if !found {
+				add("PROVIDER_BINDING_CONTENT_MISMATCH", "discovery did not attest the declared Binding tree")
+				continue
 			}
-			digest, _, err := canonicaljson.Digest(record)
+			root, err := physicalBindingRoot(candidate, binding)
+			if err != nil {
+				add("PROVIDER_BINDING_CONTENT_MISMATCH", "declared Binding InstallRoot is not a physical tree")
+				continue
+			}
+			if path != filepath.Join(root, "SKILL.md") {
+				add("HOST_BINDING_INSTALL_ROOT_MISMATCH", "enabled Skill does not belong to the exact declared InstallRoot")
+				continue
+			}
+			matchedRoot = true
+			tree, err := integrity.DigestTree(root)
+			if err != nil || rootEvidence.BindingID != binding.ID || rootEvidence.ContentRoot != binding.ContentRoot ||
+				rootEvidence.InstallRoot != binding.InstallRoot || tree.RootDigest != rootEvidence.Tree.RootDigest || tree.RootDigest != binding.TreeDigest {
+				add("PROVIDER_BINDING_CONTENT_MISMATCH", "live Binding tree differs from Descriptor and discovery evidence")
+				continue
+			}
+			evidenceDigest, _, err := canonicaljson.Digest(struct {
+				HostID            string                        `json:"host_id"`
+				ProviderID        string                        `json:"provider_id"`
+				InstallationKey   string                        `json:"installation_key"`
+				DistributionID    string                        `json:"distribution_id"`
+				BindingID         string                        `json:"binding_id"`
+				Surface           string                        `json:"surface"`
+				Kind              catalog.BindingKind           `json:"kind"`
+				Reference         string                        `json:"reference"`
+				Invocation        catalog.InvocationDisposition `json:"invocation"`
+				BindingTreeDigest string                        `json:"binding_tree_digest"`
+				Scope             string                        `json:"scope"`
+				Enabled           bool                          `json:"enabled"`
+				Source            host.ObservationSource        `json:"source"`
+			}{
+				HostID: candidate.HostID, ProviderID: candidate.ProviderID, InstallationKey: candidate.InstallationKey,
+				DistributionID: binding.DistributionID, BindingID: binding.ID, Surface: binding.Surface,
+				Kind: binding.Kind, Reference: binding.Reference, Invocation: binding.Invocation,
+				BindingTreeDigest: tree.RootDigest, Scope: entry.Scope, Enabled: true, Source: host.SourceNativeAPI,
+			})
 			if err != nil {
 				return host.BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill evidence cannot be canonicalized", err)
 			}
 			observations = append(observations, host.BindingObservation{
-				HostID: candidate.HostID, InstallationKey: candidate.InstallationKey, Binding: admitted.binding,
-				Topologies: admitted.topologies, Source: "native-probe",
-				EvidenceReference: "evidence://codex/skills-list/" + digest, Digest: digest,
+				HostID: candidate.HostID, ProviderID: candidate.ProviderID, InstallationKey: candidate.InstallationKey,
+				DistributionID: binding.DistributionID, BindingID: binding.ID, Surface: binding.Surface,
+				Kind: binding.Kind, Reference: binding.Reference, Invocation: binding.Invocation,
+				BindingTreeDigest: tree.RootDigest, Topologies: topologies, Source: host.SourceNativeAPI,
+				EvidenceReference: "evidence://codex/skills-list/" + evidenceDigest,
 			})
 		}
+		if !matchedRoot && len(bindings) > 0 {
+			// Exact-root diagnostics above deliberately replace any same-name shortcut.
+			continue
+		}
 	}
-	inventory, err := host.NewBindingInventory("codex", observations)
+	inventory, err := host.BuildBindingInventoryV3("codex", observations)
 	if err != nil {
 		return host.BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill inventory cannot be normalized", err)
 	}
@@ -115,6 +139,10 @@ func canonicalSkillPath(value string) (string, error) {
 	if !validCanonicalPath(value) {
 		return "", NewError("HOST_OBSERVATION_FAILED", "invalid absolute Skill path", nil)
 	}
+	info, err := os.Lstat(value)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || filepath.Base(value) != "SKILL.md" {
+		return "", NewError("HOST_OBSERVATION_FAILED", "Skill path is not a physical regular SKILL.md", err)
+	}
 	resolved, err := filepath.EvalSymlinks(value)
 	if err != nil {
 		return "", NewError("HOST_OBSERVATION_FAILED", "resolve Skill path", err)
@@ -124,28 +152,7 @@ func canonicalSkillPath(value string) (string, error) {
 		return "", NewError("HOST_OBSERVATION_FAILED", "canonicalize Skill path", err)
 	}
 	resolved = filepath.Clean(resolved)
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() || filepath.Base(resolved) != "SKILL.md" {
-		return "", NewError("HOST_OBSERVATION_FAILED", "Skill path is not a regular SKILL.md", err)
-	}
 	return resolved, nil
-}
-
-func readSkillEvidence(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, NewError("HOST_OBSERVATION_FAILED", "open Skill evidence", err)
-	}
-	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() < 0 || info.Size() > maximumSkillEvidenceBytes {
-		return nil, NewError("HOST_OBSERVATION_FAILED", "Skill evidence is unavailable or oversized", err)
-	}
-	content, err := io.ReadAll(io.LimitReader(file, maximumSkillEvidenceBytes+1))
-	if err != nil || int64(len(content)) > maximumSkillEvidenceBytes {
-		return nil, NewError("HOST_OBSERVATION_FAILED", "read Skill evidence", err)
-	}
-	return content, nil
 }
 
 func candidatesContaining(value catalog.Catalog, report discovery.Report, path string) []discovery.Candidate {
@@ -161,18 +168,51 @@ func candidatesContaining(value catalog.Catalog, report discovery.Report, path s
 }
 
 func candidateContainsPath(candidate discovery.Candidate, reportHost, path string) bool {
-	if reportHost != "codex" || candidate.HostID != "codex" || candidate.HostID != reportHost || !validCanonicalPath(path) {
+	if reportHost != "codex" || candidate.HostID != reportHost || !validCanonicalPath(path) {
 		return false
 	}
-	root, err := filepath.EvalSymlinks(candidate.Location)
-	if err != nil {
+	root := candidate.DiagnosticLocation
+	if !validCanonicalPath(root) {
 		return false
 	}
-	root, err = filepath.Abs(filepath.Clean(root))
-	if err != nil {
+	resolved, err := filepath.EvalSymlinks(root)
+	if err != nil || filepath.Clean(resolved) != root {
 		return false
 	}
 	return path == root || strings.HasPrefix(path, root+string(filepath.Separator))
+}
+
+func physicalBindingRoot(candidate discovery.Candidate, binding catalog.BindingRecord) (string, error) {
+	root := candidate.DiagnosticLocation
+	if !validCanonicalPath(root) || binding.InstallRoot == "" {
+		return "", errors.New("invalid Binding root")
+	}
+	current := root
+	for _, segment := range strings.Split(filepath.FromSlash(binding.InstallRoot), string(filepath.Separator)) {
+		current = filepath.Join(current, segment)
+		info, err := os.Lstat(current)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("Binding root is missing or symlinked")
+		}
+	}
+	current = filepath.Clean(current)
+	if current == root || !strings.HasPrefix(current, root+string(filepath.Separator)) {
+		return "", errors.New("Binding root escapes installation")
+	}
+	info, err := os.Lstat(current)
+	if err != nil || !info.IsDir() {
+		return "", errors.New("Binding root is not a directory")
+	}
+	return current, nil
+}
+
+func bindingRoot(values []discovery.BindingRootEvidence, bindingID string) (discovery.BindingRootEvidence, bool) {
+	for _, value := range values {
+		if value.BindingID == bindingID {
+			return value, true
+		}
+	}
+	return discovery.BindingRootEvidence{}, false
 }
 
 func validateSkillIdentity(name, scope string) error {
@@ -188,20 +228,17 @@ func validateSkillIdentity(name, scope string) error {
 	}
 }
 
-func skillBindings(value catalog.Catalog, providerID, skillName string) []catalog.HostBinding {
-	result := make([]catalog.HostBinding, 0)
+func skillBindings(value catalog.Catalog, candidate discovery.Candidate, skillName string) []catalog.BindingRecord {
+	result := make([]catalog.BindingRecord, 0)
 	for _, provider := range value.Providers() {
-		if provider.ID != providerID {
+		if provider.ID != candidate.ProviderID {
 			continue
 		}
-		for _, capability := range provider.Capabilities {
-			for _, binding := range capability.HostBindings {
-				if binding.Host == "codex" && binding.Kind == "skill" && binding.Reference == skillName &&
-					!slices.ContainsFunc(result, func(existing catalog.HostBinding) bool {
-						return existing.Host == binding.Host && existing.Kind == binding.Kind && existing.Reference == binding.Reference
-					}) {
-					result = append(result, binding)
-				}
+		for _, binding := range provider.Bindings {
+			if binding.Host == candidate.HostID && binding.Surface == candidate.Surface && binding.DistributionID == candidate.DistributionID &&
+				binding.Kind == catalog.BindingSkill && binding.Reference == skillName &&
+				!slices.ContainsFunc(result, func(existing catalog.BindingRecord) bool { return existing.ID == binding.ID }) {
+				result = append(result, binding)
 			}
 		}
 	}

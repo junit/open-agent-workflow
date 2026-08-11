@@ -7,25 +7,31 @@ import (
 )
 
 const (
-	pilotSchema      = "oaw.current-dogfood/v1"
-	providerID       = "local/open-code-review"
-	capabilityID     = "review"
-	profileID        = "local/ocr-readonly-workflow"
-	integrationID    = "local/codex-current-dogfood"
-	hostID           = "codex"
-	bindingReference = "open-code-review:review"
-	providerFile     = "provider.json"
-	profileFile      = "profile.json"
-	integrationFile  = "host-integration.toml"
-	userConfigFile   = "config.toml"
+	pilotSchema            = "oaw.current-dogfood/v1"
+	providerID             = "local/open-code-review"
+	providerDistributionID = "open-code-review"
+	capabilityID           = "review"
+	profileID              = "local/ocr-readonly-workflow"
+	integrationID          = "local/codex-current-dogfood"
+	hostID                 = "codex"
+	bindingReference       = "open-code-review:review"
+	scopeBindingID         = "review-scope"
+	reviewBindingID        = "code-review"
+	verificationBindingID  = "verification"
+	workflowArtifactSchema = "oaw.workflow-artifact/v1"
+	providerFile           = "provider.json"
+	profileFile            = "profile.json"
+	integrationFile        = "host-integration.toml"
+	userConfigFile         = "config.toml"
 )
 
 type repositoryFingerprint struct {
-	Root         string `json:"root"`
-	Commit       string `json:"commit"`
-	StatusDigest string `json:"status_digest"`
-	SkillPath    string `json:"skill_path"`
-	SkillDigest  string `json:"skill_digest"`
+	Root            string `json:"root"`
+	Commit          string `json:"commit"`
+	StatusDigest    string `json:"status_digest"`
+	SkillPath       string `json:"skill_path"`
+	SkillDigest     string `json:"skill_digest"`
+	SkillTreeDigest string `json:"skill_tree_digest"`
 }
 
 type pilotRecord struct {

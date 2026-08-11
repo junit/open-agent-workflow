@@ -253,7 +253,7 @@ func TestHybridDefaultProvenanceAndPausedOwners(t *testing.T) {
 	}
 }
 
-func TestAliasesRemainExactlyFour(t *testing.T) {
+func TestBridgeCutoverPreservesExactlyFourBuiltInAliases(t *testing.T) {
 	aliases := loadCatalog(t).Aliases()
 	got := make(map[string]string, len(aliases))
 	for _, alias := range aliases {

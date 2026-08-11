@@ -38,6 +38,15 @@ func TestClientUsesOnlyAllowlistedMetadataMethods(t *testing.T) {
 			t.Fatalf("Hook projection retained private metadata: %s", raw)
 		}
 	}
+	observationRaw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, inferred := range [][]byte{[]byte(`"roles"`), []byte(`"agents"`), []byte(`"delegation"`), []byte(`"tools"`)} {
+		if bytes.Contains(observationRaw, inferred) {
+			t.Fatalf("stable metadata projection inferred unsupported surface %s: %s", inferred, observationRaw)
+		}
+	}
 }
 
 func TestObserveSendsExactCWDAndForceReload(t *testing.T) {

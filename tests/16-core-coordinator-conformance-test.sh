@@ -67,6 +67,7 @@ import (
 	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
@@ -88,10 +89,11 @@ func main() {
 
 func generate(output string) error {
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
-		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
 		Features: []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
+		DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		return err
@@ -103,18 +105,31 @@ func generate(output string) error {
 	if err != nil {
 		return err
 	}
+	inventory, err := host.BuildBindingInventoryV3("codex", nil)
+	if err != nil {
+		return err
+	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "local/conformance-host",
-		IntegrationVersion: "2.0.0", SessionID: "session-current-conformance",
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: "local/conformance-host",
+		IntegrationVersion: "3.0.0", SessionID: "session-current-conformance", ManifestDigest: manifest.Digest,
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
-		ProviderInventoryDigest: strings.Repeat("a", 64), EnvironmentReportDigest: environment.Digest,
+		ProviderInventoryDigest: inventory.Digest, FeatureObservations: []host.FeatureObservation{},
+		HostActionObservations: []host.HostActionObservation{}, EnvironmentReportDigest: environment.Digest,
 	})
+	if err != nil {
+		return err
+	}
+	graphSelection := profile.Selection{
+		Profile: "SP-FULL", RecipeID: "oaw/delivery", RecipeDigest: strings.Repeat("c", 64),
+		Topology: execution.TopologyCurrent, AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{},
+	}
+	graphSelectionDigest, _, err := canonicaljson.Digest(graphSelection)
 	if err != nil {
 		return err
 	}
 	const startKey = "conformance-workflow-start"
 	start := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
 		MessageID: "message-start", IdempotencyKey: startKey,
 		Start: &coordinator.StartInput{
 			RequestID: "request-conformance", DeliverableID: "deliverable-conformance", InputDigest: strings.Repeat("b", 64),
@@ -123,16 +138,22 @@ func generate(output string) error {
 				Resources: []classification.Resource{}, Evidence: []classification.ProposalEvidence{},
 			},
 			Selection: core.Selection{
-				Profile: "SP-FULL", ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
-				TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Bindings: []profile.ProfileBinding{},
+				Profile: "SP-FULL", RecipeID: graphSelection.RecipeID, RecipeDigest: graphSelection.RecipeDigest,
+				ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
+				TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Alternatives: []profile.AlternativeChoice{},
+				Overlays: []string{}, GraphSelectionDigest: graphSelectionDigest,
 			},
 			HostSession: session, Environment: environment,
 		},
 	}
 	workflowHash := sha256.Sum256([]byte(startKey))
 	workflowID := "workflow-" + hex.EncodeToString(workflowHash[:16])
+	cursor, err := execution.NewGraphCursor("requirements-alignment", execution.CursorBinding, "superpowers-brainstorming", 1)
+	if err != nil {
+		return err
+	}
 	prepare := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandPrepare,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
 		MessageID: "message-prepare", IdempotencyKey: "conformance-workflow-prepare",
 		WorkflowID: workflowID, ExpectedRevision: 1,
 		Prepare: &coordinator.PrepareInput{
@@ -142,8 +163,9 @@ func generate(output string) error {
 		},
 	}
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
-		WorkflowID: workflowID, BundleGeneration: 1, BundleDigest: strings.Repeat("c", 64), NodeID: "requirements",
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptStarted,
+		WorkflowID: workflowID, BundleID: "bundle-0123456789abcdef0123456789abcdef",
+		BundleGeneration: 1, BundleDigest: strings.Repeat("c", 64), Cursor: cursor,
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, DispatchDigest: strings.Repeat("d", 64),
 		ContextFreshness: host.ContextShared, EnvironmentReportDigest: environment.Digest,
 	})
@@ -151,7 +173,7 @@ func generate(output string) error {
 		return err
 	}
 	receiptCommand := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
 		MessageID: "message-receipt", IdempotencyKey: "conformance-workflow-receipt",
 		WorkflowID: workflowID, ExpectedRevision: 2, Receipt: &coordinator.ReceiptInput{Receipt: receipt},
 	}
@@ -159,6 +181,32 @@ func generate(output string) error {
 		"start.json": start, "prepare.json": prepare, "receipt.json": receiptCommand,
 	} {
 		raw, marshalErr := canonicaljson.Marshal(command)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		if writeErr := os.WriteFile(filepath.Join(output, name), raw, 0o600); writeErr != nil {
+			return writeErr
+		}
+	}
+	const oldWorkflowID = "workflow-0123456789abcdef0123456789abcdef"
+	head := struct {
+		SchemaVersion  string `json:"schema_version"`
+		WorkflowID     string `json:"workflow_id"`
+		Revision       uint64 `json:"revision"`
+		RevisionDigest string `json:"revision_digest"`
+		Digest         string `json:"digest"`
+	}{"oaw.workflow-head/v1", oldWorkflowID, 1, strings.Repeat("e", 64), ""}
+	head.Digest, _, err = canonicaljson.Digest(head)
+	if err != nil {
+		return err
+	}
+	for name, value := range map[string]any{
+		"old-head.json": head,
+		"inspect-old.json": coordinator.Command{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandInspect, WorkflowID: oldWorkflowID,
+		},
+	} {
+		raw, marshalErr := canonicaljson.Marshal(value)
 		if marshalErr != nil {
 			return marshalErr
 		}
@@ -205,6 +253,20 @@ for command in start prepare receipt; do
   run_oaw "workflow-$command" 65 "$CONFORMANCE_TEMP/fixtures/$command.json" workflow exchange
   assert_rejected_result "$CONFORMANCE_TEMP/workflow-$command.stdout"
 done
+
+old_workflow=workflow-0123456789abcdef0123456789abcdef
+old_workflow_root=$CONFORMANCE_TEMP/state/open-agent-workflow/workflows/records/$old_workflow
+mkdir -p "$old_workflow_root/revisions"
+cp "$REPOSITORY/internal/integration/testdata/core-coordinator/old-v1-revision.json" \
+  "$old_workflow_root/revisions/00000000000000000001.json"
+cp "$CONFORMANCE_TEMP/fixtures/old-head.json" "$old_workflow_root/HEAD"
+run_oaw workflow-old-state 65 "$CONFORMANCE_TEMP/fixtures/inspect-old.json" workflow exchange
+assert_rejected_result "$CONFORMANCE_TEMP/workflow-old-state.stdout"
+grep -F 'WORKFLOW_STATE_UNSUPPORTED' "$CONFORMANCE_TEMP/workflow-old-state.stdout" >/dev/null ||
+  fail "old Workflow Revision v1 did not fail closed: $(cat "$CONFORMANCE_TEMP/workflow-old-state.stdout")"
+cmp "$REPOSITORY/internal/integration/testdata/core-coordinator/old-v1-revision.json" \
+  "$old_workflow_root/revisions/00000000000000000001.json" >/dev/null ||
+  fail 'old Workflow Revision v1 fixture was modified'
 
 workflow_state=$CONFORMANCE_TEMP/state/open-agent-workflow/workflows
 [ -d "$workflow_state/records" ] || fail "Workflow exchange did not initialize Workflow State"

@@ -24,8 +24,8 @@ func TestHostConformancePinsReceiptTranscriptIntoTrustedIntegration(t *testing.T
 		t.Fatal(err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "acme/codex-host",
-		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
+		SchemaVersion: host.HostIntegrationSchemaV3, IntegrationVersion: "3.0.0", ID: "acme/codex-host",
+		Manifest: manifest, ManifestDigest: manifest.Digest, Audit: audit, Conformance: &report,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -53,8 +53,8 @@ func TestHostConformanceRejectsMissingDeclaredFeatureEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: "acme/codex-host",
-		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
+		SchemaVersion: host.HostIntegrationSchemaV3, IntegrationVersion: "3.0.0", ID: "acme/codex-host",
+		Manifest: manifest, ManifestDigest: manifest.Digest, Audit: audit, Conformance: &report,
 	})
 	if host.ErrorCode(err) != "HOST_INTEGRATION_INVALID" {
 		t.Fatalf("NewIntegration(missing pause evidence) error = %v", err)
@@ -65,18 +65,20 @@ func conformanceIntegrationFixture(t *testing.T, extraFeatures []host.Feature) (
 	t.Helper()
 	features := append([]host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory}, extraFeatures...)
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
-		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: features,
+		DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
-		HostID: "codex", InstallationKey: "installation-acme", Binding: catalog.HostBinding{
-			Host: "codex", Kind: "skill", Reference: "acme:implementation", Topologies: []execution.Topology{execution.TopologyCurrent},
-		}, Topologies: []execution.Topology{execution.TopologyCurrent}, Source: "native-probe",
-		EvidenceReference: "evidence://acme/implementation", Digest: strings.Repeat("1", 64),
+	inventory, err := host.BuildBindingInventoryV3("codex", []host.BindingObservation{{
+		HostID: "codex", ProviderID: "acme/suite", InstallationKey: "installation-acme",
+		DistributionID: "acme", BindingID: "codex-implementation", Surface: "codex-plugin",
+		Kind: catalog.BindingSkill, Reference: "acme:implementation", Invocation: catalog.InvocationModel,
+		BindingTreeDigest: "sha256:" + strings.Repeat("1", 64), Topologies: []execution.Topology{execution.TopologyCurrent}, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://acme/implementation",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -91,26 +93,30 @@ func conformanceIntegrationFixture(t *testing.T, extraFeatures []host.Feature) (
 		t.Fatal(err)
 	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "2.0.0",
-		SessionID: "session-current", SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "3.0.0",
+		SessionID: "session-current", ManifestDigest: manifest.Digest, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: environment.Digest,
+		FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
-		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("3", 64), NodeID: "implementation",
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted,
+		WorkflowID: "workflow-0123456789abcdef0123456789abcdef", BundleID: "bundle-0123456789abcdef0123456789abcdef",
+		BundleGeneration: 1, BundleDigest: strings.Repeat("3", 64),
+		Cursor:   execution.GraphCursor{SlotID: "implementation", Kind: execution.CursorBinding, UnitID: "implementation", Ordinal: 1},
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
 		DispatchDigest: strings.Repeat("8", 64), EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		Outputs:  []host.OutputReference{{ArtifactID: "implementation", Schema: "oaw.workflow-artifact/v1", Reference: "evidence://output", Digest: strings.Repeat("5", 64)}},
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://result", Digest: strings.Repeat("4", 64)}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
-		SchemaVersion: host.HostConformanceTranscriptSchemaV2, Session: session, Inventory: inventory,
-		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt},
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
+		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt}, Invocations: []host.InvocationRecord{},
 	})
 	if err != nil {
 		t.Fatal(err)

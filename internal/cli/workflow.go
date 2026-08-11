@@ -84,7 +84,7 @@ func workflowAuthorityCeiling() admission.AuthorityCeiling {
 func writeWorkflowRejection(code string, err error, status int, stdout, stderr io.Writer) int {
 	fmt.Fprintf(stderr, "oaw: %s: %v\n", code, err)
 	return writeWorkflowResult(coordinator.Result{
-		SchemaVersion: coordinator.WorkflowResultSchemaV1,
+		SchemaVersion: coordinator.WorkflowResultSchemaV2,
 		Kind:          coordinator.ResultRejected,
 		Diagnostics:   []coordinator.Diagnostic{{Code: code, Detail: "Workflow exchange rejected"}},
 	}, status, stdout, stderr)

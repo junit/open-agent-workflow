@@ -8,10 +8,12 @@ import (
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
 func readOnlyAuthority() admission.AuthorityCeiling {
@@ -75,17 +77,21 @@ func openPilotEngine(pilot pilotRecord) (*coordinator.Engine, error) {
 	if _, err := readCanonical(filepath.Join(pilot.EvidenceRoot, "inventory.json"), &storedInventory); err != nil {
 		return nil, fmt.Errorf("pilot inventory: %w", err)
 	}
-	normalizedInventory, err := host.NewBindingInventory(storedInventory.HostID, storedInventory.Observations)
+	normalizedInventory, err := host.ValidateBindingInventory(storedInventory)
 	if err != nil {
 		return nil, fmt.Errorf("pilot inventory is not pinned: %w", err)
 	}
 	if !reflect.DeepEqual(normalizedInventory, storedInventory) || !reflect.DeepEqual(normalizedInventory, inventory) {
 		return nil, errors.New("pilot inventory is not pinned")
 	}
+	hostEvidence, err := profile.NewHostEvidence(integration.Manifest, session, inventory, environment)
+	if err != nil {
+		return nil, fmt.Errorf("build pilot Host evidence: %w", err)
+	}
 	engine, err := coordinator.NewEngine(coordinator.Options{
 		StateRoot: pilot.StateRoot, PhysicalProjectRoot: pilot.Repository.Root,
 		Configuration: snapshot, Resolutions: resolved.Report, Registry: resolved.Registry,
-		Authority: readOnlyAuthority(),
+		Host: hostEvidence, Authority: readOnlyAuthority(),
 	})
 	if err != nil {
 		return nil, err
@@ -98,15 +104,16 @@ func inspectWorkflow(engine *coordinator.Engine, workflowID string) (coordinator
 		return coordinator.Result{}, errors.New("Workflow inspection requires a valid Engine and Workflow")
 	}
 	return engine.Exchange(coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: workflowID,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandInspect, WorkflowID: workflowID,
 	})
 }
 
 func persistAndPrintDispatch(pilot pilotRecord, packet coordinator.DispatchPacket) error {
-	if packet.WorkflowID != pilot.WorkflowID || packet.NodeID == "" || !validDigest(packet.Digest) || packet.Topology != execution.TopologyCurrent || packet.HostSessionDigest != pilot.HostSessionDigest || packet.BundleDigest != pilot.BundleDigest {
+	node, err := dogfoodNode(packet.Cursor)
+	if err != nil || packet.WorkflowID != pilot.WorkflowID || !validDigest(packet.Digest) || packet.Topology != execution.TopologyCurrent || packet.HostSessionDigest != pilot.HostSessionDigest || packet.BundleDigest != pilot.BundleDigest {
 		return errors.New("Dispatch Packet is not pinned to the pilot")
 	}
-	path := filepath.Join(pilot.EvidenceRoot, "dispatch-"+packet.NodeID+".json")
+	path := filepath.Join(pilot.EvidenceRoot, "dispatch-"+node+".json")
 	if err := writeCanonical(path, packet); err != nil {
 		return err
 	}
@@ -114,10 +121,26 @@ func persistAndPrintDispatch(pilot pilotRecord, packet coordinator.DispatchPacke
 }
 
 func validateReceiptPins(packet coordinator.DispatchPacket, receipt host.InvocationReceipt) error {
-	if receipt.WorkflowID != packet.WorkflowID || receipt.BundleGeneration != packet.BundleGeneration || receipt.BundleDigest != packet.BundleDigest || receipt.NodeID != packet.NodeID || receipt.Topology != packet.Topology || receipt.HostSessionDigest != packet.HostSessionDigest || receipt.DispatchDigest != packet.Digest || receipt.EnvironmentReportDigest != packet.EnvironmentReportDigest {
+	if receipt.WorkflowID != packet.WorkflowID || receipt.BundleID != packet.BundleID || receipt.BundleGeneration != packet.BundleGeneration || receipt.BundleDigest != packet.BundleDigest || receipt.Cursor != packet.Cursor || receipt.Topology != packet.Topology || receipt.HostSessionDigest != packet.HostSessionDigest || receipt.DispatchDigest != packet.Digest || receipt.EnvironmentReportDigest != packet.EnvironmentReportDigest {
 		return errors.New("Receipt identity does not match Dispatch Packet")
 	}
 	return nil
+}
+
+func dogfoodNode(cursor execution.GraphCursor) (string, error) {
+	if cursor.Kind != execution.CursorBinding || cursor.UnitID == "" {
+		return "", errors.New("dogfood cursor is not a Provider Binding")
+	}
+	switch cursor.SlotID {
+	case string(catalog.SlotProblemFraming):
+		return "review-scope", nil
+	case string(catalog.SlotImplementation):
+		return "code-review", nil
+	case string(catalog.SlotFreshVerification):
+		return "verification", nil
+	default:
+		return "", fmt.Errorf("dogfood cursor slot %q is unsupported", cursor.SlotID)
+	}
 }
 
 func validateEvidence(root, node string, evidence []host.EvidenceReference) error {

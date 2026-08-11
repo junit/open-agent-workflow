@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
@@ -103,25 +104,51 @@ func startPilot(repositoryPath, evidencePath, approvedPath, sessionID string) (r
 		Topology:      execution.TopologyCurrent,
 		Observations: []execution.EnvironmentObservation{{
 			Surface: "skills", Disposition: execution.DispositionInherited,
-			Source: "codex-current-session", Digest: fingerprint.SkillDigest,
+			Source: "codex-current-session", Digest: canonicaljson.DigestBytes([]byte(fingerprint.SkillTreeDigest)),
 		}},
 	})
 	if err != nil {
 		return err
 	}
 	session, err := host.NewSessionSnapshot(integration.Manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: hostID,
+		SchemaVersion: host.HostSessionSchemaV3, HostID: hostID,
 		IntegrationID: integration.ID, IntegrationVersion: integration.IntegrationVersion,
-		SessionID: sessionID, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		SessionID: sessionID, ManifestDigest: integration.Manifest.Digest, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: environment.Digest,
+		FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{},
 	})
 	if err != nil {
 		return err
 	}
+	hostEvidence, err := profile.NewHostEvidence(integration.Manifest, session, inventory, environment)
+	if err != nil {
+		return err
+	}
+	proposal := dogfoodWorkflowProposal(fingerprint)
+	decision, err := core.Classify(&proposal, classification.ClassificationRules{})
+	if err != nil {
+		return err
+	}
+	preview, err := core.Compile(core.CompilationRequest{
+		DeliverableID: "deliverable-ocr-readonly", InputDigest: canonicaljson.DigestBytes([]byte(fingerprint.Commit + "\n" + fingerprint.SkillTreeDigest)), Generation: 1,
+		Classification: decision, Configuration: snapshot, ResolutionDigest: resolved.Report.Digest(), Registry: resolved.Registry, Host: hostEvidence,
+		Selection: &core.Selection{
+			Profile: core.UserDefinedProfile, RecipeID: profileID, ProfileSource: core.SelectionUser,
+			Topology: execution.TopologyCurrent, TopologySource: core.SelectionUser,
+			AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{},
+		},
+	})
+	if err != nil {
+		return err
+	}
+	if preview.SelectionPreview == nil || preview.SelectionPreview.Graph == nil || preview.SelectionPreview.Selection.ConfirmationDigest == "" {
+		return fmt.Errorf("dogfood selection is ineligible: %#v", preview.SelectionPreview)
+	}
+	selection := preview.SelectionPreview.Selection
 	engine, err := coordinator.NewEngine(coordinator.Options{
 		StateRoot: stateRoot, PhysicalProjectRoot: repository,
 		Configuration: snapshot, Resolutions: resolved.Report, Registry: resolved.Registry,
-		Authority: readOnlyAuthority(),
+		Host: hostEvidence, Authority: readOnlyAuthority(),
 	})
 	if err != nil {
 		return err
@@ -130,17 +157,12 @@ func startPilot(repositoryPath, evidencePath, approvedPath, sessionID string) (r
 		return err
 	}
 	command := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
 		MessageID: "dogfood-start", IdempotencyKey: "dogfood-current-start",
 		Start: &coordinator.StartInput{
 			RequestID: "request-ocr-readonly", DeliverableID: "deliverable-ocr-readonly",
-			InputDigest: canonicaljson.DigestBytes([]byte(fingerprint.Commit + "\n" + fingerprint.SkillDigest)),
-			Proposal:    dogfoodWorkflowProposal(fingerprint),
-			Selection: core.Selection{
-				Profile: profileID, ProfileSource: core.SelectionUser,
-				Topology: execution.TopologyCurrent, TopologySource: core.SelectionHostOnlyOption,
-				AddOns: []string{}, Bindings: []profile.ProfileBinding{},
-			},
+			InputDigest: canonicaljson.DigestBytes([]byte(fingerprint.Commit + "\n" + fingerprint.SkillTreeDigest)),
+			Proposal:    proposal, Selection: selection,
 			HostSession: session, Environment: environment,
 		},
 	}
@@ -148,8 +170,11 @@ func startPilot(repositoryPath, evidencePath, approvedPath, sessionID string) (r
 	if err != nil {
 		return err
 	}
-	if result.Kind != coordinator.ResultState || result.Snapshot == nil || result.Snapshot.Status != coordinator.StatusReady || result.Snapshot.ActiveNodeID != "review-scope" {
+	if result.Kind != coordinator.ResultState || result.Snapshot == nil || result.Snapshot.Status != coordinator.StatusReady {
 		return fmt.Errorf("unexpected START Result: %#v", result)
+	}
+	if node, nodeErr := dogfoodNode(result.Snapshot.Cursor); nodeErr != nil || node != "review-scope" {
+		return fmt.Errorf("unexpected START cursor: %#v", result.Snapshot.Cursor)
 	}
 	bundle := result.Snapshot.Bundles[0]
 	pilot := pilotRecord{
@@ -236,9 +261,12 @@ func preparePilot(evidencePath string) error {
 	if current.Snapshot.Status != coordinator.StatusReady {
 		return fmt.Errorf("Workflow status %s cannot be prepared", current.Snapshot.Status)
 	}
-	node := current.Snapshot.ActiveNodeID
+	node, err := dogfoodNode(current.Snapshot.Cursor)
+	if err != nil {
+		return err
+	}
 	result, err := engine.Exchange(coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandPrepare,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
 		MessageID: "dogfood-prepare-" + node, IdempotencyKey: fmt.Sprintf("dogfood-prepare-%d-%s", current.Snapshot.ActiveGeneration, node),
 		WorkflowID: pilot.WorkflowID, ExpectedRevision: current.Revision,
 		Prepare: &coordinator.PrepareInput{
@@ -246,7 +274,7 @@ func preparePilot(evidencePath string) error {
 			TerminationCondition: "return read-only " + node + " evidence",
 			InputReferences: []coordinator.ArtifactReference{
 				{Kind: "git-commit", Reference: "git+file://" + pilot.Repository.Root + "#" + pilot.Repository.Commit, Digest: canonicaljson.DigestBytes([]byte(pilot.Repository.Commit))},
-				{Kind: "skill", Reference: "file://" + pilot.Repository.SkillPath, Digest: pilot.Repository.SkillDigest},
+				{Kind: "skill-tree", Reference: "file://" + filepath.Dir(pilot.Repository.SkillPath), Digest: canonicaljson.DigestBytes([]byte(pilot.Repository.SkillTreeDigest))},
 			},
 			EvidenceRequirements: []coordinator.EvidenceRequirement{{Kind: "report", Minimum: 1, Description: "digest-pinned " + node + " report"}},
 		},
@@ -281,7 +309,11 @@ func inspectPilot(evidencePath string) error {
 	}
 	for _, receipt := range result.Snapshot.Receipts {
 		if receipt.Kind == host.ReceiptCompleted {
-			if err := validateEvidence(pilot.EvidenceRoot, receipt.NodeID, receipt.Evidence); err != nil {
+			node, err := dogfoodNode(receipt.Cursor)
+			if err != nil {
+				return err
+			}
+			if err := validateEvidence(pilot.EvidenceRoot, node, receipt.Evidence); err != nil {
 				return err
 			}
 		}
@@ -319,7 +351,10 @@ func receivePilot(evidencePath, receiptPath string) error {
 	if current.Snapshot == nil || current.Snapshot.Status != coordinator.StatusPrepared || current.Dispatch == nil {
 		return errors.New("Workflow has no prepared Dispatch Packet")
 	}
-	node := current.Snapshot.ActiveNodeID
+	node, err := dogfoodNode(current.Snapshot.Cursor)
+	if err != nil {
+		return err
+	}
 	signal, boundary := receiptTransition(node)
 	decoded, err := decodeReceiptCommand(raw, pilot.WorkflowID, current.Revision, node, signal, boundary)
 	if err != nil {
@@ -346,19 +381,22 @@ func receivePilot(evidencePath, receiptPath string) error {
 }
 
 func commitReceipt(engine *coordinator.Engine, pilot pilotRecord, current coordinator.Result, completed coordinator.Command, receipt host.InvocationReceipt) error {
-	node := current.Snapshot.ActiveNodeID
+	node, err := dogfoodNode(current.Snapshot.Cursor)
+	if err != nil {
+		return err
+	}
 	startedReceipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
-		WorkflowID: receipt.WorkflowID, BundleGeneration: receipt.BundleGeneration, BundleDigest: receipt.BundleDigest,
-		NodeID: receipt.NodeID, Topology: receipt.Topology, HostSessionDigest: receipt.HostSessionDigest,
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptStarted,
+		WorkflowID: receipt.WorkflowID, BundleID: receipt.BundleID, BundleGeneration: receipt.BundleGeneration, BundleDigest: receipt.BundleDigest,
+		Cursor: receipt.Cursor, Topology: receipt.Topology, HostSessionDigest: receipt.HostSessionDigest,
 		DispatchDigest: receipt.DispatchDigest, ContextFreshness: host.ContextShared,
-		EnvironmentReportDigest: receipt.EnvironmentReportDigest,
+		EnvironmentReportDigest: receipt.EnvironmentReportDigest, Outputs: []host.OutputReference{}, Evidence: []host.EvidenceReference{},
 	})
 	if err != nil {
 		return err
 	}
 	started, err := engine.Exchange(coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
 		MessageID:      "dogfood-started-" + node,
 		IdempotencyKey: fmt.Sprintf("dogfood-started-%d-%s", receipt.BundleGeneration, node),
 		WorkflowID:     pilot.WorkflowID, ExpectedRevision: current.Revision,
@@ -375,6 +413,12 @@ func commitReceipt(engine *coordinator.Engine, pilot pilotRecord, current coordi
 	if result.Snapshot == nil || result.Snapshot.Status != coordinator.StatusReady && result.Snapshot.Status != coordinator.StatusFinished {
 		return fmt.Errorf("unexpected COMPLETED Result: %#v", result)
 	}
+	if result.Snapshot.Status == coordinator.StatusReady && result.Snapshot.Cursor.Kind == execution.CursorGate {
+		result, err = completeReadOnlyCloseout(engine, pilot, result)
+		if err != nil {
+			return err
+		}
+	}
 	receiptsRoot := filepath.Join(pilot.EvidenceRoot, "receipts")
 	if err := os.MkdirAll(receiptsRoot, 0o700); err != nil {
 		return err
@@ -388,9 +432,50 @@ func commitReceipt(engine *coordinator.Engine, pilot pilotRecord, current coordi
 	return printCanonical(result)
 }
 
+func completeReadOnlyCloseout(engine *coordinator.Engine, pilot pilotRecord, current coordinator.Result) (coordinator.Result, error) {
+	if current.Snapshot == nil || len(current.Snapshot.Bundles) == 0 {
+		return coordinator.Result{}, errors.New("read-only closeout state is incomplete")
+	}
+	bundle := current.Snapshot.Bundles[len(current.Snapshot.Bundles)-1]
+	unit, err := profile.UnitAtCursor(bundle.Graph, current.Snapshot.Cursor)
+	if err != nil || unit.Gate == nil || unit.Gate.ID != "read-only-closeout" || unit.Gate.Authority != catalog.GateUser {
+		return coordinator.Result{}, errors.New("read-only closeout gate is unavailable")
+	}
+	attestation := coordinator.GateAttestation{
+		SchemaVersion: coordinator.GateAttestationSchemaV1, WorkflowID: current.WorkflowID,
+		BundleID: bundle.ID, BundleGeneration: bundle.Generation, BundleDigest: bundle.Digest,
+		Cursor: current.Snapshot.Cursor, GateID: unit.Gate.ID, Authority: unit.Gate.Authority, Decision: coordinator.GateSatisfied,
+		Evidence: []host.EvidenceReference{{
+			Kind: "user-decision", Reference: "evidence://dogfood/user/approved-read-only-closeout",
+			Digest: canonicaljson.DigestBytes([]byte(pilot.Repository.Root + "\n" + pilot.Repository.Commit)),
+		}},
+	}
+	digest, _, err := canonicaljson.Digest(attestation)
+	if err != nil {
+		return coordinator.Result{}, err
+	}
+	attestation.Digest = digest
+	result, err := engine.Exchange(coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+		MessageID: "dogfood-closeout", IdempotencyKey: fmt.Sprintf("dogfood-closeout-%d", bundle.Generation),
+		WorkflowID: current.WorkflowID, ExpectedRevision: current.Revision,
+		Prepare: &coordinator.PrepareInput{
+			RequestedEffects: []string{}, RequestedResources: []string{}, InputReferences: []coordinator.ArtifactReference{},
+			EvidenceRequirements: []coordinator.EvidenceRequirement{}, GateAttestation: &attestation,
+		},
+	})
+	if err != nil {
+		return coordinator.Result{}, err
+	}
+	if result.Snapshot == nil || result.Snapshot.Status != coordinator.StatusFinished {
+		return coordinator.Result{}, fmt.Errorf("unexpected closeout Result: %#v", result)
+	}
+	return result, nil
+}
+
 func decodeReceiptCommand(raw []byte, workflowID string, revision uint64, node, signal, boundary string) (coordinator.Command, error) {
 	wrapper := rawReceiptCommand{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
 		MessageID:      "dogfood-completed-" + node,
 		IdempotencyKey: fmt.Sprintf("dogfood-completed-%s-%d", node, revision),
 		WorkflowID:     workflowID, ExpectedRevision: revision,
@@ -414,7 +499,7 @@ func receiptTransition(node string) (string, string) {
 	case "code-review":
 		return "succeeded", "review-complete"
 	case "verification":
-		return "", "verification-complete"
+		return "succeeded", "verification-complete"
 	default:
 		return "", ""
 	}

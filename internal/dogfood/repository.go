@@ -11,6 +11,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
 func inspectRepository(root string) (repositoryFingerprint, error) {
@@ -59,14 +60,19 @@ func inspectRepository(root string) (repositoryFingerprint, error) {
 	if len(skill) == 0 || len(skill) > maximumRecordBytes || !validUTF8(skill) {
 		return repositoryFingerprint{}, errors.New("required Skill content is invalid")
 	}
+	skillTree, err := integrity.DigestTree(filepath.Dir(skillPath))
+	if err != nil {
+		return repositoryFingerprint{}, fmt.Errorf("digest required Skill tree: %w", err)
+	}
 	return repositoryFingerprint{
 		Root: canonicalRoot, Commit: commit, StatusDigest: canonicaljson.DigestBytes(status),
-		SkillPath: skillPath, SkillDigest: canonicaljson.DigestBytes(skill),
+		SkillPath: skillPath, SkillDigest: canonicaljson.DigestBytes(skill), SkillTreeDigest: skillTree.RootDigest,
 	}, nil
 }
 
 func verifyRepository(expected repositoryFingerprint) (repositoryFingerprint, error) {
-	if expected.Root == "" || expected.Commit == "" || !validDigest(expected.StatusDigest) || expected.SkillPath == "" || !validDigest(expected.SkillDigest) {
+	if expected.Root == "" || expected.Commit == "" || !validDigest(expected.StatusDigest) || expected.SkillPath == "" ||
+		!validDigest(expected.SkillDigest) || !validTreeDigest(expected.SkillTreeDigest) {
 		return repositoryFingerprint{}, errors.New("repository fingerprint is invalid")
 	}
 	if _, err := os.Lstat(filepath.Join(expected.Root, ".oaw-production")); err == nil {

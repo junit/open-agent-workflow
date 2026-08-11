@@ -80,7 +80,7 @@ func NewEvidenceStore(options CacheOptions) *evidenceStore {
 }
 
 func (store *evidenceStore) Put(context HookContext, facts Facts) (HostEvidenceHandle, error) {
-	if context.SchemaVersion != HookContextSchemaV1 || context.BridgeProtocolVersion != BridgeProtocolVersion {
+	if context.SchemaVersion != HookContextSchemaV2 || context.BridgeProtocolVersion != BridgeProtocolVersion {
 		return HostEvidenceHandle{}, NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "Hook context schema or Bridge protocol is unsupported", nil)
 	}
 	sessionDigest, cwdDigest, err := ContextDigestHeaders(context)
@@ -174,7 +174,7 @@ func ContextDigestHeaders(context HookContext) (string, string, error) {
 }
 
 func ValidateHandleContext(handle HostEvidenceHandle, context HookContext) error {
-	if context.SchemaVersion != HookContextSchemaV1 || context.BridgeProtocolVersion != BridgeProtocolVersion {
+	if context.SchemaVersion != HookContextSchemaV2 || context.BridgeProtocolVersion != BridgeProtocolVersion {
 		return NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "Hook context schema or Bridge protocol is unsupported", nil)
 	}
 	sessionDigest, cwdDigest, err := ContextDigestHeaders(context)

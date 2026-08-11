@@ -3,9 +3,9 @@ package codexbridge
 import "errors"
 
 const (
-	BridgeProtocolVersion = "oaw.codex-bridge/v1"
-	HookContextSchemaV1   = "oaw.codex-hook-context/v1"
-	EvidenceHandleVersion = "oaw.host-evidence-handle/v1"
+	BridgeProtocolVersion = "oaw.codex-bridge/v2"
+	HookContextSchemaV2   = "oaw.codex-hook-context/v2"
+	EvidenceHandleVersion = "oaw.host-evidence-handle/v2"
 )
 
 type Operation string
@@ -39,10 +39,13 @@ type FactDigests struct {
 	Session       string `json:"session"`
 	Inventory     string `json:"inventory"`
 	Environment   string `json:"environment"`
+	Features      string `json:"features"`
+	Actions       string `json:"actions"`
 	Configuration string `json:"configuration"`
 	Discovery     string `json:"discovery"`
 	Resolution    string `json:"resolution"`
 	Registry      string `json:"registry"`
+	Version       string `json:"version_evidence"`
 }
 
 type OperationRequest struct {
@@ -90,6 +93,6 @@ func ParseOperation(value string) (Operation, error) {
 	case OperationObserveCurrent, OperationCoreInspect, OperationCoreCompile, OperationWorkflowExchange:
 		return operation, nil
 	default:
-		return "", NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "operation is not in the v1 allowlist", nil)
+		return "", NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "operation is not in the v2 allowlist", nil)
 	}
 }

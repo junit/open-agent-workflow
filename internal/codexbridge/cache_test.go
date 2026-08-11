@@ -95,11 +95,14 @@ func TestEvidenceStoreReturnsDefensiveFactCopies(t *testing.T) {
 	value.Session.SupportedTopologies[0] = execution.TopologySubagent
 	value.Inventory.Observations = append(value.Inventory.Observations, host.BindingObservation{})
 	value.Environment.Observations = append(value.Environment.Observations, execution.EnvironmentObservation{})
+	value.VersionEvidence.MetadataMethods[0] = "forged/method"
 	valueAgain, err := store.Get(handle)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if valueAgain.Session.SupportedTopologies[0] != execution.TopologyCurrent || len(valueAgain.Inventory.Observations) != 0 || len(valueAgain.Environment.Observations) != 0 {
+	if valueAgain.Session.SupportedTopologies[0] != execution.TopologyCurrent ||
+		len(valueAgain.Inventory.Observations) != 0 || len(valueAgain.Environment.Observations) != 0 ||
+		valueAgain.VersionEvidence.MetadataMethods[0] == "forged/method" {
 		t.Fatalf("stored facts were mutated through returned copy: %#v", valueAgain)
 	}
 }
@@ -186,7 +189,7 @@ func TestValidateHandleContextRequiresExactHeadersAndVersions(t *testing.T) {
 		t.Fatal(err)
 	}
 	wrongVersion := handle
-	wrongVersion.Version = "other"
+	wrongVersion.Version = "oaw.host-evidence-handle/v1"
 	if err := ValidateHandleContext(wrongVersion, context); Code(err) != "HOST_EVIDENCE_SESSION_MISMATCH" {
 		t.Fatalf("version error=%v", err)
 	}
@@ -194,6 +197,23 @@ func TestValidateHandleContextRequiresExactHeadersAndVersions(t *testing.T) {
 	wrongSchema.BridgeProtocolVersion = "other"
 	if err := ValidateHandleContext(handle, wrongSchema); Code(err) != "HOST_BRIDGE_CONTEXT_REQUIRED" {
 		t.Fatalf("schema error=%v", err)
+	}
+}
+
+func TestHandleV2RejectsV1ContextAndHandle(t *testing.T) {
+	context := testContext("session-a", "/repo/a")
+	sessionDigest, cwdDigest, err := ContextDigestHeaders(context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle := HostEvidenceHandle{Version: "oaw.host-evidence-handle/v1", SessionDigest: sessionDigest, CWDDigest: cwdDigest, Token: strings.Repeat("h", 22)}
+	if err := ValidateHandleContext(handle, context); Code(err) != "HOST_EVIDENCE_SESSION_MISMATCH" {
+		t.Fatalf("v1 handle error = %v", err)
+	}
+	context.SchemaVersion = "oaw.codex-hook-context/v1"
+	handle.Version = EvidenceHandleVersion
+	if err := ValidateHandleContext(handle, context); Code(err) != "HOST_BRIDGE_CONTEXT_REQUIRED" {
+		t.Fatalf("v1 context error = %v", err)
 	}
 }
 
@@ -208,7 +228,7 @@ func mustPut(t *testing.T, store EvidenceStore, context HookContext, facts Facts
 
 func testContext(sessionID, cwd string) HookContext {
 	return HookContext{
-		SchemaVersion: HookContextSchemaV1, BridgeProtocolVersion: BridgeProtocolVersion,
+		SchemaVersion: HookContextSchemaV2, BridgeProtocolVersion: BridgeProtocolVersion,
 		SessionID: sessionID, TurnID: "turn-1", ToolUseID: "tool-1", CWD: cwd,
 		Model: "gpt-test", PermissionMode: "default",
 	}
@@ -227,22 +247,30 @@ func testFacts(t *testing.T, sessionID, _ string) Facts {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := host.NewBindingInventory("codex", nil)
+	inventory, err := host.BuildBindingInventoryV3("codex", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: BridgeIntegrationID,
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: BridgeIntegrationID,
 		IntegrationVersion: BridgeIntegrationVersion, SessionID: sessionID,
+		ManifestDigest:          manifest.Digest,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: inventory.Digest, EnvironmentReportDigest: environment.Digest,
+		FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, err := currentVersionEvidence("1.2.3", "codex-cli 0.146.1", []string{"skills/list"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return Facts{
 		Session: session, Inventory: inventory, Environment: environment,
-		FactDigests: FactDigests{Session: session.Digest, Inventory: inventory.Digest, Environment: environment.Digest},
+		VersionEvidence: version,
+		FactDigests: FactDigests{Session: session.Digest, Inventory: inventory.Digest, Environment: environment.Digest,
+			Features: session.FeatureDigest, Actions: session.HostActionDigest, Version: version.Digest},
 	}
 }
 

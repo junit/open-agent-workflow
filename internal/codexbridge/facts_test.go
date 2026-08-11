@@ -18,13 +18,15 @@ func TestAssembleFactsBuildsPinnedCurrentHostRecords(t *testing.T) {
 	snapshot, report, inventory, resolution := emptyFactInputs(t)
 	context := HookContext{SessionID: "session-codex-1", CWD: "/repo"}
 	metadata := completeFactMetadata()
-	facts, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution)
+	facts, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if facts.Session.IntegrationID != BridgeIntegrationID || facts.Session.IntegrationVersion != BridgeIntegrationVersion ||
 		!slices.Equal(facts.Session.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) ||
-		facts.Session.SandboxPolicyDigest != "" || facts.Session.ApprovalPolicyDigest != "" {
+		facts.Session.SchemaVersion != host.HostSessionSchemaV3 || facts.Session.SandboxPolicyDigest != "" || facts.Session.ApprovalPolicyDigest != "" ||
+		len(facts.Session.FeatureObservations) != 0 || len(facts.Session.HostActionObservations) != 0 ||
+		facts.Session.FeatureDigest == "" || facts.Session.HostActionDigest == "" {
 		t.Fatalf("session=%#v", facts.Session)
 	}
 	want := map[string]execution.EnvironmentDisposition{
@@ -48,8 +50,12 @@ func TestAssembleFactsBuildsPinnedCurrentHostRecords(t *testing.T) {
 	if facts.FactDigests.Session != facts.Session.Digest || facts.FactDigests.Inventory != facts.Inventory.Digest ||
 		facts.FactDigests.Environment != facts.Environment.Digest || facts.FactDigests.Configuration != snapshot.Digest() ||
 		facts.FactDigests.Discovery != report.Digest() || facts.FactDigests.Resolution != resolution.Report.Digest() ||
-		facts.FactDigests.Registry != resolution.Registry.Digest() {
+		facts.FactDigests.Registry != resolution.Registry.Digest() || facts.FactDigests.Features != facts.Session.FeatureDigest ||
+		facts.FactDigests.Actions != facts.Session.HostActionDigest || facts.FactDigests.Version != facts.VersionEvidence.Digest {
 		t.Fatalf("fact digests=%#v", facts.FactDigests)
+	}
+	if facts.VersionEvidence.PluginVersion != "1.2.3" || facts.VersionEvidence.HostConformanceTranscriptSchema != host.HostConformanceTranscriptSchemaV4 || facts.VersionEvidence.HostConformanceReportSchema != host.HostConformanceReportSchemaV4 {
+		t.Fatalf("VersionEvidence=%#v", facts.VersionEvidence)
 	}
 }
 
@@ -58,7 +64,7 @@ func TestAssembleFactsKeepsMissingOptionalSurfacesUnknown(t *testing.T) {
 	metadata := completeFactMetadata()
 	metadata.Methods = []string{"skills/list"}
 	metadata.Config.CWDObserved = false
-	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, metadata, snapshot, report, inventory, resolution)
+	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, metadata, snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,12 +86,12 @@ func TestAssembleFactsChangesEnvironmentWhenHookEvidenceChanges(t *testing.T) {
 	context := HookContext{SessionID: "session-codex-1", CWD: "/repo"}
 	metadata := completeFactMetadata()
 	metadata.Hooks.Hooks = []appserver.HookMetadata{{CurrentHash: "first", Enabled: true, EventName: "preToolUse", PluginID: "oaw-codex-host", Source: "plugin", TrustStatus: "trusted"}}
-	first, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution)
+	first, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
 	metadata.Hooks.Hooks[0].CurrentHash = "second"
-	second, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution)
+	second, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,12 +104,12 @@ func TestEnvironmentEvidenceDigestsAreSurfaceSpecific(t *testing.T) {
 	snapshot, report, inventory, resolution := emptyFactInputs(t)
 	context := HookContext{SessionID: "session-codex-1", CWD: "/repo"}
 	metadata := completeFactMetadata()
-	first, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution)
+	first, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
 	metadata.Config.SandboxDisposition = "unknown"
-	second, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution)
+	second, err := AssembleFacts(context, metadata, snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,27 +127,27 @@ func TestAssembleFactsRejectsNonCanonicalInventoryAndMetadata(t *testing.T) {
 	snapshot, report, inventory, resolution := emptyFactInputs(t)
 	invalid := inventory
 	invalid.Digest = strings.Repeat("f", 64)
-	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, invalid, resolution); Code(err) != "HOST_OBSERVATION_FAILED" {
+	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, invalid, resolution, "1.2.3"); Code(err) != "HOST_OBSERVATION_FAILED" {
 		t.Fatalf("inventory error=%v", err)
 	}
 	metadata := completeFactMetadata()
 	metadata.Methods = []string{"config/read", "skills/list", "skills/list"}
-	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, metadata, snapshot, report, inventory, resolution); Code(err) != "HOST_OBSERVATION_FAILED" {
+	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, metadata, snapshot, report, inventory, resolution, "1.2.3"); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
 		t.Fatalf("metadata error=%v", err)
 	}
 	resolution.Digest = strings.Repeat("e", 64)
-	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution); Code(err) != "HOST_OBSERVATION_FAILED" {
+	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution, "1.2.3"); Code(err) != "HOST_OBSERVATION_FAILED" {
 		t.Fatalf("resolution error=%v", err)
 	}
 }
 
 func TestAssembleFactsDoesNotShareInventoryStorage(t *testing.T) {
 	snapshot, report, _, _ := emptyFactInputs(t)
-	inventory, err := host.NewBindingInventory("codex", []host.BindingObservation{{
-		HostID: "codex", InstallationKey: "installation-test",
-		Binding:    catalog.HostBinding{Host: "codex", Kind: "skill", Reference: "acme:review", Topologies: []execution.Topology{execution.TopologyCurrent}},
-		Topologies: []execution.Topology{execution.TopologyCurrent}, Source: "native-probe",
-		EvidenceReference: "evidence://codex/skills-list/fixture", Digest: strings.Repeat("a", 64),
+	inventory, err := host.BuildBindingInventoryV3("codex", []host.BindingObservation{{
+		HostID: "codex", ProviderID: "acme/suite", InstallationKey: "installation-test", DistributionID: "acme", BindingID: "codex-review",
+		Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:review", Invocation: catalog.InvocationModel,
+		BindingTreeDigest: "sha256:" + strings.Repeat("a", 64), Topologies: []execution.Topology{execution.TopologyCurrent}, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex/skills-list/fixture",
 	}})
 	if err != nil {
 		t.Fatal(err)
@@ -150,12 +156,13 @@ func TestAssembleFactsDoesNotShareInventoryStorage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution)
+	originalDigest := inventory.Observations[0].Digest
+	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
 	inventory.Observations[0].Digest = strings.Repeat("b", 64)
-	if facts.Inventory.Observations[0].Digest != strings.Repeat("a", 64) {
+	if facts.Inventory.Observations[0].Digest != originalDigest {
 		t.Fatal("assembled Facts share Inventory storage with the caller")
 	}
 }
@@ -166,14 +173,14 @@ func TestCodexHostManifestDeclaresOnlyCurrentSkillSurface(t *testing.T) {
 		t.Fatal(err)
 	}
 	if manifest.HostID != "codex" || manifest.ControlSurface != host.SurfaceHostNative ||
-		!slices.Equal(manifest.BindingKinds, []string{"skill"}) || !slices.Equal(manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
+		!slices.Equal(manifest.BindingKinds, []catalog.BindingKind{catalog.BindingSkill}) || !slices.Equal(manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) {
 		t.Fatalf("manifest=%#v", manifest)
 	}
 }
 
 func TestValidateFactsRejectsAlternateCodexIntegration(t *testing.T) {
 	snapshot, report, inventory, resolution := emptyFactInputs(t)
-	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution)
+	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution, "1.2.3")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,8 +189,9 @@ func TestValidateFactsRejectsAlternateCodexIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	facts.Session, err = host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "alternate/codex-host",
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: "alternate/codex-host",
 		IntegrationVersion: BridgeIntegrationVersion, SessionID: facts.Session.SessionID,
+		ManifestDigest:          manifest.Digest,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: facts.Inventory.Digest, EnvironmentReportDigest: facts.Environment.Digest,
 	})
@@ -223,7 +231,7 @@ func emptyFactInputs(t *testing.T) (config.Snapshot, discovery.Report, host.Bind
 	if err != nil {
 		t.Fatal(err)
 	}
-	inventory, err := host.NewBindingInventory("codex", nil)
+	inventory, err := host.BuildBindingInventoryV3("codex", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

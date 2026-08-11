@@ -6,12 +6,13 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/cli"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge"
@@ -19,6 +20,7 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
 func TestCodexBridgeCurrentWorkflowTranscript(t *testing.T) {
@@ -79,7 +81,7 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 	userHome := t.TempDir()
 	userConfigRoot := t.TempDir()
 	metadata := appserver.MetadataObservation{
-		Skills: appserver.SkillsEntry{Errors: []appserver.MetadataError{}, Skills: installSuperpowersSkillFixture(t, userHome)},
+		Skills: appserver.SkillsEntry{Errors: []appserver.MetadataError{}, Skills: installUserDefinedSkillFixture(t, userHome, userConfigRoot)},
 		Hooks:  appserver.HooksEntry{Errors: []appserver.MetadataError{}, Warnings: []string{}, Hooks: []appserver.HookMetadata{}},
 		Config: appserver.ConfigProjection{
 			CWDObserved: true, SandboxDisposition: "host-configured", MCPDisposition: "host-configured",
@@ -88,7 +90,7 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 		Methods: []string{"config/read", "hooks/list", "skills/list"}, CodexVersion: "codex-cli/0.146.1",
 	}
 	hostContext := codexbridge.HookContext{
-		SchemaVersion: codexbridge.HookContextSchemaV1, BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
+		SchemaVersion: codexbridge.HookContextSchemaV2, BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
 		SessionID: "bridge-blackbox-session", TurnID: "turn-1", ToolUseID: "tool-1", CWD: projectRoot,
 		Model: "gpt-test", PermissionMode: "workspace-write",
 	}
@@ -96,7 +98,7 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 	service, err := codexbridge.NewService(codexbridge.ServiceOptions{
 		Observer: observer, Store: codexbridge.NewEvidenceStore(codexbridge.CacheOptions{MaximumEntries: 8}),
 		StateRoot: t.TempDir(), ProjectRoot: projectRoot, UserConfigRoot: userConfigRoot,
-		UserHome: userHome, BridgeVersion: "test",
+		UserHome: userHome, BridgeVersion: "1.2.3",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -108,28 +110,101 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 	}
 }
 
-func installSuperpowersSkillFixture(t *testing.T, userHome string) []appserver.SkillMetadata {
+func installUserDefinedSkillFixture(t *testing.T, userHome, userConfigRoot string) []appserver.SkillMetadata {
 	t.Helper()
-	root := filepath.Join(userHome, ".codex", "plugins", "superpowers")
-	writeCodexBridgeFixture(t, filepath.Join(root, "skills", "using-superpowers", "SKILL.md"), "provider evidence")
-	names := []string{
-		"superpowers:brainstorming",
-		"superpowers:writing-plans",
-		"superpowers:using-git-worktrees",
-		"superpowers:subagent-driven-development",
-		"superpowers:test-driven-development",
-		"superpowers:systematic-debugging",
-		"superpowers:requesting-code-review",
-		"superpowers:verification-before-completion",
-		"superpowers:finishing-a-development-branch",
+	installRoot := filepath.Join(userHome, ".codex", "plugins", "acme")
+	skillRoot := filepath.Join(installRoot, "skills", "delivery")
+	skillPath := filepath.Join(skillRoot, "SKILL.md")
+	writeCodexBridgeFixture(t, skillPath, "---\nname: acme:delivery\n---\n")
+	bindingTree, err := integrity.DigestTree(skillRoot)
+	if err != nil {
+		t.Fatal(err)
 	}
-	result := make([]appserver.SkillMetadata, 0, len(names))
-	for _, name := range names {
-		path := filepath.Join(root, "observed-skills", strings.ReplaceAll(name, ":", "_"), "SKILL.md")
-		writeCodexBridgeFixture(t, path, "---\nname: "+name+"\n---\n")
-		result = append(result, appserver.SkillMetadata{Name: name, Enabled: true, Path: path, Scope: "user"})
+	distributionTree, err := integrity.DigestTree(installRoot)
+	if err != nil {
+		t.Fatal(err)
 	}
-	return result
+
+	definitions := catalog.CanonicalSlots()
+	claims := make([]catalog.ResponsibilityClaim, 0, len(definitions))
+	stageSpan := make([]catalog.SlotID, 0, len(definitions))
+	for _, definition := range definitions {
+		claims = append(claims, catalog.ResponsibilityClaim{
+			Namespace: catalog.OwnershipStage, Name: string(definition.ID), SlotID: definition.ID, OutcomeOwner: true,
+		})
+		stageSpan = append(stageSpan, definition.ID)
+	}
+	descriptor := catalog.ProviderDescriptorRecord{
+		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		Distributions: []catalog.DistributionRecord{{
+			ID: "acme", SourceURI: "https://example.test/acme/suite", Revision: strings.Repeat("a", 40), TreeDigest: distributionTree.RootDigest,
+		}},
+		Discovery: []catalog.DiscoveryProbe{{
+			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", DistributionID: "acme", Kind: "path-exists",
+			Root: "user-home", CandidatePath: ".codex/plugins/acme", EvidencePath: "skills/delivery/SKILL.md",
+		}},
+		Bindings: []catalog.BindingRecord{{
+			ID: "codex-delivery", DistributionID: "acme", ContentRoot: "skills/delivery", InstallRoot: "skills/delivery", TreeDigest: bindingTree.RootDigest,
+			Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:delivery", Invocation: catalog.InvocationModel,
+			Responsibilities: claims, InputArtifact: "oaw.workflow-artifact/v1", OutputArtifact: "oaw.workflow-artifact/v1",
+			MaximumEffects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project-worktree"},
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{}, StageSpan: stageSpan,
+			InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
+		}},
+		Capabilities: []catalog.CapabilityRecord{{
+			ID: "delivery", InputSchema: "oaw.capability-input/v1", OutcomeSchema: "oaw.capability-outcome/v1",
+			RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"codex-delivery"},
+		}},
+	}
+	available, err := builtin.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recipe catalog.ProfileRecipeRecord
+	for _, candidate := range available.Recipes() {
+		if candidate.ID == "oaw/delivery" {
+			recipe = candidate
+			break
+		}
+	}
+	if recipe.ID == "" {
+		t.Fatal("built-in delivery Recipe missing")
+	}
+	recipe.ID = "acme/current-delivery"
+	recipe.DisplayName = "Acme Current Delivery"
+	recipe.Family = "user-defined"
+	recipe.Template = ""
+	recipe.AddOns = []catalog.AddOnRecord{}
+	recipe.IncidentRoutes = []catalog.IncidentRoute{}
+	recipe.Overlays = []catalog.OverlayRecord{}
+	for index := range recipe.Slots {
+		slotID := recipe.Slots[index].SlotID
+		stepID := "acme-" + string(slotID)
+		recipe.Slots[index].Pipeline = []catalog.PipelineStep{{
+			ID: stepID, Selector: catalog.BindingSelector{ProviderID: descriptor.ID, BindingID: "codex-delivery"}, StageSpan: []catalog.SlotID{slotID},
+			RequiredInputArtifact: "oaw.workflow-artifact/v1", ProducedOutputArtifact: "oaw.workflow-artifact/v1",
+		}}
+		recipe.Slots[index].OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: stepID}
+		recipe.Slots[index].HostAction = nil
+	}
+
+	providerPath := filepath.Join(userConfigRoot, "providers", "acme.json")
+	recipePath := filepath.Join(userConfigRoot, "recipes", "acme.json")
+	descriptorJSON, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recipeJSON, err := json.Marshal(recipe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeCodexBridgeFixture(t, providerPath, string(descriptorJSON))
+	writeCodexBridgeFixture(t, recipePath, string(recipeJSON))
+	writeCodexBridgeFixture(t, filepath.Join(userConfigRoot, "config.toml"),
+		"schema_version = \"oaw.user-config/v3\"\n"+
+			"[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n"+
+			"[[profile_recipes]]\nid = \"acme/current-delivery\"\npath = \"recipes/acme.json\"\n")
+	return []appserver.SkillMetadata{{Name: "acme:delivery", Enabled: true, Path: skillPath, Scope: "user"}}
 }
 
 func writeCodexBridgeFixture(t *testing.T, path, contents string) {
@@ -182,13 +257,13 @@ func callCompileThroughMCP(
 	fixture codexBridgeFixture,
 	handle codexbridge.HostEvidenceHandle,
 	selection core.Selection,
-) core.CompilationResult {
+) core.LifecycleBundle {
 	t.Helper()
-	result := callCodexBridgeTool[core.CompilationResult](t, fixture.client, "core_compile", codexbridge.CoreCompileInput{
+	result := callCodexBridgeTool[core.LifecycleBundle](t, fixture.client, "core_compile", codexbridge.CoreCompileInput{
 		HostEvidenceHandle: handle, DeliverableID: fixture.deliverableID,
 		InputDigest: fixture.inputDigest, Proposal: fixture.proposal, Selection: selection,
 	})
-	if result.Bundle == nil {
+	if result.SchemaVersion != core.LifecycleBundleSchemaV4 {
 		t.Fatalf("compiled=%#v", result)
 	}
 	return result
@@ -197,14 +272,14 @@ func callCompileThroughMCP(
 func explicitCurrentSelection(t *testing.T, inspection codexbridge.CoreInspectOutput) core.Selection {
 	t.Helper()
 	for _, candidate := range inspection.Compilation.EligibleProfiles {
-		if candidate.Profile == "SP-FULL" && candidate.Eligible && slices.Contains(candidate.EligibleTopologies, execution.TopologyCurrent) {
-			return core.Selection{
-				Profile: "SP-FULL", ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
-				TopologySource: core.SelectionHostOnlyOption, AddOns: []string{},
-			}
+		if candidate.Profile == core.UserDefinedProfile && candidate.Eligible && candidate.Topology == execution.TopologyCurrent {
+			selection := candidate.Preview.Selection
+			selection.ProfileSource = core.SelectionUser
+			selection.TopologySource = core.SelectionUser
+			return selection
 		}
 	}
-	t.Fatalf("SP-FULL CURRENT unavailable: %#v", inspection.Compilation.EligibleProfiles)
+	t.Fatalf("USER-DEFINED CURRENT unavailable: %#v", inspection.Compilation.EligibleProfiles)
 	return core.Selection{}
 }
 
@@ -212,22 +287,22 @@ func callWorkflowStartThroughMCP(
 	t *testing.T,
 	fixture codexBridgeFixture,
 	handle codexbridge.HostEvidenceHandle,
-	compiled core.CompilationResult,
+	compiled core.LifecycleBundle,
 ) coordinator.Result {
 	t.Helper()
 	command := codexbridge.WorkflowCommandInput{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
 		MessageID: "message-start", IdempotencyKey: "codex-bridge-blackbox-start",
 		Start: &codexbridge.WorkflowStartInput{
 			RequestID: "request-codex-bridge-blackbox", DeliverableID: fixture.deliverableID,
-			InputDigest: fixture.inputDigest, Proposal: fixture.proposal, Selection: compiled.Bundle.Selection,
+			InputDigest: fixture.inputDigest, Proposal: fixture.proposal, Selection: compiled.Selection,
 		},
 	}
 	result := callCodexBridgeTool[coordinator.Result](t, fixture.client, "workflow_exchange", codexbridge.WorkflowExchangeInput{
 		HostEvidenceHandle: handle, Command: command,
 	})
-	if result.Snapshot == nil || len(result.Snapshot.Bundles) != 1 || result.Snapshot.Bundles[0].Digest != compiled.Bundle.Digest {
-		t.Fatalf("compiled=%#v started=%#v", compiled.Bundle, result)
+	if result.Snapshot == nil || len(result.Snapshot.Bundles) != 1 || result.Snapshot.Bundles[0].Digest != compiled.Digest {
+		t.Fatalf("compiled=%#v started=%#v", compiled, result)
 	}
 	return result
 }

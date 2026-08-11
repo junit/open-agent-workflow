@@ -1,39 +1,82 @@
 {
-  "schema_version": "oaw.provider-descriptor/v3",
-  "descriptor_version": "3.0.0",
+  "schema_version": "oaw.provider-descriptor/v4",
+  "descriptor_version": "4.0.0",
   "id": "acme/engineering",
   "display_name": "Acme Engineering",
+  "distributions": [
+    {
+      "id": "acme-engineering",
+      "source_uri": "https://example.test/acme/engineering",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "tree_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  ],
   "discovery": [
     {
       "id": "codex-test-skill",
       "hosts": ["codex-test"],
       "surface": "codex-test-skills",
-      "distribution": "acme-engineering",
+      "distribution_id": "acme-engineering",
       "kind": "path-exists",
       "root": "user-home",
       "candidate_path": ".agents/acme-engineering",
       "evidence_path": "SKILL.md"
     }
   ],
+  "bindings": [
+    {
+      "id": "codex-test-delivery",
+      "distribution_id": "acme-engineering",
+      "content_root": "skills/delivery",
+      "install_root": "skills/delivery",
+      "tree_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "host": "codex-test",
+      "surface": "codex-test-skills",
+      "kind": "skill",
+      "reference": "acme:delivery",
+      "invocation": "model",
+      "responsibilities": [
+        {"namespace": "stage", "name": "problem-framing", "slot_id": "problem-framing", "outcome_owner": true},
+        {"namespace": "stage", "name": "solution-specification", "slot_id": "solution-specification", "outcome_owner": true},
+        {"namespace": "stage", "name": "delivery-planning", "slot_id": "delivery-planning", "outcome_owner": true},
+        {"namespace": "stage", "name": "workspace-preparation", "slot_id": "workspace-preparation", "outcome_owner": true},
+        {"namespace": "procedure", "name": "implementation", "slot_id": "implementation", "outcome_owner": true},
+        {"namespace": "procedure", "name": "implementation-tdd", "slot_id": "implementation-tdd", "outcome_owner": true},
+        {"namespace": "incident", "name": "incident-recovery", "slot_id": "incident-recovery", "outcome_owner": false},
+        {"namespace": "assurance", "name": "review-remediation", "slot_id": "review-remediation", "outcome_owner": true},
+        {"namespace": "assurance", "name": "fresh-verification", "slot_id": "fresh-verification", "outcome_owner": true},
+        {"namespace": "stage", "name": "closeout", "slot_id": "closeout", "outcome_owner": true}
+      ],
+      "input_artifact": "artifact",
+      "output_artifact": "artifact",
+      "maximum_effects": ["read-project", "run-process", "write-project"],
+      "resources": ["project-worktree"],
+      "supported_topologies": ["CURRENT"],
+      "delegation": {"child": false, "parallel_child": false, "nested_child": false, "nested_parallel_child": false},
+      "stage_span": [
+        "problem-framing",
+        "solution-specification",
+        "delivery-planning",
+        "workspace-preparation",
+        "implementation",
+        "implementation-tdd",
+        "incident-recovery",
+        "review-remediation",
+        "fresh-verification",
+        "closeout"
+      ],
+      "internal_calls": [],
+      "alternatives": [],
+      "conflicts": []
+    }
+  ],
   "capabilities": [
     {
       "id": "delivery",
-      "input_schema": "oaw.capability-input/v1",
-      "outcome_schema": "oaw.capability-outcome/v1",
-      "maximum_effects": ["read-project", "run-process", "write-project"],
-      "resources": ["project-worktree"],
+      "input_schema": "artifact",
+      "outcome_schema": "artifact",
       "request_modes": ["WORKFLOW"],
-      "responsibilities": ["implementation", "planning", "review", "verification"],
-      "supported_topologies": ["CURRENT"],
-      "delegation_allow_list": [],
-      "host_bindings": [
-        {
-          "host": "codex-test",
-          "kind": "skill",
-          "reference": "acme:delivery",
-          "topologies": ["CURRENT"]
-        }
-      ]
+      "binding_refs": ["codex-test-delivery"]
     }
   ]
 }

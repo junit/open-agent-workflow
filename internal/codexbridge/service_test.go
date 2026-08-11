@@ -5,19 +5,21 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
-	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
@@ -47,6 +49,51 @@ func TestObserveCurrentPropagatesOptionalMetadataDiagnostics(t *testing.T) {
 	}
 }
 
+func TestCoreInspectV4ReturnsFourAliasesBuilderAndNoImplicitSelection(t *testing.T) {
+	service := newTestService(t)
+	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	inspected, err := service.CoreInspect(context.Background(), CoreInspectInput{
+		HostEvidenceHandle: observed.HostEvidenceHandle, DeliverableID: "bridge-inspect-v4",
+		InputDigest: testDigest("bridge-inspect-v4"), Proposal: workflowProposal(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspected.Compilation == nil || inspected.Compilation.Bundle != nil || inspected.Compilation.SelectionPreview != nil || inspected.Builder == nil {
+		t.Fatalf("inspection selected implicitly or omitted Builder: %#v", inspected)
+	}
+	profiles := make([]string, 0, len(inspected.Compilation.EligibleProfiles))
+	for _, eligibility := range inspected.Compilation.EligibleProfiles {
+		profiles = append(profiles, eligibility.Profile)
+	}
+	if !slices.Equal(profiles, []string{"ECC-FULL", "MATT-FULL", "MATT-SP-HYBRID", "SP-FULL"}) || inspected.Builder.TaxonomyVersion != catalog.TaxonomyVersionV1 {
+		t.Fatalf("profiles=%q Builder=%#v", profiles, inspected.Builder)
+	}
+	if observed.HostSummary.VersionEvidenceDigest == "" || observed.HostSummary.VersionEvidenceDigest != inspected.HostSummary.VersionEvidenceDigest {
+		t.Fatalf("Host summaries are not VersionEvidence-pinned: observed=%#v inspected=%#v", observed.HostSummary, inspected.HostSummary)
+	}
+}
+
+func TestCoreCompileV4RequiresExactPreviewConfirmation(t *testing.T) {
+	service := newTestService(t)
+	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.CoreCompile(context.Background(), CoreCompileInput{
+		HostEvidenceHandle: observed.HostEvidenceHandle, DeliverableID: "bridge-compile-v4",
+		InputDigest: testDigest("bridge-compile-v4"), Proposal: workflowProposal(),
+		Selection: core.Selection{Profile: "SP-FULL", RecipeID: "oaw/delivery", ProfileSource: core.SelectionUser,
+			Topology: execution.TopologyCurrent, TopologySource: core.SelectionUser, AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{}},
+	})
+	if Code(err) != "PROFILE_SELECTION_INVALID" {
+		t.Fatalf("missing confirmation error = %v", err)
+	}
+}
+
 func TestCoreCompileCannotReplaceCachedHostFacts(t *testing.T) {
 	raw, err := json.Marshal(CoreCompileInput{})
 	if err != nil {
@@ -70,7 +117,7 @@ func TestWorkflowExchangeCannotReplaceCachedHostFacts(t *testing.T) {
 	raw := []byte(`{
 		"host_evidence_handle":{"version":"v","session_digest":"s","cwd_digest":"c","token":"t"},
 		"command":{
-			"schema_version":"oaw.workflow-command/v1","kind":"START","message_id":"m",
+			"schema_version":"oaw.workflow-command/v2","kind":"START","message_id":"m",
 			"idempotency_key":"i","workflow_id":"","expected_revision":0,
 			"start":{
 				"request_id":"r","deliverable_id":"d","input_digest":"digest","active_ticket":"",
@@ -84,38 +131,27 @@ func TestWorkflowExchangeCannotReplaceCachedHostFacts(t *testing.T) {
 	}
 }
 
-func TestWorkflowCommandNormalizesHostReceiptDigest(t *testing.T) {
-	input := WorkflowCommandInput{Receipt: &coordinator.ReceiptInput{Receipt: host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
-		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64),
-		NodeID: "requirements", Topology: execution.TopologyCurrent,
-		HostSessionDigest: strings.Repeat("b", 64), DispatchDigest: strings.Repeat("c", 64),
-		ContextFreshness: host.ContextShared, EnvironmentReportDigest: strings.Repeat("d", 64),
-		Evidence: []host.EvidenceReference{},
-	}}}
-	command, err := input.coordinatorCommand(Facts{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if command.Receipt == nil || len(command.Receipt.Receipt.Digest) != 64 {
-		t.Fatalf("command = %#v", command)
+func TestWorkflowReceiptV2RejectsCallerForgedAuthorityPins(t *testing.T) {
+	raw := []byte(`{
+		"host_evidence_handle":{"version":"oaw.host-evidence-handle/v2","session_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","cwd_digest":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","token":"opaque"},
+		"command":{"schema_version":"oaw.workflow-command/v2","kind":"RECEIPT","message_id":"message","idempotency_key":"key","workflow_id":"workflow-0123456789abcdef0123456789abcdef","expected_revision":2,
+			"receipt":{"kind":"STARTED","workflow_id":"workflow-forged","bundle_digest":"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}}
+	}`)
+	if _, err := DecodeWorkflowExchangeInput(raw); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
+		t.Fatalf("error = %v", err)
 	}
 }
 
 func TestCoreInspectAndCompileUseVerifiedCurrentFacts(t *testing.T) {
 	service := newTestService(t)
 	installUserProvider(t, service)
-	installProviderSkills(t, service, "oaw/superpowers", ".codex/plugins/superpowers", "skills/using-superpowers/SKILL.md")
-	installProviderSkills(t, service, "acme/suite", ".codex/plugins/acme", "marker.txt")
 
 	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, providerID := range []string{"oaw/superpowers", "acme/suite"} {
-		if state := providerSummaryState(t, observed.HostSummary, providerID); state != registry.Verified {
-			t.Fatalf("Provider %s state = %s", providerID, state)
-		}
+	if state := providerSummaryState(t, observed.HostSummary, "acme/suite"); state != registry.ProviderVerified {
+		t.Fatalf("Provider acme/suite state = %s", state)
 	}
 	input := CoreInspectInput{
 		HostEvidenceHandle: observed.HostEvidenceHandle, DeliverableID: "bridge-service-test",
@@ -128,26 +164,26 @@ func TestCoreInspectAndCompileUseVerifiedCurrentFacts(t *testing.T) {
 	if inspected.Classification.RequestMode != classification.RequestModeWorkflow || inspected.Compilation == nil {
 		t.Fatalf("inspection = %#v", inspected)
 	}
-	if !profileEligibility(t, inspected.Compilation, "SP-FULL").Eligible {
-		t.Fatalf("SP-FULL = %#v", profileEligibility(t, inspected.Compilation, "SP-FULL"))
+	eligibility := profileEligibility(t, inspected.Compilation, core.UserDefinedProfile)
+	if !eligibility.Eligible || eligibility.RecipeID != "acme/current-delivery" || eligibility.Preview.Selection.ConfirmationDigest == "" {
+		t.Fatalf("USER-DEFINED = %#v", eligibility)
 	}
-	for _, profile := range []string{"MATT-FULL", "ECC-FULL"} {
+	for _, profile := range []string{"MATT-FULL", "ECC-FULL", "SP-FULL", "MATT-SP-HYBRID"} {
 		if profileEligibility(t, inspected.Compilation, profile).Eligible {
 			t.Fatalf("%s unexpectedly eligible", profile)
 		}
 	}
+	selection := eligibility.Preview.Selection
+	selection.ProfileSource = core.SelectionUser
+	selection.TopologySource = core.SelectionUser
 	compiled, err := service.CoreCompile(context.Background(), CoreCompileInput{
 		HostEvidenceHandle: observed.HostEvidenceHandle, DeliverableID: input.DeliverableID,
-		InputDigest: input.InputDigest, Proposal: input.Proposal,
-		Selection: core.Selection{
-			Profile: "SP-FULL", ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
-			TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Bindings: []profile.ProfileBinding{},
-		},
+		InputDigest: input.InputDigest, Proposal: input.Proposal, Selection: selection,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if compiled.Bundle == nil || compiled.Bundle.Selection.Profile != "SP-FULL" || compiled.Bundle.ProviderInventoryDigest == "" {
+	if compiled.SchemaVersion != core.LifecycleBundleSchemaV4 || compiled.Selection.Profile != core.UserDefinedProfile || compiled.ProviderInventoryDigest == "" || compiled.Graph.SchemaVersion != profile.ExecutionGraphSchemaV4 {
 		t.Fatalf("compilation = %#v", compiled)
 	}
 }
@@ -169,7 +205,7 @@ func TestWorkflowExchangeRejectsChangedPinnedFactsBeforeMutation(t *testing.T) {
 	}
 	inspected, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
 		HostEvidenceHandle: handle, Command: WorkflowCommandInput{
-			SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: cancel.WorkflowID,
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandInspect, WorkflowID: cancel.WorkflowID,
 		},
 	})
 	if err != nil {
@@ -228,7 +264,7 @@ func newTestService(t *testing.T) *Service {
 	}}
 	service, err := NewService(ServiceOptions{
 		Observer: observer, Store: NewEvidenceStore(CacheOptions{MaximumEntries: 8}), StateRoot: t.TempDir(),
-		ProjectRoot: projectRoot, UserConfigRoot: t.TempDir(), UserHome: t.TempDir(), BridgeVersion: "test",
+		ProjectRoot: projectRoot, UserConfigRoot: t.TempDir(), UserHome: t.TempDir(), BridgeVersion: "1.2.3",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -238,7 +274,7 @@ func newTestService(t *testing.T) *Service {
 
 func testHookContext(sessionID, cwd string) HookContext {
 	return HookContext{
-		SchemaVersion: HookContextSchemaV1, BridgeProtocolVersion: BridgeProtocolVersion,
+		SchemaVersion: HookContextSchemaV2, BridgeProtocolVersion: BridgeProtocolVersion,
 		SessionID: sessionID, TurnID: "turn-1", ToolUseID: "tool-1", CWD: cwd,
 		Model: "gpt-test", PermissionMode: "workspace-write",
 	}
@@ -246,21 +282,82 @@ func testHookContext(sessionID, cwd string) HookContext {
 
 func installUserProvider(t *testing.T, service *Service) {
 	t.Helper()
+	providerInstallRoot := filepath.Join(service.userHome, ".codex", "plugins", "acme")
+	skillRoot := filepath.Join(providerInstallRoot, "skills", "delivery")
+	skillPath := filepath.Join(skillRoot, "SKILL.md")
+	writeServiceFixtureFile(t, skillPath, "---\nname: acme:delivery\n---\n")
+	bindingTree, err := integrity.DigestTree(skillRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	distributionTree, err := integrity.DigestTree(providerInstallRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	slotDefinitions := catalog.CanonicalSlots()
+	claims := make([]catalog.ResponsibilityClaim, 0, len(slotDefinitions))
+	stageSpan := make([]catalog.SlotID, 0, len(slotDefinitions))
+	for _, slot := range slotDefinitions {
+		claims = append(claims, catalog.ResponsibilityClaim{Namespace: catalog.OwnershipStage, Name: string(slot.ID), SlotID: slot.ID, OutcomeOwner: true})
+		stageSpan = append(stageSpan, slot.ID)
+	}
 	descriptor := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV3, DescriptorVersion: "3.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
+		Distributions: []catalog.DistributionRecord{{ID: "acme", SourceURI: "https://example.test/acme/suite", Revision: strings.Repeat("a", 40), TreeDigest: distributionTree.RootDigest}},
 		Discovery: []catalog.DiscoveryProbe{{
-			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", Distribution: "acme", Kind: "path-exists",
-			Root: "user-home", CandidatePath: ".codex/plugins/acme", EvidencePath: "marker.txt",
+			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", DistributionID: "acme", Kind: "path-exists",
+			Root: "user-home", CandidatePath: ".codex/plugins/acme", EvidencePath: "skills/delivery/SKILL.md",
+		}},
+		Bindings: []catalog.BindingRecord{{
+			ID: "codex-delivery", DistributionID: "acme", ContentRoot: "skills/delivery", InstallRoot: "skills/delivery", TreeDigest: bindingTree.RootDigest,
+			Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:delivery", Invocation: catalog.InvocationModel,
+			Responsibilities: claims, InputArtifact: "oaw.workflow-artifact/v1", OutputArtifact: "oaw.workflow-artifact/v1",
+			MaximumEffects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project-worktree"},
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{}, StageSpan: stageSpan,
+			InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
 		}},
 		Capabilities: []catalog.CapabilityRecord{{
-			ID: "review", InputSchema: "in", OutcomeSchema: "out", MaximumEffects: []string{"read-project"}, Resources: []string{"project"},
-			RequestModes: []catalog.RequestMode{catalog.RequestModeBounded, catalog.RequestModeWorkflow}, Responsibilities: []string{"review"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, DelegationAllowList: []string{},
-			HostBindings: []catalog.HostBinding{{Host: "codex", Kind: "skill", Reference: "acme:review", Topologies: []execution.Topology{execution.TopologyCurrent}}},
+			ID: "delivery", InputSchema: "oaw.capability-input/v1", OutcomeSchema: "oaw.capability-outcome/v1",
+			RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"codex-delivery"},
 		}},
 	}
+	available, err := builtin.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recipe catalog.ProfileRecipeRecord
+	for _, candidate := range available.Recipes() {
+		if candidate.ID == "oaw/delivery" {
+			recipe = candidate
+			break
+		}
+	}
+	if recipe.ID == "" {
+		t.Fatal("built-in delivery Recipe missing")
+	}
+	recipe.ID = "acme/current-delivery"
+	recipe.DisplayName = "Acme Current Delivery"
+	recipe.Family = "user-defined"
+	recipe.Template = ""
+	recipe.AddOns = []catalog.AddOnRecord{}
+	recipe.IncidentRoutes = []catalog.IncidentRoute{}
+	recipe.Overlays = []catalog.OverlayRecord{}
+	for index := range recipe.Slots {
+		slotID := recipe.Slots[index].SlotID
+		stepID := "acme-" + string(slotID)
+		recipe.Slots[index].Pipeline = []catalog.PipelineStep{{
+			ID: stepID, Selector: catalog.BindingSelector{ProviderID: "acme/suite", BindingID: "codex-delivery"}, StageSpan: []catalog.SlotID{slotID},
+			RequiredInputArtifact: "oaw.workflow-artifact/v1", ProducedOutputArtifact: "oaw.workflow-artifact/v1",
+		}}
+		recipe.Slots[index].OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: stepID}
+		recipe.Slots[index].HostAction = nil
+	}
 	providerRoot := filepath.Join(service.userConfigRoot, "providers")
+	recipeRoot := filepath.Join(service.userConfigRoot, "recipes")
 	if err := os.MkdirAll(providerRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(recipeRoot, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	raw, err := json.Marshal(descriptor)
@@ -270,45 +367,20 @@ func installUserProvider(t *testing.T, service *Service) {
 	if err := os.WriteFile(filepath.Join(providerRoot, "acme.json"), raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	contents := "schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n"
-	if err := os.WriteFile(filepath.Join(service.userConfigRoot, "config.toml"), []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func installProviderSkills(t *testing.T, service *Service, providerID, relativeRoot, evidencePath string) {
-	t.Helper()
-	snapshot, err := config.Load(config.LoadOptions{UserConfigRoot: service.userConfigRoot, ProjectRoot: service.projectRoot})
+	rawRecipe, err := json.Marshal(recipe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var descriptor catalog.ProviderDescriptorRecord
-	for _, candidate := range snapshot.Catalog().Providers() {
-		if candidate.ID == providerID {
-			descriptor = candidate
-			break
-		}
+	if err := os.WriteFile(filepath.Join(recipeRoot, "acme.json"), rawRecipe, 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if descriptor.ID == "" {
-		t.Fatalf("Provider %s not configured", providerID)
+	contents := "schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n" +
+		"[[profile_recipes]]\nid = \"acme/current-delivery\"\npath = \"recipes/acme.json\"\n"
+	if err := os.WriteFile(filepath.Join(service.userConfigRoot, "config.toml"), []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	root := filepath.Join(service.userHome, filepath.FromSlash(relativeRoot))
-	writeServiceFixtureFile(t, filepath.Join(root, filepath.FromSlash(evidencePath)), "provider-evidence")
-	seen := make(map[string]struct{})
-	for _, capability := range descriptor.Capabilities {
-		for _, binding := range capability.HostBindings {
-			if binding.Host != "codex" || binding.Kind != "skill" {
-				continue
-			}
-			if _, found := seen[binding.Reference]; found {
-				continue
-			}
-			seen[binding.Reference] = struct{}{}
-			name := binding.Reference
-			path := filepath.Join(root, "observed-skills", name, "SKILL.md")
-			writeServiceFixtureFile(t, path, "---\nname: "+name+"\n---\n")
-			service.observer.(*fakeObserver).AddSkill(appserver.SkillMetadata{Name: name, Enabled: true, Path: path, Scope: "user"})
-		}
+	if observer, ok := service.observer.(*fakeObserver); ok {
+		observer.AddSkill(appserver.SkillMetadata{Name: "acme:delivery", Enabled: true, Path: skillPath, Scope: "user"})
 	}
 }
 
@@ -355,25 +427,30 @@ func testDigest(value string) string {
 func startedWorkflow(t *testing.T) (*Service, HostEvidenceHandle, coordinator.Command) {
 	t.Helper()
 	service := newTestService(t)
-	installProviderSkills(t, service, "oaw/superpowers", ".codex/plugins/superpowers", "skills/using-superpowers/SKILL.md")
+	installUserProvider(t, service)
 	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
 	if err != nil {
 		t.Fatal(err)
 	}
-	facts, err := service.getFacts(observed.HostEvidenceHandle)
+	inspected, err := service.CoreInspect(context.Background(), CoreInspectInput{HostEvidenceHandle: observed.HostEvidenceHandle,
+		DeliverableID: "bridge-service-workflow", InputDigest: testDigest("workflow-input"), Proposal: workflowProposal()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	selection := profileEligibility(t, inspected.Compilation, core.UserDefinedProfile).Preview.Selection
+	selection.ProfileSource = core.SelectionUser
+	selection.TopologySource = core.SelectionUser
+	bundle, err := service.CoreCompile(context.Background(), CoreCompileInput{HostEvidenceHandle: observed.HostEvidenceHandle,
+		DeliverableID: "bridge-service-workflow", InputDigest: testDigest("workflow-input"), Proposal: workflowProposal(), Selection: selection})
 	if err != nil {
 		t.Fatal(err)
 	}
 	start := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
 		MessageID: "message-start", IdempotencyKey: "bridge-service-start",
 		Start: &coordinator.StartInput{
 			RequestID: "request-1", DeliverableID: "bridge-service-workflow", InputDigest: testDigest("workflow-input"),
-			Proposal: workflowProposal(), Selection: core.Selection{
-				Profile: "SP-FULL", ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
-				TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Bindings: []profile.ProfileBinding{},
-			},
-			HostSession: facts.Session, Environment: facts.Environment,
+			Proposal: workflowProposal(), Selection: bundle.Selection,
 		},
 	}
 	started, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{HostEvidenceHandle: observed.HostEvidenceHandle, Command: publicCommand(start)})
@@ -381,7 +458,7 @@ func startedWorkflow(t *testing.T) (*Service, HostEvidenceHandle, coordinator.Co
 		t.Fatal(err)
 	}
 	return service, observed.HostEvidenceHandle, coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandCancel,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandCancel,
 		MessageID: "message-cancel", IdempotencyKey: "bridge-service-cancel", WorkflowID: started.WorkflowID,
 		ExpectedRevision: started.Revision, Cancel: &coordinator.CancelInput{Reason: "test cancellation", InvocationTerminal: true},
 	}
@@ -391,7 +468,7 @@ func publicCommand(command coordinator.Command) WorkflowCommandInput {
 	result := WorkflowCommandInput{
 		SchemaVersion: command.SchemaVersion, Kind: command.Kind, MessageID: command.MessageID,
 		IdempotencyKey: command.IdempotencyKey, WorkflowID: command.WorkflowID,
-		ExpectedRevision: command.ExpectedRevision, Prepare: command.Prepare, Receipt: command.Receipt, Cancel: command.Cancel,
+		ExpectedRevision: command.ExpectedRevision,
 	}
 	if command.Start != nil {
 		result.Start = &WorkflowStartInput{
@@ -402,6 +479,31 @@ func publicCommand(command coordinator.Command) WorkflowCommandInput {
 	}
 	if command.Switch != nil {
 		result.Switch = &WorkflowSwitchInput{Boundary: command.Switch.Boundary, Selection: command.Switch.Selection}
+	}
+	if command.Prepare != nil {
+		result.Prepare = &WorkflowPrepareInput{
+			RequestedEffects: append([]string{}, command.Prepare.RequestedEffects...), RequestedResources: append([]string{}, command.Prepare.RequestedResources...),
+			TerminationCondition: command.Prepare.TerminationCondition,
+			InputReferences:      make([]WorkflowArtifactReference, len(command.Prepare.InputReferences)),
+			EvidenceRequirements: make([]WorkflowEvidenceRequirement, len(command.Prepare.EvidenceRequirements)),
+		}
+		for index, value := range command.Prepare.InputReferences {
+			result.Prepare.InputReferences[index] = WorkflowArtifactReference{Kind: value.Kind, Reference: value.Reference, Digest: value.Digest}
+		}
+		for index, value := range command.Prepare.EvidenceRequirements {
+			result.Prepare.EvidenceRequirements[index] = WorkflowEvidenceRequirement{Kind: value.Kind, Minimum: value.Minimum, Description: value.Description}
+		}
+	}
+	if command.Receipt != nil {
+		value := command.Receipt.Receipt
+		result.Receipt = &WorkflowReceiptInput{
+			Kind: value.Kind, Outcome: value.Outcome, FailureCode: value.FailureCode,
+			Outputs: append([]host.OutputReference{}, value.Outputs...), Evidence: append([]host.EvidenceReference{}, value.Evidence...),
+			Signal: command.Receipt.Signal, StableBoundary: command.Receipt.StableBoundary,
+		}
+	}
+	if command.Cancel != nil {
+		result.Cancel = &WorkflowCancelInput{Reason: command.Cancel.Reason, InvocationTerminal: command.Cancel.InvocationTerminal}
 	}
 	return result
 }

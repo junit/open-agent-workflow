@@ -57,11 +57,11 @@
     },
     {
       "schema_version": "oaw.host-integration/v3",
-      "integration_version": "1.0.0",
+      "integration_version": "2.0.0",
       "id": "oaw/codex-host",
       "manifest": {
         "schema_version": "oaw.host-manifest/v3",
-        "manifest_version": "1.0.0",
+        "manifest_version": "2.0.0",
         "host_id": "codex",
         "control_surface": "host-native",
         "protocols": [
@@ -80,9 +80,9 @@
         ],
         "delegation_features": [],
         "host_actions": [],
-        "digest": "8aeeea4e405bab3ef355e4ef79810f658e657c302060ac9c9ef56a9ddc85247d"
+        "digest": "04dd65e0354d948c8bff980ccd316493a45158dfdf59b29a57558a1c40c39c18"
       },
-      "manifest_digest": "8aeeea4e405bab3ef355e4ef79810f658e657c302060ac9c9ef56a9ddc85247d",
+      "manifest_digest": "04dd65e0354d948c8bff980ccd316493a45158dfdf59b29a57558a1c40c39c18",
       "audit": {
         "status": "passed",
         "references": [
@@ -92,15 +92,17 @@
           },
           {
             "reference": "evidence://codex-host/conformance/codex-host-v3",
-            "digest": "0b9ad49285fe50e41c68513a0921b5d24afc07e6c9ea4182242b0a171f04a058"
+            "digest": "0d2b1b6aa59b018094aa4d74dc012ffa83c7e07ad55cdb503c7d6d9a6396a1d7"
           }
         ],
-        "digest": "9c14a91d2e7d885cd0f1c8856c618aef437f68322a470c5c9027f29191cd0f61"
+        "digest": "8210cace18b9c52dbf3e719f5b1c51d307be3e60e62de8d27d12dd485f4cd27a"
       },
       "conformance": {
-        "schema_version": "oaw.host-conformance-report/v3",
-        "manifest_digest": "8aeeea4e405bab3ef355e4ef79810f658e657c302060ac9c9ef56a9ddc85247d",
-        "transcript_digest": "0b9ad49285fe50e41c68513a0921b5d24afc07e6c9ea4182242b0a171f04a058",
+        "schema_version": "oaw.host-conformance-report/v4",
+        "manifest_digest": "04dd65e0354d948c8bff980ccd316493a45158dfdf59b29a57558a1c40c39c18",
+        "host_session_digest": "ac23c5d84d3119d29d109342bea18148ad8086f5e1ac9ba100f20839034f9971",
+        "binding_inventory_digest": "b57792ef07847e1340d7d6aa5a6aa68166dd7f1aeb66c4213cb733ac2bd2c010",
+        "transcript_digest": "0d2b1b6aa59b018094aa4d74dc012ffa83c7e07ad55cdb503c7d6d9a6396a1d7",
         "verified_features": [
           "environment-reporting",
           "normalized-receipts",
@@ -109,9 +111,9 @@
         "verified_delegation_features": [],
         "verified_host_action_ids": [],
         "diagnostics": [],
-        "digest": "68b9f17c89cae41507df3786e78d4679f064e27282a63b34a56ad052cd7e7eb0"
+        "digest": "d9ee71750d09c73233cb46edf11206521129566253997abb53dcc63d94ef0920"
       },
-      "digest": "9af9785ae9e5c3eb5a5e281d0cac0db3a9e4ffe8faa0abbf591126649e0e58fd"
+      "digest": "f6053670f2497509787a954de04c273a2c0d5dd3067e91a8247db2ddb0765e3d"
     },
     {
       "schema_version": "oaw.host-integration/v3",

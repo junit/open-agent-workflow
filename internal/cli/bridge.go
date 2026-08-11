@@ -257,7 +257,7 @@ func writeBridgeCheck(result install.CheckResult, format string, output io.Write
 		return writeBridgeJSON(result, output)
 	}
 	if _, err := fmt.Fprintf(output,
-		"codex_marketplace: %t\ncodex_plugin: %t\ncurrent_session_loaded: %t\nrequires_new_session: %t\n",
+		"proof_scope: installation-integrity\nlive_protocol_proof: false\ncodex_marketplace: %t\ncodex_plugin: %t\ncurrent_session_loaded: %t\nrequires_new_session: %t\n",
 		result.CodexMarketplace.Registered, result.CodexPlugin.Installed,
 		result.CurrentSessionLoaded, result.RequiresNewSession,
 	); err != nil {

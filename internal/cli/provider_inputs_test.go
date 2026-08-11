@@ -8,9 +8,19 @@ import (
 	"testing"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
+
+func TestProviderInputsRejectsStaleHostInventorySchema(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	stale := host.CloneBindingInventory(fixture.Inventory)
+	stale.SchemaVersion = "oaw.host-binding-inventory/v2"
+	if _, err := loadProviderInputs(providerInputOptions{HostID: "codex", UserHome: fixture.Home, Inventory: &stale}); host.ErrorCode(err) != "HOST_SCHEMA_UNSUPPORTED" {
+		t.Fatalf("error = %v", err)
+	}
+}
 
 func TestLoadProviderInputsUsesHostBindingInventory(t *testing.T) {
 	fixture := hosttest.BuildProviderFixture(t)
@@ -39,7 +49,7 @@ func TestLoadProviderInputsUsesHostBindingInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	resolution, ok := inputs.Resolutions.Resolution("acme/suite")
-	if !ok || resolution.State != registry.Verified {
+	if !ok || resolution.State != registry.ProviderVerified {
 		t.Fatalf("resolution = %#v, found=%v", resolution, ok)
 	}
 	if inputs.Inventory == nil || inputs.Inventory == &fixture.Inventory || len(inputs.Inventory.Observations) == 0 {
@@ -73,12 +83,12 @@ func TestLoadProviderInputsSeparatesSelectedHostAuthorityFromForeignDiagnostics(
 		t.Fatalf("provider inputs = %#v", withForeign)
 	}
 	for _, candidate := range withForeign.Discovery.Candidates("oaw/superpowers") {
-		if candidate.HostID != "codex" || strings.Contains(candidate.Location, ".claude") {
+		if candidate.HostID != "codex" || strings.Contains(candidate.DiagnosticLocation, ".claude") {
 			t.Fatalf("current Candidate = %#v", candidate)
 		}
 	}
 	foreignCandidates := withForeign.Foreign[0].Discovery.Candidates("oaw/superpowers")
-	if len(foreignCandidates) != 1 || foreignCandidates[0].HostID != "claude" || !strings.Contains(foreignCandidates[0].Location, ".claude") {
+	if len(foreignCandidates) != 1 || foreignCandidates[0].HostID != "claude" || !strings.Contains(foreignCandidates[0].DiagnosticLocation, ".claude") {
 		t.Fatalf("foreign Candidates = %#v", foreignCandidates)
 	}
 	if len(currentOnly.Foreign) != 0 || currentOnly.Resolutions.Digest() != withForeign.Resolutions.Digest() || currentOnly.Registry.Digest() != withForeign.Registry.Digest() {
@@ -98,7 +108,7 @@ func TestLoadProviderInputsSeparatesSelectedHostAuthorityFromForeignDiagnostics(
 		t.Fatalf("policy-only Host produced verified Registry: %#v", claude.Registry)
 	}
 	resolution, found := claude.Resolutions.Resolution("oaw/superpowers")
-	if !found || resolution.State != registry.CandidateState || resolution.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || len(resolution.Candidates) != 1 {
+	if !found || resolution.State != registry.ProviderCandidate || resolution.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || len(resolution.Candidates) != 1 {
 		t.Fatalf("policy-only resolution = %#v, found=%v", resolution, found)
 	}
 }
@@ -114,8 +124,8 @@ func TestLoadProviderInputsScopesConfiguredInstallationsToTheirHost(t *testing.T
 		t.Fatal(err)
 	}
 	configContents := "schema_version = \"oaw.user-config/v3\"\n\n" +
-		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\nsurface_id = \"codex-plugin\"\nlocation = \"" + codexInstallation + "\"\ndiscovery_probe_id = \"codex-direct\"\n\n" +
-		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"claude\"\nsurface_id = \"claude-plugin\"\nlocation = \"" + claudeInstallation + "\"\ndiscovery_probe_id = \"claude-direct\"\n"
+		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"codex\"\nsurface_id = \"codex-plugin\"\nlocation = \"" + codexInstallation + "\"\ndiscovery_probe_id = \"sp-codex-direct\"\n\n" +
+		"[[provider_installations]]\nprovider_id = \"oaw/superpowers\"\nhost_id = \"claude\"\nsurface_id = \"claude-plugin\"\nlocation = \"" + claudeInstallation + "\"\ndiscovery_probe_id = \"sp-claude-direct\"\n"
 	if err := os.WriteFile(filepath.Join(configRoot, "config.toml"), []byte(configContents), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -134,14 +144,14 @@ func TestLoadProviderInputsScopesConfiguredInstallationsToTheirHost(t *testing.T
 		t.Fatal(err)
 	}
 	current := inputs.Discovery.Candidates("oaw/superpowers")
-	if len(current) != 1 || current[0].HostID != "codex" || current[0].Location != physicalCodex {
+	if len(current) != 1 || current[0].HostID != "codex" || current[0].DiagnosticLocation != physicalCodex {
 		t.Fatalf("selected Host candidates = %#v", current)
 	}
 	if len(inputs.Foreign) != 1 || inputs.Foreign[0].HostID != "claude" {
 		t.Fatalf("foreign reports = %#v", inputs.Foreign)
 	}
 	foreign := inputs.Foreign[0].Discovery.Candidates("oaw/superpowers")
-	if len(foreign) != 1 || foreign[0].HostID != "claude" || foreign[0].Location != physicalClaude {
+	if len(foreign) != 1 || foreign[0].HostID != "claude" || foreign[0].DiagnosticLocation != physicalClaude {
 		t.Fatalf("foreign Host candidates = %#v", foreign)
 	}
 }
@@ -181,7 +191,7 @@ func TestLoadProviderInputsIsDeterministicAndReadOnly(t *testing.T) {
 		t.Fatal("Provider input assembly is not deterministic")
 	}
 	resolution, found := first.Resolutions.Resolution("oaw/superpowers")
-	if !found || resolution.State != registry.Ambiguous || len(resolution.Candidates) != 2 {
+	if !found || resolution.State != registry.ProviderAmbiguous || len(resolution.Candidates) != 2 {
 		t.Fatalf("resolution = %#v, found=%v", resolution, found)
 	}
 	wantConfigPath := filepath.Join(userConfigRoot, "config.toml")

@@ -9,6 +9,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
@@ -55,13 +56,15 @@ func WriteManagedConfiguration(t testing.TB, userRoot, extra string) host.Integr
 func ManagedIntegration(t testing.TB) host.IntegrationRecord {
 	t.Helper()
 	features := []host.Feature{
-		host.FeatureCancellation, host.FeatureInvocationDedup, host.FeatureNormalizedReceipts,
-		host.FeaturePause, host.FeatureProviderBindingInventory,
+		host.FeatureCancellation, host.FeatureEnvironmentReporting, host.FeatureInvocationDedup,
+		host.FeatureNormalizedReceipts, host.FeaturePause, host.FeatureProviderBindingInventory,
 	}
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex",
 		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
-		BindingKinds: []string{"agent", "skill", "tool"}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: features,
+		BindingKinds:        []catalog.BindingKind{catalog.BindingAgent, catalog.BindingSkill, catalog.BindingTool},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Features: features,
+		DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -71,15 +74,17 @@ func ManagedIntegration(t testing.TB) host.IntegrationRecord {
 		t.Fatal(err)
 	}
 	report, err := host.NewConformanceReport(host.ConformanceReport{
-		SchemaVersion: host.HostConformanceReportSchemaV2, ManifestDigest: manifest.ContentDigest(),
+		SchemaVersion: host.HostConformanceReportSchemaV4, ManifestDigest: manifest.Digest,
+		HostSessionDigest: strings.Repeat("c", 64), BindingInventoryDigest: strings.Repeat("d", 64),
 		TranscriptDigest: strings.Repeat("f", 64), VerifiedFeatures: manifest.Features,
+		VerifiedDelegationFeatures: []host.FeatureID{}, VerifiedHostActionIDs: []string{}, Diagnostics: []string{},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	integration, err := host.NewIntegration(host.IntegrationRecord{
-		SchemaVersion: host.HostIntegrationSchemaV2, IntegrationVersion: "2.0.0", ID: ManagedIntegrationID,
-		Manifest: manifest, ManifestDigest: manifest.ContentDigest(), Audit: audit, Conformance: &report,
+		SchemaVersion: host.HostIntegrationSchemaV3, IntegrationVersion: "3.0.0", ID: ManagedIntegrationID,
+		Manifest: manifest, ManifestDigest: manifest.Digest, Audit: audit, Conformance: &report,
 	})
 	if err != nil {
 		t.Fatal(err)

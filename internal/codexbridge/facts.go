@@ -14,9 +14,9 @@ import (
 
 var observedMetadataMethods = []string{"config/read", "hooks/list", "skills/list"}
 
-func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, snapshot config.Snapshot, report discovery.Report, inventory host.BindingInventory, resolution core.ResolutionResult) (Facts, error) {
-	rebuilt, err := host.NewBindingInventory(inventory.HostID, inventory.Observations)
-	if err != nil || inventory.HostID != "codex" || inventory.SchemaVersion != host.BindingInventorySchemaV2 || rebuilt.Digest != inventory.Digest {
+func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, snapshot config.Snapshot, report discovery.Report, inventory host.BindingInventory, resolution core.ResolutionResult, bridgeVersion string) (Facts, error) {
+	rebuilt, err := host.ValidateBindingInventory(inventory)
+	if err != nil || inventory.HostID != "codex" {
 		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Skill inventory is not canonical", err)
 	}
 	if report.HostID() != "codex" || resolution.Report.HostID() != "codex" || resolution.Registry.HostID() != "codex" {
@@ -29,7 +29,11 @@ func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, 
 		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Provider resolution is not pinned to the observed Host facts", err)
 	}
 	resolution = expectedResolution
-	if err := validateMetadataObservation(context, metadata); err != nil {
+	if err := validateMetadataObservation(context, metadata, bridgeVersion); err != nil {
+		return Facts{}, err
+	}
+	versionEvidence, err := currentVersionEvidence(bridgeVersion, metadata.CodexVersion, metadata.Methods)
+	if err != nil {
 		return Facts{}, err
 	}
 	environment, err := buildCurrentEnvironment(context, metadata)
@@ -41,13 +45,16 @@ func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, 
 		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Codex Host Manifest is invalid", err)
 	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion:           host.HostSessionSchemaV2,
+		SchemaVersion:           host.HostSessionSchemaV3,
 		HostID:                  "codex",
 		IntegrationID:           BridgeIntegrationID,
 		IntegrationVersion:      BridgeIntegrationVersion,
 		SessionID:               context.SessionID,
+		ManifestDigest:          manifest.Digest,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: rebuilt.Digest,
+		FeatureObservations:     []host.FeatureObservation{},
+		HostActionObservations:  []host.HostActionObservation{},
 		EnvironmentReportDigest: environment.Digest,
 	})
 	if err != nil {
@@ -56,19 +63,26 @@ func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, 
 	return Facts{
 		Session: session, Inventory: rebuilt, Environment: environment,
 		Configuration: snapshot, Discovery: report, Resolutions: resolution.Report, Registry: resolution.Registry,
+		VersionEvidence: versionEvidence,
 		FactDigests: FactDigests{
 			Session: session.Digest, Inventory: rebuilt.Digest, Environment: environment.Digest,
+			Features: session.FeatureDigest, Actions: session.HostActionDigest,
 			Configuration: snapshot.Digest(), Discovery: report.Digest(),
 			Resolution: resolution.Report.Digest(), Registry: resolution.Registry.Digest(),
+			Version: versionEvidence.Digest,
 		},
 	}, nil
 }
 
-func validateMetadataObservation(context HookContext, metadata appserver.MetadataObservation) error {
+func validateMetadataObservation(context HookContext, metadata appserver.MetadataObservation, bridgeVersion string) error {
 	if !validCanonicalPath(context.CWD) || metadata.Skills.CWD != context.CWD {
 		return NewError("HOST_OBSERVATION_FAILED", "Codex metadata is not bound to the current CWD", nil)
 	}
-	if _, err := Negotiate(currentVersionEvidence(metadata.CodexVersion, metadata.Methods)); err != nil {
+	versionEvidence, err := currentVersionEvidence(bridgeVersion, metadata.CodexVersion, metadata.Methods)
+	if err != nil {
+		return err
+	}
+	if _, err := Negotiate(versionEvidence); err != nil {
 		return err
 	}
 	if !validMethodSet(metadata.Methods) {

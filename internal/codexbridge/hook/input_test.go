@@ -44,6 +44,28 @@ func TestParsePreToolUseRejectsWrongToolAndMalformedInput(t *testing.T) {
 	}
 }
 
+func TestHookInputV2AcceptsOnlyFourBridgeTools(t *testing.T) {
+	allowed := map[string]codexbridge.Operation{
+		"mcp__oaw_codex_bridge__observe_current":   codexbridge.OperationObserveCurrent,
+		"mcp__oaw_codex_bridge__core_inspect":      codexbridge.OperationCoreInspect,
+		"mcp__oaw_codex_bridge__core_compile":      codexbridge.OperationCoreCompile,
+		"mcp__oaw_codex_bridge__workflow_exchange": codexbridge.OperationWorkflowExchange,
+	}
+	for name, wantOperation := range allowed {
+		if _, err := ParsePreToolUse(mustJSON(t, validInput(name))); err != nil {
+			t.Fatalf("tool %q rejected: %v", name, err)
+		}
+		if operation, ok := bridgeToolOperation(name); !ok || operation != wantOperation {
+			t.Fatalf("tool %q operation = %q, %t", name, operation, ok)
+		}
+	}
+	for _, name := range []string{"mcp__oaw_codex_bridge__workflow_start", "mcp__oaw_codex_bridge__provider_inspect", "mcp__oaw_codex_bridge__plugin_list"} {
+		if _, err := ParsePreToolUse(mustJSON(t, validInput(name))); codexbridge.Code(err) != "HOST_BRIDGE_CONTEXT_REQUIRED" {
+			t.Fatalf("tool %q error = %v", name, err)
+		}
+	}
+}
+
 func TestProcessMalformedInputReturnsDeny(t *testing.T) {
 	result, err := ProcessPreToolUse([]byte(`{"hook_event_name":"PreToolUse"}`))
 	if err != nil || result.HookSpecificOutput == nil || result.HookSpecificOutput.PermissionDecision != "deny" {

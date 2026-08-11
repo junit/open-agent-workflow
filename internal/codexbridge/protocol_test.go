@@ -11,6 +11,15 @@ func TestProtocolRejectsUnknownOperation(t *testing.T) {
 	}
 }
 
+func TestBridgeV2ProtocolConstantsAreHardCut(t *testing.T) {
+	if BridgeProtocolVersion != "oaw.codex-bridge/v2" ||
+		HookContextSchemaV2 != "oaw.codex-hook-context/v2" ||
+		EvidenceHandleVersion != "oaw.host-evidence-handle/v2" ||
+		BridgeIntegrationVersion != "2.0.0" {
+		t.Fatalf("bridge tuple = %q, %q, %q, %q", BridgeProtocolVersion, HookContextSchemaV2, EvidenceHandleVersion, BridgeIntegrationVersion)
+	}
+}
+
 func TestProtocolAcceptsOnlyBridgeOperations(t *testing.T) {
 	allowed := []Operation{
 		OperationObserveCurrent,
@@ -22,6 +31,14 @@ func TestProtocolAcceptsOnlyBridgeOperations(t *testing.T) {
 		got, err := ParseOperation(string(operation))
 		if err != nil || got != operation {
 			t.Fatalf("ParseOperation(%q) = %q, %v", operation, got, err)
+		}
+	}
+}
+
+func TestBridgeV2ProtocolRejectsV1OperationSurface(t *testing.T) {
+	for _, operation := range []string{"provider.inspect", "provider.compile", "workflow.start", "workflow.receipt"} {
+		if _, err := ParseOperation(operation); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
+			t.Fatalf("ParseOperation(%q) error = %v", operation, err)
 		}
 	}
 }

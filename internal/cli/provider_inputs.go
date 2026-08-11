@@ -121,11 +121,14 @@ func validatedProviderInventory(value *host.BindingInventory, hostID string) (*h
 		return nil, nil
 	}
 	cloned := host.CloneBindingInventory(*value)
-	rebuilt, err := host.NewBindingInventory(cloned.HostID, cloned.Observations)
-	if err != nil || cloned.SchemaVersion != host.BindingInventorySchemaV2 || cloned.HostID != hostID || rebuilt.Digest != cloned.Digest {
+	rebuilt, err := host.ValidateBindingInventory(cloned)
+	if err != nil {
+		return nil, err
+	}
+	if cloned.HostID != hostID || rebuilt.Digest != cloned.Digest {
 		return nil, fmt.Errorf("HOST_BINDING_INVENTORY_INVALID: inventory does not match Host %q", hostID)
 	}
-	return &cloned, nil
+	return &rebuilt, nil
 }
 
 func providerHostIDs(snapshot config.Snapshot) []string {

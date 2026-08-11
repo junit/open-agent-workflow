@@ -16,7 +16,7 @@ import (
 
 const (
 	codexHostIntegrationID      = "oaw/codex-host"
-	codexHostIntegrationVersion = "1.0.0"
+	codexHostIntegrationVersion = "2.0.0"
 	policyIntegrationVersion    = "2.0.0"
 )
 
@@ -41,13 +41,9 @@ func generateCodexHost(root string) error {
 		return fmt.Errorf("write Codex Host transcript: %w", err)
 	}
 
-	integrations := make([]host.IntegrationRecord, 0, len(policyHostIDs)+1)
-	for _, hostID := range policyHostIDs {
-		policy, policyErr := buildPolicyIntegration(hostID)
-		if policyErr != nil {
-			return policyErr
-		}
-		integrations = append(integrations, policy)
+	integrations, err := preservedIntegrations(integrationsPath)
+	if err != nil {
+		return err
 	}
 	integrations = append(integrations, native)
 	sort.Slice(integrations, func(left, right int) bool { return integrations[left].ID < integrations[right].ID })
@@ -60,6 +56,40 @@ func generateCodexHost(root string) error {
 		return fmt.Errorf("write Host Integration set: %w", err)
 	}
 	return nil
+}
+
+func preservedIntegrations(path string) ([]host.IntegrationRecord, error) {
+	raw, err := os.ReadFile(path)
+	if os.IsNotExist(err) {
+		result := make([]host.IntegrationRecord, 0, len(policyHostIDs))
+		for _, hostID := range policyHostIDs {
+			integration, buildErr := buildPolicyIntegration(hostID)
+			if buildErr != nil {
+				return nil, buildErr
+			}
+			result = append(result, integration)
+		}
+		return result, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("read Host Integration set: %w", err)
+	}
+	var stored host.IntegrationSetRecord
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return nil, fmt.Errorf("decode Host Integration set: %w", err)
+	}
+	result := make([]host.IntegrationRecord, 0, len(stored.Integrations))
+	for _, integration := range stored.Integrations {
+		if integration.ID == codexHostIntegrationID {
+			continue
+		}
+		normalized, normalizeErr := host.NewIntegration(integration)
+		if normalizeErr != nil {
+			return nil, fmt.Errorf("validate preserved Host Integration %s: %w", integration.ID, normalizeErr)
+		}
+		result = append(result, normalized)
+	}
+	return result, nil
 }
 
 func buildCodexHostFixture() (host.ConformanceTranscript, host.IntegrationRecord, error) {
@@ -104,17 +134,20 @@ func buildCodexHostFixture() (host.ConformanceTranscript, host.IntegrationRecord
 		return host.ConformanceTranscript{}, host.IntegrationRecord{}, fmt.Errorf("build Codex Host Session: %w", err)
 	}
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptCompleted,
-		WorkflowID: "workflow-codex-host-conformance", BundleGeneration: 1, BundleDigest: strings.Repeat("b", 64), NodeID: "verification",
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptCompleted,
+		WorkflowID: "workflow-0123456789abcdef0123456789abcdef", BundleID: "bundle-0123456789abcdef0123456789abcdef",
+		BundleGeneration: 1, BundleDigest: strings.Repeat("b", 64),
+		Cursor:   execution.GraphCursor{SlotID: "fresh-verification", Kind: execution.CursorBinding, UnitID: "skill", Ordinal: 1},
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, DispatchDigest: strings.Repeat("c", 64),
 		ContextFreshness: host.ContextShared, EnvironmentReportDigest: environment.Digest, Outcome: "succeeded",
+		Outputs:  []host.OutputReference{{ArtifactID: "workflow-output", Schema: "oaw.workflow-artifact/v1", Reference: "artifact://codex-host/conformance/output", Digest: strings.Repeat("e", 64)}},
 		Evidence: []host.EvidenceReference{{Kind: "report", Reference: "evidence://codex-host/conformance/current-completion", Digest: strings.Repeat("d", 64)}},
 	})
 	if err != nil {
 		return host.ConformanceTranscript{}, host.IntegrationRecord{}, fmt.Errorf("build Codex Invocation Receipt: %w", err)
 	}
 	transcript, err := host.NewConformanceTranscript(host.ConformanceTranscript{
-		SchemaVersion: host.HostConformanceTranscriptSchemaV3, Session: session, Inventory: inventory,
+		SchemaVersion: host.HostConformanceTranscriptSchemaV4, Session: session, Inventory: inventory,
 		EnvironmentReports: []host.EnvironmentReport{environment}, Receipts: []host.InvocationReceipt{receipt}, Invocations: []host.InvocationRecord{},
 	})
 	if err != nil {

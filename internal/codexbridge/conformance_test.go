@@ -37,16 +37,17 @@ func TestCodexBridgeConformanceTranscriptVerifiesDeclaredFeatures(t *testing.T) 
 		host.FeatureNormalizedReceipts,
 		host.FeatureProviderBindingInventory,
 	}
-	if !slices.Equal(report.VerifiedFeatures, want) || len(report.Diagnostics) != 0 {
+	if transcript.SchemaVersion != host.HostConformanceTranscriptSchemaV4 || report.SchemaVersion != host.HostConformanceReportSchemaV4 ||
+		report.TranscriptDigest != transcript.Digest || !slices.Equal(report.VerifiedFeatures, want) || len(report.Diagnostics) != 0 {
 		t.Fatalf("report = %#v", report)
 	}
-	if service == nil || len(facts.Inventory.Observations) != 1 || facts.Inventory.Observations[0].Binding.Reference != "acme:review" {
+	if service == nil || len(facts.Inventory.Observations) != 1 || facts.Inventory.Observations[0].Reference != "acme:delivery" {
 		t.Fatalf("Bridge facts = %#v", facts)
 	}
 }
 
 func TestCodexBridgeConformanceTranscriptAssetIsCanonical(t *testing.T) {
-	assetPath := filepath.Join("..", "assets", "conformance", "codex-host-v1.json")
+	assetPath := filepath.Join("..", "assets", "conformance", "codex-host-v3.json")
 	raw, err := os.ReadFile(assetPath)
 	if err != nil {
 		t.Fatal(err)
@@ -95,9 +96,8 @@ func observedConformanceService(t *testing.T) (*Service, Facts) {
 	userConfigRoot := t.TempDir()
 	userHome := t.TempDir()
 	providerRoot := filepath.Join(userHome, ".codex", "plugins", "acme")
-	skillPath := filepath.Join(providerRoot, "observed-skills", "acme:review", "SKILL.md")
+	skillPath := filepath.Join(providerRoot, "skills", "delivery", "SKILL.md")
 	writeServiceFixtureFile(t, filepath.Join(providerRoot, "marker.txt"), "provider-evidence")
-	writeServiceFixtureFile(t, skillPath, "---\nname: acme:review\n---\n")
 
 	observer := appserver.NewClient(appserver.ClientOptions{
 		Transport: &conformanceTransport{t: t, cwd: projectRoot, skillPath: skillPath},
@@ -126,18 +126,23 @@ func observedConformanceService(t *testing.T) (*Service, Facts) {
 func completedCurrentReceipt(t *testing.T, session host.SessionSnapshot, environment host.EnvironmentReport) host.InvocationReceipt {
 	t.Helper()
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion:           host.HostInvocationReceiptSchemaV2,
+		SchemaVersion:           host.HostInvocationReceiptSchemaV3,
 		Kind:                    host.ReceiptCompleted,
-		WorkflowID:              "workflow-codex-host-conformance",
+		WorkflowID:              "workflow-0123456789abcdef0123456789abcdef",
+		BundleID:                "bundle-0123456789abcdef0123456789abcdef",
 		BundleGeneration:        1,
 		BundleDigest:            canonicaljson.DigestBytes([]byte("codex-host-conformance-bundle-v1")),
-		NodeID:                  "verification",
+		Cursor:                  execution.GraphCursor{SlotID: "fresh-verification", Kind: execution.CursorBinding, UnitID: "verification", Ordinal: 1},
 		Topology:                execution.TopologyCurrent,
 		HostSessionDigest:       session.Digest,
 		DispatchDigest:          canonicaljson.DigestBytes([]byte("codex-host-conformance-dispatch-v1")),
 		ContextFreshness:        host.ContextShared,
 		EnvironmentReportDigest: environment.Digest,
 		Outcome:                 "succeeded",
+		Outputs: []host.OutputReference{{
+			ArtifactID: "artifact-verification", Schema: "oaw.workflow-artifact/v1",
+			Reference: "evidence://codex-host/outputs/current-completion", Digest: canonicaljson.DigestBytes([]byte("codex-host-current-output-v1")),
+		}},
 		Evidence: []host.EvidenceReference{{
 			Kind:      "report",
 			Reference: "evidence://codex-host/conformance/current-completion",
@@ -178,7 +183,7 @@ func (transport *conformanceTransport) Exchange(_ context.Context, requestBytes 
 	case "skills/list":
 		result = map[string]any{"data": []any{map[string]any{
 			"cwd": transport.cwd, "errors": []any{},
-			"skills": []any{map[string]any{"name": "acme:review", "enabled": true, "path": transport.skillPath, "scope": "user"}},
+			"skills": []any{map[string]any{"name": "acme:delivery", "enabled": true, "path": transport.skillPath, "scope": "user"}},
 		}}}
 	case "hooks/list":
 		result = map[string]any{"data": []any{map[string]any{

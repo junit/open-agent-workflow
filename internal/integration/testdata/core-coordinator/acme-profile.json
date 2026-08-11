@@ -1,60 +1,96 @@
 {
-  "schema_version": "oaw.profile-recipe/v2",
-  "recipe_version": "2.0.0",
+  "schema_version": "oaw.profile-recipe/v3",
+  "taxonomy_version": "oaw.lifecycle-taxonomy/v1",
+  "recipe_version": "3.0.0",
   "id": "acme/current-delivery",
   "display_name": "Acme Current Delivery",
-  "required_responsibilities": ["implementation", "planning", "review", "verification"],
-  "nodes": [
+  "family": "user-defined",
+  "template": "",
+  "slots": [
     {
-      "id": "planning",
-      "kind": "phase",
-      "responsibility": "planning",
-      "selector": {
-        "provider_id": "acme/engineering",
-        "capability_id": "delivery"
-      },
-      "transitions": [
-        {"signal": "succeeded", "target": "implementation"}
-      ]
+      "slot_id": "problem-framing",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-problem-framing"},
+      "pipeline": [{"id": "acme-problem-framing", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["problem-framing"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "solution-specification"}]
     },
     {
-      "id": "implementation",
-      "kind": "phase",
-      "responsibility": "implementation",
-      "selector": {
-        "provider_id": "acme/engineering",
-        "capability_id": "delivery"
-      },
-      "transitions": [
-        {"signal": "succeeded", "target": "review"}
-      ]
+      "slot_id": "solution-specification",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-solution-specification"},
+      "pipeline": [{"id": "acme-solution-specification", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["solution-specification"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "delivery-planning"}]
     },
     {
-      "id": "review",
-      "kind": "phase",
-      "responsibility": "review",
-      "selector": {
-        "provider_id": "acme/engineering",
-        "capability_id": "delivery"
-      },
-      "transitions": [
-        {"signal": "succeeded", "target": "verification"}
-      ]
+      "slot_id": "delivery-planning",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-delivery-planning"},
+      "pipeline": [{"id": "acme-delivery-planning", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["delivery-planning"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "workspace-preparation"}]
     },
     {
-      "id": "verification",
-      "kind": "gate",
-      "responsibility": "verification",
-      "selector": {
-        "provider_id": "acme/engineering",
-        "capability_id": "delivery"
-      },
+      "slot_id": "workspace-preparation",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-workspace-preparation"},
+      "pipeline": [{"id": "acme-workspace-preparation", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["workspace-preparation"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "implementation"}]
+    },
+    {
+      "slot_id": "implementation",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-implementation"},
+      "pipeline": [{"id": "acme-implementation", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["implementation"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "implementation-tdd"}]
+    },
+    {
+      "slot_id": "implementation-tdd",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-implementation-tdd"},
+      "pipeline": [{"id": "acme-implementation-tdd", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["implementation-tdd"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "review-remediation"}]
+    },
+    {
+      "slot_id": "incident-recovery",
+      "applicability": "conditional",
+      "outcome_owner": {"kind": "none"},
+      "pipeline": [],
+      "gates": [],
+      "transitions": []
+    },
+    {
+      "slot_id": "review-remediation",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-review-remediation"},
+      "pipeline": [{"id": "acme-review-remediation", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["review-remediation"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "fresh-verification"}]
+    },
+    {
+      "slot_id": "fresh-verification",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-fresh-verification"},
+      "pipeline": [{"id": "acme-fresh-verification", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["fresh-verification"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [],
+      "transitions": [{"signal": "succeeded", "target": "closeout"}]
+    },
+    {
+      "slot_id": "closeout",
+      "applicability": "mandatory",
+      "outcome_owner": {"kind": "provider-binding", "step_id": "acme-closeout"},
+      "pipeline": [{"id": "acme-closeout", "binding_selector": {"provider_id": "acme/engineering", "binding_id": "codex-test-delivery"}, "stage_span": ["closeout"], "required_input_artifact": "artifact", "produced_output_artifact": "artifact"}],
+      "gates": [{"id": "user-closeout", "authority": "user", "predicate": "user-authorized", "evidence_requirements": [{"kind": "approval", "minimum": 1, "description": "User approves closeout."}]}],
       "transitions": []
     }
   ],
+  "add_ons": [],
   "incident_routes": [],
-  "entry": "planning",
-  "terminal_gates": ["verification"],
-  "stable_boundaries": ["implementation-complete", "plan-approved", "verification-complete"],
+  "overlays": [],
+  "stable_boundaries": ["between-slots"],
   "environment_requirements": []
 }

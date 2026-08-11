@@ -31,7 +31,7 @@ func RewriteObserveInput(input PreToolUseInput) (HookOutput, error) {
 		return HookOutput{}, codexbridge.NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "reserved context was caller supplied", nil)
 	}
 	context := codexbridge.HookContext{
-		SchemaVersion:         codexbridge.HookContextSchemaV1,
+		SchemaVersion:         codexbridge.HookContextSchemaV2,
 		BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
 		SessionID:             input.SessionID,
 		TurnID:                input.TurnID,
@@ -86,7 +86,7 @@ func ValidateHandleInput(input PreToolUseInput) (HookOutput, error) {
 		return denyContextMismatch(), nil
 	}
 	if err := codexbridge.ValidateHandleContext(handle, codexbridge.HookContext{
-		SchemaVersion:         codexbridge.HookContextSchemaV1,
+		SchemaVersion:         codexbridge.HookContextSchemaV2,
 		BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
 		SessionID:             input.SessionID,
 		TurnID:                input.TurnID,

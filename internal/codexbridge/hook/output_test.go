@@ -20,12 +20,39 @@ func TestObserveRewriteIsTheOnlyAutomaticAllow(t *testing.T) {
 	if _, ok := decision.UpdatedInput["_oaw_host_context"]; !ok {
 		t.Fatalf("reserved context missing: %#v", decision.UpdatedInput)
 	}
+	var contextValue map[string]any
+	if err := json.Unmarshal(decision.UpdatedInput["_oaw_host_context"], &contextValue); err != nil || contextValue["schema_version"] != "oaw.codex-hook-context/v2" || contextValue["bridge_protocol_version"] != "oaw.codex-bridge/v2" {
+		t.Fatalf("reserved context is not v2: %#v", decision.UpdatedInput)
+	}
 	for _, name := range []string{"mcp__oaw_codex_bridge__core_inspect", "mcp__oaw_codex_bridge__core_compile", "mcp__oaw_codex_bridge__workflow_exchange"} {
 		result, err := ValidateHandleInput(validHandleInput(t, name))
 		if err != nil || result.HookSpecificOutput != nil {
 			t.Fatalf("%s changed approval: %#v, %v", name, result, err)
 		}
 	}
+}
+
+func TestHookContextV2RejectsV1HandleWithoutRewriting(t *testing.T) {
+	input := validHandleInput(t, "mcp__oaw_codex_bridge__core_inspect")
+	var decoded map[string]any
+	if err := json.Unmarshal(input.ToolInput, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	decoded["host_evidence_handle"].(map[string]any)["version"] = "oaw.host-evidence-handle/v1"
+	input.ToolInput = json.RawMessage(mustMarshal(t, decoded))
+	result, err := ValidateHandleInput(input)
+	if err != nil || result.HookSpecificOutput == nil || result.HookSpecificOutput.PermissionDecision != "deny" || len(result.HookSpecificOutput.UpdatedInput) != 0 {
+		t.Fatalf("result = %#v, error = %v", result, err)
+	}
+}
+
+func mustMarshal(t *testing.T, value any) []byte {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
 }
 
 func TestLaterOperationContextMismatchReturnsWrappedDeny(t *testing.T) {
