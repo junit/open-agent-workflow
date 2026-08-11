@@ -561,10 +561,14 @@ Run the Provider-claim scan:
 
 ~~~bash
 rtk rg -n '"requirements"|"verification-loop"' internal/assets/providers/oaw-matt.json
-rtk rg -n 'e2e-runner.*(broad|fresh).*verification|code-reviewer.*(completion|closeout)|delivery-gate.*(completion|closeout)' internal/assets policy README.md README-zh.md docs/en docs/zh
+rtk rg -n 'e2e-runner.*(broad|fresh).*verification|code-reviewer.*(completion|closeout)|delivery-gate.*(completion|closeout)' policy README.md README-zh.md docs/en docs/zh
 ~~~
 
 Expected: no output. General prose about requirements is allowed; the quoted JSON-name scan prevents only fictional Matt Binding IDs.
+Machine-readable Provider ownership is enforced structurally by the focused
+`internal/builtin` and generated-asset tests in Step 1. The second scan is
+deliberately prose-only: applying a relationship regex to minified JSON would
+join unrelated fields on the same physical line and produce false positives.
 
 - [ ] **Step 5: Record fresh evidence and prove no verification commit exists**
 
