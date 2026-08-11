@@ -50,7 +50,7 @@ func TestProjectionFailureRecordsLagWithoutChangingCommittedState(t *testing.T) 
 	result := exchangeTask6(t, engine, start)
 
 	restarted := newTask6Engine(t, stateRoot, t.TempDir(), start, nil)
-	inspected := exchangeTask6(t, restarted, Command{SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandInspect, WorkflowID: result.WorkflowID})
+	inspected := exchangeTask6(t, restarted, Command{SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandInspect, WorkflowID: result.WorkflowID})
 	if inspected.RevisionDigest != result.RevisionDigest || inspected.Digest != result.Digest || len(inspected.Snapshot.ProjectionLag) != 0 {
 		t.Fatalf("projection failure changed committed state: %#v", inspected)
 	}

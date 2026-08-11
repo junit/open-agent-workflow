@@ -36,7 +36,7 @@ func DecodeCommand(raw []byte) (Command, error) {
 		}
 		return Command{}, coordinatorError("WORKFLOW_COMMAND_DECODE_INVALID", "Workflow Command has trailing JSON", err)
 	}
-	if command.SchemaVersion != WorkflowCommandSchemaV1 {
+	if command.SchemaVersion != WorkflowCommandSchemaV2 {
 		return Command{}, coordinatorError("SCHEMA_UNSUPPORTED", "unsupported Workflow Command schema", nil)
 	}
 	command, err := normalizeCommand(command)

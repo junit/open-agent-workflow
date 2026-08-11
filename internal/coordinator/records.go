@@ -11,19 +11,22 @@ import (
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
 const (
-	WorkflowCommandSchemaV1  = "oaw.workflow-command/v1"
-	WorkflowResultSchemaV1   = "oaw.workflow-result/v1"
-	WorkflowSnapshotSchemaV1 = "oaw.workflow-snapshot/v1"
-	WorkflowRevisionSchemaV1 = "oaw.workflow-revision/v1"
+	WorkflowCommandSchemaV2  = "oaw.workflow-command/v2"
+	WorkflowResultSchemaV2   = "oaw.workflow-result/v2"
+	WorkflowSnapshotSchemaV2 = "oaw.workflow-snapshot/v2"
+	WorkflowRevisionSchemaV2 = "oaw.workflow-revision/v2"
 	WorkflowHeadSchemaV1     = "oaw.workflow-head/v1"
-	DispatchPacketSchemaV1   = "oaw.dispatch-packet/v1"
+	DispatchPacketSchemaV2   = "oaw.dispatch-packet/v2"
+	GateAttestationSchemaV1  = "oaw.gate-attestation/v1"
 )
 
 type CommandKind string
@@ -75,11 +78,14 @@ type EvidenceRequirement struct {
 }
 
 type PrepareInput struct {
-	RequestedEffects     []string              `json:"requested_effects"`
-	RequestedResources   []string              `json:"requested_resources"`
-	TerminationCondition string                `json:"termination_condition"`
-	InputReferences      []ArtifactReference   `json:"input_references"`
-	EvidenceRequirements []EvidenceRequirement `json:"evidence_requirements"`
+	RequestedEffects      []string                                 `json:"requested_effects"`
+	RequestedResources    []string                                 `json:"requested_resources"`
+	TerminationCondition  string                                   `json:"termination_condition"`
+	InputReferences       []ArtifactReference                      `json:"input_references"`
+	EvidenceRequirements  []EvidenceRequirement                    `json:"evidence_requirements"`
+	Authorization         *admission.UserAuthorization             `json:"authorization,omitempty"`
+	InvocationAttestation *admission.ExplicitInvocationAttestation `json:"invocation_attestation,omitempty"`
+	GateAttestation       *GateAttestation                         `json:"gate_attestation,omitempty"`
 }
 
 type ReceiptInput struct {
@@ -119,17 +125,39 @@ type ProcessedMessage struct {
 }
 
 type ResourceLease struct {
-	SchemaVersion    string `json:"schema_version"`
-	ID               string `json:"id"`
-	WorkflowID       string `json:"workflow_id"`
-	GrantID          string `json:"grant_id"`
-	BundleID         string `json:"bundle_id"`
-	BundleGeneration uint64 `json:"bundle_generation"`
-	Resource         string `json:"resource"`
-	PhysicalRoot     string `json:"physical_root"`
-	AcquiredRevision uint64 `json:"acquired_revision"`
-	ReleasedRevision uint64 `json:"released_revision,omitempty"`
-	Digest           string `json:"digest"`
+	SchemaVersion    string                `json:"schema_version"`
+	ID               string                `json:"id"`
+	WorkflowID       string                `json:"workflow_id"`
+	GrantID          string                `json:"grant_id"`
+	BundleID         string                `json:"bundle_id"`
+	BundleGeneration uint64                `json:"bundle_generation"`
+	Cursor           execution.GraphCursor `json:"cursor"`
+	Resource         string                `json:"resource"`
+	PhysicalRoot     string                `json:"physical_root"`
+	AcquiredRevision uint64                `json:"acquired_revision"`
+	ReleasedRevision uint64                `json:"released_revision,omitempty"`
+	Digest           string                `json:"digest"`
+}
+
+type GateDecision string
+
+const (
+	GateSatisfied GateDecision = "satisfied"
+	GateRejected  GateDecision = "rejected"
+)
+
+type GateAttestation struct {
+	SchemaVersion    string                   `json:"schema_version"`
+	WorkflowID       string                   `json:"workflow_id"`
+	BundleID         string                   `json:"bundle_id"`
+	BundleGeneration uint64                   `json:"bundle_generation"`
+	BundleDigest     string                   `json:"bundle_digest"`
+	Cursor           execution.GraphCursor    `json:"cursor"`
+	GateID           string                   `json:"gate_id"`
+	Authority        catalog.GateAuthority    `json:"authority"`
+	Decision         GateDecision             `json:"decision"`
+	Evidence         []host.EvidenceReference `json:"evidence"`
+	Digest           string                   `json:"digest"`
 }
 
 type ProjectionLag struct {
@@ -139,44 +167,50 @@ type ProjectionLag struct {
 }
 
 type Snapshot struct {
-	SchemaVersion      string                                `json:"schema_version"`
-	WorkflowID         string                                `json:"workflow_id"`
-	RequestID          string                                `json:"request_id"`
-	DeliverableID      string                                `json:"deliverable_id"`
-	Revision           uint64                                `json:"revision"`
-	Status             Status                                `json:"status"`
-	Classification     classification.ClassificationDecision `json:"classification"`
-	Bundles            []core.LifecycleBundle                `json:"bundles"`
-	ActiveGeneration   uint64                                `json:"active_generation"`
-	ActiveNodeID       string                                `json:"active_node_id"`
-	ActiveTicket       string                                `json:"active_ticket"`
-	ActiveGrant        *admission.CapabilityGrant            `json:"active_grant,omitempty"`
-	GrantHistory       []admission.CapabilityGrant           `json:"grant_history"`
-	Receipts           []host.InvocationReceipt              `json:"receipts"`
-	ResourceLeases     []ResourceLease                       `json:"resource_leases"`
-	LastStableBoundary string                                `json:"last_stable_boundary"`
-	ProcessedMessages  []ProcessedMessage                    `json:"processed_messages"`
-	ProjectionLag      []ProjectionLag                       `json:"projection_lag"`
+	SchemaVersion          string                                    `json:"schema_version"`
+	WorkflowID             string                                    `json:"workflow_id"`
+	RequestID              string                                    `json:"request_id"`
+	DeliverableID          string                                    `json:"deliverable_id"`
+	Revision               uint64                                    `json:"revision"`
+	Status                 Status                                    `json:"status"`
+	Classification         classification.ClassificationDecision     `json:"classification"`
+	Bundles                []core.LifecycleBundle                    `json:"bundles"`
+	ActiveGeneration       uint64                                    `json:"active_generation"`
+	Cursor                 execution.GraphCursor                     `json:"cursor"`
+	ActiveTicket           string                                    `json:"active_ticket"`
+	ActiveGrant            *admission.CapabilityGrant                `json:"active_grant,omitempty"`
+	GrantHistory           []admission.CapabilityGrant               `json:"grant_history"`
+	UserAuthorizations     []admission.UserAuthorization             `json:"user_authorizations"`
+	InvocationAttestations []admission.ExplicitInvocationAttestation `json:"invocation_attestations"`
+	GateAttestations       []GateAttestation                         `json:"gate_attestations"`
+	Receipts               []host.InvocationReceipt                  `json:"receipts"`
+	ResourceLeases         []ResourceLease                           `json:"resource_leases"`
+	LastStableBoundary     string                                    `json:"last_stable_boundary"`
+	ProcessedMessages      []ProcessedMessage                        `json:"processed_messages"`
+	ProjectionLag          []ProjectionLag                           `json:"projection_lag"`
 }
 
 type DispatchPacket struct {
-	SchemaVersion           string                             `json:"schema_version"`
-	ID                      string                             `json:"id"`
-	WorkflowID              string                             `json:"workflow_id"`
-	RequestID               string                             `json:"request_id"`
-	BundleID                string                             `json:"bundle_id"`
-	BundleGeneration        uint64                             `json:"bundle_generation"`
-	BundleDigest            string                             `json:"bundle_digest"`
-	NodeID                  string                             `json:"node_id"`
-	Ticket                  string                             `json:"ticket,omitempty"`
-	Topology                execution.Topology                 `json:"topology"`
-	HostSessionDigest       string                             `json:"host_session_digest"`
-	EnvironmentReportDigest string                             `json:"environment_report_digest"`
-	Grant                   admission.CapabilityGrant          `json:"grant"`
-	InputReferences         []ArtifactReference                `json:"input_references"`
-	EvidenceRequirements    []EvidenceRequirement              `json:"evidence_requirements"`
-	EnvironmentRequirements []execution.EnvironmentRequirement `json:"environment_requirements"`
-	Digest                  string                             `json:"digest"`
+	SchemaVersion           string                                   `json:"schema_version"`
+	ID                      string                                   `json:"id"`
+	WorkflowID              string                                   `json:"workflow_id"`
+	RequestID               string                                   `json:"request_id"`
+	BundleID                string                                   `json:"bundle_id"`
+	BundleGeneration        uint64                                   `json:"bundle_generation"`
+	BundleDigest            string                                   `json:"bundle_digest"`
+	Cursor                  execution.GraphCursor                    `json:"cursor"`
+	TargetKind              admission.GrantTargetKind                `json:"target_kind"`
+	Ticket                  string                                   `json:"ticket,omitempty"`
+	Topology                execution.Topology                       `json:"topology"`
+	HostSessionDigest       string                                   `json:"host_session_digest"`
+	EnvironmentReportDigest string                                   `json:"environment_report_digest"`
+	Grant                   admission.CapabilityGrant                `json:"grant"`
+	Authorization           *admission.UserAuthorization             `json:"authorization,omitempty"`
+	InvocationAttestation   *admission.ExplicitInvocationAttestation `json:"invocation_attestation,omitempty"`
+	InputReferences         []ArtifactReference                      `json:"input_references"`
+	EvidenceRequirements    []EvidenceRequirement                    `json:"evidence_requirements"`
+	EnvironmentRequirements []execution.EnvironmentRequirement       `json:"environment_requirements"`
+	Digest                  string                                   `json:"digest"`
 }
 
 type ResultKind string
@@ -246,6 +280,27 @@ func normalizeCommand(value Command) (Command, error) {
 		sort.Slice(value.Prepare.EvidenceRequirements, func(left, right int) bool {
 			return evidenceRequirementKey(value.Prepare.EvidenceRequirements[left]) < evidenceRequirementKey(value.Prepare.EvidenceRequirements[right])
 		})
+		if value.Prepare.Authorization != nil {
+			authorization, err := admission.NewUserAuthorization(*value.Prepare.Authorization)
+			if err != nil || !reflect.DeepEqual(authorization, *value.Prepare.Authorization) {
+				return Command{}, coordinatorError("WORKFLOW_COMMAND_INVALID", "User Authorization is not a canonical Host record", err)
+			}
+			value.Prepare.Authorization = &authorization
+		}
+		if value.Prepare.InvocationAttestation != nil {
+			attestation, err := admission.NewExplicitInvocationAttestation(*value.Prepare.InvocationAttestation)
+			if err != nil || !reflect.DeepEqual(attestation, *value.Prepare.InvocationAttestation) {
+				return Command{}, coordinatorError("WORKFLOW_COMMAND_INVALID", "Explicit Invocation Attestation is not a canonical Host record", err)
+			}
+			value.Prepare.InvocationAttestation = &attestation
+		}
+		if value.Prepare.GateAttestation != nil {
+			attestation, err := normalizeGateAttestation(*value.Prepare.GateAttestation)
+			if err != nil || !reflect.DeepEqual(attestation, *value.Prepare.GateAttestation) {
+				return Command{}, coordinatorError("WORKFLOW_COMMAND_INVALID", "Gate Attestation is not canonical", err)
+			}
+			value.Prepare.GateAttestation = &attestation
+		}
 	}
 	if value.Receipt != nil {
 		receipt, err := host.NewInvocationReceipt(value.Receipt.Receipt)
@@ -261,7 +316,7 @@ func normalizeCommand(value Command) (Command, error) {
 }
 
 func validateCommand(value Command) error {
-	if value.SchemaVersion != WorkflowCommandSchemaV1 {
+	if value.SchemaVersion != WorkflowCommandSchemaV2 {
 		return coordinatorError("SCHEMA_UNSUPPORTED", "unsupported Workflow Command schema", nil)
 	}
 	if !commandPayloadMatchesKind(value) {
@@ -327,8 +382,11 @@ func validateStartInput(value StartInput) error {
 }
 
 func validatePrepareInput(value PrepareInput) error {
-	if len(value.RequestedEffects) == 0 || len(value.RequestedEffects) > 128 || len(value.RequestedResources) == 0 || len(value.RequestedResources) > 128 ||
-		!validText(value.TerminationCondition, 2048) || len(value.InputReferences) > 128 || len(value.EvidenceRequirements) > 128 {
+	gateOnly := value.GateAttestation != nil
+	if len(value.RequestedEffects) > 128 || len(value.RequestedResources) > 128 ||
+		!gateOnly && (len(value.RequestedEffects) == 0 || len(value.RequestedResources) == 0 || !validText(value.TerminationCondition, 2048)) ||
+		gateOnly && (len(value.RequestedEffects) != 0 || len(value.RequestedResources) != 0 || value.TerminationCondition != "" || len(value.InputReferences) != 0 || len(value.EvidenceRequirements) != 0 || value.Authorization != nil || value.InvocationAttestation != nil) ||
+		len(value.InputReferences) > 128 || len(value.EvidenceRequirements) > 128 {
 		return coordinatorError("WORKFLOW_COMMAND_INVALID", "invalid PREPARE input", nil)
 	}
 	if !validUniqueTextSet(value.RequestedEffects, 128) || !validUniqueTextSet(value.RequestedResources, 512) {
@@ -350,7 +408,7 @@ func validatePrepareInput(value PrepareInput) error {
 }
 
 func validateReceiptInput(value ReceiptInput) error {
-	if value.Receipt.SchemaVersion != host.HostInvocationReceiptSchemaV2 || !validDigest(value.Receipt.Digest) ||
+	if value.Receipt.SchemaVersion != host.HostInvocationReceiptSchemaV3 || !validDigest(value.Receipt.Digest) ||
 		value.Signal != "" && !validText(value.Signal, 512) || value.StableBoundary != "" && !validText(value.StableBoundary, 512) {
 		return coordinatorError("WORKFLOW_COMMAND_INVALID", "invalid RECEIPT input", nil)
 	}
@@ -433,12 +491,8 @@ func commandPayloadCount(value Command) int {
 func normalizeSelection(value *core.Selection) {
 	value.AddOns = append([]string{}, value.AddOns...)
 	sort.Strings(value.AddOns)
-	value.Bindings = append(value.Bindings[:0:0], value.Bindings...)
-	sort.Slice(value.Bindings, func(left, right int) bool {
-		leftValue, rightValue := value.Bindings[left], value.Bindings[right]
-		return leftValue.Selector.ProviderID+"\x00"+leftValue.Selector.CapabilityID+"\x00"+leftValue.PreferredProviderID <
-			rightValue.Selector.ProviderID+"\x00"+rightValue.Selector.CapabilityID+"\x00"+rightValue.PreferredProviderID
-	})
+	value.Alternatives = append([]profile.AlternativeChoice{}, value.Alternatives...)
+	value.Overlays = append([]string{}, value.Overlays...)
 }
 
 func normalizeResult(value Result) (Result, error) {
@@ -515,7 +569,7 @@ func setResultProcessedMessagePin(value *Result, digest string) bool {
 }
 
 func validateResult(value Result) error {
-	if value.SchemaVersion != WorkflowResultSchemaV1 {
+	if value.SchemaVersion != WorkflowResultSchemaV2 {
 		return coordinatorError("SCHEMA_UNSUPPORTED", "unsupported Workflow Result schema", nil)
 	}
 	if len(value.Diagnostics) > 32 {
@@ -556,18 +610,16 @@ func validateResult(value Result) error {
 			!sameCanonicalValue(*value.Snapshot.ActiveGrant, value.Dispatch.Grant) {
 			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "DISPATCH Result active Grant does not match Packet Grant", nil)
 		}
-		bundle, err := activeBundle(*value.Snapshot)
-		if err != nil || value.Dispatch.RequestID != value.Snapshot.RequestID || value.Dispatch.BundleID != bundle.ID ||
-			value.Dispatch.BundleGeneration != bundle.Generation || value.Dispatch.BundleDigest != bundle.Digest ||
-			value.Dispatch.NodeID != value.Snapshot.ActiveNodeID || value.Dispatch.Ticket != value.Snapshot.ActiveTicket ||
-			value.Dispatch.Topology != bundle.Topology || value.Dispatch.HostSessionDigest != bundle.HostSessionDigest || value.Dispatch.EnvironmentReportDigest != bundle.EnvironmentReportDigest ||
-			!sameCanonicalValue(value.Dispatch.EnvironmentRequirements, bundle.EnvironmentRequirements) {
-			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet does not match active Workflow state", err)
+		if value.Dispatch.RequestID != value.Snapshot.RequestID || value.Dispatch.Cursor != value.Snapshot.Cursor ||
+			value.Dispatch.BundleGeneration != value.Snapshot.ActiveGeneration || value.Dispatch.Ticket != value.Snapshot.ActiveTicket {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet does not match active Workflow state", nil)
 		}
-		node, found := graphNode(bundle.Graph, value.Snapshot.ActiveNodeID)
-		if !found || value.Dispatch.Grant.ProviderID != node.ProviderID || value.Dispatch.Grant.ProviderInstanceDigest != node.ProviderInstanceDigest ||
-			value.Dispatch.Grant.CapabilityID != node.CapabilityID || !sameCanonicalValue(value.Dispatch.Grant.Binding, node.Binding) {
-			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet Grant does not match active graph node", nil)
+		bundle, err := activeBundle(*value.Snapshot)
+		if err != nil {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet does not match active Workflow Bundle", err)
+		}
+		if err := validateDispatchBundleClosure(*value.Dispatch, bundle); err != nil {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet does not close over the active Workflow Bundle", err)
 		}
 		if err := validateSnapshot(*value.Snapshot, value.WorkflowID, value.Revision, false); err != nil {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid DISPATCH Result snapshot", err)
@@ -583,9 +635,10 @@ func validResultIdentity(value Result) bool {
 }
 
 func validateDispatchPacket(value DispatchPacket) error {
-	if value.SchemaVersion != DispatchPacketSchemaV1 || !validStableID("dispatch-", value.ID) || !validWorkflowID(value.WorkflowID) ||
+	if value.SchemaVersion != DispatchPacketSchemaV2 || !validStableID("dispatch-", value.ID) || !validWorkflowID(value.WorkflowID) ||
 		!validText(value.RequestID, 512) || !validStableID("bundle-", value.BundleID) || value.BundleGeneration == 0 ||
-		!validDigest(value.BundleDigest) || !validText(value.NodeID, 512) ||
+		!validDigest(value.BundleDigest) || execution.ValidateGraphCursor(value.Cursor) != nil ||
+		(value.TargetKind != admission.GrantProviderBinding && value.TargetKind != admission.GrantHostAction) ||
 		(value.Topology != execution.TopologyCurrent && value.Topology != execution.TopologySubagent) || !validDigest(value.HostSessionDigest) || !validDigest(value.EnvironmentReportDigest) ||
 		!validDigest(value.Digest) {
 		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "invalid Dispatch Packet identity", nil)
@@ -594,9 +647,24 @@ func validateDispatchPacket(value DispatchPacket) error {
 		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet Grant is invalid", err)
 	}
 	if value.Grant.WorkflowID != value.WorkflowID || value.Grant.RequestID != value.RequestID || value.Grant.BundleID != value.BundleID || value.Grant.BundleGeneration != value.BundleGeneration ||
-		value.Grant.BundleDigest != value.BundleDigest || value.Grant.NodeID != value.NodeID || value.Grant.Topology != value.Topology ||
+		value.Grant.BundleDigest != value.BundleDigest || value.Grant.Cursor != value.Cursor || value.Grant.Target.TargetKind != value.TargetKind || value.Grant.Topology != value.Topology ||
 		value.Grant.HostSessionDigest != value.HostSessionDigest {
 		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet identity does not match Grant", nil)
+	}
+	if value.Authorization != nil {
+		normalized, err := admission.NewUserAuthorization(*value.Authorization)
+		if err != nil || !reflect.DeepEqual(normalized, *value.Authorization) || normalized.Digest != value.Grant.AuthorizationDigest {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet Authorization does not match Grant", err)
+		}
+	}
+	if value.InvocationAttestation != nil {
+		normalized, err := admission.NewExplicitInvocationAttestation(*value.InvocationAttestation)
+		if err != nil || !reflect.DeepEqual(normalized, *value.InvocationAttestation) || normalized.Digest != value.Grant.InvocationAttestationDigest {
+			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet Invocation Attestation does not match Grant", err)
+		}
+	}
+	if value.Grant.AuthorizationDigest != "" && value.Authorization == nil || value.Grant.InvocationAttestationDigest != "" && value.InvocationAttestation == nil {
+		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "Dispatch Packet omits required Host authority", nil)
 	}
 	if value.Ticket != "" && !validText(value.Ticket, 512) {
 		return coordinatorError("WORKFLOW_DISPATCH_INVALID", "invalid Dispatch Packet ticket", nil)
@@ -632,25 +700,6 @@ func validateDispatchPacket(value DispatchPacket) error {
 	return nil
 }
 
-func validStableID(prefix, value string) bool {
-	if len(value) != len(prefix)+32 || !strings.HasPrefix(value, prefix) {
-		return false
-	}
-	return validHex(value[len(prefix):])
-}
-
-func validHex(value string) bool {
-	if len(value) == 0 {
-		return false
-	}
-	for _, character := range value {
-		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
-			return false
-		}
-	}
-	return true
-}
-
 func cloneCommand(value Command) Command {
 	if value.Start != nil {
 		start := *value.Start
@@ -662,7 +711,8 @@ func cloneCommand(value Command) Command {
 			start.Proposal.CapabilitySelector = &selector
 		}
 		start.Selection.AddOns = append([]string{}, start.Selection.AddOns...)
-		start.Selection.Bindings = append(start.Selection.Bindings[:0:0], start.Selection.Bindings...)
+		start.Selection.Alternatives = append([]profile.AlternativeChoice{}, start.Selection.Alternatives...)
+		start.Selection.Overlays = append([]string{}, start.Selection.Overlays...)
 		start.HostSession = host.CloneSessionSnapshot(start.HostSession)
 		start.Environment = host.CloneEnvironmentReport(start.Environment)
 		value.Start = &start
@@ -673,6 +723,18 @@ func cloneCommand(value Command) Command {
 		prepare.RequestedResources = append([]string{}, prepare.RequestedResources...)
 		prepare.InputReferences = append([]ArtifactReference{}, prepare.InputReferences...)
 		prepare.EvidenceRequirements = append([]EvidenceRequirement{}, prepare.EvidenceRequirements...)
+		if prepare.Authorization != nil {
+			authorization := admission.CloneUserAuthorization(*prepare.Authorization)
+			prepare.Authorization = &authorization
+		}
+		if prepare.InvocationAttestation != nil {
+			attestation := admission.CloneExplicitInvocationAttestation(*prepare.InvocationAttestation)
+			prepare.InvocationAttestation = &attestation
+		}
+		if prepare.GateAttestation != nil {
+			attestation := cloneGateAttestation(*prepare.GateAttestation)
+			prepare.GateAttestation = &attestation
+		}
 		value.Prepare = &prepare
 	}
 	if value.Receipt != nil {
@@ -683,7 +745,8 @@ func cloneCommand(value Command) Command {
 	if value.Switch != nil {
 		switchInput := *value.Switch
 		switchInput.Selection.AddOns = append([]string{}, switchInput.Selection.AddOns...)
-		switchInput.Selection.Bindings = append(switchInput.Selection.Bindings[:0:0], switchInput.Selection.Bindings...)
+		switchInput.Selection.Alternatives = append([]profile.AlternativeChoice{}, switchInput.Selection.Alternatives...)
+		switchInput.Selection.Overlays = append([]string{}, switchInput.Selection.Overlays...)
 		switchInput.HostSession = host.CloneSessionSnapshot(switchInput.HostSession)
 		switchInput.Environment = host.CloneEnvironmentReport(switchInput.Environment)
 		value.Switch = &switchInput

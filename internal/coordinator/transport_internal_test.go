@@ -10,10 +10,8 @@ import (
 func TestExchangeJSONCommitsCanonicalWorkflowResult(t *testing.T) {
 	start := startTestCommand(t, "transport-start")
 	stateRoot := t.TempDir()
-	engine, err := NewEngine(Options{
-		StateRoot: stateRoot,
-		Core:      &startTestCore{t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(start.IdempotencyKey)},
-	})
+	compiler := &startTestCore{t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(start.IdempotencyKey)}
+	engine, err := NewEngine(startTestOptions(t, stateRoot, compiler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +54,8 @@ func TestCoordinatorErrorUnwrapsCause(t *testing.T) {
 func TestExchangeJSONReportsReaderAndWriterFailures(t *testing.T) {
 	start := startTestCommand(t, "transport-io-failure")
 	stateRoot := t.TempDir()
-	engine, err := NewEngine(Options{
-		StateRoot: stateRoot,
-		Core:      &startTestCore{t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(start.IdempotencyKey)},
-	})
+	compiler := &startTestCore{t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(start.IdempotencyKey)}
+	engine, err := NewEngine(startTestOptions(t, stateRoot, compiler))
 	if err != nil {
 		t.Fatal(err)
 	}

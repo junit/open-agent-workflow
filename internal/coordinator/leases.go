@@ -7,6 +7,7 @@ import (
 	"github.com/gofrs/flock"
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 )
 
 const resourceLeaseProjectWorktree = "project-worktree"
@@ -71,7 +72,7 @@ func (engine *Engine) prepareProjectLease(snapshot Snapshot, grant admission.Cap
 	}
 	lease := ResourceLease{
 		SchemaVersion: "oaw.resource-lease/v1", WorkflowID: snapshot.WorkflowID, GrantID: grant.ID,
-		BundleID: grant.BundleID, BundleGeneration: grant.BundleGeneration, Resource: resourceLeaseProjectWorktree,
+		BundleID: grant.BundleID, BundleGeneration: grant.BundleGeneration, Cursor: grant.Cursor, Resource: resourceLeaseProjectWorktree,
 		PhysicalRoot: physicalRoot, AcquiredRevision: revision,
 	}
 	seed := lease
@@ -154,12 +155,12 @@ func validateResourceLeases(snapshot Snapshot, revision uint64) error {
 		}
 		seen[lease.ID] = struct{}{}
 		grant, found := grants[lease.GrantID]
-		if !found || grant.BundleID != lease.BundleID || grant.BundleGeneration != lease.BundleGeneration || !grantRequiresResourceLease(grant.Effects) {
+		if !found || grant.BundleID != lease.BundleID || grant.BundleGeneration != lease.BundleGeneration || grant.Cursor != lease.Cursor || !grantRequiresResourceLease(grant.Effects) {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Resource Lease is not bound to a write Grant", nil)
 		}
 		if lease.ReleasedRevision == 0 {
 			activeCount++
-			if snapshot.ActiveGrant == nil || snapshot.ActiveGrant.ID != lease.GrantID {
+			if snapshot.ActiveGrant == nil || snapshot.ActiveGrant.ID != lease.GrantID || snapshot.ActiveGrant.Cursor != lease.Cursor {
 				return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Resource Lease is not bound to the active Grant", nil)
 			}
 		}
@@ -176,7 +177,7 @@ func validateResourceLeases(snapshot Snapshot, revision uint64) error {
 func validateResourceLease(value ResourceLease, workflowID string, revision uint64) error {
 	if value.SchemaVersion != "oaw.resource-lease/v1" || !validStableID("lease-", value.ID) || value.WorkflowID != workflowID ||
 		!validStableID("grant-", value.GrantID) || !validText(value.BundleID, 512) || value.BundleGeneration == 0 ||
-		value.Resource != resourceLeaseProjectWorktree || value.AcquiredRevision == 0 || value.AcquiredRevision > revision ||
+		execution.ValidateGraphCursor(value.Cursor) != nil || value.Cursor.Kind == execution.CursorGate || value.Cursor.Kind == execution.CursorTerminal || value.Resource != resourceLeaseProjectWorktree || value.AcquiredRevision == 0 || value.AcquiredRevision > revision ||
 		value.ReleasedRevision != 0 && (value.ReleasedRevision <= value.AcquiredRevision || value.ReleasedRevision > revision) || !validDigest(value.Digest) {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Resource Lease identity", nil)
 	}

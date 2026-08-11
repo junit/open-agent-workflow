@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v2/workflow-result.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "kind", "workflow_id", "revision", "revision_digest", "diagnostics", "replayed", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.workflow-result/v2"},
+    "kind": {"enum": ["STATE", "DISPATCH", "REJECTED"]},
+    "workflow_id": {"$ref": "#/$defs/optional_text"},
+    "revision": {"type": "integer", "minimum": 0},
+    "revision_digest": {"$ref": "#/$defs/optional_digest"},
+    "snapshot": {"$ref": "https://open-agent-workflow.dev/schemas/v2/workflow-snapshot.schema.json"},
+    "dispatch": {"$ref": "https://open-agent-workflow.dev/schemas/v2/dispatch-packet.schema.json"},
+    "diagnostics": {"type": "array", "maxItems": 32, "items": {"$ref": "#/$defs/diagnostic"}},
+    "replayed": {"type": "boolean"},
+    "digest": {"$ref": "#/$defs/digest"}
+  },
+  "oneOf": [
+    {"properties": {"kind": {"const": "STATE"}}, "required": ["snapshot"], "not": {"required": ["dispatch"]}},
+    {"properties": {"kind": {"const": "DISPATCH"}}, "required": ["snapshot", "dispatch"]},
+    {"properties": {"kind": {"const": "REJECTED"}, "diagnostics": {"minItems": 1}}, "required": ["diagnostics"], "oneOf": [{"properties": {"workflow_id": {"const": ""}, "revision": {"const": 0}, "revision_digest": {"const": ""}}}, {"properties": {"workflow_id": {"$ref": "#/$defs/text"}, "revision": {"type": "integer", "minimum": 1}, "revision_digest": {"$ref": "#/$defs/digest"}}}], "not": {"anyOf": [{"required": ["snapshot"]}, {"required": ["dispatch"]}]}}
+  ],
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^\\S(?:.*\\S)?$"},
+    "optional_text": {"type": "string", "maxLength": 512, "pattern": "^(?:|\\S(?:.*\\S)?)$"},
+    "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "optional_digest": {"type": "string", "pattern": "^(?:|[0-9a-f]{64})$"},
+    "diagnostic": {"type": "object", "additionalProperties": false, "required": ["code", "detail"], "properties": {"code": {"$ref": "#/$defs/text"}, "detail": {"$ref": "#/$defs/text"}}}
+  }
+}

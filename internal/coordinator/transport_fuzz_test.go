@@ -19,7 +19,7 @@ func FuzzDecodeCommandFailsClosed(f *testing.F) {
 		if (firstErr == nil) != (secondErr == nil) || firstErr != nil && firstErr.Error() != secondErr.Error() {
 			t.Fatalf("DecodeCommand() is nondeterministic: %#v/%v %#v/%v", first, firstErr, second, secondErr)
 		}
-		if firstErr == nil && first.SchemaVersion != coordinator.WorkflowCommandSchemaV1 {
+		if firstErr == nil && first.SchemaVersion != coordinator.WorkflowCommandSchemaV2 {
 			t.Fatalf("accepted unexpected schema %q", first.SchemaVersion)
 		}
 	})

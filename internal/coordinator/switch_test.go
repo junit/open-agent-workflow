@@ -23,17 +23,17 @@ func TestSwitchRecompilesNextBundleGenerationInsideWorkflowLock(t *testing.T) {
 	started := exchangeReceipt(t, engine, receiptTestCommand(t, prepared, "switch-started", host.ReceiptStarted, "", ""))
 	completed := receiptTestCommand(t, prepared, "switch-completed", host.ReceiptCompleted, "succeeded", "")
 	completed.ExpectedRevision = started.Revision
-	completed.Receipt.StableBoundary = "completion"
+	completed.Receipt.StableBoundary = "problem-framing-complete"
 	ready := exchangeReceipt(t, engine, completed)
 
 	command := Command{
-		SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandSwitch, MessageID: "message-switch", IdempotencyKey: "switch-command",
+		SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandSwitch, MessageID: "message-switch", IdempotencyKey: "switch-command",
 		WorkflowID: ready.WorkflowID, ExpectedRevision: ready.Revision,
-		Switch: &SwitchInput{Boundary: "completion", Selection: start.Start.Selection, HostSession: start.Start.HostSession, Environment: start.Start.Environment},
+		Switch: &SwitchInput{Boundary: "problem-framing-complete", Selection: start.Start.Selection, HostSession: start.Start.HostSession, Environment: start.Start.Environment},
 	}
 	command.Switch.Selection.Profile = "MATT-FULL"
 	switched := exchangeTask6(t, engine, command)
-	if switched.Snapshot.ActiveGeneration != 2 || len(switched.Snapshot.Bundles) != 2 || switched.Snapshot.ActiveNodeID != switched.Snapshot.Bundles[1].Graph.Entry ||
+	if switched.Snapshot.ActiveGeneration != 2 || len(switched.Snapshot.Bundles) != 2 || switched.Snapshot.Cursor != firstStartTestCursor(t, switched.Snapshot.Bundles[1].Graph) ||
 		switched.Snapshot.LastStableBoundary != "" || switched.Snapshot.ActiveGrant != nil || compiler.compileCalls != 2 || !compiler.compileInsideLock ||
 		switched.Snapshot.Bundles[1].Selection.Profile != "MATT-FULL" {
 		t.Fatalf("SWITCH result = %#v, compiler = %#v", switched, compiler)
@@ -56,7 +56,7 @@ func TestSwitchRejectsUncommittedBoundaryAndActiveInvocation(t *testing.T) {
 	engine := newTask6Engine(t, stateRoot, t.TempDir(), start, nil)
 	ready := exchangeTask6(t, engine, start)
 	command := Command{
-		SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandSwitch, MessageID: "message-switch-invalid", IdempotencyKey: "switch-invalid",
+		SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandSwitch, MessageID: "message-switch-invalid", IdempotencyKey: "switch-invalid",
 		WorkflowID: ready.WorkflowID, ExpectedRevision: ready.Revision,
 		Switch: &SwitchInput{Boundary: "discovery", Selection: start.Start.Selection, HostSession: start.Start.HostSession, Environment: start.Start.Environment},
 	}

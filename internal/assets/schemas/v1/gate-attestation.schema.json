@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://open-agent-workflow.dev/schemas/v1/gate-attestation.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "workflow_id", "bundle_id", "bundle_generation", "bundle_digest", "cursor", "gate_id", "authority", "decision", "evidence", "digest"],
+  "properties": {
+    "schema_version": {"const": "oaw.gate-attestation/v1"}, "workflow_id": {"type": "string", "pattern": "^workflow-[0-9a-f]{32}$"}, "bundle_id": {"type": "string", "pattern": "^bundle-[0-9a-f]{32}$"}, "bundle_generation": {"type": "integer", "minimum": 1}, "bundle_digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "cursor": {"$ref": "#/$defs/cursor"}, "gate_id": {"$ref": "#/$defs/text"}, "authority": {"enum": ["oaw-core", "host", "user"]}, "decision": {"enum": ["satisfied", "rejected"]}, "evidence": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/evidence"}}, "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  },
+  "$defs": {
+    "text": {"type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^\\S(?:.*\\S)?$"},
+    "cursor": {"type": "object", "additionalProperties": false, "required": ["slot_id", "kind", "unit_id", "ordinal"], "properties": {"slot_id": {"$ref": "#/$defs/text"}, "kind": {"const": "gate"}, "unit_id": {"$ref": "#/$defs/text"}, "ordinal": {"type": "integer", "minimum": 1}}},
+    "evidence": {"type": "object", "additionalProperties": false, "required": ["kind", "reference", "digest"], "properties": {"kind": {"$ref": "#/$defs/text"}, "reference": {"type": "string", "pattern": "^evidence://.+", "maxLength": 2048}, "digest": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}}
+  }
+}

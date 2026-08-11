@@ -83,7 +83,7 @@ func validateInvocationReceipt(value InvocationReceipt) error {
 	}
 	for index, reference := range value.Evidence {
 		if !validHostText(reference.Kind, 128) || !validHostText(reference.Reference, 2048) || !digestPattern.MatchString(reference.Digest) ||
-			index > 0 && evidenceReferenceKey(value.Evidence[index-1]) == evidenceReferenceKey(reference) {
+			index > 0 && evidenceReferenceIdentityKey(value.Evidence[index-1]) == evidenceReferenceIdentityKey(reference) {
 			return hostError("HOST_INVOCATION_RECEIPT_INVALID", "invalid or duplicate evidence reference", nil)
 		}
 	}
@@ -117,4 +117,8 @@ func outputIdentityKey(value OutputReference) string {
 
 func evidenceReferenceKey(value EvidenceReference) string {
 	return strings.Join([]string{value.Kind, value.Reference, value.Digest}, "\x00")
+}
+
+func evidenceReferenceIdentityKey(value EvidenceReference) string {
+	return value.Kind + "\x00" + value.Reference
 }

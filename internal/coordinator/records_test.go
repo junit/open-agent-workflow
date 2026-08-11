@@ -5,18 +5,26 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
-func TestDecodeCommandAcceptsClosedCommandKinds(t *testing.T) {
+const testWorkflowID = "workflow-0123456789abcdef0123456789abcdef"
+
+const testBundleID = "bundle-0123456789abcdef0123456789abcdef"
+
+func TestRecordV2DecodeCommandAcceptsClosedCommandKinds(t *testing.T) {
 	session, environment := validHostFacts(t)
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
-		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptStarted, WorkflowID: testWorkflowID,
+		BundleID: testBundleID, BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), Cursor: testBindingCursor(),
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
 		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("d", 64),
 	})
@@ -28,11 +36,11 @@ func TestDecodeCommandAcceptsClosedCommandKinds(t *testing.T) {
 		command coordinator.Command
 	}{
 		{name: "start", command: validStartCommand(t)},
-		{name: "inspect", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandInspect, WorkflowID: "workflow-1"}},
-		{name: "prepare", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandPrepare, MessageID: "message-1", IdempotencyKey: "prepare-1", WorkflowID: "workflow-1", ExpectedRevision: 1, Prepare: &coordinator.PrepareInput{RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"}, TerminationCondition: "complete", InputReferences: []coordinator.ArtifactReference{}, EvidenceRequirements: []coordinator.EvidenceRequirement{}}}},
-		{name: "receipt", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt, MessageID: "message-2", IdempotencyKey: "receipt-1", WorkflowID: "workflow-1", ExpectedRevision: 2, Receipt: &coordinator.ReceiptInput{Receipt: receipt}}},
-		{name: "switch", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandSwitch, MessageID: "message-3", IdempotencyKey: "switch-1", WorkflowID: "workflow-1", ExpectedRevision: 3, Switch: &coordinator.SwitchInput{Boundary: "spec-complete", Selection: validSelection(), HostSession: session, Environment: environment}}},
-		{name: "cancel", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandCancel, MessageID: "message-4", IdempotencyKey: "cancel-1", WorkflowID: "workflow-1", ExpectedRevision: 4, Cancel: &coordinator.CancelInput{Reason: "user-requested", InvocationTerminal: true}}},
+		{name: "inspect", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandInspect, WorkflowID: testWorkflowID}},
+		{name: "prepare", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare, MessageID: "message-1", IdempotencyKey: "prepare-1", WorkflowID: testWorkflowID, ExpectedRevision: 1, Prepare: &coordinator.PrepareInput{RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project"}, TerminationCondition: "complete", InputReferences: []coordinator.ArtifactReference{}, EvidenceRequirements: []coordinator.EvidenceRequirement{}}}},
+		{name: "receipt", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt, MessageID: "message-2", IdempotencyKey: "receipt-1", WorkflowID: testWorkflowID, ExpectedRevision: 2, Receipt: &coordinator.ReceiptInput{Receipt: receipt}}},
+		{name: "switch", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandSwitch, MessageID: "message-3", IdempotencyKey: "switch-1", WorkflowID: testWorkflowID, ExpectedRevision: 3, Switch: &coordinator.SwitchInput{Boundary: "spec-complete", Selection: validSelection(), HostSession: session, Environment: environment}}},
+		{name: "cancel", command: coordinator.Command{SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandCancel, MessageID: "message-4", IdempotencyKey: "cancel-1", WorkflowID: testWorkflowID, ExpectedRevision: 4, Cancel: &coordinator.CancelInput{Reason: "user-requested", InvocationTerminal: true}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			raw := mustMarshal(t, test.command)
@@ -40,17 +48,65 @@ func TestDecodeCommandAcceptsClosedCommandKinds(t *testing.T) {
 			if err != nil {
 				t.Fatalf("DecodeCommand() error = %v", err)
 			}
-			if command.SchemaVersion != coordinator.WorkflowCommandSchemaV1 || command.Kind == "" {
+			if command.SchemaVersion != coordinator.WorkflowCommandSchemaV2 || command.Kind == "" {
 				t.Fatalf("DecodeCommand() = %#v", command)
 			}
 		})
 	}
 }
 
+func TestRecordV2LocksCoordinatorSchemaVersions(t *testing.T) {
+	want := map[string]string{
+		"command":          "oaw.workflow-command/v2",
+		"result":           "oaw.workflow-result/v2",
+		"snapshot":         "oaw.workflow-snapshot/v2",
+		"revision":         "oaw.workflow-revision/v2",
+		"head":             "oaw.workflow-head/v1",
+		"dispatch":         "oaw.dispatch-packet/v2",
+		"gate-attestation": "oaw.gate-attestation/v1",
+	}
+	got := map[string]string{
+		"command":          coordinator.WorkflowCommandSchemaV2,
+		"result":           coordinator.WorkflowResultSchemaV2,
+		"snapshot":         coordinator.WorkflowSnapshotSchemaV2,
+		"revision":         coordinator.WorkflowRevisionSchemaV2,
+		"head":             coordinator.WorkflowHeadSchemaV1,
+		"dispatch":         coordinator.DispatchPacketSchemaV2,
+		"gate-attestation": coordinator.GateAttestationSchemaV1,
+	}
+	for key, expected := range want {
+		if got[key] != expected {
+			t.Fatalf("%s schema = %q, want %q", key, got[key], expected)
+		}
+	}
+}
+
+func TestAuthorizationHistoryStartsClosedAndAppendOnly(t *testing.T) {
+	snapshot := coordinator.Snapshot{
+		SchemaVersion:          coordinator.WorkflowSnapshotSchemaV2,
+		UserAuthorizations:     []admission.UserAuthorization{},
+		InvocationAttestations: []admission.ExplicitInvocationAttestation{},
+		GateAttestations:       []coordinator.GateAttestation{},
+	}
+	if snapshot.UserAuthorizations == nil || snapshot.InvocationAttestations == nil || snapshot.GateAttestations == nil {
+		t.Fatalf("authority histories are not closed empty arrays: %#v", snapshot)
+	}
+}
+
+func TestGateAttestationRecordIsDedicatedNonExecutionAuthority(t *testing.T) {
+	value := coordinator.GateAttestation{SchemaVersion: coordinator.GateAttestationSchemaV1}
+	raw := string(mustMarshal(t, value))
+	for _, forbidden := range []string{"grant", "provider_binding", "host_action", "authorization", "invocation_attestation"} {
+		if strings.Contains(raw, forbidden) {
+			t.Fatalf("Gate Attestation leaked execution authority field %q: %s", forbidden, raw)
+		}
+	}
+}
+
 func TestDecodeCommandRejectsInvalidUnionAndTransportInput(t *testing.T) {
 	valid := string(mustMarshal(t, validStartCommand(t)))
 	wrongPayload := coordinator.Command{
-		SchemaVersion:  coordinator.WorkflowCommandSchemaV1,
+		SchemaVersion:  coordinator.WorkflowCommandSchemaV2,
 		Kind:           coordinator.CommandStart,
 		MessageID:      "message-start",
 		IdempotencyKey: "start-1",
@@ -83,15 +139,19 @@ func TestDecodeCommandRejectsInvalidUnionAndTransportInput(t *testing.T) {
 }
 
 func TestWorkflowRecordsRejectCorruptContentDigests(t *testing.T) {
-	valid := string(mustMarshal(t, validStartCommand(t)))
+	command := validStartCommand(t)
+	valid := string(mustMarshal(t, command))
 	for _, test := range []struct {
 		name string
 		raw  string
 	}{
 		{name: "invalid input digest", raw: strings.Replace(valid, `"input_digest":"`+strings.Repeat("a", 64)+`"`, `"input_digest":"bad"`, 1)},
-		{name: "forged Host session fact", raw: strings.Replace(valid, `"provider_inventory_digest":"`+strings.Repeat("a", 64)+`"`, `"provider_inventory_digest":"`+strings.Repeat("b", 64)+`"`, 1)},
+		{name: "forged Host session fact", raw: strings.Replace(valid, `"provider_inventory_digest":"`+command.Start.HostSession.ProviderInventoryDigest+`"`, `"provider_inventory_digest":"`+strings.Repeat("b", 64)+`"`, 1)},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			if test.raw == valid {
+				t.Fatal("digest mutation did not change the command")
+			}
 			if _, err := coordinator.DecodeCommand([]byte(test.raw)); err == nil {
 				t.Fatal("DecodeCommand() accepted a forged digest")
 			}
@@ -102,8 +162,8 @@ func TestWorkflowRecordsRejectCorruptContentDigests(t *testing.T) {
 func TestReceiptRejectsSecretBearingOrUnknownFields(t *testing.T) {
 	session, environment := validHostFacts(t)
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
-		SchemaVersion: host.HostInvocationReceiptSchemaV2, Kind: host.ReceiptStarted,
-		WorkflowID: "workflow-1", BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), NodeID: "implementation",
+		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: host.ReceiptStarted,
+		WorkflowID: testWorkflowID, BundleID: testBundleID, BundleGeneration: 1, BundleDigest: strings.Repeat("a", 64), Cursor: testBindingCursor(),
 		Topology: execution.TopologyCurrent, HostSessionDigest: session.Digest, ContextFreshness: host.ContextShared,
 		EnvironmentReportDigest: environment.Digest, DispatchDigest: strings.Repeat("d", 64),
 	})
@@ -111,8 +171,8 @@ func TestReceiptRejectsSecretBearingOrUnknownFields(t *testing.T) {
 		t.Fatal(err)
 	}
 	command := coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandReceipt,
-		MessageID: "message-receipt", IdempotencyKey: "receipt-1", WorkflowID: "workflow-1", ExpectedRevision: 2,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
+		MessageID: "message-receipt", IdempotencyKey: "receipt-1", WorkflowID: testWorkflowID, ExpectedRevision: 2,
 		Receipt: &coordinator.ReceiptInput{Receipt: receipt},
 	}
 	valid := string(mustMarshal(t, command))
@@ -144,7 +204,7 @@ func TestDecodeCommandRejectsRuntimeSchemaExplicitly(t *testing.T) {
 
 func TestEncodeResultProducesCanonicalClosedUnion(t *testing.T) {
 	encoded, err := coordinator.EncodeResult(coordinator.Result{
-		SchemaVersion: coordinator.WorkflowResultSchemaV1,
+		SchemaVersion: coordinator.WorkflowResultSchemaV2,
 		Kind:          coordinator.ResultRejected,
 		Diagnostics:   []coordinator.Diagnostic{{Code: "WORKFLOW_DENIED", Detail: "selection required"}},
 	})
@@ -155,11 +215,11 @@ func TestEncodeResultProducesCanonicalClosedUnion(t *testing.T) {
 	if err := json.Unmarshal(encoded, &decoded); err != nil {
 		t.Fatal(err)
 	}
-	if decoded["schema_version"] != coordinator.WorkflowResultSchemaV1 || decoded["kind"] != "REJECTED" || len(encoded) == 0 {
+	if decoded["schema_version"] != coordinator.WorkflowResultSchemaV2 || decoded["kind"] != "REJECTED" || len(encoded) == 0 {
 		t.Fatalf("encoded Result = %s", encoded)
 	}
 	if _, err := coordinator.EncodeResult(coordinator.Result{
-		SchemaVersion: coordinator.WorkflowResultSchemaV1,
+		SchemaVersion: coordinator.WorkflowResultSchemaV2,
 		Kind:          coordinator.ResultRejected,
 		Diagnostics:   []coordinator.Diagnostic{{Code: "WORKFLOW_DENIED", Detail: "selection required"}},
 		Digest:        strings.Repeat("0", 64),
@@ -172,7 +232,7 @@ func validStartCommand(t testing.TB) coordinator.Command {
 	t.Helper()
 	session, environment := validHostFacts(t)
 	return coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV1, Kind: coordinator.CommandStart,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
 		MessageID: "message-start", IdempotencyKey: "start-1",
 		Start: &coordinator.StartInput{
 			RequestID: "request-1", DeliverableID: "deliverable-1", InputDigest: strings.Repeat("a", 64), ActiveTicket: "ticket-1",
@@ -183,20 +243,26 @@ func validStartCommand(t testing.TB) coordinator.Command {
 }
 
 func validSelection() core.Selection {
+	graphSelection := profile.Selection{Profile: "SP-FULL", RecipeID: "test/delivery", RecipeDigest: strings.Repeat("c", 64), Topology: execution.TopologyCurrent, AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{}}
+	digest, _, _ := canonicaljson.Digest(graphSelection)
 	return core.Selection{
-		Profile: "SP-FULL", ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
-		TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Bindings: nil,
+		Profile: "SP-FULL", RecipeID: graphSelection.RecipeID, RecipeDigest: graphSelection.RecipeDigest, ProfileSource: core.SelectionUser, Topology: execution.TopologyCurrent,
+		TopologySource: core.SelectionHostOnlyOption, AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{}, GraphSelectionDigest: digest,
 	}
 }
 
 func validHostFacts(t testing.TB) (host.SessionSnapshot, host.EnvironmentReport) {
 	t.Helper()
 	manifest, err := host.NewManifest(host.Manifest{
-		SchemaVersion: host.HostManifestSchemaV2, ManifestVersion: "2.0.0", HostID: "codex",
-		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []string{"skill"},
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "3.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
-		Features:            []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
+		Features:            []host.Feature{host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory}, DelegationFeatures: []host.FeatureID{}, HostActions: []host.HostActionContract{},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	inventory, err := host.BuildBindingInventoryV3("codex", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,14 +274,18 @@ func validHostFacts(t testing.TB) (host.SessionSnapshot, host.EnvironmentReport)
 		t.Fatal(err)
 	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
-		SchemaVersion: host.HostSessionSchemaV2, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "2.0.0",
-		SessionID: "session-1", SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
-		ProviderInventoryDigest: strings.Repeat("a", 64), EnvironmentReportDigest: environment.Digest,
+		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: "acme/codex-host", IntegrationVersion: "3.0.0",
+		SessionID: "session-1", ManifestDigest: manifest.Digest, SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		ProviderInventoryDigest: inventory.Digest, FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{}, EnvironmentReportDigest: environment.Digest,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	return session, environment
+}
+
+func testBindingCursor() execution.GraphCursor {
+	return execution.GraphCursor{SlotID: "implementation", Kind: execution.CursorBinding, UnitID: "implementation-main", Ordinal: 1}
 }
 
 func mustMarshal(t testing.TB, value any) []byte {

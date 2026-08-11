@@ -5,12 +5,16 @@ import (
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
 func (engine *Engine) switchWorkflow(command Command) (Result, error) {
 	if command.Switch == nil {
 		return Result{}, coordinatorError("WORKFLOW_COMMAND_INVALID", "SWITCH input is required", nil)
+	}
+	trustedHost := engine.options.Host.Record()
+	if command.Switch.HostSession.Digest != trustedHost.SessionDigest || command.Switch.Environment.Digest != trustedHost.EnvironmentDigest {
+		return Result{}, coordinatorError("WORKFLOW_HOST_EVIDENCE_MISMATCH", "SWITCH Host session or environment does not match trusted Coordinator Host evidence", nil)
 	}
 	messageDigest, err := switchMessageDigest(*command.Switch)
 	if err != nil {
@@ -58,7 +62,11 @@ func (engine *Engine) switchWorkflow(command Command) (Result, error) {
 		snapshot.Status = StatusReady
 		snapshot.Bundles = append(snapshot.Bundles, nextBundle)
 		snapshot.ActiveGeneration = nextBundle.Generation
-		snapshot.ActiveNodeID = nextBundle.Graph.Entry
+		cursor, cursorErr := profile.FirstActionableCursor(nextBundle.Graph)
+		if cursorErr != nil {
+			return coordinatorError("WORKFLOW_SWITCH_INVALID", "new Bundle has no actionable cursor", cursorErr)
+		}
+		snapshot.Cursor = cursor
 		snapshot.ActiveGrant = nil
 		snapshot.LastStableBoundary = ""
 		if releaseErr := releaseResourceLeases(&snapshot, nextRevision); releaseErr != nil {
@@ -71,10 +79,10 @@ func (engine *Engine) switchWorkflow(command Command) (Result, error) {
 			return snapshot.ProcessedMessages[left].IdempotencyKey < snapshot.ProcessedMessages[right].IdempotencyKey
 		})
 		candidate := revisionRecord{
-			SchemaVersion: WorkflowRevisionSchemaV1, WorkflowID: command.WorkflowID, Revision: nextRevision,
+			SchemaVersion: WorkflowRevisionSchemaV2, WorkflowID: command.WorkflowID, Revision: nextRevision,
 			PredecessorDigest: current.Digest, MessageID: command.MessageID, IdempotencyKey: command.IdempotencyKey,
 			MessageDigest: messageDigest, Event: "WORKFLOW_BUNDLE_SWITCHED", Snapshot: snapshot,
-			Result: Result{SchemaVersion: WorkflowResultSchemaV1, Kind: ResultState, WorkflowID: command.WorkflowID, Revision: nextRevision, Diagnostics: []Diagnostic{}},
+			Result: Result{SchemaVersion: WorkflowResultSchemaV2, Kind: ResultState, WorkflowID: command.WorkflowID, Revision: nextRevision, Diagnostics: []Diagnostic{}},
 		}
 		committed, commitErr := engine.journal.commit(candidate)
 		if commitErr != nil {
@@ -93,11 +101,8 @@ func compilationRequestFromSwitch(options Options, snapshot Snapshot, bundle cor
 	selection := input.Selection
 	return core.CompilationRequest{
 		DeliverableID: snapshot.DeliverableID, InputDigest: bundle.InputDigest, Generation: snapshot.ActiveGeneration + 1,
-		Classification: snapshot.Classification, Configuration: options.Configuration, Resolutions: options.Resolutions, Registry: options.Registry,
-		HostID: input.HostSession.HostID, HostSessionDigest: input.HostSession.Digest, HostEnvironmentReportDigest: input.Environment.Digest,
-		HostProviderInventoryDigest: input.HostSession.ProviderInventoryDigest,
-		HostTopologies:              append([]execution.Topology{}, input.HostSession.SupportedTopologies...),
-		EnvironmentObservations:     append([]execution.EnvironmentObservation{}, input.Environment.Observations...), Selection: &selection,
+		Classification: snapshot.Classification, Configuration: options.Configuration, ResolutionDigest: options.Resolutions.Digest(), Registry: options.Registry,
+		Host: options.Host, Selection: &selection,
 	}
 }
 
@@ -106,7 +111,7 @@ func switchMessageDigest(input SwitchInput) (string, error) {
 		SchemaVersion string      `json:"schema_version"`
 		Kind          CommandKind `json:"kind"`
 		Switch        SwitchInput `json:"switch"`
-	}{WorkflowCommandSchemaV1, CommandSwitch, input}
+	}{WorkflowCommandSchemaV2, CommandSwitch, input}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return "", coordinatorError("WORKFLOW_COMMAND_INVALID", "digest SWITCH input", err)

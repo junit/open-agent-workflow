@@ -428,7 +428,7 @@ func normalizeEvidence(values []host.EvidenceReference) ([]host.EvidenceReferenc
 	sort.Slice(result, func(left, right int) bool { return evidenceKey(result[left]) < evidenceKey(result[right]) })
 	for index, value := range result {
 		if !validText(value.Kind, 128) || !validText(value.Reference, 2048) || !strings.HasPrefix(value.Reference, "evidence://") || !validDigest(value.Digest) ||
-			index > 0 && evidenceKey(result[index-1]) == evidenceKey(value) {
+			index > 0 && evidenceIdentityKey(result[index-1]) == evidenceIdentityKey(value) {
 			return nil, admissionError("AUTHORITY_EVIDENCE_INVALID", "invalid or duplicate evidence reference", nil)
 		}
 	}
@@ -437,6 +437,10 @@ func normalizeEvidence(values []host.EvidenceReference) ([]host.EvidenceReferenc
 
 func evidenceKey(value host.EvidenceReference) string {
 	return value.Kind + "\x00" + value.Reference + "\x00" + value.Digest
+}
+
+func evidenceIdentityKey(value host.EvidenceReference) string {
+	return value.Kind + "\x00" + value.Reference
 }
 
 func normalizeSet(values []string, known func(string) bool) ([]string, error) {

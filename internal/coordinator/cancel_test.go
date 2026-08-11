@@ -17,7 +17,7 @@ func TestCancelPausesUncertainInvocationThenReleasesOnTerminalConfirmation(t *te
 	inFlight := exchangeReceipt(t, engine, receiptTestCommand(t, prepared, "cancel-started", host.ReceiptStarted, "", ""))
 
 	pendingCommand := Command{
-		SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandCancel, MessageID: "message-cancel-pending", IdempotencyKey: "cancel-pending",
+		SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandCancel, MessageID: "message-cancel-pending", IdempotencyKey: "cancel-pending",
 		WorkflowID: inFlight.WorkflowID, ExpectedRevision: inFlight.Revision,
 		Cancel: &CancelInput{Reason: "user requested", InvocationTerminal: false},
 	}
@@ -27,12 +27,12 @@ func TestCancelPausesUncertainInvocationThenReleasesOnTerminalConfirmation(t *te
 		t.Fatalf("pending CANCEL = %#v", pending)
 	}
 	restarted := newTask6Engine(t, stateRoot, projectRoot, start, nil)
-	recovered := exchangeTask6(t, restarted, Command{SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandInspect, WorkflowID: pending.WorkflowID})
+	recovered := exchangeTask6(t, restarted, Command{SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandInspect, WorkflowID: pending.WorkflowID})
 	if recovered.RevisionDigest != pending.RevisionDigest || recovered.Snapshot.Status != StatusPaused || recovered.Snapshot.ActiveGrant == nil {
 		t.Fatalf("recovered uncertain CANCEL = %#v", recovered)
 	}
 	confirmedCommand := Command{
-		SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandCancel, MessageID: "message-cancel-confirmed", IdempotencyKey: "cancel-confirmed",
+		SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandCancel, MessageID: "message-cancel-confirmed", IdempotencyKey: "cancel-confirmed",
 		WorkflowID: pending.WorkflowID, ExpectedRevision: pending.Revision,
 		Cancel: &CancelInput{Reason: "Host confirmed terminal", InvocationTerminal: true},
 	}
@@ -48,7 +48,7 @@ func TestCancelReadyWorkflowIsTerminalAndRestartSafe(t *testing.T) {
 	engine := newTask6Engine(t, stateRoot, t.TempDir(), start, nil)
 	ready := exchangeTask6(t, engine, start)
 	command := Command{
-		SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandCancel, MessageID: "message-cancel-ready", IdempotencyKey: "cancel-ready-command",
+		SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandCancel, MessageID: "message-cancel-ready", IdempotencyKey: "cancel-ready-command",
 		WorkflowID: ready.WorkflowID, ExpectedRevision: ready.Revision, Cancel: &CancelInput{Reason: "no longer needed"},
 	}
 	cancelled := exchangeTask6(t, engine, command)
@@ -56,7 +56,7 @@ func TestCancelReadyWorkflowIsTerminalAndRestartSafe(t *testing.T) {
 		t.Fatalf("ready CANCEL = %#v", cancelled)
 	}
 	restarted := newTask6Engine(t, stateRoot, t.TempDir(), start, nil)
-	inspected := exchangeTask6(t, restarted, Command{SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandInspect, WorkflowID: cancelled.WorkflowID})
+	inspected := exchangeTask6(t, restarted, Command{SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandInspect, WorkflowID: cancelled.WorkflowID})
 	if inspected.RevisionDigest != cancelled.RevisionDigest || inspected.Snapshot.Status != StatusCancelled {
 		t.Fatalf("restarted CANCEL = %#v", inspected)
 	}

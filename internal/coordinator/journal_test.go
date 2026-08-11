@@ -200,7 +200,7 @@ func TestJournalRecoversMatchingOrphanAndRejectsConflict(t *testing.T) {
 	})
 }
 
-func TestJournalRejectsOldRuntimeStateWithoutTouchingIt(t *testing.T) {
+func TestOldStateJournalRejectsOldRuntimeStateWithoutTouchingIt(t *testing.T) {
 	stateRoot := filepath.Join(t.TempDir(), "state")
 	runsRoot := filepath.Join(stateRoot, "runs")
 	sentinel := filepath.Join(runsRoot, "run-0123456789abcdef0123456789abcdef", "HEAD")
@@ -336,16 +336,21 @@ func testRevision(t *testing.T, workflowID string, revision uint64, messageID, c
 	if err != nil {
 		t.Fatal(err)
 	}
+	start := startTestCommand(t, "journal-fixture")
+	options := startTestOptions(t, filepath.Join(t.TempDir(), "state"), nil)
+	bundle := compiledStartTestBundle(compilationRequestFromStart(options, decision, *start.Start))
 	snapshot := Snapshot{
-		SchemaVersion: WorkflowSnapshotSchemaV1, WorkflowID: workflowID, RequestID: "request-1", DeliverableID: "deliverable-1", Revision: revision,
-		Status: StatusReady, Classification: decision, Bundles: []core.LifecycleBundle{}, ActiveGeneration: 0, ActiveNodeID: "", ActiveTicket: "",
-		GrantHistory: []admission.CapabilityGrant{}, Receipts: []host.InvocationReceipt{}, ResourceLeases: []ResourceLease{}, LastStableBoundary: "",
+		SchemaVersion: WorkflowSnapshotSchemaV2, WorkflowID: workflowID, RequestID: "request-1", DeliverableID: "deliverable-1", Revision: revision,
+		Status: StatusReady, Classification: decision, Bundles: []core.LifecycleBundle{bundle}, ActiveGeneration: bundle.Generation,
+		Cursor: firstStartTestCursor(t, bundle.Graph), ActiveTicket: "",
+		GrantHistory: []admission.CapabilityGrant{}, UserAuthorizations: []admission.UserAuthorization{}, InvocationAttestations: []admission.ExplicitInvocationAttestation{},
+		GateAttestations: []GateAttestation{}, Receipts: []host.InvocationReceipt{}, ResourceLeases: []ResourceLease{}, LastStableBoundary: "",
 		ProcessedMessages: []ProcessedMessage{{IdempotencyKey: key, ContentDigest: digest, Revision: revision}}, ProjectionLag: []ProjectionLag{},
 	}
 	return revisionRecord{
-		SchemaVersion: WorkflowRevisionSchemaV1, WorkflowID: workflowID, Revision: revision, MessageID: messageID, IdempotencyKey: key,
+		SchemaVersion: WorkflowRevisionSchemaV2, WorkflowID: workflowID, Revision: revision, MessageID: messageID, IdempotencyKey: key,
 		MessageDigest: digest, Event: "WORKFLOW_TEST", Snapshot: snapshot,
-		Result: Result{SchemaVersion: WorkflowResultSchemaV1, Kind: ResultState, WorkflowID: workflowID, Revision: revision, Diagnostics: []Diagnostic{}, Replayed: false},
+		Result: Result{SchemaVersion: WorkflowResultSchemaV2, Kind: ResultState, WorkflowID: workflowID, Revision: revision, Diagnostics: []Diagnostic{}, Replayed: false},
 	}
 }
 

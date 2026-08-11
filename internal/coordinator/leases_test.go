@@ -30,7 +30,7 @@ func TestResourceLeaseConflictsAcrossWorkflowsAndReleasesOnTerminalReceipt(t *te
 	}
 
 	started := exchangeReceipt(t, first, receiptTestCommand(t, firstPrepared, "lease-first-started", host.ReceiptStarted, "", ""))
-	completed := receiptTestCommand(t, firstPrepared, "lease-first-completed", host.ReceiptCompleted, "", "")
+	completed := receiptTestCommand(t, firstPrepared, "lease-first-completed", host.ReceiptCompleted, "succeeded", "")
 	completed.ExpectedRevision = started.Revision
 	finished := exchangeReceipt(t, first, completed)
 	if finished.Snapshot.ResourceLeases[0].ReleasedRevision != finished.Revision {
@@ -129,7 +129,7 @@ func TestConcurrentExpectedRevisionAllowsOneMutationAcrossEngines(t *testing.T) 
 	if succeeded != 1 || conflicted != 1 {
 		t.Fatalf("concurrent same-Workflow outcomes = success %d, conflict %d", succeeded, conflicted)
 	}
-	inspected := exchangeTask6(t, second, Command{SchemaVersion: WorkflowCommandSchemaV1, Kind: CommandInspect, WorkflowID: ready.WorkflowID})
+	inspected := exchangeTask6(t, second, Command{SchemaVersion: WorkflowCommandSchemaV2, Kind: CommandInspect, WorkflowID: ready.WorkflowID})
 	if inspected.Revision != ready.Revision+1 || inspected.Snapshot.Status != StatusPrepared {
 		t.Fatalf("concurrent same-Workflow state = %#v", inspected)
 	}
@@ -165,14 +165,16 @@ func newTask6Engine(t *testing.T, stateRoot, projectRoot string, start Command, 
 	compiler := &startTestCore{
 		t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(start.IdempotencyKey),
 		mutateBundle: func(bundle *core.LifecycleBundle) {
-			bundle.Graph.Nodes[0].MaximumEffects = []string{"read-project", "write-project"}
-			bundle.Graph.Nodes[0].Resources = []string{"project-worktree"}
+			binding := firstStartTestBinding(t, bundle)
+			binding.MaximumEffects = []string{"read-project", "write-project"}
+			binding.Resources = []string{"project-worktree"}
 		},
 	}
-	engine, err := NewEngine(Options{
-		StateRoot: stateRoot, PhysicalProjectRoot: projectRoot, Core: compiler, Projection: projection,
-		Authority: admissionAuthority([]string{"read-project", "write-project"}, []string{"project-worktree"}),
-	})
+	options := startTestOptions(t, stateRoot, compiler)
+	options.PhysicalProjectRoot = projectRoot
+	options.Projection = projection
+	options.Authority = admissionAuthority([]string{"read-project", "write-project"}, []string{"project-worktree"})
+	engine, err := NewEngine(options)
 	if err != nil {
 		t.Fatal(err)
 	}

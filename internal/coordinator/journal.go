@@ -16,7 +16,9 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
+	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
 const (
@@ -206,6 +208,9 @@ func (value *journal) loadRevision(workflowID string, revision uint64) (revision
 	if err != nil {
 		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "read immutable revision", err)
 	}
+	if schema := stateSchemaVersion(raw); schema != WorkflowRevisionSchemaV2 {
+		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_UNSUPPORTED", "Workflow revision schema is not v2", nil)
+	}
 	var record revisionRecord
 	if err := decodeStrictState(raw, &record); err != nil {
 		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "decode immutable revision", err)
@@ -299,7 +304,7 @@ func (value *journal) commit(candidate revisionRecord) (revisionRecord, error) {
 }
 
 func validateRevisionCandidate(record revisionRecord) error {
-	if record.SchemaVersion != WorkflowRevisionSchemaV1 || !validWorkflowID(record.WorkflowID) || record.Revision == 0 || record.Revision > maximumWorkflowRevisions ||
+	if record.SchemaVersion != WorkflowRevisionSchemaV2 || !validWorkflowID(record.WorkflowID) || record.Revision == 0 || record.Revision > maximumWorkflowRevisions ||
 		!validText(record.MessageID, 512) || !validText(record.IdempotencyKey, 512) || !validDigest(record.MessageDigest) || !validText(record.Event, 512) ||
 		record.Digest != "" || record.Result.Digest != "" || record.Result.RevisionDigest != "" {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid revision candidate identity", nil)
@@ -310,7 +315,7 @@ func validateRevisionCandidate(record revisionRecord) error {
 	if err := validateSnapshot(record.Snapshot, record.WorkflowID, record.Revision, false); err != nil {
 		return err
 	}
-	if record.Result.SchemaVersion != WorkflowResultSchemaV1 || record.Result.WorkflowID != record.WorkflowID || record.Result.Revision != record.Revision || record.Result.Replayed || record.Result.Snapshot != nil {
+	if record.Result.SchemaVersion != WorkflowResultSchemaV2 || record.Result.WorkflowID != record.WorkflowID || record.Result.Revision != record.Revision || record.Result.Replayed || record.Result.Snapshot != nil {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid revision candidate Result", nil)
 	}
 	if record.Result.Kind != ResultState && record.Result.Kind != ResultDispatch && record.Result.Kind != ResultRejected {
@@ -324,7 +329,7 @@ func validateRevisionCandidate(record revisionRecord) error {
 }
 
 func validateRevision(record revisionRecord, workflowID string, revision uint64) error {
-	if record.SchemaVersion != WorkflowRevisionSchemaV1 || record.WorkflowID != workflowID || record.Revision != revision ||
+	if record.SchemaVersion != WorkflowRevisionSchemaV2 || record.WorkflowID != workflowID || record.Revision != revision ||
 		!validText(record.MessageID, 512) || !validText(record.IdempotencyKey, 512) || !validDigest(record.MessageDigest) || !validText(record.Event, 512) || !validDigest(record.Digest) {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid revision identity", nil)
 	}
@@ -363,12 +368,14 @@ func validateRevision(record revisionRecord, workflowID string, revision uint64)
 }
 
 func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, persisted bool) error {
-	if snapshot.SchemaVersion != WorkflowSnapshotSchemaV1 || snapshot.WorkflowID != workflowID || snapshot.Revision != revision ||
+	if snapshot.SchemaVersion != WorkflowSnapshotSchemaV2 || snapshot.WorkflowID != workflowID || snapshot.Revision != revision ||
 		!validText(snapshot.RequestID, 512) || !validText(snapshot.DeliverableID, 512) || snapshot.Classification.RequestMode != classification.RequestModeWorkflow ||
 		snapshot.Classification.WorkflowComplexity == nil || *snapshot.Classification.WorkflowComplexity != classification.ComplexityComplex ||
 		!validRiskClass(snapshot.Classification.RiskClass) || snapshot.Classification.EvidenceRequirements == nil || snapshot.Classification.EscalationReasons == nil ||
 		snapshot.Classification.CapabilitySelector != nil || !validSnapshotStatus(snapshot.Status) || snapshot.Bundles == nil || snapshot.GrantHistory == nil ||
-		snapshot.Receipts == nil || snapshot.ResourceLeases == nil || snapshot.ProcessedMessages == nil || snapshot.ProjectionLag == nil || uint64(len(snapshot.ProcessedMessages)) != revision {
+		snapshot.Receipts == nil || snapshot.ResourceLeases == nil || snapshot.ProcessedMessages == nil || snapshot.ProjectionLag == nil ||
+		snapshot.UserAuthorizations == nil || snapshot.InvocationAttestations == nil || snapshot.GateAttestations == nil || uint64(len(snapshot.ProcessedMessages)) != revision ||
+		execution.ValidateGraphCursor(snapshot.Cursor) != nil {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Workflow snapshot identity or collections", nil)
 	}
 	for index, message := range snapshot.ProcessedMessages {
@@ -378,11 +385,82 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid processed message collection", nil)
 		}
 	}
-	for index, grant := range snapshot.GrantHistory {
-		if err := admission.ValidateGrant(grant); err != nil || grant.WorkflowID != workflowID ||
-			index > 0 && snapshot.GrantHistory[index-1].ID == grant.ID {
+	grantIDs := make(map[string]struct{}, len(snapshot.GrantHistory))
+	grantDigests := make(map[string]struct{}, len(snapshot.GrantHistory))
+	for _, grant := range snapshot.GrantHistory {
+		if err := admission.ValidateGrant(grant); err != nil || grant.WorkflowID != workflowID {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Workflow Grant history", err)
 		}
+		bundle, err := bundleForGeneration(snapshot, grant.BundleGeneration)
+		if err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Workflow Grant history Bundle is unavailable", err)
+		}
+		if err := validateGrantBundleClosure(grant, bundle); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Workflow Grant history does not close over its Bundle", err)
+		}
+		if _, found := grantIDs[grant.ID]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Workflow Grant history ID", nil)
+		}
+		if _, found := grantDigests[grant.Digest]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Workflow Grant history digest", nil)
+		}
+		grantIDs[grant.ID], grantDigests[grant.Digest] = struct{}{}, struct{}{}
+	}
+	authorizationIDs := make(map[string]struct{}, len(snapshot.UserAuthorizations))
+	authorizationDigests := make(map[string]struct{}, len(snapshot.UserAuthorizations))
+	authorizationNonces := make(map[string]struct{}, len(snapshot.UserAuthorizations))
+	for _, authorization := range snapshot.UserAuthorizations {
+		if err := admission.ValidateUserAuthorization(authorization); err != nil || authorization.WorkflowID != workflowID {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid User Authorization history", err)
+		}
+		if err := validateAuthorizationHistoryClosure(authorization, snapshot); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "User Authorization history does not close over Workflow authority", err)
+		}
+		if _, found := authorizationIDs[authorization.ID]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate User Authorization ID", nil)
+		}
+		if _, found := authorizationDigests[authorization.Digest]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate User Authorization digest", nil)
+		}
+		if _, found := authorizationNonces[authorization.AuthorizationNonce]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate User Authorization nonce", nil)
+		}
+		authorizationIDs[authorization.ID], authorizationDigests[authorization.Digest], authorizationNonces[authorization.AuthorizationNonce] = struct{}{}, struct{}{}, struct{}{}
+	}
+	invocationIDs := make(map[string]struct{}, len(snapshot.InvocationAttestations))
+	invocationDigests := make(map[string]struct{}, len(snapshot.InvocationAttestations))
+	invocationNonces := make(map[string]struct{}, len(snapshot.InvocationAttestations))
+	for _, attestation := range snapshot.InvocationAttestations {
+		if err := admission.ValidateExplicitInvocationAttestation(attestation); err != nil || attestation.WorkflowID != workflowID {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Invocation Attestation history", err)
+		}
+		if err := validateInvocationHistoryClosure(attestation, snapshot); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Invocation Attestation history does not close over Workflow authority", err)
+		}
+		if _, found := invocationIDs[attestation.ID]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Invocation Attestation ID", nil)
+		}
+		if _, found := invocationDigests[attestation.Digest]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Invocation Attestation digest", nil)
+		}
+		if _, found := invocationNonces[attestation.InvocationNonce]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Invocation Attestation nonce", nil)
+		}
+		invocationIDs[attestation.ID], invocationDigests[attestation.Digest], invocationNonces[attestation.InvocationNonce] = struct{}{}, struct{}{}, struct{}{}
+	}
+	gateDigests := make(map[string]struct{}, len(snapshot.GateAttestations))
+	for _, attestation := range snapshot.GateAttestations {
+		normalized, err := normalizeGateAttestation(attestation)
+		if err != nil || !sameCanonicalValue(normalized, attestation) || attestation.WorkflowID != workflowID {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Gate Attestation history", err)
+		}
+		if err := validateGateHistoryClosure(attestation, snapshot); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Gate Attestation history does not close over its Bundle", err)
+		}
+		if _, found := gateDigests[attestation.Digest]; found {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Gate Attestation digest", nil)
+		}
+		gateDigests[attestation.Digest] = struct{}{}
 	}
 	if err := validateResourceLeases(snapshot, revision); err != nil {
 		return err
@@ -392,8 +470,8 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 		if err != nil {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Bundle generation is unavailable", err)
 		}
-		if _, found := graphNode(bundle.Graph, snapshot.ActiveNodeID); !found {
-			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active graph node is unavailable", nil)
+		if err := profile.ValidateGraphCursor(bundle.Graph, snapshot.Cursor); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active graph cursor is unavailable", err)
 		}
 		if snapshot.LastStableBoundary != "" && !containsString(bundle.Graph.StableBoundaries, snapshot.LastStableBoundary) {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "last stable boundary is not declared by the active Bundle", nil)
@@ -404,6 +482,9 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 		normalized, err := host.NewInvocationReceipt(receipt)
 		if err != nil || !sameCanonicalValue(normalized, receipt) || receipt.WorkflowID != workflowID {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "invalid Host Receipt history", err)
+		}
+		if err := validateReceiptHistoryClosure(receipt, snapshot); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Host Receipt history does not close over Workflow authority", err)
 		}
 		if _, found := receiptDigests[receipt.Digest]; found {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "duplicate Host Receipt history", nil)
@@ -417,9 +498,16 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 	}
 	if snapshot.ActiveGrant != nil {
 		if err := admission.ValidateGrant(*snapshot.ActiveGrant); err != nil || snapshot.ActiveGrant.WorkflowID != workflowID ||
-			snapshot.ActiveGrant.BundleGeneration != snapshot.ActiveGeneration || snapshot.ActiveGrant.NodeID != snapshot.ActiveNodeID ||
+			snapshot.ActiveGrant.BundleGeneration != snapshot.ActiveGeneration || snapshot.ActiveGrant.Cursor != snapshot.Cursor ||
 			len(snapshot.GrantHistory) == 0 || !sameCanonicalValue(snapshot.GrantHistory[len(snapshot.GrantHistory)-1], *snapshot.ActiveGrant) {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Grant does not match Workflow state", err)
+		}
+		bundle, err := activeBundle(snapshot)
+		if err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Grant Bundle is unavailable", err)
+		}
+		if err := validateGrantBundleClosure(*snapshot.ActiveGrant, bundle); err != nil {
+			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Grant does not close over the active Bundle", err)
 		}
 	}
 	return nil
@@ -443,6 +531,15 @@ func validateRevisionTransition(previous, current revisionRecord) error {
 		return err
 	}
 	if err := validateAppendOnlyHistory(previous.Snapshot.GrantHistory, current.Snapshot.GrantHistory, "Grant"); err != nil {
+		return err
+	}
+	if err := validateAppendOnlyHistory(previous.Snapshot.UserAuthorizations, current.Snapshot.UserAuthorizations, "User Authorization"); err != nil {
+		return err
+	}
+	if err := validateAppendOnlyHistory(previous.Snapshot.InvocationAttestations, current.Snapshot.InvocationAttestations, "Invocation Attestation"); err != nil {
+		return err
+	}
+	if err := validateAppendOnlyHistory(previous.Snapshot.GateAttestations, current.Snapshot.GateAttestations, "Gate Attestation"); err != nil {
 		return err
 	}
 	if err := validateAppendOnlyHistory(previous.Snapshot.Receipts, current.Snapshot.Receipts, "Host Receipt"); err != nil {
@@ -540,6 +637,9 @@ func reuseMatchingOrphan(path string, expected revisionRecord, directory string)
 	raw, err := readLimitedStateFile(path, maximumRevisionBytes)
 	if err != nil {
 		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_WRITE_FAILED", "read orphan revision", err)
+	}
+	if schema := stateSchemaVersion(raw); schema != WorkflowRevisionSchemaV2 {
+		return revisionRecord{}, coordinatorError("WORKFLOW_STATE_UNSUPPORTED", "orphan Workflow revision schema is not v2", nil)
 	}
 	var existing revisionRecord
 	if err := decodeStrictState(raw, &existing); err != nil {
@@ -836,4 +936,14 @@ func decodeStrictState(raw []byte, target any) error {
 		return err
 	}
 	return nil
+}
+
+func stateSchemaVersion(raw []byte) string {
+	var envelope struct {
+		SchemaVersion string `json:"schema_version"`
+	}
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return ""
+	}
+	return envelope.SchemaVersion
 }

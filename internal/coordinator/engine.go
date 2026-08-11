@@ -2,11 +2,13 @@ package coordinator
 
 import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/config"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 	"github.com/wifibaby4u/open-agent-workflow/internal/registry"
 )
 
@@ -21,7 +23,7 @@ type ProjectionRecord struct {
 	Revision         uint64                   `json:"revision"`
 	BundleGeneration uint64                   `json:"bundle_generation"`
 	BundleDigest     string                   `json:"bundle_digest"`
-	NodeID           string                   `json:"node_id"`
+	Cursor           execution.GraphCursor    `json:"cursor"`
 	Ticket           string                   `json:"ticket,omitempty"`
 	Topology         execution.Topology       `json:"topology"`
 	Evidence         []host.EvidenceReference `json:"evidence"`
@@ -39,9 +41,11 @@ type Options struct {
 	Configuration       config.Snapshot
 	Resolutions         registry.ResolutionReport
 	Registry            registry.Registry
+	Host                profile.HostEvidence
 	Authority           admission.AuthorityCeiling
 	Core                CoreCompiler
 	Projection          ProjectionSink
+	capabilityResolver  func(profile.ResolvedBinding) *catalog.CapabilityRecord
 }
 
 type Engine struct {
@@ -79,7 +83,7 @@ func (engine *Engine) Exchange(command Command) (Result, error) {
 	if engine == nil {
 		return Result{}, coordinatorError("WORKFLOW_ENGINE_UNAVAILABLE", "Workflow Engine is required", nil)
 	}
-	if command.SchemaVersion != WorkflowCommandSchemaV1 {
+	if command.SchemaVersion != WorkflowCommandSchemaV2 {
 		return Result{}, coordinatorError("SCHEMA_UNSUPPORTED", "unsupported Workflow Command schema", nil)
 	}
 	normalized, err := normalizeCommand(command)

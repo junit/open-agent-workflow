@@ -103,6 +103,11 @@ func TestReceiptV3RejectsMalformedCursorAndOutput(t *testing.T) {
 		func(value *host.InvocationReceipt) { value.Outputs[0].Reference = "" },
 		func(value *host.InvocationReceipt) { value.Outputs[0].Digest = "bad" },
 		func(value *host.InvocationReceipt) { value.Outputs = append(value.Outputs, value.Outputs[0]) },
+		func(value *host.InvocationReceipt) {
+			rewritten := value.Evidence[0]
+			rewritten.Digest = strings.Repeat("0", 64)
+			value.Evidence = append(value.Evidence, rewritten)
+		},
 	} {
 		value := validReceiptV3(host.ReceiptCompleted)
 		mutate(&value)

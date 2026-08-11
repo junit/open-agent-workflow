@@ -31,11 +31,12 @@ const (
 	CapabilityGrantV3               = "https://open-agent-workflow.dev/schemas/v3/capability-grant.schema.json"
 	UserAuthorizationV1             = "https://open-agent-workflow.dev/schemas/v1/user-authorization.schema.json"
 	ExplicitInvocationAttestationV1 = "https://open-agent-workflow.dev/schemas/v1/explicit-invocation-attestation.schema.json"
-	DispatchPacketV1                = "https://open-agent-workflow.dev/schemas/v1/dispatch-packet.schema.json"
-	WorkflowCommandV1               = "https://open-agent-workflow.dev/schemas/v1/workflow-command.schema.json"
-	WorkflowResultV1                = "https://open-agent-workflow.dev/schemas/v1/workflow-result.schema.json"
-	WorkflowSnapshotV1              = "https://open-agent-workflow.dev/schemas/v1/workflow-snapshot.schema.json"
-	WorkflowRevisionV1              = "https://open-agent-workflow.dev/schemas/v1/workflow-revision.schema.json"
+	GateAttestationV1               = "https://open-agent-workflow.dev/schemas/v1/gate-attestation.schema.json"
+	DispatchPacketV2                = "https://open-agent-workflow.dev/schemas/v2/dispatch-packet.schema.json"
+	WorkflowCommandV2               = "https://open-agent-workflow.dev/schemas/v2/workflow-command.schema.json"
+	WorkflowResultV2                = "https://open-agent-workflow.dev/schemas/v2/workflow-result.schema.json"
+	WorkflowSnapshotV2              = "https://open-agent-workflow.dev/schemas/v2/workflow-snapshot.schema.json"
+	WorkflowRevisionV2              = "https://open-agent-workflow.dev/schemas/v2/workflow-revision.schema.json"
 	WorkflowHeadV1                  = "https://open-agent-workflow.dev/schemas/v1/workflow-head.schema.json"
 )
 
@@ -46,11 +47,9 @@ type Registry struct {
 func New(files fs.FS) (*Registry, error) {
 	compiler := jsonschema.NewCompiler()
 	compiler.DefaultDraft(jsonschema.Draft2020)
-	dependencies := []struct{ path, id string }{
-		{"schemas/v2/capability-grant.schema.json", "https://open-agent-workflow.dev/schemas/v2/capability-grant.schema.json"},
-		{"schemas/v2/host-invocation-receipt.schema.json", "https://open-agent-workflow.dev/schemas/v2/host-invocation-receipt.schema.json"},
-	}
 	resources := []struct{ path, id string }{
+		{"schemas/v3/capability-grant.schema.json", CapabilityGrantV3},
+		{"schemas/v3/host-invocation-receipt.schema.json", HostInvocationReceiptV3},
 		{"schemas/v4/provider-descriptor.schema.json", ProviderDescriptorV4},
 		{"schemas/v4/execution-graph.schema.json", ExecutionGraphV4},
 		{"schemas/v3/user-config.schema.json", UserConfigV3},
@@ -64,20 +63,19 @@ func New(files fs.FS) (*Registry, error) {
 		{"schemas/v3/host-session.schema.json", HostSessionV3},
 		{"schemas/v2/host-environment-report.schema.json", HostEnvironmentReportV2},
 		{"schemas/v3/host-binding-inventory.schema.json", HostBindingInventoryV3},
-		{"schemas/v3/capability-grant.schema.json", CapabilityGrantV3},
 		{"schemas/v1/user-authorization.schema.json", UserAuthorizationV1},
 		{"schemas/v1/explicit-invocation-attestation.schema.json", ExplicitInvocationAttestationV1},
-		{"schemas/v3/host-invocation-receipt.schema.json", HostInvocationReceiptV3},
+		{"schemas/v1/gate-attestation.schema.json", GateAttestationV1},
 		{"schemas/v4/host-conformance-transcript.schema.json", HostConformanceTranscriptV4},
 		{"schemas/v4/host-conformance-report.schema.json", HostConformanceReportV4},
-		{"schemas/v1/dispatch-packet.schema.json", DispatchPacketV1},
-		{"schemas/v1/workflow-command.schema.json", WorkflowCommandV1},
-		{"schemas/v1/workflow-result.schema.json", WorkflowResultV1},
-		{"schemas/v1/workflow-snapshot.schema.json", WorkflowSnapshotV1},
-		{"schemas/v1/workflow-revision.schema.json", WorkflowRevisionV1},
+		{"schemas/v2/dispatch-packet.schema.json", DispatchPacketV2},
+		{"schemas/v2/workflow-command.schema.json", WorkflowCommandV2},
+		{"schemas/v2/workflow-result.schema.json", WorkflowResultV2},
+		{"schemas/v2/workflow-snapshot.schema.json", WorkflowSnapshotV2},
+		{"schemas/v2/workflow-revision.schema.json", WorkflowRevisionV2},
 		{"schemas/v1/workflow-head.schema.json", WorkflowHeadV1},
 	}
-	for _, resource := range append(dependencies, resources...) {
+	for _, resource := range resources {
 		data, err := fs.ReadFile(files, resource.path)
 		if err != nil {
 			return nil, fmt.Errorf("SCHEMA_READ_FAILED: %s: %w", resource.path, err)

@@ -276,6 +276,13 @@ func TestAuthorityConstructorsNormalizeEvidenceAndRejectMalformedRecords(t *test
 	if _, err := NewUserAuthorization(duplicateEvidence); ErrorCode(err) != "USER_AUTHORIZATION_INVALID" {
 		t.Fatalf("NewUserAuthorization(duplicate evidence) error = %v", err)
 	}
+	rewrittenEvidence := authorizationInput
+	rewritten := rewrittenEvidence.Evidence[0]
+	rewritten.Digest = strings.Repeat("0", 64)
+	rewrittenEvidence.Evidence = append(rewrittenEvidence.Evidence, rewritten)
+	if _, err := NewUserAuthorization(rewrittenEvidence); ErrorCode(err) != "USER_AUTHORIZATION_INVALID" {
+		t.Fatalf("NewUserAuthorization(rewritten evidence digest) error = %v", err)
+	}
 
 	clonedCeiling := CloneAuthority(request.Authority)
 	clonedCeiling.Effects[0] = "changed"

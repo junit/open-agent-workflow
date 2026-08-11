@@ -4,22 +4,22 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"slices"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
 	"github.com/wifibaby4u/open-agent-workflow/internal/core"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profile"
 )
 
-const lifecycleBundleSchemaV3 = "oaw.lifecycle-bundle/v3"
-
 func (engine *Engine) start(command Command) (Result, error) {
 	if command.Start == nil {
 		return Result{}, coordinatorError("WORKFLOW_COMMAND_INVALID", "START input is required", nil)
+	}
+	trustedHost := engine.options.Host.Record()
+	if command.Start.HostSession.Digest != trustedHost.SessionDigest || command.Start.Environment.Digest != trustedHost.EnvironmentDigest {
+		return Result{}, coordinatorError("WORKFLOW_HOST_EVIDENCE_MISMATCH", "START Host session or environment does not match trusted Coordinator Host evidence", nil)
 	}
 	messageDigest, err := startMessageDigest(*command.Start)
 	if err != nil {
@@ -56,19 +56,24 @@ func (engine *Engine) start(command Command) (Result, error) {
 		if verifyErr != nil {
 			return verifyErr
 		}
+		cursor, cursorErr := profile.FirstActionableCursor(bundle.Graph)
+		if cursorErr != nil {
+			return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle has no actionable cursor", cursorErr)
+		}
 		snapshot := Snapshot{
-			SchemaVersion: WorkflowSnapshotSchemaV1, WorkflowID: workflowID, RequestID: command.Start.RequestID,
+			SchemaVersion: WorkflowSnapshotSchemaV2, WorkflowID: workflowID, RequestID: command.Start.RequestID,
 			DeliverableID: command.Start.DeliverableID, Revision: 1, Status: StatusReady, Classification: decision,
-			Bundles: []core.LifecycleBundle{bundle}, ActiveGeneration: bundle.Generation, ActiveNodeID: bundle.Graph.Entry,
-			ActiveTicket: command.Start.ActiveTicket, GrantHistory: []admission.CapabilityGrant{}, Receipts: []host.InvocationReceipt{},
+			Bundles: []core.LifecycleBundle{bundle}, ActiveGeneration: bundle.Generation, Cursor: cursor,
+			ActiveTicket: command.Start.ActiveTicket, GrantHistory: []admission.CapabilityGrant{}, UserAuthorizations: []admission.UserAuthorization{},
+			InvocationAttestations: []admission.ExplicitInvocationAttestation{}, GateAttestations: []GateAttestation{}, Receipts: []host.InvocationReceipt{},
 			ResourceLeases: []ResourceLease{}, LastStableBoundary: "", ProcessedMessages: []ProcessedMessage{{
 				IdempotencyKey: command.IdempotencyKey, ContentDigest: messageDigest, Revision: 1,
 			}}, ProjectionLag: []ProjectionLag{},
 		}
 		candidate := revisionRecord{
-			SchemaVersion: WorkflowRevisionSchemaV1, WorkflowID: workflowID, Revision: 1, MessageID: command.MessageID,
+			SchemaVersion: WorkflowRevisionSchemaV2, WorkflowID: workflowID, Revision: 1, MessageID: command.MessageID,
 			IdempotencyKey: command.IdempotencyKey, MessageDigest: messageDigest, Event: "WORKFLOW_STARTED", Snapshot: snapshot,
-			Result: Result{SchemaVersion: WorkflowResultSchemaV1, Kind: ResultState, WorkflowID: workflowID, Revision: 1, Diagnostics: []Diagnostic{}},
+			Result: Result{SchemaVersion: WorkflowResultSchemaV2, Kind: ResultState, WorkflowID: workflowID, Revision: 1, Diagnostics: []Diagnostic{}},
 		}
 		committed, commitErr := engine.journal.commit(candidate)
 		if commitErr != nil {
@@ -87,10 +92,7 @@ func compilationRequestFromStart(options Options, decision classification.Classi
 	selection := input.Selection
 	return core.CompilationRequest{
 		DeliverableID: input.DeliverableID, InputDigest: input.InputDigest, Generation: 1, Classification: decision,
-		Configuration: options.Configuration, Resolutions: options.Resolutions, Registry: options.Registry,
-		HostID: input.HostSession.HostID, HostSessionDigest: input.HostSession.Digest, HostEnvironmentReportDigest: input.Environment.Digest,
-		HostProviderInventoryDigest: input.HostSession.ProviderInventoryDigest,
-		HostTopologies:              append([]execution.Topology{}, input.HostSession.SupportedTopologies...), EnvironmentObservations: append([]execution.EnvironmentObservation{}, input.Environment.Observations...),
+		Configuration: options.Configuration, ResolutionDigest: options.Resolutions.Digest(), Registry: options.Registry, Host: options.Host,
 		Selection: &selection,
 	}
 }
@@ -100,7 +102,7 @@ func startMessageDigest(input StartInput) (string, error) {
 		SchemaVersion string      `json:"schema_version"`
 		Kind          CommandKind `json:"kind"`
 		Start         StartInput  `json:"start"`
-	}{WorkflowCommandSchemaV1, CommandStart, input}
+	}{WorkflowCommandSchemaV2, CommandStart, input}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return "", coordinatorError("WORKFLOW_COMMAND_INVALID", "digest START input", err)
@@ -137,24 +139,22 @@ func verifyStartCompilation(request core.CompilationRequest, result core.Compila
 }
 
 func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleBundle) error {
-	if bundle.SchemaVersion != lifecycleBundleSchemaV3 || !validText(bundle.ID, 512) || bundle.DeliverableID != request.DeliverableID ||
+	if bundle.SchemaVersion != core.LifecycleBundleSchemaV4 || !validStableID("bundle-", bundle.ID) || bundle.DeliverableID != request.DeliverableID ||
 		bundle.InputDigest != request.InputDigest || bundle.Generation != request.Generation || bundle.ClassificationDigest != request.Classification.Digest() ||
-		bundle.HostID != request.HostID || bundle.HostSessionDigest != request.HostSessionDigest || bundle.EnvironmentReportDigest != request.HostEnvironmentReportDigest ||
-		bundle.ProviderInventoryDigest != request.HostProviderInventoryDigest ||
-		bundle.Topology != request.Selection.Topology || bundle.ResolutionDigest != request.Resolutions.Digest() || bundle.RegistryDigest != request.Registry.Digest() {
+		bundle.HostID != request.Host.Record().HostID || bundle.HostSessionDigest != request.Host.Record().SessionDigest || bundle.EnvironmentReportDigest != request.Host.Record().EnvironmentDigest ||
+		bundle.ProviderInventoryDigest != request.Host.Record().InventoryDigest ||
+		bundle.Topology != request.Selection.Topology || bundle.ResolutionDigest != request.ResolutionDigest || bundle.RegistryDigest != request.Registry.Digest() {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle does not match trusted START inputs", nil)
 	}
 	if !sameCanonicalValue(bundle.Selection, *request.Selection) || !sameCanonicalValue(bundle.Configuration, request.Configuration.Record()) ||
 		!sameCanonicalValue(bundle.Classification, request.Classification) || bundle.Classification.Digest() != request.Classification.Digest() ||
-		!sameCanonicalValue(bundle.EnvironmentObservations, request.EnvironmentObservations) || !sameCanonicalValue(bundle.AddOns, request.Selection.AddOns) {
+		!sameCanonicalValue(bundle.AddOns, request.Selection.AddOns) || bundle.HostEvidenceDigest != request.Host.Record().Digest {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle selection or trusted facts differ", nil)
 	}
 	if err := profile.ValidateExecutionGraphRecord(bundle.Graph); err != nil {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph is invalid", err)
 	}
-	entry, found := graphNode(bundle.Graph, bundle.Graph.Entry)
-	if bundle.Graph.HostID != request.HostID || bundle.Graph.Entry == "" || !slices.Contains(bundle.Graph.EligibleTopologies, request.Selection.Topology) || !found ||
-		!slices.Contains(entry.SupportedTopologies, request.Selection.Topology) || !slices.Contains(entry.Binding.Topologies, request.Selection.Topology) {
+	if bundle.Graph.HostID != request.Host.Record().HostID || bundle.Graph.EntrySlotID == "" || bundle.Graph.Topology != request.Selection.Topology {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph topology or entry is invalid", nil)
 	}
 	if !sameCanonicalValue(bundle.ProviderInstances, bundle.Graph.ProviderInstances) || !sameCanonicalValue(bundle.EnvironmentRequirements, bundle.Graph.EnvironmentRequirements) {
@@ -170,15 +170,6 @@ func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleB
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle digest mismatch", err)
 	}
 	return nil
-}
-
-func graphNode(graph profile.ExecutionGraphRecord, id string) (profile.GraphNode, bool) {
-	for _, node := range graph.Nodes {
-		if node.ID == id {
-			return node, true
-		}
-	}
-	return profile.GraphNode{}, false
 }
 
 func cloneStartBundle(value core.LifecycleBundle) (core.LifecycleBundle, error) {

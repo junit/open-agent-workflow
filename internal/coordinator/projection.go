@@ -38,7 +38,7 @@ func newProjectionRecord(result Result) (ProjectionRecord, error) {
 	evidence := projectionEvidence(result.Snapshot.Receipts)
 	record := ProjectionRecord{
 		SchemaVersion: workflowProjectionSchemaV1, WorkflowID: result.WorkflowID, Revision: result.Revision,
-		BundleGeneration: bundle.Generation, BundleDigest: bundle.Digest, NodeID: result.Snapshot.ActiveNodeID,
+		BundleGeneration: bundle.Generation, BundleDigest: bundle.Digest, Cursor: result.Snapshot.Cursor,
 		Ticket: result.Snapshot.ActiveTicket, Topology: bundle.Topology, Evidence: evidence,
 	}
 	record.Digest, _, err = canonicaljson.Digest(record)

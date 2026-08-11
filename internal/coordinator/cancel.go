@@ -59,10 +59,10 @@ func (engine *Engine) cancel(command Command) (Result, error) {
 			return snapshot.ProcessedMessages[left].IdempotencyKey < snapshot.ProcessedMessages[right].IdempotencyKey
 		})
 		candidate := revisionRecord{
-			SchemaVersion: WorkflowRevisionSchemaV1, WorkflowID: command.WorkflowID, Revision: nextRevision,
+			SchemaVersion: WorkflowRevisionSchemaV2, WorkflowID: command.WorkflowID, Revision: nextRevision,
 			PredecessorDigest: current.Digest, MessageID: command.MessageID, IdempotencyKey: command.IdempotencyKey,
 			MessageDigest: messageDigest, Event: event, Snapshot: snapshot,
-			Result: Result{SchemaVersion: WorkflowResultSchemaV1, Kind: ResultState, WorkflowID: command.WorkflowID, Revision: nextRevision, Diagnostics: diagnostics},
+			Result: Result{SchemaVersion: WorkflowResultSchemaV2, Kind: ResultState, WorkflowID: command.WorkflowID, Revision: nextRevision, Diagnostics: diagnostics},
 		}
 		committed, commitErr := engine.journal.commit(candidate)
 		if commitErr != nil {
@@ -82,7 +82,7 @@ func cancelMessageDigest(input CancelInput) (string, error) {
 		SchemaVersion string      `json:"schema_version"`
 		Kind          CommandKind `json:"kind"`
 		Cancel        CancelInput `json:"cancel"`
-	}{WorkflowCommandSchemaV1, CommandCancel, input}
+	}{WorkflowCommandSchemaV2, CommandCancel, input}
 	digest, _, err := canonicaljson.Digest(record)
 	if err != nil {
 		return "", coordinatorError("WORKFLOW_COMMAND_INVALID", "digest CANCEL input", err)
