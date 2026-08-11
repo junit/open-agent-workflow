@@ -123,8 +123,10 @@ Plan 02 creates internal/assets/conformance/codex-host-v3.json and deletes the o
 | Modify | lib/detect.sh | Review remediation only: hard-cut the test-only legacy management oracle to the same v4 Matt and ECC compatibility probes as Go management. |
 | Modify | internal/check/diagnostics_test.go | Review remediation only: migrate legacy Provider-detection fixtures to the approved v4 Matt lockfile and ECC Plugin probes without changing production detection behavior. |
 | Modify | internal/schema/registry_v2_test.go | Review remediation only: keep the valid Workflow Snapshot v2 fixture aligned with the closed, runtime-required Classification and Configuration projections. |
+| Modify | scripts/smoke-linux.sh | Review remediation only: migrate the release-smoke START fixture to Workflow v2 and Host v3 while preserving the Coordinator-state and no-model boundaries. |
 | Modify | tests/02-check-test.sh | Review remediation only: reject retired Matt/ECC Skill probes and exercise the v4 lockfile/Plugin readiness fixtures. |
 | Modify | tests/11-check-parity-test.sh | Review remediation only: prove exact Bash/Go parity over retired probes and the active v4 Provider probes. |
+| Modify | tests/14-cutover-release-test.sh | Review remediation only: reject stale authority literals in the Linux smoke and prove the Docker release path initializes current Coordinator state. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/review.md | Fixed-point correctness/security review record. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt | Sorted exact repository-relative path ledger for validated remediation. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/verification.md | Fresh command, status, digest, coverage, and baseline evidence. |
@@ -156,6 +158,17 @@ ECC Skill while Go management used the v4 lockfile and Plugin probes. The
 remediation must preserve the oracle's read-only role, replace only those Matt
 and ECC detection probes, and add negative legacy-probe plus positive v4-probe
 parity evidence.
+
+The `scripts/smoke-linux.sh` and `tests/14-cutover-release-test.sh` entries are
+a fourth review-discovered Plan 06 amendment. After the Provider parity RED was
+resolved, the mandatory Task 4 shell suite reached Docker release smoke and
+proved that its embedded START fixture still used Workflow Command v1 and Host
+Session v2. The hard-cut CLI rejected that request before Coordinator state
+initialization, so the smoke's current-state assertion failed. Remediation must
+add an exact stale-authority RED assertion, migrate only the embedded fixture
+to the production Workflow v2 and Host v3 constructors, retain the expected
+closed rejection caused by unavailable trusted Host-native evidence, and keep
+the Policy-only file plus no-model boundaries unchanged.
 
 ## Locked Bridge Contract
 
