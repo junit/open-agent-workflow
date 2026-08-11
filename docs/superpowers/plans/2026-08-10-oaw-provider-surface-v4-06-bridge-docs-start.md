@@ -120,6 +120,7 @@ Plan 02 creates internal/assets/conformance/codex-host-v3.json and deletes the o
 
 | Action | Path | Responsibility |
 | --- | --- | --- |
+| Modify | internal/check/diagnostics_test.go | Review remediation only: migrate legacy Provider-detection fixtures to the approved v4 Matt lockfile and ECC Plugin probes without changing production detection behavior. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/review.md | Fixed-point correctness/security review record. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt | Sorted exact repository-relative path ledger for validated remediation. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/verification.md | Fresh command, status, digest, coverage, and baseline evidence. |
@@ -127,6 +128,14 @@ Plan 02 creates internal/assets/conformance/codex-host-v3.json and deletes the o
 | Create | .scratch/oaw-provider-surface-v4/evidence/start-result.json | Secret-free accepted or rejected START result. |
 
 Scratch evidence is never committed. A reviewed remediation path becomes part of the task file map only after its exact repository-relative path is written to reviewed-paths.txt, verified against the explicit File Maps in Plans 01-06, and recorded with its Modify, Create, or Delete disposition in review.md before the edit.
+
+The `internal/check/diagnostics_test.go` entry is a review-discovered Plan 06
+amendment. The post-cutover full-tree gate exposed three stable RED tests whose
+fixtures still modeled the superseded Matt four-skill bundle and treated the ECC
+Marketplace Plugin probe as insufficient. Remediation may update only those
+fixtures and expectations to the v4 probes already exercised by
+`internal/management/management_check_test.go`; it must not alter production
+Provider discovery or broaden any compatibility indicator.
 
 ## Locked Bridge Contract
 
@@ -396,7 +405,7 @@ Expected: the cached-name output is exactly the 21 paths in the Policy And Docum
 
 ## Task 3: Complete Independent Correctness And Security Review
 
-**Files:** Create .scratch/oaw-provider-surface-v4/evidence/review.md and .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt. Any tracked remediation path must be made exact through the ledger rule in the File Map before editing.
+**Files:** Modify internal/check/diagnostics_test.go. Create .scratch/oaw-provider-surface-v4/evidence/review.md and .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt. Any tracked remediation path must be made exact through the ledger rule in the File Map before editing.
 
 - [ ] **Step 1: Run the fixed-point correctness review**
 
