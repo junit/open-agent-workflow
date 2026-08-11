@@ -145,8 +145,8 @@ a missing child environment or silently falls back to a new process.
 ## Codex Host Bridge Boundary
 
 Codex has a policy integration by default and a separate audited host-native
-Bridge that must be explicitly installed and trusted. The Bridge v1 supports
-`CURRENT` and `skill` bindings only. It does not create a child session, and it
+Bridge that must be explicitly installed and trusted. The Bridge v2 supports
+`CURRENT` and proves only `skill` bindings in the current integration. It does not create a child session, and it
 does not promise inherited MCP, Hook, Skill, Plugin, model, authentication,
 sandbox, or approval behavior beyond stable Host observations.
 
@@ -156,17 +156,35 @@ strictly read-only `observe_current` rewrite may receive an automatic `allow`;
 later Core and Coordinator operations retain normal Host approval behavior and
 fail closed on a session or working-directory mismatch.
 
-`skills/list` is the only v1 Provider binding authority. `hooks/list` and the
-allowlisted `config/read` projection are diagnostic environment observations.
-`plugin/list` is not a production dependency. Filesystem detection, Descriptor
-declarations, user configuration, prompts, and Skill self-reports cannot create
-Host Binding Evidence.
+`skills/list` is the required v2 Skill-observation authority. `hooks/list` and
+the allowlisted `config/read` projection are optional environment observations;
+these three methods are the closed metadata allowlist. `plugin/list` is not a
+production dependency. Filesystem detection, Descriptor declarations, user
+configuration, prompts, and Skill self-reports cannot create Host Binding
+Evidence.
+
+Verification covers both the exact enabled Skill file and the complete Binding
+tree below the exact Host Installation, compared with the independently pinned
+Distribution content tree. Same-name, shared-ancestor, disabled, orphan,
+ambiguous, symlinked, partial-hash, or drifting evidence fails closed. Skills,
+Claude custom Agents, Codex Roles, Instructions, Hooks, and tools remain
+separate surfaces.
 
 The Bridge stores an opaque session-bound handle in bounded process memory and
 returns only secret-free summaries. It does not retain raw Hook commands,
 credentials, MCP environment values, headers, tokens, arbitrary Plugin
 settings, or full App Server configuration. Handles must not enter Workflow
-State, evidence artifacts, logs, tickets, or screenshots.
+State, evidence artifacts, logs, tickets, or screenshots, and cannot be reused
+after a Bridge restart, session change, CWD change, expiry, or eviction.
+
+Public Bridge inputs exclude user authorization, explicit invocation
+attestation, and gate attestation. Only current Host evidence can supply those
+facts. Unattested delegation or `workspace.prepare-or-confirm`,
+`verification.execute`, and `closeout.execute` actions remain unavailable.
+Every non-START exchange checks all eight Bundle authority digests before
+reading or issuing executable state. Old Workflow records, stale facts, edited
+handles, unknown fields, trailing values, and caller-forged authority are
+rejected before effects.
 
 This is a cooperation boundary, not operating-system isolation. A process with
 the same user authority can interfere with local programs, files, or process

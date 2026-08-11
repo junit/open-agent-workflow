@@ -17,6 +17,19 @@ Code（ECC）提供的 workflow 流程，不比较模型质量或 agent 工具�
 角色：OAW Core 编译 selected Recipe，为每项职责分配一个 owner。可选 Workflow
 Coordinator 记录 Workflow State，Agent Host 执行 `CURRENT` 或原生 `SUBAGENT`。
 
+本对比固定到 source revision，不通过名称推断：
+
+| Provider | Upstream | 审计 revision |
+| --- | --- | --- |
+| Matt | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
+| Superpowers | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
+| ECC | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+
+审计名称按 surface 区分。Matt 从 `grill-with-docs` 开始，并使用 `to-spec`、
+`to-tickets`、`implement`、`tdd`、`diagnosing-bugs` 与 `code-review`。
+Superpowers reference 保留 `superpowers:` namespace。ECC Skill、Claude custom Agent、
+Codex Role、Instruction、Hooks 与 tools 是不同 evidence class，名称相似不能替代。
+
 ## 评分标准
 
 每个阶段都使用同样六项标准：
@@ -46,22 +59,27 @@ Coordinator 记录 Workflow State，Agent Host 执行 `CURRENT` 或原生 `SUBAG
 
 规划行需要进一步说明。对于复杂任务，Matt 负责需求、领域建模、产品规格、test seam
 选择与 ticket 拆分。Ticket 获得批准后，每个 ticket 的可执行实施计划由 Superpowers
-`writing-plans` 负责。这是职责拆分，不是两个 owner 同时拥有同一构件。
+`superpowers:writing-plans` 负责。这是职责拆分，不是两个 owner 同时拥有同一构件。
 
 ## 为什么修正所有权映射
 
 如果只选择一个总体得分较高的 family，就会掩盖各阶段的重要差异。因此 hybrid 为每项
 职责指定恰好一个 owner：
 
-- Matt 负责需求、领域建模、规格、ticket 拆分、TDD 方法和功能性或困难 bug 调试。
-- Superpowers 负责 workspace 与 Git setup、实现编排、代码变更、spec compliance
-  review、quality review、remediation、re-review、新鲜验证和 branch completion。
+- Matt `grill-with-docs`（credit `grilling` 与 `domain-modeling`）、`to-spec` 和
+  `to-tickets` 拥有 framing、specification 与 ticket edge；Matt `tdd` 与
+  `diagnosing-bugs` 拥有 hybrid 的 TDD 与 functional incident procedure。
+- Superpowers 通过 lifecycle matrix 中的精确 skill 拥有 executable ticket detail、
+  workspace、inline implementation、standalone review/remediation、fresh verification
+  与 closeout。
 - 显式选择的 ECC resolver 可以负责 build、dependency 或 type repair。精确的 ECC
   specialist（例如 `ECC(security-review)`）只能产出声明范围内的 bounded deliverable。
 
 在 `MATT-SP-HYBRID` 下，ECC specialist 不会成为生命周期 owner。反过来，如果用户希望
-ECC 拥有完整生命周期，仍可选择 `ECC-FULL`。评分表不会从用户选项中移除 `SP-FULL`、
-`MATT-FULL`、`ECC-FULL` 或符合条件的用户自定义 Profile。
+ECC 主导且包含 neutral Host/user control 的 lifecycle，仍可选择 `ECC-FULL`。ECC 的
+E2E specialist 不会成为 broad verification，reviewer 也不会成为 closeout owner。评分表
+不会从用户选项中移除 `SP-FULL`、`MATT-FULL`、`ECC-FULL` 或符合条件的用户自定义
+Profile。
 
 ## 怎样使用这份对比
 

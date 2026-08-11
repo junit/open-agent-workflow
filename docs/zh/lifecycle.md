@@ -104,22 +104,67 @@ Workflow，使 OAW Core 读取新的 Configuration Snapshot。
 
 ## 内置与用户自定义 Profile
 
-内置 Profile alias 保持稳定：
+四个 alias 始终保留为 active catalog entry。当前 Host 排除某个 alias 不会删除它，也不
+存在旧 schema fallback。
 
-| 选择 | Recipe | 所有权契约 |
+| 选择 | Recipe | 契约 |
 | --- | --- | --- |
-| `SP-FULL` | `oaw/delivery` | 所需 Capability 全部验证后，Superpowers 拥有完整交付生命周期。 |
-| `MATT-FULL` | `oaw/domain-engineering` | 所需 Capability 全部验证后，Matt 拥有完整 domain-engineering 生命周期。 |
-| `ECC-FULL` | `oaw/ecc-engineering` | 所需 Capability 全部验证后，ECC 拥有完整工程生命周期。 |
-| `MATT-SP-HYBRID` | `oaw/reliable-feature` | Matt 与 Superpowers 使用下方固定职责映射；精确 ECC specialist 保持 bounded。 |
-| `USER-DEFINED` | 配置中的 Recipe ID | 选择版本化用户 Recipe 的动作，不是第五个内置 Profile。 |
+| `MATT-FULL` | `oaw/domain-engineering` | Matt 主导，并用 neutral Host/user control 填补 Matt 的精确缺口。 |
+| `SP-FULL` | `oaw/delivery` | 完整的 inline Superpowers delivery path。 |
+| `ECC-FULL` | `oaw/ecc-engineering` | ECC 主导，只使用精确的 Host-surface alternative。 |
+| `MATT-SP-HYBRID` | `oaw/reliable-feature` | 保留的内置 Matt/Superpowers 组合。 |
+| `USER-DEFINED` | 配置中的 Recipe ID | 选择可信版本化 custom Recipe 的动作，不是第五个内置 alias。 |
 
-`ECC-FULL` 包含 discovery、specification 与 planning、implementation、testing、debugging
-与 build repair、review、delegation、verification 和 completion。ECC 不会被缩减为
-hardening；其他 Recipe 中的 specialist 角色不削弱完整 `oaw/ecc-engineering` 选项。
+`FULL` 指 Provider 主导的生命周期加 Provider-neutral Host action 与 user/Host gate，绝不
+表示 Provider 拥有 Agent Host。每个适用 slot 必须有一个 outcome owner，且 Binding、
+topology、delegation、invocation、action、authority、effect、resource、transition 与
+terminal gate 全部验证后 Recipe 才能编译。
 
-Recipe 必须编译出每项适用职责唯一的 owner、明确 transition 与 terminal gate、bounded
-add-on，以及不超出可信权限的 effect。有歧义的 Recipe 会被拒绝，不会靠猜测修复。
+### Canonical 十 slot 生命周期
+
+| # | Slot ID | Outcome 与 neutral control |
+| --- | --- | --- |
+| 1 | `problem-framing` | 目的、约束、领域术语、决策与成功条件；`shared-understanding` gate。 |
+| 2 | `solution-specification` | 可复核规格与 test boundary；`specification-approved` gate。 |
+| 3 | `delivery-planning` | 可独立验证的单元与执行计划；`delivery-plan-approved` gate。 |
+| 4 | `workspace-preparation` | 安全 workspace 与已知 baseline；Host-owned 时使用 `workspace.prepare-or-confirm` action 与 `workspace-ready` gate。 |
+| 5 | `implementation` | 获批的有界变更。 |
+| 6 | `implementation-tdd` | 观测到预期 RED/GREEN cycle。 |
+| 7 | `incident-recovery` | 条件式 typed recovery、replan 或 stop。 |
+| 8 | `review-remediation` | finding 已裁定、修复并重新复核。 |
+| 9 | `fresh-verification` | 与声明相关的新鲜输出；Host-owned 时用 `verification.execute` action 与 `fresh-evidence` gate。 |
+| 10 | `closeout` | 已接受且用户授权的交付/保留结果；Host-owned 时用 `closeout.execute` action 与 `user-closeout` gate。 |
+
+Host action 与 gate 不包含 Provider selector。Macro 的 `credit-only` call 只记录 enclosing
+unit 已执行的工作；`dispatch-before` 与 `dispatch-after` 只在声明边界运行一次。重复或未
+credited 的所有权以 `MACRO_INTERNAL_CONFLICT` 失败。
+
+### 精确内置矩阵
+
+| Slot | `MATT-FULL` | `SP-FULL` | `ECC-FULL` | `MATT-SP-HYBRID` |
+| --- | --- | --- | --- | --- |
+| `problem-framing` | `grill-with-docs`（`grilling` + `domain-modeling` 只 credited 一次） | `superpowers:brainstorming` | Codex `intent-driven-development` skill 或精确 Claude `architect` Agent | Matt `grill-with-docs` 与 credited internal call |
+| `solution-specification` | `to-spec` | enclosing brainstorming outcome | `product-capability`；条件式 `contract-first` 不是 peer owner | Matt `to-spec` |
+| `delivery-planning` | `to-tickets` | brainstorming 后只调用一次 `superpowers:writing-plans` | observed Codex `/plan` Instruction 或 `blueprint`；Claude `planner` Agent 或 `blueprint` | Matt `to-tickets` 后由 SP `superpowers:writing-plans` 增加文件/命令细节 |
+| `workspace-preparation` | Host `workspace.prepare-or-confirm` | `superpowers:using-git-worktrees` | Host action；`git-workflow` 只是 guidance | SP `superpowers:using-git-worktrees` |
+| `implementation` | `implement` macro | inline `superpowers:executing-plans` | `tdd-workflow` 或精确 Claude `tdd-guide` alternative | inline SP `superpowers:executing-plans`；SDD paused |
+| `implementation-tdd` | `implement` 只 credit `tdd` 一次 | `superpowers:test-driven-development` | 与 implementation 相同的所选 implementation/TDD unit | Matt `tdd`；SP TDD paused |
+| `incident-recovery` | `diagnosing-bugs` 仅处理 functional/hard/performance incident；其他类型 stop | `superpowers:systematic-debugging` typed route | 只有已验证 typed route；Claude `build-error-resolver` 可处理 build/type/dependency | Matt `diagnosing-bugs`；build/type/dependency 在未选择 ECC handler Add-on 时 stop |
+| `review-remediation` | `implement` credit `code-review`；remediation 重新进入有界 `implement` 并 re-review | `superpowers:requesting-code-review` -> `superpowers:receiving-code-review` -> re-review | 精确 Codex `reviewer` Role 或 Claude `code-reviewer` Agent，另配 remediation procedure | SP request/receive/re-review；Matt review 与 SDD review paused |
+| `fresh-verification` | Host `verification.execute` | `superpowers:verification-before-completion` | `verification-loop`；E2E surface 仅为 specialist | SP `superpowers:verification-before-completion` |
+| `closeout` | Host `closeout.execute` | `superpowers:finishing-a-development-branch` | Host action 加 `git-workflow` guidance | SP `superpowers:finishing-a-development-branch` |
+
+Matt 提供的是 `grill-with-docs`，不是虚构的 requirements 或 verification Skill；它不提供
+workspace creation、广义 fresh verification 或 completion。ECC Skill、Claude custom
+Agent、Codex Role、Instruction、Hooks 与 tools 是不同 surface。Claude Agent 名称不能
+证明 Codex Role；static multi-agent configuration 不能证明 live delegation；
+`e2e-runner`、`e2e-testing`、reviewer 与 delivery Hook 不会获得更广所有权。
+
+`USER-DEFINED` Recipe 可按 slot 自由组合已安装、可信、Host-verified 且兼容的 Binding。
+它必须 pin 版本和来源，声明精确 outcome owner、alternative、overlay、incident route、
+internal call、action、gate、effect、resource 与 termination condition，并在任何缺口上
+fail closed。用户自定义 SDD variant 只有在 active Host 证明 child 或 nested-child
+delegation 后才能选择 `superpowers:subagent-driven-development`。
 
 ## 执行拓扑
 
@@ -165,29 +210,14 @@ observe_current -> Core inspect -> explicit Startup Gate
 其他内置 integration 仍是 policy surface，除非其自身的 Host-native integration 被显式
 安装并验证。这些 logical record 都不会把物理执行权限从 Agent Host 转交出去。
 
-## Matt-Superpowers 阶段映射
+## Matt-Superpowers 组合说明
 
-`MATT-SP-HYBRID` 为每项职责指定一个 owner：
-
-| 职责 | Owner |
-| --- | --- |
-| 需求与领域建模 | Matt |
-| 产品规格与验收标准 | Matt |
-| Test boundary 选择与 ticket 拆分 | Matt |
-| 每个 ticket 的可执行实施计划 | Superpowers `writing-plans` |
-| Workspace 与 Git setup | Superpowers |
-| 实现编排与代码变更 | 一个 Superpowers executor |
-| TDD 方法与 red-green loop | Matt `tdd` |
-| 功能性与困难 bug 调试 | Matt `diagnosing-bugs` |
-| Build、dependency 与 type repair | 已选 ECC Incident Handler，或无 |
-| Spec compliance 与 code-quality review | Superpowers |
-| Review remediation 与 re-review | Superpowers |
-| 新鲜验证与 branch completion | Superpowers |
-| Specialist 检查 | 仅限显式选择的 bounded add-on |
-
-Matt 规格与 ticket 是需求和交付边界的 canonical 来源。Superpowers plan 可以补充路径、
-命令、代码步骤与预期结果，但不能改变需求或 ticket 边界。Matt `tdd` 是本 hybrid 唯一
-TDD 流程。
+上方矩阵是 `MATT-SP-HYBRID` 的权威 projection。Matt specification 与 ticket 仍是
+domain intent 和 delivery edge 的 canonical 来源；Superpowers plan 增加 executable
+detail，但不改变它们。Matt `tdd` 是唯一 TDD procedure，一个 inline Superpowers
+executor 拥有 implementation，standalone Superpowers procedure 拥有
+review/remediation、fresh verification 与 closeout。只有用户显式选择精确 bounded
+Add-on 后才存在 ECC build/type handler。
 
 ## 生命周期锁、继承与 Add-on
 

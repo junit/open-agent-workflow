@@ -27,6 +27,23 @@ The integration may report opaque policy digests, but the Host sandbox and appro
 logical workflow authority for cooperating clients only. Conformance evidence
 for this contract is separate from the adapter graduation levels below.
 
+## Compose USER-DEFINED Recipes From Verified Bindings
+
+A `USER-DEFINED` selection names a trusted, versioned Profile Recipe. It may
+combine any installed Provider per canonical lifecycle slot, but only through
+exact Host-verified compatible Bindings. Binding kinds are `skill`, `agent`,
+`role`, and `instruction`; Skills, Claude custom Agents, Codex Roles,
+Instructions, Hooks, and tools stay distinct. An adapter must not infer one
+kind from another or from Provider branding.
+
+The Recipe declares one outcome owner for each applicable slot, alternatives,
+overlays, typed incident routes, macro/internal-call credit, neutral Host
+actions and gates, effects, resources, evidence, and termination conditions.
+The compiler rejects missing ownership, duplicated ownership, unproved
+delegation or invocation, incompatible topology, and source drift. There is no
+silent default. Adding a Provider or Binding requires data and evidence, not a
+brand-specific compiler branch.
+
 ## Start With an Evidence Packet
 
 Before changing the registry, record:

@@ -23,6 +23,20 @@ Integration 可以报告 opaque policy digest，但 Host sandbox and approvals �
 Capability Grant 或 Resource Lease 只为合作客户端表达 logical workflow authority。该
 contract 的 conformance evidence 不属于下方 adapter graduation level。
 
+## 从 Verified Binding 组合 USER-DEFINED Recipe
+
+`USER-DEFINED` selection 指向可信、版本化的 Profile Recipe。它可以在每个 canonical
+lifecycle slot 自由组合已安装 Provider，但只能使用 Host 精确验证且兼容的 Binding。
+Binding kind 为 `skill`、`agent`、`role` 与 `instruction`；Skill、Claude custom Agent、
+Codex Role、Instruction、Hooks 与 tools 保持不同。Adapter 不得从其他 kind 或 Provider
+brand 推断 Binding。
+
+Recipe 声明每个适用 slot 的一个 outcome owner、alternative、overlay、typed incident
+route、macro/internal-call credit、neutral Host action 与 gate、effect、resource、evidence
+和 termination condition。Compiler 会拒绝 ownership 缺失或重复、未证明的 delegation
+或 invocation、不兼容 topology 与 source drift。不存在 silent default；新增 Provider 或
+Binding 依赖 data 与 evidence，而不是 brand-specific compiler branch。
+
 ## 从 Evidence Packet 开始
 
 修改 registry 前先记录：

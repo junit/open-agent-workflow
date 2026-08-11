@@ -181,10 +181,108 @@ EOF
       HOST_OBSERVATION_FAILED \
       HOST_OBSERVATION_PARTIAL \
       HOST_SESSION_CHANGED \
+      PROVIDER_BINDING_CONTENT_MISMATCH \
+      BINDING_EXPLICIT_INVOCATION_REQUIRED \
+      HOST_FEATURE_UNATTESTED \
+      HOST_ACTION_UNAVAILABLE \
+      MACRO_INTERNAL_CONFLICT \
+      PROFILE_TOPOLOGY_UNAVAILABLE \
+      WORKFLOW_STATE_UNSUPPORTED \
       oaw.provider-descriptor/v1 \
       oaw.user-config/v1 \
       >>"$fixture_root/$document_path"
   done
+  for document_path in \
+    policy/ENGINEERING.md README.md README-zh.md \
+    docs/en/lifecycle.md docs/zh/lifecycle.md; do
+    printf '%s\n' \
+      problem-framing \
+      solution-specification \
+      delivery-planning \
+      workspace-preparation \
+      implementation \
+      implementation-tdd \
+      incident-recovery \
+      review-remediation \
+      fresh-verification \
+      closeout \
+      MATT-FULL \
+      SP-FULL \
+      ECC-FULL \
+      MATT-SP-HYBRID \
+      USER-DEFINED \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in docs/en/comparison.md docs/zh/comparison.md; do
+    printf '%s\n' \
+      84fdeffd12f2ee307994d1eb6feb48173b6e0502 \
+      44c9b2d6e889982ac18c27d05a19fefe335194e1 \
+      2d46e80e0925c7be0907f18c1812311ac212a6c5 \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
+    printf '%s\n' \
+      oaw.provider-descriptor/v4 \
+      oaw.profile-recipe/v3 \
+      oaw.host-manifest/v3 \
+      oaw.host-session/v3 \
+      oaw.host-binding-inventory/v3 \
+      oaw.host-environment-report/v2 \
+      oaw.host-invocation-receipt/v3 \
+      oaw.host-conformance-transcript/v4 \
+      oaw.host-conformance-report/v4 \
+      oaw.execution-graph/v4 \
+      oaw.lifecycle-bundle/v4 \
+      oaw.capability-grant/v3 \
+      oaw.dispatch-packet/v2 \
+      oaw.workflow-command/v2 \
+      oaw.workflow-result/v2 \
+      oaw.workflow-snapshot/v2 \
+      oaw.workflow-revision/v2 \
+      oaw.codex-bridge/v2 \
+      oaw.codex-hook-context/v2 \
+      oaw.host-evidence-handle/v2 \
+      2.0.0 \
+      'proof_scope: installation-integrity' \
+      'live_protocol_proof: false' \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in \
+    policy/ENGINEERING.md docs/en/lifecycle.md docs/zh/lifecycle.md; do
+    printf '%s\n' \
+      workspace.prepare-or-confirm \
+      verification.execute \
+      closeout.execute \
+      shared-understanding \
+      specification-approved \
+      delivery-plan-approved \
+      workspace-ready \
+      fresh-evidence \
+      user-closeout \
+      credit-only \
+      dispatch-before \
+      dispatch-after \
+      MACRO_INTERNAL_CONFLICT \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in \
+    policy/ENGINEERING.md \
+    docs/en/adapters.md docs/zh/adapters.md \
+    docs/en/extending-adapters.md docs/zh/extending-adapters.md; do
+    printf '%s\n' skill agent role instruction Hooks tools \
+      >>"$fixture_root/$document_path"
+  done
+  printf '%s\n' 'Current Codex proves only `skill` bindings and `CURRENT` topology.' \
+    >>"$fixture_root/README.md"
+  printf '%s\n' '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。' \
+    >>"$fixture_root/README-zh.md"
+  printf '%s\n' 'Current Codex proves only `skill` bindings and `CURRENT` topology.' \
+    >>"$fixture_root/docs/en/architecture.md"
+  printf '%s\n' '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。' \
+    >>"$fixture_root/docs/zh/architecture.md"
+  mkdir -p "$fixture_root/internal/assets/providers"
+  printf '%s\n' '{"id":"oaw/matt"}' \
+    >"$fixture_root/internal/assets/providers/oaw-matt.json"
   : >"$fixture_root/CHANGELOG.md"
   mkdir -p "$fixture_root/docs/adr" "$fixture_root/docs/superpowers/specs"
   printf '%s\n' 'Superseded by ADR 0009' \
@@ -360,6 +458,13 @@ assert_contains scripts/check-docs.sh "Verified Provider Instance"
 assert_contains scripts/check-docs.sh "PROVIDER_FOREIGN_HOST_ONLY"
 assert_contains scripts/check-docs.sh "HOST_BRIDGE_PROTOCOL_MISMATCH"
 assert_contains scripts/check-docs.sh "forbidden positive authority claim"
+assert_contains scripts/check-docs.sh "provider-surface-matrix-documents"
+assert_contains scripts/check-docs.sh "oaw.provider-descriptor/v4"
+assert_contains scripts/check-docs.sh "oaw.codex-bridge/v2"
+assert_contains scripts/check-docs.sh "84fdeffd12f2ee307994d1eb6feb48173b6e0502"
+assert_contains scripts/check-docs.sh "44c9b2d6e889982ac18c27d05a19fefe335194e1"
+assert_contains scripts/check-docs.sh "2d46e80e0925c7be0907f18c1812311ac212a6c5"
+assert_contains scripts/check-docs.sh "forbidden provider claim"
 if grep -E '(^|[;&|[:space:]])(curl|wget)([[:space:]]|$)' \
   "$REPOSITORY/scripts/check-docs.sh" >/dev/null; then
   fail "documentation checker contains a network client command"
@@ -449,6 +554,21 @@ if ! checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>
 fi
 cp "$AUTHORITY_FIXTURE_BACKUP" "$AUTHORITY_FIXTURE"
 pass "documentation checker rejects positive execution claims and permits negative boundaries"
+
+PROVIDER_CLAIM_FIXTURE="$DOCS_TEST_TEMP/repository/docs/en/lifecycle.md"
+PROVIDER_CLAIM_FIXTURE_BACKUP="$DOCS_TEST_TEMP/lifecycle.md.before-provider-claim"
+cp "$PROVIDER_CLAIM_FIXTURE" "$PROVIDER_CLAIM_FIXTURE_BACKUP"
+printf '%s\n' 'ECC `e2e-runner` owns broad final verification' \
+  >>"$PROVIDER_CLAIM_FIXTURE"
+if checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  fail "documentation checker accepts a fictional Provider ownership claim"
+fi
+case "$checker_output" in
+  *'forbidden provider claim'*'ECC `e2e-runner` owns broad final verification'*) ;;
+  *) fail "documentation checker gives no fictional Provider-claim diagnostic" ;;
+esac
+cp "$PROVIDER_CLAIM_FIXTURE_BACKUP" "$PROVIDER_CLAIM_FIXTURE"
+pass "documentation checker rejects fictional Provider ownership claims"
 
 for readme_file in README.md README-zh.md; do
   for command_example in \
@@ -741,6 +861,30 @@ for lifecycle_contract in \
 done
 assert_contains docs/zh/lifecycle.md '[English](../en/lifecycle.md)'
 pass "lifecycle documents explain Request Modes, extensible Profiles, topology, locking, add-ons, and switching"
+
+for matrix_document in \
+  policy/ENGINEERING.md README.md README-zh.md \
+  docs/en/lifecycle.md docs/zh/lifecycle.md; do
+  for canonical_slot in \
+    problem-framing solution-specification delivery-planning \
+    workspace-preparation implementation implementation-tdd \
+    incident-recovery review-remediation fresh-verification closeout; do
+    assert_contains "$matrix_document" "$canonical_slot"
+  done
+done
+for comparison_document in docs/en/comparison.md docs/zh/comparison.md; do
+  for upstream_revision in \
+    84fdeffd12f2ee307994d1eb6feb48173b6e0502 \
+    44c9b2d6e889982ac18c27d05a19fefe335194e1 \
+    2d46e80e0925c7be0907f18c1812311ac212a6c5; do
+    assert_contains "$comparison_document" "$upstream_revision"
+  done
+done
+assert_not_contains internal/assets/providers/oaw-matt.json '"reference":"requirements"'
+assert_not_contains internal/assets/providers/oaw-matt.json '"reference":"verification-loop"'
+assert_contains README.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
+assert_contains README-zh.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
+pass "provider surface v4 docs pin real sources, canonical slots, and conservative Codex facts"
 
 for boundary_document in \
   docs/en/architecture.md \

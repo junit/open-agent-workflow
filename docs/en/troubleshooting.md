@@ -144,21 +144,31 @@ The management check proves file and registration state only. It always reports
 `current_session_loaded: false`; only trusted `observe_current` Hook input in a
 fresh Codex session can establish current-session evidence.
 
+Text mode states `proof_scope: installation-integrity` and
+`live_protocol_proof: false`. Never cite that result as live Bridge proof. A
+reported update or required new session is an operator decision; stop before
+START until it is explicitly performed and a fresh observation succeeds.
+
 | Reason | Diagnosis and recovery |
 | --- | --- |
 | `HOST_BRIDGE_UNAVAILABLE` | The Plugin or MCP Bridge is unavailable. Install or enable it, inspect Codex `/hooks`, and start a new session. |
 | `HOST_BRIDGE_CONTEXT_REQUIRED` | MCP was called without trusted Hook context. Review and trust the exact four Hook matchers, then start a new session. |
-| `HOST_BRIDGE_PROTOCOL_MISMATCH` | Plugin, Hook, Bridge, Core, or Host protocol versions differ. Run `oaw bridge update codex`, review the Hook again, and start a new session. |
+| `HOST_BRIDGE_PROTOCOL_MISMATCH` | The complete v4/v3/v2 VersionEvidence tuple differs. Stop; after explicit operator authorization, update the Bridge, review Hooks, start a new session, and observe again. |
 | `HOST_EVIDENCE_HANDLE_REQUIRED` | A later operation omitted its current handle. Call `observe_current` and retry with the returned handle. |
 | `HOST_EVIDENCE_HANDLE_INVALID` | The handle is malformed, edited, unknown, evicted, or from a restarted Bridge. Discard it and call `observe_current` again. |
-| `HOST_EVIDENCE_EXPIRED` | The handle exceeded its bounded TTL. Call `observe_current` before retrying `core.inspect` or `core.compile`. |
+| `HOST_EVIDENCE_EXPIRED` | The handle exceeded its bounded TTL. Call `observe_current` before retrying `core_inspect` or `core_compile`. |
 | `HOST_EVIDENCE_SESSION_MISMATCH` | The handle belongs to another session or working directory. Stop before mutation and observe again in the current session. |
 | `HOST_OBSERVATION_FAILED` | Required stable metadata, especially `skills/list`, failed. Repair the local Codex/App Server capability; affected Providers remain unverified. |
 | `HOST_OBSERVATION_PARTIAL` | Optional Hook or configuration metadata is incomplete. Keep unavailable fields `unknown`; do not infer inheritance. |
 | `HOST_SESSION_CHANGED` | Facts pinned by the active Bundle changed. Pause, observe again, return to the Startup Gate, and compile a new Bundle generation. |
+| `PROVIDER_BINDING_CONTENT_MISMATCH` | The exact enabled Skill or complete Binding tree differs from the pinned Distribution evidence. Repair or select the exact trusted installation; never accept a same-name or partial-tree match. |
+| `BINDING_EXPLICIT_INVOCATION_REQUIRED` | A human-explicit Binding lacks current Host/user invocation attestation. Obtain that exact invocation or stop; prompt text is not attestation. |
+| `HOST_FEATURE_UNATTESTED` | A Recipe needs child, nested-child, or another live feature that the current Host did not attest. Use an eligible Recipe/topology or repair stable Host evidence. |
+| `HOST_ACTION_UNAVAILABLE` | A required `workspace.prepare-or-confirm`, `verification.execute`, or `closeout.execute` action is unavailable. Supply an exact verified Host procedure or choose another eligible Recipe. |
 
-`skills/list` is the only v1 Provider binding authority. `plugin/list` is not a
-production dependency. Do not repair these reasons by editing a handle,
+`skills/list` is the required v2 Skill-observation authority; optional
+`hooks/list` and `config/read` complete the metadata allowlist. `plugin/list` is
+not a production dependency. Do not repair these reasons by editing a handle,
 inventing a binding, copying Host configuration, or launching another process.
 The [Codex Host Bridge guide](codex-bridge.md) defines installation, Hook, and
 rollback behavior.
@@ -173,6 +183,8 @@ than installation management:
 | `SCHEMA_UNSUPPORTED` | A Workflow command or result uses a retired schema. Update the caller and construct a new command; do not translate the record in place. |
 | `WORKFLOW_STATE_UNSUPPORTED` | The selected Workflow State root contains a retired or unknown journal schema. Stop cooperating clients, preserve the exact state directory, and perform the explicit pre-release reset below. |
 | `SUBAGENT_UNAVAILABLE` | The active Host session cannot create a native child. Return to the Startup Gate and select `CURRENT`, or repair native Host support; never launch a model process as fallback. |
+| `MACRO_INTERNAL_CONFLICT` | Expansion found a duplicate owner or uncredited internal call. Fix the versioned Recipe so credit and dispatch edges execute exactly once. |
+| `PROFILE_TOPOLOGY_UNAVAILABLE` | The Profile, Binding, delegation, or active Host cannot support the requested topology. Return to the Startup Gate; do not simulate the topology. |
 | `HOST_SESSION_CHANGED` | Session identity, topology availability, or a pinned Host fact digest changed. Discard the stale Dispatch Packet, obtain a new Host session report, and recompile eligibility before dispatch. |
 
 For an explicit pre-release state reset, first stop every client using the

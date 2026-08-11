@@ -77,9 +77,9 @@ Candidates, but a Candidate cannot satisfy Profile compilation without a
 verified Provider Instance. Foreign-Host diagnostics never become a pin,
 Registry input, Profile owner, Capability Grant, or Workflow authority.
 
-The active Provider Descriptor and user configuration contracts are v3-only;
-`oaw.provider-descriptor/v1` and `oaw.user-config/v1` inputs are rejected rather
-than upgraded. An ambiguous current-Host candidate can be pinned only with the
+The active Provider Descriptor is `oaw.provider-descriptor/v4` and user
+configuration remains v3; older inputs are rejected rather than upgraded. An
+ambiguous current-Host candidate can be pinned only with the
 exact identity fields below; `location` and `version` are optional readable
 assertions:
 
@@ -152,7 +152,7 @@ OAW Core is required and stateless. The Workflow Coordinator is optional and sto
 
 The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 
-`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default and a separate audited host-native Bridge that must be explicitly installed and trusted. The Bridge v1 supports CURRENT and skill bindings only; all other Host surfaces remain unknown unless the Host reports stable evidence.
+`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default and a separate audited host-native Bridge that must be explicitly installed and trusted. Current Codex proves only `skill` bindings and `CURRENT` topology. Role, instruction, agent, tool, delegation, and Host-action availability remain unknown or unavailable unless a stable live API proves them.
 
 Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness. On macOS, use `scripts/smoke-docker.sh` for the native Linux archive when Docker Desktop is available. WSL-specific checks are optional and a `SKIP` is recorded, never reported as a pass.
 
@@ -180,12 +180,12 @@ completed ticket, debugging cycle, review, or verification.
 
 ## Lifecycle Profiles
 
-| Profile | Lifecycle ownership |
+| Profile | Lifecycle contract |
 | --- | --- |
-| `SP-FULL` | Superpowers owns the complete lifecycle. |
-| `MATT-FULL` | Matt owns the complete lifecycle. |
-| `ECC-FULL` | ECC owns the complete `oaw/ecc-engineering` lifecycle. |
-| `MATT-SP-HYBRID` | Matt and Superpowers own the explicit stages below; declared ECC specialists remain bounded add-ons. |
+| `MATT-FULL` | Matt-led `oaw/domain-engineering`; neutral Host actions fill exact workspace, broad verification, and closeout gaps. |
+| `SP-FULL` | Inline Superpowers `oaw/delivery` with its exact planning, TDD, debugging, review, verification, and finish skills. |
+| `ECC-FULL` | ECC-led `oaw/ecc-engineering`; only exact Host-observed Skill, Agent, Role, or Instruction alternatives compile. |
+| `MATT-SP-HYBRID` | Preserved Matt/Superpowers composition; ECC remains an explicitly selected typed Add-on only. |
 | `USER-DEFINED` | Select a configured, versioned user-defined Profile Recipe; this is not a fifth built-in alias. |
 
 A recommendation never becomes a default. Missing provider capability stops
@@ -195,6 +195,13 @@ Capability model. A Host-native Subagent inherits the exact locked bundle and
 does not reopen family arbitration. A bounded add-on may produce only its
 declared specialist deliverable and cannot take over the lifecycle. `DIRECT`
 and `BOUNDED` do not create Workflow State.
+
+The common ordered lifecycle is `problem-framing` ->
+`solution-specification` -> `delivery-planning` -> `workspace-preparation` ->
+`implementation` -> `implementation-tdd` -> conditional `incident-recovery` ->
+`review-remediation` -> `fresh-verification` -> `closeout`. Every Recipe must
+resolve one outcome owner per applicable slot plus its neutral Host actions and
+gates. `FULL` never transfers Host ownership to a Provider.
 
 ## Matt-Superpowers Hybrid
 
@@ -216,7 +223,12 @@ verification strength, and operational overhead. Values below are shown in
 Workspace and Git setup belong to Superpowers. Build, dependency, or type
 repair belongs only to an explicitly selected ECC resolver, or to no ECC
 resolver. Specialist checks run only as exact bounded add-ons. These assignments
-give each responsibility exactly one owner.
+give each responsibility exactly one owner. The precise sequence is Matt
+`grill-with-docs` -> `to-spec` -> `to-tickets`, Superpowers
+`superpowers:writing-plans` -> `superpowers:using-git-worktrees` -> inline
+`superpowers:executing-plans`, Matt `tdd` and `diagnosing-bugs`, then
+Superpowers review/remediation, `superpowers:verification-before-completion`,
+and `superpowers:finishing-a-development-branch`.
 
 ## Supported Targets
 

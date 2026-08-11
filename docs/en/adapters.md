@@ -53,6 +53,21 @@ Receipts. The Agent Host owns physical execution authority. OAW never starts a
 model process and never asks an adapter to reconstruct MCP, Hooks, Skills,
 Plugins, authentication, sandbox, approvals, or private configuration.
 
+### Provider Surface v4 evidence
+
+Provider Descriptor `oaw.provider-descriptor/v4` separates Distribution
+`ContentRoot` from Host Binding `InstallRoot`. The Host must observe the exact
+enabled surface, resolve it beneath one exact installation, digest the complete
+Binding tree, and match the source-pinned Distribution tree. Same-name paths,
+shared ancestors, disabled skills, symlinks, or partial file hashes fail
+closed.
+
+Binding kinds are `skill`, `agent`, `role`, and `instruction`. Skills, Claude
+custom Agents, Codex Roles, Instructions, Hooks, and tools never substitute for
+one another. Static adapter or multi-agent metadata can be `host-configured`;
+it cannot report live delegation as available. Current Codex observation proves
+only `skill`/`CURRENT`; other kinds and actions require a stable Host API.
+
 The Host may report `inherited`, `host-configured`, `restricted`, `unknown`, or
 `unavailable` environment observations. A Receipt is evidence of what the Host
 attested; it is not a claim that OAW physically contained the Host.

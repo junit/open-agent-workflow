@@ -320,6 +320,189 @@ for diagnostic_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md
   done
 done
 
+cat >"$CHECK_TEMP/provider-surface-matrix-documents" <<'EOF'
+policy/ENGINEERING.md
+README.md
+README-zh.md
+docs/en/lifecycle.md
+docs/zh/lifecycle.md
+EOF
+while IFS= read -r matrix_document; do
+  for slot_id in \
+    problem-framing \
+    solution-specification \
+    delivery-planning \
+    workspace-preparation \
+    implementation \
+    implementation-tdd \
+    incident-recovery \
+    review-remediation \
+    fresh-verification \
+    closeout; do
+    require_literal "$matrix_document" "$slot_id"
+  done
+  for selection_alias in \
+    MATT-FULL \
+    SP-FULL \
+    ECC-FULL \
+    MATT-SP-HYBRID \
+    USER-DEFINED; do
+    require_literal "$matrix_document" "$selection_alias"
+  done
+done <"$CHECK_TEMP/provider-surface-matrix-documents"
+
+for comparison_document in docs/en/comparison.md docs/zh/comparison.md; do
+  for upstream_revision in \
+    84fdeffd12f2ee307994d1eb6feb48173b6e0502 \
+    44c9b2d6e889982ac18c27d05a19fefe335194e1 \
+    2d46e80e0925c7be0907f18c1812311ac212a6c5; do
+    require_literal "$comparison_document" "$upstream_revision"
+  done
+done
+
+cat >"$CHECK_TEMP/provider-surface-version-tuple" <<'EOF'
+oaw.provider-descriptor/v4
+oaw.profile-recipe/v3
+oaw.host-manifest/v3
+oaw.host-session/v3
+oaw.host-binding-inventory/v3
+oaw.host-environment-report/v2
+oaw.host-invocation-receipt/v3
+oaw.host-conformance-transcript/v4
+oaw.host-conformance-report/v4
+oaw.execution-graph/v4
+oaw.lifecycle-bundle/v4
+oaw.capability-grant/v3
+oaw.dispatch-packet/v2
+oaw.workflow-command/v2
+oaw.workflow-result/v2
+oaw.workflow-snapshot/v2
+oaw.workflow-revision/v2
+oaw.codex-bridge/v2
+oaw.codex-hook-context/v2
+oaw.host-evidence-handle/v2
+EOF
+for bridge_document in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
+  while IFS= read -r contract_version; do
+    require_literal "$bridge_document" "$contract_version"
+  done <"$CHECK_TEMP/provider-surface-version-tuple"
+  require_literal "$bridge_document" '2.0.0'
+  require_literal "$bridge_document" 'proof_scope: installation-integrity'
+  require_literal "$bridge_document" 'live_protocol_proof: false'
+done
+
+for lifecycle_document in policy/ENGINEERING.md docs/en/lifecycle.md docs/zh/lifecycle.md; do
+  for host_action in \
+    workspace.prepare-or-confirm \
+    verification.execute \
+    closeout.execute; do
+    require_literal "$lifecycle_document" "$host_action"
+  done
+  for neutral_gate in \
+    shared-understanding \
+    specification-approved \
+    delivery-plan-approved \
+    workspace-ready \
+    fresh-evidence \
+    user-closeout; do
+    require_literal "$lifecycle_document" "$neutral_gate"
+  done
+  for macro_contract in credit-only dispatch-before dispatch-after MACRO_INTERNAL_CONFLICT; do
+    require_literal "$lifecycle_document" "$macro_contract"
+  done
+done
+
+for binding_document in \
+  policy/ENGINEERING.md \
+  docs/en/adapters.md docs/zh/adapters.md \
+  docs/en/extending-adapters.md docs/zh/extending-adapters.md; do
+  for binding_kind in skill agent role instruction; do
+    require_literal "$binding_document" "$binding_kind"
+  done
+  require_literal "$binding_document" 'Hooks'
+  require_literal "$binding_document" 'tools'
+done
+
+require_literal README.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
+require_literal README-zh.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
+require_literal docs/en/architecture.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
+require_literal docs/zh/architecture.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
+
+for troubleshooting_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  for provider_surface_reason in \
+    PROVIDER_BINDING_CONTENT_MISMATCH \
+    BINDING_EXPLICIT_INVOCATION_REQUIRED \
+    HOST_FEATURE_UNATTESTED \
+    HOST_ACTION_UNAVAILABLE \
+    MACRO_INTERNAL_CONFLICT \
+    PROFILE_TOPOLOGY_UNAVAILABLE \
+    WORKFLOW_STATE_UNSUPPORTED; do
+    require_literal "$troubleshooting_document" "$provider_surface_reason"
+  done
+done
+
+require_literal internal/assets/providers/oaw-matt.json '"id":"oaw/matt"'
+reject_literal internal/assets/providers/oaw-matt.json '"reference":"requirements"'
+reject_literal internal/assets/providers/oaw-matt.json '"reference":"verification-loop"'
+
+cat >"$CHECK_TEMP/forbidden-provider-claims" <<'EOF'
+Matt `requirements` skill
+Matt requirements skill
+Matt `verification-loop` skill
+Matt verification-loop skill
+Matt owns workspace creation
+Matt owns broad final verification
+Matt owns remediation
+Matt owns completion
+ECC `e2e-runner` owns broad final verification
+ECC `e2e-testing` owns broad final verification
+ECC `code-reviewer` owns closeout
+ECC `code-reviewer` owns completion
+Claude custom Agent is a verified Codex Role
+static multi-agent configuration proves live delegation
+compatibility reader
+compatibility decoder
+remove MATT-FULL
+remove MATT-SP-HYBRID
+Matt `requirements` 技能
+Matt requirements 技能
+Matt `verification-loop` 技能
+Matt verification-loop 技能
+Matt 拥有 workspace creation
+Matt 拥有 broad final verification
+Matt 拥有 remediation
+Matt 拥有 completion
+ECC `e2e-runner` 拥有 broad final verification
+ECC `e2e-testing` 拥有 broad final verification
+ECC `code-reviewer` 拥有 closeout
+ECC `code-reviewer` 拥有 completion
+Claude custom Agent 是 verified Codex Role
+static multi-agent configuration 证明 live delegation
+兼容 reader
+兼容 decoder
+删除 MATT-FULL
+删除 MATT-SP-HYBRID
+EOF
+for current_document_path in \
+  "$REPOSITORY/policy/ENGINEERING.md" \
+  "$REPOSITORY/README.md" \
+  "$REPOSITORY/README-zh.md" \
+  "$REPOSITORY"/docs/en/*.md \
+  "$REPOSITORY"/docs/zh/*.md; do
+  current_document=${current_document_path#"$REPOSITORY"/}
+  while IFS= read -r forbidden_claim; do
+    [ -n "$forbidden_claim" ] || continue
+    if grep -nF -- "$forbidden_claim" "$current_document_path" \
+      >"$CHECK_TEMP/forbidden-provider-claim-matches"; then
+      while IFS=: read -r line_number ignored_match; do
+        printf 'docs: error: forbidden provider claim: %s:%s:%s\n' \
+          "$current_document" "$line_number" "$forbidden_claim" >&2
+      done <"$CHECK_TEMP/forbidden-provider-claim-matches"
+      exit 1
+    fi
+  done <"$CHECK_TEMP/forbidden-provider-claims"
+done
+
 require_literal docs/adr/0003-add-optional-capability-admission-runtime.md \
   'Superseded by ADR 0009'
 require_literal docs/adr/0007-use-host-native-execution-topologies.md \

@@ -47,6 +47,18 @@ availability、Dispatch Packet status 和 normalized Receipts。Agent Host owns 
 OAW 绝不启动 model process，也不要求 adapter 重建 MCP、Hook、Skill、
 Plugin、认证、sandbox、approval 或 private configuration。
 
+### Provider Surface v4 evidence
+
+Provider Descriptor `oaw.provider-descriptor/v4` 区分 Distribution `ContentRoot` 与 Host
+Binding `InstallRoot`。Host 必须观察精确 enabled surface，在一个精确 installation 下解析，
+digest 完整 Binding tree，并匹配 source-pinned Distribution tree。相同名称、共享祖先、
+disabled skill、symlink 或局部文件 hash 均 fail closed。
+
+Binding kind 为 `skill`、`agent`、`role` 与 `instruction`。Skill、Claude custom Agent、
+Codex Role、Instruction、Hooks 与 tools 绝不相互替代。Static adapter 或 multi-agent
+metadata 最多是 `host-configured`，不能把 live delegation 报为 available。当前 Codex
+observation 只证明 `skill`/`CURRENT`；其他 kind 与 action 需要稳定 Host API。
+
 Host 可以报告 `inherited`、`host-configured`、`restricted`、`unknown` 或 `unavailable`
 environment observation。Receipt 只是 Host attested outcome 的 evidence，不声称 OAW
 物理包含了 Host。

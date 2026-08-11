@@ -116,25 +116,72 @@ the new Configuration Snapshot.
 
 ## Built-in and User-Defined Profiles
 
-The built-in Profile aliases remain stable:
+The four aliases remain active catalog entries. A current-Host exclusion does
+not remove an alias and there is no old-schema fallback.
 
-| Selection | Recipe | Ownership contract |
+| Selection | Recipe | Contract |
 | --- | --- | --- |
-| `SP-FULL` | `oaw/delivery` | Superpowers owns the complete delivery lifecycle when all required Capabilities verify. |
-| `MATT-FULL` | `oaw/domain-engineering` | Matt owns the complete domain-engineering lifecycle when all required Capabilities verify. |
-| `ECC-FULL` | `oaw/ecc-engineering` | ECC owns the complete engineering lifecycle when all required Capabilities verify. |
-| `MATT-SP-HYBRID` | `oaw/reliable-feature` | Matt and Superpowers use the fixed responsibility map below; exact ECC specialists remain bounded. |
-| `USER-DEFINED` | Configured Recipe ID | A selection action for a versioned user-defined Recipe, not a fifth built-in Profile. |
+| `MATT-FULL` | `oaw/domain-engineering` | Matt-led lifecycle with explicit neutral Host/user controls for Matt's exact gaps. |
+| `SP-FULL` | `oaw/delivery` | Complete inline Superpowers delivery path. |
+| `ECC-FULL` | `oaw/ecc-engineering` | ECC-led path over exact Host-surface alternatives. |
+| `MATT-SP-HYBRID` | `oaw/reliable-feature` | Preserved built-in Matt/Superpowers composition. |
+| `USER-DEFINED` | Configured Recipe ID | Selection action for a trusted, versioned custom Recipe, not a fifth built-in alias. |
 
-`ECC-FULL` includes discovery, specification and planning, implementation,
-testing, debugging and build repair, review, delegation, verification, and
-completion. ECC is not reduced to hardening. Its specialist role in another
-Recipe does not weaken the complete `oaw/ecc-engineering` option.
+`FULL` means a Provider-led lifecycle plus Provider-neutral Host actions and
+user/Host gates. It never means Provider ownership of the Agent Host. A Recipe
+compiles only when every applicable slot has exactly one outcome owner and all
+Bindings, topology, delegation, invocation, actions, authority, effects,
+resources, transitions, and terminal gates verify.
 
-A Recipe must compile to exactly one owner for every applicable responsibility,
-explicit transitions and terminal gates, bounded add-ons, and effects within
-trusted authority. An ambiguous Recipe is rejected rather than repaired by
-guessing.
+### Canonical ten-slot lifecycle
+
+| # | Slot ID | Outcome and neutral control |
+| --- | --- | --- |
+| 1 | `problem-framing` | Purpose, constraints, domain terms, decisions, success conditions; `shared-understanding` gate. |
+| 2 | `solution-specification` | Reviewable specification and test boundaries; `specification-approved` gate. |
+| 3 | `delivery-planning` | Verifiable units and executable plan; `delivery-plan-approved` gate. |
+| 4 | `workspace-preparation` | Safe workspace and known baseline; `workspace.prepare-or-confirm` action and `workspace-ready` gate when Host-owned. |
+| 5 | `implementation` | Approved bounded changes. |
+| 6 | `implementation-tdd` | Witnessed expected RED/GREEN cycle. |
+| 7 | `incident-recovery` | Conditional typed recovery, replan, or stop. |
+| 8 | `review-remediation` | Findings adjudicated, fixed, and re-reviewed. |
+| 9 | `fresh-verification` | Fresh claim-relevant output; `verification.execute` action when Host-owned and `fresh-evidence` gate. |
+| 10 | `closeout` | Accepted and user-authorized delivery/preservation; `closeout.execute` action when Host-owned and `user-closeout` gate. |
+
+Host actions and gates contain no Provider selector. A macro's `credit-only`
+calls count work already performed by its enclosing unit. `dispatch-before`
+and `dispatch-after` calls run once at their declared edge. Duplicate or
+uncredited ownership fails with `MACRO_INTERNAL_CONFLICT`.
+
+### Exact built-in matrix
+
+| Slot | `MATT-FULL` | `SP-FULL` | `ECC-FULL` | `MATT-SP-HYBRID` |
+| --- | --- | --- | --- | --- |
+| `problem-framing` | `grill-with-docs` (`grilling` + `domain-modeling` credited once) | `superpowers:brainstorming` | Codex `intent-driven-development` skill or exact Claude `architect` Agent | Matt `grill-with-docs` with credited internal calls |
+| `solution-specification` | `to-spec` | enclosing brainstorming outcome | `product-capability`; conditional `contract-first` does not become a peer owner | Matt `to-spec` |
+| `delivery-planning` | `to-tickets` | `superpowers:writing-plans`, once after brainstorming | observed Codex `/plan` Instruction or `blueprint`; Claude `planner` Agent or `blueprint` | Matt `to-tickets`, then SP `superpowers:writing-plans` for file/command detail |
+| `workspace-preparation` | Host `workspace.prepare-or-confirm` | `superpowers:using-git-worktrees` | Host action; `git-workflow` is guidance | SP `superpowers:using-git-worktrees` |
+| `implementation` | `implement` macro | inline `superpowers:executing-plans` | `tdd-workflow` or exact Claude `tdd-guide` alternative | inline SP `superpowers:executing-plans`; SDD paused |
+| `implementation-tdd` | `implement` credits `tdd` once | `superpowers:test-driven-development` | same selected implementation/TDD unit | Matt `tdd`; SP TDD paused |
+| `incident-recovery` | `diagnosing-bugs` for functional/hard/performance incidents; otherwise stop | `superpowers:systematic-debugging` typed route | only a verified typed route; Claude `build-error-resolver` may handle build/type/dependency | Matt `diagnosing-bugs`; build/type/dependency stops unless an ECC handler Add-on was selected |
+| `review-remediation` | `implement` credits `code-review`; remediation re-enters bounded `implement` and re-reviews | `superpowers:requesting-code-review` -> `superpowers:receiving-code-review` -> re-review | exact Codex `reviewer` Role or Claude `code-reviewer` Agent plus separate remediation | SP request/receive/re-review; Matt review and SDD review paused |
+| `fresh-verification` | Host `verification.execute` | `superpowers:verification-before-completion` | `verification-loop`; E2E surfaces remain specialist-only | SP `superpowers:verification-before-completion` |
+| `closeout` | Host `closeout.execute` | `superpowers:finishing-a-development-branch` | Host action with `git-workflow` guidance | SP `superpowers:finishing-a-development-branch` |
+
+Matt ships `grill-with-docs`, not a made-up requirements or verification Skill.
+It does not supply workspace creation, broad fresh verification, or completion.
+ECC Skills, Claude custom Agents, Codex Roles, Instructions, Hooks, and tools
+remain different surfaces. A Claude Agent name cannot prove a Codex Role;
+static multi-agent configuration cannot prove live delegation; `e2e-runner`,
+`e2e-testing`, reviewers, and delivery Hooks do not acquire broader ownership.
+
+A `USER-DEFINED` Recipe can combine installed, trusted, Host-verified compatible
+Bindings freely per slot. It must pin its version and sources, declare exact
+outcome owners, alternatives, overlays, incident routes, internal calls,
+actions, gates, effects, resources, and termination conditions, and fail closed
+on every gap. A user-defined SDD variant may select
+`superpowers:subagent-driven-development` only when the active Host proves the
+required child or nested-child delegation.
 
 ## Execution Topologies
 
@@ -187,30 +234,15 @@ Other built-in integrations remain policy surfaces unless their own Host-native
 integration is explicitly installed and verified. None of these logical
 records transfer physical execution authority from the Agent Host.
 
-## Matt-Superpowers Stage Map
+## Matt-Superpowers Composition Notes
 
-`MATT-SP-HYBRID` assigns one owner to each responsibility:
-
-| Responsibility | Owner |
-| --- | --- |
-| Requirements and domain modeling | Matt |
-| Product specification and acceptance criteria | Matt |
-| Test-boundary selection and ticket decomposition | Matt |
-| Per-ticket executable implementation plan | Superpowers `writing-plans` |
-| Workspace and Git setup | Superpowers |
-| Implementation orchestration and code changes | One Superpowers executor |
-| TDD method and red-green loop | Matt `tdd` |
-| Functional and hard-bug debugging | Matt `diagnosing-bugs` |
-| Build, dependency, and type repair | Selected ECC Incident Handler, or none |
-| Spec compliance and code-quality review | Superpowers |
-| Review remediation and re-review | Superpowers |
-| Fresh verification and branch completion | Superpowers |
-| Specialist checks | Only explicitly selected bounded add-ons |
-
-Matt specifications and tickets remain canonical for requirements and delivery
-edges. A Superpowers plan may add paths, commands, code steps, and expected
-results without changing those requirements or ticket boundaries. Matt `tdd`
-is the only TDD procedure in this hybrid.
+The matrix above is the authoritative `MATT-SP-HYBRID` projection. Matt
+specifications and tickets remain canonical for domain intent and delivery
+edges; the Superpowers plan adds executable detail without changing them.
+Matt `tdd` remains the only TDD procedure, one inline Superpowers executor owns
+implementation, and standalone Superpowers procedures own review/remediation,
+fresh verification, and closeout. An ECC build/type handler is absent unless
+the user explicitly selected that exact bounded Add-on.
 
 ## Lifecycle Lock, Inheritance, and Add-ons
 

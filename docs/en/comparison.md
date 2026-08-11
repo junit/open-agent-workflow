@@ -24,6 +24,20 @@ assigns one owner to each responsibility. The optional Workflow Coordinator
 records Workflow State, while the Agent Host performs `CURRENT` or native
 `SUBAGENT` execution.
 
+This comparison is source-pinned rather than name-inferred:
+
+| Provider | Upstream | Audited revision |
+| --- | --- | --- |
+| Matt | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
+| Superpowers | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
+| ECC | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+
+The audited names are surface-specific. Matt begins with `grill-with-docs`
+and uses `to-spec`, `to-tickets`, `implement`, `tdd`, `diagnosing-bugs`, and
+`code-review`. Superpowers references retain the `superpowers:` namespace.
+ECC Skills, Claude custom Agents, Codex Roles, Instructions, Hooks, and tools
+are separate evidence classes; no similar name is treated as substitution.
+
 ## Criteria
 
 Each stage was judged using the same six criteria:
@@ -54,7 +68,7 @@ proportionate to the risk it manages.
 
 The planning row needs one qualification. Matt owns requirements, domain
 modeling, product specification, test-seam selection, and ticket decomposition
-for complex work. Once a ticket is approved, Superpowers `writing-plans` owns
+for complex work. Once a ticket is approved, `superpowers:writing-plans` owns
 the per-ticket executable implementation plan. This is a responsibility split,
 not concurrent ownership of the same artifact.
 
@@ -64,19 +78,23 @@ An aggregate preference for one family would hide meaningful stage-level
 differences. The hybrid therefore assigns exactly one owner to each
 responsibility:
 
-- Matt owns requirements, domain modeling, specification, ticket decomposition,
-  TDD method, and functional or hard-bug debugging.
-- Superpowers owns workspace and Git setup, implementation orchestration, code
-  changes, spec compliance review, quality review, remediation, re-review,
-  fresh verification, and branch completion.
+- Matt `grill-with-docs` (with credited `grilling` and `domain-modeling`),
+  `to-spec`, and `to-tickets` own framing, specification, and ticket edges;
+  Matt `tdd` and `diagnosing-bugs` own the hybrid's TDD and functional incident
+  procedures.
+- Superpowers owns executable ticket detail, workspace, inline implementation,
+  standalone review/remediation, fresh verification, and closeout through the
+  exact skills listed in the lifecycle matrix.
 - An explicitly selected ECC resolver may own build, dependency, or type repair.
   An exact ECC specialist such as `ECC(security-review)` may produce only its
   declared bounded deliverable.
 
 ECC specialists do not become lifecycle owners under `MATT-SP-HYBRID`.
-Conversely, `ECC-FULL` remains available when the user wants ECC to own the
-complete lifecycle. The score table does not remove `SP-FULL`, `MATT-FULL`,
-`ECC-FULL`, or eligible user-defined Profiles from the user's choices.
+Conversely, `ECC-FULL` remains available as an ECC-led lifecycle with neutral
+Host/user controls. Its E2E specialists do not become broad verification, and
+its reviewers do not become closeout owners. The score table does not remove
+`SP-FULL`, `MATT-FULL`, `ECC-FULL`, or eligible user-defined Profiles from the
+user's choices.
 
 ## How to Use This Comparison
 

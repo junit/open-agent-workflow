@@ -120,7 +120,7 @@ eligibility check。OAW 不重建缺失 child environment，也不静默 fallbac
 ## Codex Host Bridge 边界
 
 Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式
-安装并信任。Bridge v1 只支持 `CURRENT` 与 `skill` binding。它不创建 child session，
+安装并信任。Bridge v2 支持 `CURRENT`，且当前 integration 只证明 `skill` binding。它不创建 child session，
 也不保证继承 MCP、Hook、Skill、Plugin、model、authentication、sandbox 或 approval
 behavior，除非 Host 提供稳定 observation。
 
@@ -129,15 +129,29 @@ Trusted `PreToolUse` Hook input 是唯一的 current-session identity source。A
 得到自动 `allow`；后续 Core 与 Coordinator operation 保留正常 Host approval behavior，
 session 或 working-directory 不匹配时 fail closed。
 
-`skills/list` 是 v1 唯一的 Provider binding authority。`hooks/list` 与 allowlisted
-`config/read` projection 只是 diagnostic environment observation。`plugin/list` 不是
-production dependency。Filesystem detection、Descriptor declaration、user configuration、
-prompt 与 Skill self-report 都不能创建 Host Binding Evidence。
+`skills/list` 是 required v2 Skill-observation authority。`hooks/list` 与 allowlisted
+`config/read` projection 是 optional environment observation；这三个 method 构成 closed
+metadata allowlist。`plugin/list` 不是 production dependency。Filesystem detection、
+Descriptor declaration、user configuration、prompt 与 Skill self-report 都不能创建 Host
+Binding Evidence。
+
+验证同时覆盖 exact enabled Skill file 与精确 Host Installation 下的完整 Binding tree，并
+与独立 pinned Distribution content tree 比较。Same-name、shared-ancestor、disabled、
+orphan、ambiguous、symlinked、partial-hash 或 drifting evidence 均 fail closed。Skill、
+Claude custom Agent、Codex Role、Instruction、Hooks 与 tools 保持独立 surface。
 
 Bridge 在 bounded process memory 中保存 opaque session-bound handle，只返回 secret-free
 summary。它不保存 raw Hook command、credential、MCP environment value、header、token、
 arbitrary Plugin setting 或完整 App Server configuration。Handle 不能进入 Workflow State、
-evidence artifact、log、ticket 或 screenshot。
+evidence artifact、log、ticket 或 screenshot，也不能在 Bridge restart、session change、
+CWD change、expiry 或 eviction 后复用。
+
+Public Bridge input 排除 user authorization、explicit invocation attestation 与 gate
+attestation；只有当前 Host evidence 能提供这些 fact。未 attested 的 delegation 或
+`workspace.prepare-or-confirm`、`verification.execute`、`closeout.execute` action 保持
+unavailable。每个非 START exchange 会在读取或签发 executable state 前检查全部八个
+Bundle authority digest。旧 Workflow record、stale fact、edited handle、unknown field、
+trailing value 与 caller-forged authority 都会在 effect 前被拒绝。
 
 这是 cooperation boundary，不是 operating-system isolation。具有相同用户权限的 process
 可以干扰本地 program、file 或 process I/O。OAW 可以验证 protocol record，但不能认证或

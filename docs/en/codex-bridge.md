@@ -42,6 +42,19 @@ oaw bridge install codex --format json
 oaw bridge check codex --format json
 ```
 
+`bridge check` is installation management only. Text output explicitly reports:
+
+```text
+proof_scope: installation-integrity
+live_protocol_proof: false
+```
+
+It proves managed files and Codex registration, not the protocol loaded by the
+active session. Only a fresh `observe_current` call negotiates live protocol
+evidence. If `check` reports drift, version mismatch, or a required new
+session, stop before Workflow START; update and session replacement are
+separate operator actions.
+
 The transaction renders a local marketplace named `oaw-local`, a Plugin named `oaw-codex-host`, and a checksum-pinned copy of the running OAW binary. Review all five rendered files before trusting the Plugin:
 
 ```text
@@ -65,7 +78,44 @@ Open Codex `/hooks` and review the exact four matchers and command path. Do not 
 
 ## Current Session Contract
 
-Bridge v1 supports only the `CURRENT` topology. The current Codex session is the physical executor. There is no `SUBAGENT` implementation, shell fallback, container fallback, alternate user home, projected configuration, or copied MCP, Hook, Skill, Plugin, model, authentication, sandbox, or approval environment. An unavailable Host surface remains `unknown` unless Codex reports stable, allowlisted evidence.
+Bridge v2 supports only the `CURRENT` topology in the current Codex integration.
+The current Codex session is the physical executor. There is no `SUBAGENT`
+implementation, shell fallback, container fallback, alternate user home,
+projected configuration, or copied MCP, Hook, Skill, Plugin, model,
+authentication, sandbox, or approval environment. Current observation proves
+`skill` Bindings only. Role, instruction, agent, tool, delegation, and
+Host-action facts remain unknown or unavailable unless Codex reports stable,
+allowlisted evidence.
+
+The canonical live negotiation tuple is:
+
+```text
+Bridge integration 2.0.0
+oaw.codex-bridge/v2
+oaw.codex-hook-context/v2
+oaw.host-evidence-handle/v2
+oaw.provider-descriptor/v4
+oaw.profile-recipe/v3
+oaw.host-manifest/v3
+oaw.host-session/v3
+oaw.host-binding-inventory/v3
+oaw.host-environment-report/v2
+oaw.host-invocation-receipt/v3
+oaw.host-conformance-transcript/v4
+oaw.host-conformance-report/v4
+oaw.execution-graph/v4
+oaw.lifecycle-bundle/v4
+oaw.capability-grant/v3
+oaw.dispatch-packet/v2
+oaw.workflow-command/v2
+oaw.workflow-result/v2
+oaw.workflow-snapshot/v2
+oaw.workflow-revision/v2
+```
+
+The VersionEvidence digest covers the full normalized tuple independently.
+Any missing, duplicate, non-canonical, stale, or mismatched field returns
+`HOST_BRIDGE_PROTOCOL_MISMATCH` before Core or Coordinator authority is used.
 
 Only `observe_current` can establish current-session identity. Its Hook is strictly read-only and injects reserved context after Codex creates the public tool input. The semantic output is the official nested envelope:
 
@@ -76,8 +126,8 @@ Only `observe_current` can establish current-session identity. Its Hook is stric
     "permissionDecision": "allow",
     "updatedInput": {
       "_oaw_host_context": {
-        "schema_version": "oaw.codex-hook-context/v1",
-        "bridge_protocol_version": "oaw.codex-bridge/v1",
+        "schema_version": "oaw.codex-hook-context/v2",
+        "bridge_protocol_version": "oaw.codex-bridge/v2",
         "session_id": "<opaque Host value>",
         "turn_id": "<opaque Host value>",
         "tool_use_id": "<opaque Host value>",
@@ -111,16 +161,33 @@ In a fresh trusted session, use the Bridge operations in this order:
 
 ```text
 observe_current
-core.inspect
-core.compile
+core_inspect
+core_compile
 workflow_exchange
 ```
 
 `observe_current` returns a short Host summary and an opaque `HostEvidenceHandle`. The handle is a cache reference, not a credential, Lifecycle Bundle field, or durable evidence artifact. Do not copy it into Workflow State, logs, tickets, or reports.
 
-`core.inspect` resolves Host-scoped Provider Candidates and exact enabled Skill bindings. v1 uses `skills/list` as the Provider binding authority. A Skill verifies only when its exact name and normalized path map to exactly one discovered Provider installation and Capability. Disabled, missing, orphaned, ambiguous, or foreign-Host Skills never create authority. Superpowers, Matt, ECC, and user Providers use the same matching algorithm; no brand exception promotes a Candidate.
+`core_inspect` resolves Host-scoped Provider Candidates and exact enabled Skill
+Bindings. `skills/list` is required; `hooks/list` and `config/read` are optional,
+and these three methods are the complete metadata allowlist. A Skill verifies
+only when its exact enabled name/path resolves below one exact discovered
+Provider installation and its complete Binding tree matches the pinned
+Distribution digest. Disabled, missing, orphaned, ambiguous, same-name foreign,
+shared-ancestor, symlinked, or drifting trees never create authority.
 
-`core.compile` accepts the explicit Profile and `CURRENT` selection. The Startup Gate still applies to `WORKFLOW`; Bridge observation only supplies Host evidence and never selects a Profile. `workflow_exchange` exchanges the compiled Bundle and Coordinator records. Codex remains responsible for executing selected Skills and tools.
+`core_compile` requires the exact confirmation digest for the user's explicit
+Profile, `CURRENT`, and Add-on selection. Inspection has no implicit selection.
+The Startup Gate still applies to `WORKFLOW`; Bridge observation only supplies
+Host evidence. `workflow_exchange` accepts only Workflow Command v2 and returns
+only Workflow Result/Snapshot/Revision v2 containing Bundle/Graph v4.
+
+Public callers cannot provide user authorization, explicit invocation
+attestation, or gate attestation. The Bridge hydrates those Host-owned facts
+from the current v2 handle or fails closed. Before every non-START command it
+checks the active Bundle's session, environment, inventory, features, actions,
+configuration, resolution, and registry digests. Drift returns
+`HOST_SESSION_CHANGED` before executable authority is read or issued.
 
 Direct Mode remains available when the Bridge is absent or unavailable. A Bridge failure must not turn a small bounded change into a Host-native claim.
 
@@ -148,7 +215,7 @@ After install or update, start a new Codex session. After uninstall, start a new
 
 ## Diagnostics And Recovery
 
-Host integration diagnostics are distinct from Provider and Profile decisions. The following codes are stable v1 reasons. Every recovery action is explicit; none silently selects a Profile or changes Host authority.
+Host integration diagnostics are distinct from Provider and Profile decisions. The following codes are stable v2 reasons. Every recovery action is explicit; none silently selects a Profile or changes Host authority.
 
 | Code | Meaning | Recovery |
 | --- | --- | --- |
@@ -157,10 +224,10 @@ Host integration diagnostics are distinct from Provider and Profile decisions. T
 | `HOST_BRIDGE_PROTOCOL_MISMATCH` | Plugin, Hook, Bridge, Core, or Host protocol versions differ. | Run `oaw bridge update codex`, review the Hook again, and start a new session. |
 | `HOST_EVIDENCE_HANDLE_REQUIRED` | A later operation omitted its current handle. | Call `observe_current` in the active session, then retry the operation. |
 | `HOST_EVIDENCE_HANDLE_INVALID` | The handle is malformed, edited, unknown, evicted, or from a restarted Bridge. | Call `observe_current` and use only the returned handle. |
-| `HOST_EVIDENCE_EXPIRED` | The handle exceeded its bounded TTL. | Call `observe_current` again before `core.inspect` or `core.compile`. |
+| `HOST_EVIDENCE_EXPIRED` | The handle exceeded its bounded TTL. | Call `observe_current` again before `core_inspect` or `core_compile`. |
 | `HOST_EVIDENCE_SESSION_MISMATCH` | The handle belongs to another session or working directory. | Stop the stale exchange; call `observe_current` in the current session and recompile. |
 | `HOST_OBSERVATION_FAILED` | Required stable metadata observation failed. | Run `oaw bridge check codex --format json`; repair the local Codex/App Server capability before retrying. |
-| `HOST_OBSERVATION_PARTIAL` | Optional environment metadata is incomplete. | Run `core.inspect` again and keep every unavailable field explicitly `unknown`. |
+| `HOST_OBSERVATION_PARTIAL` | Optional environment metadata is incomplete. | Run `core_inspect` again and keep every unavailable field explicitly `unknown`. |
 | `HOST_SESSION_CHANGED` | Facts pinned by the active Bundle changed. | Pause the Workflow, call `observe_current`, and pass the Startup Gate again before compiling. |
 
 Existing layers retain their own reasons, including `HOST_BINDING_EVIDENCE_REQUIRED`, `HOST_BINDING_INVENTORY_INVALID`, `PROVIDER_CANDIDATE_AMBIGUOUS`, `PROVIDER_PIN_INCOMPATIBLE`, `PROVIDER_BINDING_UNAVAILABLE`, and `PROFILE_TOPOLOGY_UNAVAILABLE`.
@@ -169,11 +236,20 @@ Management diagnostics include `BRIDGE_INSTALL_NOT_INSTALLED`, `BRIDGE_INSTALL_D
 
 ## Security Boundary
 
-The Hook is the only current-session identity source. A Skill instruction, prompt, filesystem candidate, or user-authored input cannot substitute for it. `skills/list` is the only v1 Provider binding authority. `plugin/list` is not a production dependency. Raw Hook commands, credentials, MCP environment values, headers, tokens, arbitrary Plugin settings, and App Server configuration are not retained.
+The Hook is the only current-session identity source. A Skill instruction,
+prompt, filesystem candidate, or user-authored input cannot substitute for it.
+`skills/list` is the required v2 Skill-observation authority; `plugin/list` is
+not a production dependency. Raw Hook commands, credentials, MCP environment
+values, headers, tokens, arbitrary Plugin settings, and App Server
+configuration are not retained.
 
 The Bridge uses the normal current user environment to query metadata; it does not create an alternate user home or projected environment. A malicious process running as the same user can interfere with local programs. This is a cooperative Host integration, not an operating-system authentication or isolation boundary.
 
-Do not publish handles, absolute Skill paths, raw Hook commands, or credentials in tickets, Workflow State, evidence, logs, or screenshots. Keep local dogfood records under `.scratch/oaw-codex-host-bridge-dogfood/` and untracked.
+Do not publish handles, absolute Skill paths, raw Hook commands, or credentials
+in tickets, Workflow State, evidence, logs, or screenshots. A handle is bound
+to one live Bridge process, session, and CWD; never persist or reuse it across
+a restart, session, or working directory. Keep local dogfood records under
+`.scratch/oaw-codex-host-bridge-dogfood/` and untracked.
 
 ## Uninstall
 

@@ -86,10 +86,17 @@ Lifecycle Bundle。active schema 会拒绝 `oaw.provider-descriptor/v1` 和
 `oaw.user-config/v1`，不会静默升级。
 
 Codex 默认提供 policy integration，并在 `oaw/codex-host` 提供独立的 audited
-host-native Bridge。Bridge 必须显式安装并信任；它只支持 `CURRENT` 与 `skill` binding。
-`oaw/codex-policy` policy surface 不会因 filesystem detection 被提升。未报告的 MCP、
-Hook、Skill、Plugin、model、authentication、sandbox、approval 与 tool surface 都保持
-`unknown`。
+host-native Bridge。Bridge 必须显式安装并信任。当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。
+`oaw/codex-policy` policy surface 不会因 filesystem detection 被
+提升。Role、instruction、agent、tool、delegation、invocation、
+`workspace.prepare-or-confirm`、`verification.execute` 与 `closeout.execute` 只有在稳定
+live API attestation 后才可用，否则保持 unknown 或 unavailable。
+
+v4 Provider 模型严格区分 Skill、Claude custom Agent、Codex Role、Instruction、Hooks 与
+tools。Binding kind 为 `skill`、`agent`、`role`、`instruction`；完整 Binding tree evidence
+必须位于精确 Distribution 与 Host Installation 下。共享祖先、相同名称、filesystem role
+file 或 static multi-agent configuration 都不能创建 verified Binding 或证明 live
+delegation。
 
 ## Core 编译
 
@@ -110,6 +117,11 @@ recommendation 和 immutable Lifecycle Bundle。调用方绝不能自行构造 B
 
 `ECC-FULL` 仍是完整生命周期。同一个 ECC Provider 在其他 Recipe 中也可以只拥有一个
 bounded specialist Capability。
+
+Compiler hard cut 使用 Provider Descriptor `oaw.provider-descriptor/v4`、Profile Recipe
+`oaw.profile-recipe/v3`、Execution Graph `oaw.execution-graph/v4`、Lifecycle Bundle
+`oaw.lifecycle-bundle/v4` 与 Capability Grant `oaw.capability-grant/v3`。Workflow
+command/result/snapshot/revision record 均为 v2。旧 authority record 不会被转换。
 
 ## 执行拓扑与 Host Integration
 

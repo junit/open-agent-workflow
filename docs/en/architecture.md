@@ -99,10 +99,18 @@ Lifecycle Bundle. Active schemas reject `oaw.provider-descriptor/v1` and
 
 Codex has a policy integration by default and a separate audited host-native
 Bridge at `oaw/codex-host`. The Bridge must be explicitly installed and trusted;
-it supports `CURRENT` and `skill` bindings only. The policy surface remains
-`oaw/codex-policy` and is never promoted by filesystem detection. Unreported
-MCP, Hook, Skill, Plugin, model, authentication, sandbox, approval, and tool
-surfaces remain `unknown`.
+Current Codex proves only `skill` bindings and `CURRENT` topology. The policy
+surface remains `oaw/codex-policy` and is never promoted by filesystem
+detection. Role, instruction, agent, tool, delegation, invocation,
+`workspace.prepare-or-confirm`, `verification.execute`, and `closeout.execute`
+remain unknown or unavailable unless a stable live API attests them.
+
+The v4 Provider model keeps Skills, Claude custom Agents, Codex Roles,
+Instructions, Hooks, and tools distinct. Binding kinds are `skill`, `agent`,
+`role`, and `instruction`; complete Binding-tree evidence is checked below the
+exact Distribution and Host Installation. A shared ancestor, same name,
+filesystem role file, or static multi-agent configuration cannot create a
+verified Binding or prove live delegation.
 
 ## Core Compilation
 
@@ -125,6 +133,12 @@ assigns each responsibility exactly once. Built-in selections are:
 
 `ECC-FULL` remains a complete lifecycle. The same ECC Provider may instead own
 one bounded specialist Capability in another Recipe.
+
+The compiler hard-cut is Provider Descriptor `oaw.provider-descriptor/v4`,
+Profile Recipe `oaw.profile-recipe/v3`, Execution Graph
+`oaw.execution-graph/v4`, Lifecycle Bundle `oaw.lifecycle-bundle/v4`, and
+Capability Grant `oaw.capability-grant/v3`. Workflow command/result/snapshot/
+revision records are v2. No reader converts an older authority record.
 
 ## Execution Topologies and Host Integration
 

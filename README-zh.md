@@ -65,8 +65,8 @@ Codex 与 Claude Code 是相互独立的 Host。即使它们引用同一组物�
 Candidate 在没有 verified Provider Instance 时不能满足 Profile compilation。foreign-Host
 诊断绝不会成为 pin、Registry 输入、Profile owner、Capability Grant 或 Workflow 权限。
 
-当前 Provider Descriptor 和用户配置契约只接受 v3；
-`oaw.provider-descriptor/v1` 与 `oaw.user-config/v1` 输入会被拒绝，不会隐式升级。
+当前 Provider Descriptor 为 `oaw.provider-descriptor/v4`，用户配置仍为 v3；旧输入会被
+拒绝，不会隐式升级。
 存在歧义的当前 Host candidate 只能使用下列精确身份字段固定；`location` 与 `version`
 是可选的可读断言：
 
@@ -140,7 +140,7 @@ Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、�
 approval 和全部物理 effect。OAW 绝不启动 model process。
 
 `CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，
-`SUBAGENT` 才可用；不存在 process fallback。Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式安装并信任。Bridge v1 只支持 CURRENT 和 skill binding；除非 Host 报告稳定 evidence，否则所有其他 Host surface 都保持 unknown。
+`SUBAGENT` 才可用；不存在 process fallback。Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式安装并信任。当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。Role、instruction、agent、tool、delegation 与 Host action 只有在稳定 live API 证明后才可用，否则保持 unknown 或 unavailable。
 
 可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。在 macOS 上，如果 Docker Desktop 可用，应使用 `scripts/smoke-docker.sh` 验证 Linux 归档。WSL-specific 检查是可选项，`SKIP` 必须记录，绝不能报告为 pass。
 
@@ -164,12 +164,12 @@ Bundle 会锁定到当前交付物。只有用户能切换它，而且只能在�
 
 ## 生命周期配置
 
-| Profile | 生命周期归属 |
+| Profile | 生命周期契约 |
 | --- | --- |
-| `SP-FULL` | Superpowers 拥有完整生命周期。 |
-| `MATT-FULL` | Matt 拥有完整生命周期。 |
-| `ECC-FULL` | ECC 拥有完整的 `oaw/ecc-engineering` 生命周期。 |
-| `MATT-SP-HYBRID` | Matt 和 Superpowers 按下方显式阶段分工；声明的 ECC specialist 保持为 bounded add-on。 |
+| `MATT-FULL` | Matt 主导 `oaw/domain-engineering`；精确的 workspace、广义验证和 closeout 缺口由 neutral Host action 补足。 |
+| `SP-FULL` | inline Superpowers `oaw/delivery`，使用真实的 planning、TDD、debugging、review、verification 与 finish skill。 |
+| `ECC-FULL` | ECC 主导 `oaw/ecc-engineering`；只有 Host 精确观察到的 Skill、Agent、Role 或 Instruction alternative 才可编译。 |
+| `MATT-SP-HYBRID` | 保留的 Matt/Superpowers 组合；ECC 只可作为显式选择的 typed Add-on。 |
 | `USER-DEFINED` | 选择配置中版本化的用户自定义 Profile Recipe；它不是第五个内置 alias。 |
 
 推荐项永远不会变成默认项。缺少所需 provider capability 时，任务门禁会停止，不会
@@ -177,6 +177,12 @@ Bundle 会锁定到当前交付物。只有用户能切换它，而且只能在�
 与 Capability 模型。Host-native Subagent 继承完全相同的 locked bundle，不重新进行
 family arbitration。bounded add-on 只能产出声明的 specialist 交付物，不能接管生命周期。
 `DIRECT` 和 `BOUNDED` 不会创建 Workflow State。
+
+通用有序生命周期是 `problem-framing` -> `solution-specification` ->
+`delivery-planning` -> `workspace-preparation` -> `implementation` ->
+`implementation-tdd` -> 条件式 `incident-recovery` -> `review-remediation` ->
+`fresh-verification` -> `closeout`。每个 Recipe 必须为每个适用 slot 解析一个 outcome
+owner，并包含 neutral Host action 与 gate。`FULL` 绝不把 Host 所有权交给 Provider。
 
 ## Matt-Superpowers 混合配置
 
@@ -195,7 +201,12 @@ family arbitration。bounded add-on 只能产出声明的 specialist 交付物�
 
 workspace 和 Git setup 归 Superpowers。build、dependency 或 type repair 只归显式选择的
 ECC resolver；也可以不选择 ECC resolver。specialist 检查只以精确的 bounded add-on
-运行。这样每项职责都恰好只有一个所有者。
+运行。这样每项职责都恰好只有一个所有者。精确序列为 Matt `grill-with-docs` ->
+`to-spec` -> `to-tickets`，Superpowers `superpowers:writing-plans` ->
+`superpowers:using-git-worktrees` -> inline `superpowers:executing-plans`，Matt `tdd`
+与 `diagnosing-bugs`，随后是 Superpowers review/remediation、
+`superpowers:verification-before-completion` 与
+`superpowers:finishing-a-development-branch`。
 
 ## 支持的目标
 
