@@ -54,14 +54,52 @@ func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 		if document["type"] != "object" || document["additionalProperties"] != false {
 			t.Errorf("%s root metadata = %#v", path, document)
 		}
-		// Workflow Snapshot v2 embeds pre-existing Coordinator projections whose
-		// deep schema closure is owned by the Coordinator cutover. This Bridge
-		// task proves that the active document itself is present and root-closed
-		// without weakening deep-closure checks for any previously covered schema.
-		if path != "schemas/v2/workflow-snapshot.schema.json" {
-			assertClosedObjects(t, path, document)
+		assertClosedObjects(t, path, document)
+	}
+}
+
+func TestWorkflowSnapshotV2UsesClosedBundleProjectionItems(t *testing.T) {
+	data, err := fs.ReadFile(FS(), "schemas/v2/workflow-snapshot.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	definitions := document["$defs"].(map[string]any)
+	bundle := definitions["bundle"].(map[string]any)
+	properties := bundle["properties"].(map[string]any)
+	want := map[string]string{
+		"provider_instances":       "https://open-agent-workflow.dev/schemas/v4/execution-graph.schema.json#/$defs/provider_instance",
+		"environment_requirements": "https://open-agent-workflow.dev/schemas/v4/execution-graph.schema.json#/$defs/environment_requirement",
+	}
+	for name, reference := range want {
+		items, ok := properties[name].(map[string]any)["items"].(map[string]any)
+		if !ok || items["$ref"] != reference {
+			t.Errorf("%s items = %#v, want closed ref %q", name, items, reference)
 		}
 	}
+}
+
+func TestWorkflowSnapshotV2RequiresRuntimeProjectionFields(t *testing.T) {
+	data, err := fs.ReadFile(FS(), "schemas/v2/workflow-snapshot.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document map[string]any
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	definitions := document["$defs"].(map[string]any)
+	assertRequiredProperties(t, "classification", definitions["classification"].(map[string]any), []string{
+		"request_mode", "workflow_complexity", "risk_class", "evidence_requirements", "escalation_reasons",
+	})
+	assertRequiredProperties(t, "configuration", definitions["configuration"].(map[string]any), []string{
+		"schema_version", "catalog_digest", "user_config_digest", "project_root", "project_config_digest",
+		"project_status", "project_reason", "settings", "provider_installations", "bounded_capability_defaults",
+		"required_providers", "recommended_providers", "untrusted_provider_ids", "host_integrations", "digest",
+	})
 }
 
 func TestEmbeddedCodexHostEvidenceCarriesActiveConformanceV4(t *testing.T) {
@@ -127,6 +165,30 @@ func assertClosedObjects(t *testing.T, path string, value any) {
 	case []any:
 		for _, child := range value {
 			assertClosedObjects(t, path, child)
+		}
+	}
+}
+
+func assertRequiredProperties(t *testing.T, name string, definition map[string]any, expected []string) {
+	t.Helper()
+	required, ok := definition["required"].([]any)
+	if !ok {
+		t.Fatalf("%s required = %#v", name, definition["required"])
+	}
+	got := make(map[string]struct{}, len(required))
+	for _, value := range required {
+		field, ok := value.(string)
+		if !ok {
+			t.Fatalf("%s required contains %#v", name, value)
+		}
+		got[field] = struct{}{}
+	}
+	if len(required) != len(expected) || len(got) != len(expected) {
+		t.Errorf("%s required = %#v, want %v", name, required, expected)
+	}
+	for _, field := range expected {
+		if _, ok := got[field]; !ok {
+			t.Errorf("%s required is missing %q", name, field)
 		}
 	}
 }

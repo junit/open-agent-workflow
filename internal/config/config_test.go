@@ -623,7 +623,7 @@ func TestLoadBuildsBuiltInOnlySnapshotWithoutFiles(t *testing.T) {
 		t.Fatalf("project = %q, %q", first.ProjectStatus(), first.ProjectReason())
 	}
 	value := first.Catalog()
-	if len(value.Providers()) != 3 || len(value.Recipes()) != 5 || len(value.Aliases()) != 4 {
+	if len(value.Providers()) != 3 || len(value.Recipes()) != 4 || len(value.Aliases()) != 4 {
 		t.Fatalf("catalog counts = %d/%d/%d", len(value.Providers()), len(value.Recipes()), len(value.Aliases()))
 	}
 	if first.RequiredProviders() == nil || first.RecommendedProviders() == nil || first.UntrustedProviderIDs() == nil {
@@ -739,7 +739,7 @@ replace = true
 	if err := os.WriteFile(filepath.Join(userRoot, "providers", "acme.toml"), []byte(userProvider), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(userRoot, "profiles", "review.toml"), []byte(testReviewRecipeTOML), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(userRoot, "profiles", "review.toml"), []byte(testReviewRecipeTOML(t, "acme/review", "acme/suite")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	writeUserConfig(t, userRoot, fmt.Sprintf(`
@@ -831,8 +831,7 @@ func TestLoadRejectsReservedUserRecipeNamespace(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, "profiles"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	recipe := strings.Replace(testReviewRecipeTOML, `id = "acme/review"`, `id = "oaw/replacement"`, 1)
-	recipe = strings.Replace(recipe, `provider_id = "acme/suite"`, `provider_id = "oaw/superpowers"`, 1)
+	recipe := testReviewRecipeTOML(t, "oaw/replacement", "oaw/superpowers")
 	if err := os.WriteFile(filepath.Join(root, "profiles", "replacement.toml"), []byte(recipe), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -1099,9 +1098,20 @@ output_artifact = "artifact"
 maximum_effects = ["read-project"]
 resources = ["project"]
 supported_topologies = ["CURRENT"]
-responsibilities = [{namespace = "stage", name = "problem-framing", slot_id = "problem-framing", outcome_owner = true}]
+responsibilities = [
+  {namespace = "stage", name = "problem-framing", slot_id = "problem-framing", outcome_owner = true},
+  {namespace = "stage", name = "solution-specification", slot_id = "solution-specification", outcome_owner = true},
+  {namespace = "stage", name = "delivery-planning", slot_id = "delivery-planning", outcome_owner = true},
+  {namespace = "stage", name = "workspace-preparation", slot_id = "workspace-preparation", outcome_owner = true},
+  {namespace = "stage", name = "implementation", slot_id = "implementation", outcome_owner = true},
+  {namespace = "procedure", name = "implementation-tdd", slot_id = "implementation-tdd", outcome_owner = true},
+  {namespace = "incident", name = "incident-recovery", slot_id = "incident-recovery", outcome_owner = true},
+  {namespace = "assurance", name = "review-remediation", slot_id = "review-remediation", outcome_owner = true},
+  {namespace = "assurance", name = "fresh-verification", slot_id = "fresh-verification", outcome_owner = true},
+  {namespace = "stage", name = "closeout", slot_id = "closeout", outcome_owner = true}
+]
 delegation = {child = false, parallel_child = false, nested_child = false, nested_parallel_child = false}
-stage_span = ["problem-framing"]
+stage_span = ["problem-framing", "solution-specification", "delivery-planning", "workspace-preparation", "implementation", "implementation-tdd", "incident-recovery", "review-remediation", "fresh-verification", "closeout"]
 internal_calls = []
 alternatives = []
 conflicts = []
@@ -1114,20 +1124,26 @@ request_modes = ["BOUNDED"]
 binding_refs = ["binding"]
 `
 
-const testReviewRecipeTOML = `
-schema_version = "oaw.profile-recipe/v3"
-taxonomy_version = "oaw.lifecycle-taxonomy/v1"
-recipe_version = "3.0.0"
-id = "acme/review"
-display_name = "Acme Review"
-family = "review"
-slots = []
-add_ons = []
-incident_routes = []
-overlays = []
-stable_boundaries = ["complete"]
-environment_requirements = []
-`
+func testReviewRecipeTOML(t *testing.T, id, providerID string) string {
+	t.Helper()
+	record := configRecipeV3Record()
+	record.ID = id
+	record.DisplayName = "Acme Review"
+	record.Family = "review"
+	for slotIndex := range record.Slots {
+		for stepIndex := range record.Slots[slotIndex].Pipeline {
+			record.Slots[slotIndex].Pipeline[stepIndex].Selector = catalog.BindingSelector{
+				ProviderID: providerID,
+				BindingID:  "binding",
+			}
+		}
+	}
+	var encoded bytes.Buffer
+	if err := toml.NewEncoder(&encoded).Encode(record); err != nil {
+		t.Fatal(err)
+	}
+	return encoded.String()
+}
 
 func testRegistry(t *testing.T) *schema.Registry {
 	t.Helper()

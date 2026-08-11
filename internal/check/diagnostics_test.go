@@ -37,18 +37,15 @@ func TestExecuteReportsEmptyUserFixtureExactly(t *testing.T) {
 	}
 }
 
-func TestExecuteRequiresCompleteMattCompatibilityBundle(t *testing.T) {
+func TestExecuteRecognizesMattSkillLockCompatibilityIndicator(t *testing.T) {
 	root := t.TempDir()
 	environment := testEnvironment(t, root)
-	for _, skill := range []string{"to-spec", "to-tickets", "tdd"} {
-		writeFixtureFile(t, filepath.Join(environment.Home, ".agents", "skills", skill, "SKILL.md"), "")
-	}
 	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	assertLine(t, result.Lines, "provider matt: missing")
-	writeFixtureFile(t, filepath.Join(environment.Home, ".agents", "skills", "diagnosing-bugs", "SKILL.md"), "")
+	writeFixtureFile(t, filepath.Join(environment.Home, ".agents", ".skill-lock.json"), "{}")
 	result, err = check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -82,13 +79,13 @@ func TestExecuteRecognizesEverySuperpowersCompatibilityIndicator(t *testing.T) {
 func TestExecuteKeepsECCCompatibilityIndicatorNarrow(t *testing.T) {
 	root := t.TempDir()
 	environment := testEnvironment(t, root)
-	writeFixtureFile(t, filepath.Join(environment.Home, ".claude", "plugins", "marketplaces", "everything-claude-code", "plugins", "ecc", ".codex-plugin", "plugin.json"), "plugin")
+	writeFixtureFile(t, filepath.Join(environment.Home, ".agents", "skills", "everything-claude-code", "SKILL.md"), "skill")
 	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
 	assertLine(t, result.Lines, "provider ecc: missing")
-	writeFixtureFile(t, filepath.Join(environment.Home, ".agents", "skills", "everything-claude-code", "SKILL.md"), "skill")
+	writeFixtureFile(t, filepath.Join(environment.Home, ".claude", "plugins", "marketplaces", "everything-claude-code", "plugins", "ecc", ".codex-plugin", "plugin.json"), "plugin")
 	result, err = check.Execute(testCatalog(t), environment, check.Request{Targets: "claude"})
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
@@ -130,10 +127,8 @@ func TestExecuteReportsBuiltInProvidersAndProjectReadiness(t *testing.T) {
 	root := t.TempDir()
 	environment := testEnvironment(t, root)
 	writeFixtureFile(t, filepath.Join(environment.Home, ".codex", "plugins", "cache", "openai-api-curated", "superpowers", "test-build", "skills", "using-superpowers", "SKILL.md"), "superpowers")
-	for _, skill := range []string{"to-spec", "to-tickets", "tdd", "diagnosing-bugs"} {
-		writeFixtureFile(t, filepath.Join(environment.Home, ".agents", "skills", skill, "SKILL.md"), "matt")
-	}
-	writeFixtureFile(t, filepath.Join(environment.Home, ".agents", "skills", "everything-claude-code", "SKILL.md"), "ecc")
+	writeFixtureFile(t, filepath.Join(environment.Home, ".agents", ".skill-lock.json"), "{}")
+	writeFixtureFile(t, filepath.Join(environment.Home, ".codex", "plugins", "ecc", ".codex-plugin", "plugin.json"), "{}")
 	for _, executable := range []string{"claude", "codex", "gemini", "opencode"} {
 		writeExecutable(t, filepath.Join(environment.Path, executable))
 	}

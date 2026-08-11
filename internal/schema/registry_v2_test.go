@@ -171,18 +171,29 @@ func validWorkflowSnapshotV2(t testing.TB) []byte {
 		"selection": graphSelection, "provider_instances": []any{}, "entry_slot_id": "problem-framing", "slots": graphSlots,
 		"incident_routes": []any{}, "stable_boundaries": []any{}, "topology": "CURRENT", "environment_requirements": []any{}, "decisions": []any{}, "digest": digest,
 	}
+	classificationRecord := map[string]any{
+		"request_mode": "WORKFLOW", "workflow_complexity": "complex", "risk_class": "normal",
+		"evidence_requirements": []any{}, "escalation_reasons": []any{},
+	}
+	configurationRecord := map[string]any{
+		"schema_version": "oaw.configuration-snapshot/v2", "catalog_digest": digest, "user_config_digest": digest,
+		"project_root": "", "project_config_digest": "", "project_status": "absent", "project_reason": "",
+		"settings": []any{}, "provider_installations": []any{}, "bounded_capability_defaults": []any{},
+		"required_providers": []any{}, "recommended_providers": []any{}, "untrusted_provider_ids": []any{},
+		"host_integrations": []any{}, "digest": digest,
+	}
 	bundle := map[string]any{
 		"schema_version": "oaw.lifecycle-bundle/v4", "id": "bundle-0123456789abcdef0123456789abcdef", "deliverable_id": "deliverable-1",
-		"input_digest": digest, "generation": 1, "classification": map[string]any{}, "classification_digest": digest,
+		"input_digest": digest, "generation": 1, "classification": classificationRecord, "classification_digest": digest,
 		"selection": workflowSelection, "recipe": recipe, "recipe_digest": digest, "host_id": "codex", "host_session_digest": digest,
 		"host_manifest_digest": digest, "environment_report_digest": digest, "provider_inventory_digest": digest, "host_feature_digest": digest,
-		"host_action_digest": digest, "host_evidence_digest": digest, "configuration": map[string]any{}, "resolution_digest": digest,
+		"host_action_digest": digest, "host_evidence_digest": digest, "configuration": configurationRecord, "resolution_digest": digest,
 		"registry_digest": digest, "provider_instances": []any{}, "execution_graph": graph, "topology": "CURRENT",
 		"environment_requirements": []any{}, "add_ons": []any{}, "digest": digest,
 	}
 	return mustJSON(t, map[string]any{
 		"schema_version": "oaw.workflow-snapshot/v2", "workflow_id": "workflow-0123456789abcdef0123456789abcdef",
-		"request_id": "request-1", "deliverable_id": "deliverable-1", "revision": 1, "status": "READY", "classification": map[string]any{},
+		"request_id": "request-1", "deliverable_id": "deliverable-1", "revision": 1, "status": "READY", "classification": classificationRecord,
 		"bundles": []any{bundle}, "active_generation": 1,
 		"cursor":        map[string]any{"slot_id": "problem-framing", "kind": "binding", "unit_id": "unit-1", "ordinal": 1},
 		"active_ticket": "", "grant_history": []any{}, "user_authorizations": []any{}, "invocation_attestations": []any{},
