@@ -120,8 +120,11 @@ Plan 02 creates internal/assets/conformance/codex-host-v3.json and deletes the o
 
 | Action | Path | Responsibility |
 | --- | --- | --- |
+| Modify | lib/detect.sh | Review remediation only: hard-cut the test-only legacy management oracle to the same v4 Matt and ECC compatibility probes as Go management. |
 | Modify | internal/check/diagnostics_test.go | Review remediation only: migrate legacy Provider-detection fixtures to the approved v4 Matt lockfile and ECC Plugin probes without changing production detection behavior. |
 | Modify | internal/schema/registry_v2_test.go | Review remediation only: keep the valid Workflow Snapshot v2 fixture aligned with the closed, runtime-required Classification and Configuration projections. |
+| Modify | tests/02-check-test.sh | Review remediation only: reject retired Matt/ECC Skill probes and exercise the v4 lockfile/Plugin readiness fixtures. |
+| Modify | tests/11-check-parity-test.sh | Review remediation only: prove exact Bash/Go parity over retired probes and the active v4 Provider probes. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/review.md | Fixed-point correctness/security review record. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt | Sorted exact repository-relative path ledger for validated remediation. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/verification.md | Fresh command, status, digest, coverage, and baseline evidence. |
@@ -144,6 +147,15 @@ positive AlternativeChoice fixture used empty Classification and Configuration
 objects even though Coordinator validation requires the complete records.
 Remediation may replace only those empty fixture objects with complete valid v4
 projections; it must not weaken the active schema or alter production decoding.
+
+The `lib/detect.sh`, `tests/02-check-test.sh`, and
+`tests/11-check-parity-test.sh` entries are a third review-discovered Plan 06
+amendment. The mandatory Task 4 shell suite proved that the test-only legacy
+management oracle still accepted the retired Matt four-Skill bundle and generic
+ECC Skill while Go management used the v4 lockfile and Plugin probes. The
+remediation must preserve the oracle's read-only role, replace only those Matt
+and ECC detection probes, and add negative legacy-probe plus positive v4-probe
+parity evidence.
 
 ## Locked Bridge Contract
 
@@ -413,7 +425,7 @@ Expected: the cached-name output is exactly the 21 paths in the Policy And Docum
 
 ## Task 3: Complete Independent Correctness And Security Review
 
-**Files:** Modify internal/check/diagnostics_test.go and internal/schema/registry_v2_test.go. Create .scratch/oaw-provider-surface-v4/evidence/review.md and .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt. Any tracked remediation path must be made exact through the ledger rule in the File Map before editing.
+**Files:** Modify lib/detect.sh, internal/check/diagnostics_test.go, internal/schema/registry_v2_test.go, tests/02-check-test.sh, and tests/11-check-parity-test.sh. Create .scratch/oaw-provider-surface-v4/evidence/review.md and .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt. Any tracked remediation path must be made exact through the ledger rule in the File Map before editing.
 
 - [ ] **Step 1: Run the fixed-point correctness review**
 
@@ -463,6 +475,11 @@ When reviewed-paths.txt is non-empty, run:
 rtk git commit -m "fix: address provider surface review"
 ~~~
 
+If a later mandatory Task 4 gate exposes a new stable hard-cut regression,
+return to Task 3 before any tracked edit, extend the File Map and ledger through
+the same review rule, commit one additional exact remediation, and restart Task
+4 from Step 1. Task 4 itself remains verification-only.
+
 When reviewed-paths.txt is empty, run:
 
 ~~~bash
@@ -470,7 +487,7 @@ rtk git diff --cached --quiet
 rtk git status --short
 ~~~
 
-Expected: either one exact reviewed-remediation commit exists, or the empty-index evidence is recorded in review.md. Scratch review files remain untracked in both cases.
+Expected: either at least one exact reviewed-remediation commit exists, or the empty-index evidence is recorded in review.md. Every reopened remediation is separately reviewed and committed. Scratch review files remain untracked in all cases.
 
 ## Task 4: Run The First Post-Cutover Full-Tree Gate
 
