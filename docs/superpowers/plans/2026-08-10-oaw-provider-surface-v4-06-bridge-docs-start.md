@@ -121,6 +121,7 @@ Plan 02 creates internal/assets/conformance/codex-host-v3.json and deletes the o
 | Action | Path | Responsibility |
 | --- | --- | --- |
 | Modify | internal/check/diagnostics_test.go | Review remediation only: migrate legacy Provider-detection fixtures to the approved v4 Matt lockfile and ECC Plugin probes without changing production detection behavior. |
+| Modify | internal/schema/registry_v2_test.go | Review remediation only: keep the valid Workflow Snapshot v2 fixture aligned with the closed, runtime-required Classification and Configuration projections. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/review.md | Fixed-point correctness/security review record. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt | Sorted exact repository-relative path ledger for validated remediation. |
 | Create | .scratch/oaw-provider-surface-v4/evidence/verification.md | Fresh command, status, digest, coverage, and baseline evidence. |
@@ -136,6 +137,13 @@ Marketplace Plugin probe as insufficient. Remediation may update only those
 fixtures and expectations to the v4 probes already exercised by
 `internal/management/management_check_test.go`; it must not alter production
 Provider discovery or broaden any compatibility indicator.
+
+The `internal/schema/registry_v2_test.go` entry is a second review-discovered
+Plan 06 amendment. Closing the Workflow Snapshot v2 projection exposed that its
+positive AlternativeChoice fixture used empty Classification and Configuration
+objects even though Coordinator validation requires the complete records.
+Remediation may replace only those empty fixture objects with complete valid v4
+projections; it must not weaken the active schema or alter production decoding.
 
 ## Locked Bridge Contract
 
@@ -405,7 +413,7 @@ Expected: the cached-name output is exactly the 21 paths in the Policy And Docum
 
 ## Task 3: Complete Independent Correctness And Security Review
 
-**Files:** Modify internal/check/diagnostics_test.go. Create .scratch/oaw-provider-surface-v4/evidence/review.md and .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt. Any tracked remediation path must be made exact through the ledger rule in the File Map before editing.
+**Files:** Modify internal/check/diagnostics_test.go and internal/schema/registry_v2_test.go. Create .scratch/oaw-provider-surface-v4/evidence/review.md and .scratch/oaw-provider-surface-v4/evidence/reviewed-paths.txt. Any tracked remediation path must be made exact through the ledger rule in the File Map before editing.
 
 - [ ] **Step 1: Run the fixed-point correctness review**
 
