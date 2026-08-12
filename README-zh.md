@@ -172,8 +172,8 @@ Assurance Level 与 Request Mode 相互独立。仅有指令分发能力的 Host
 `policy-cooperative`；当前 Host-native integration 可能支持 `core-backed` 或
 `coordinator-backed`。激活后的 `DIRECT` 处理一个小型、可恢复变更；
 `BOUNDED` 处理一个由用户选择的 Capability 和一个命名交付物，它不是原生
-Host Skill routing；`WORKFLOW` 运行选择 gate。没有超时自动选择，也没有静默
-默认项。机器支撑的选择可以编译 Lifecycle Bundle；`policy-cooperative` 使用显式
+Host Skill routing；`WORKFLOW` 运行选择 gate。没有超时自动选择，也没有静默默认项。
+机器支撑的选择可以编译 Lifecycle Bundle；`policy-cooperative` 使用显式
 Profile candidate、`CURRENT`、协作式 Policy Workflow Plan 和 Progress Tracker，不冒充机器保证。
 
 ## 生命周期配置
