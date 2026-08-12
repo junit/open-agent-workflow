@@ -6,10 +6,40 @@ This guide explains Open Agent Workflow (OAW) behavior. It is not a second
 policy. `policy/ENGINEERING.md is normative`; if this guide differs from the
 [canonical policy](../../policy/ENGINEERING.md), the policy wins.
 
+## Activation and Assurance
+
+Native Host is the default. Installation, task complexity, automatic Host Skill
+selection, and direct invocation of an ordinary Skill do not activate OAW. A
+current top-level user instruction such as `/oaw <task>` creates one OAW
+Engagement for one deliverable; related follow-ups inherit it and unrelated
+deliverables remain Native Host behavior.
+
+Every activated Engagement starts with Assurance Preflight:
+
+```text
+Native Host unless explicitly activated
+    -> Assurance Preflight
+    -> DIRECT / BOUNDED / WORKFLOW
+    -> policy-cooperative / core-backed / coordinator-backed
+```
+
+Request Mode describes the activated work contract. Assurance Level separately
+describes which claims the current Host integration can support:
+
+| Assurance Level | Available contract |
+| --- | --- |
+| `policy-cooperative` | Cooperative Assessment, Host-visible candidates, Policy Workflow Plan, Progress Tracker, Execution Notes, and Conflict Warnings. It cannot claim Core or Coordinator records. |
+| `core-backed` | Core classification, Host-verified Provider resolution, reason-coded eligibility, explicit selection preview, and immutable Lifecycle Bundle. |
+| `coordinator-backed` | All `core-backed` claims plus durable revisions, Grants, cooperative Leases, normalized Receipts, transitions, and recovery state. |
+
+Installed files, Provider descriptors, or Bridge installation alone do not
+raise assurance. Machine-backed levels require current Host-native session
+evidence.
+
 ## Three Request Modes
 
-OAW Core classifies each new top-level engineering request before selecting an
-engineering method:
+Request Modes exist only inside an active OAW Engagement. Native Host is not a
+Request Mode.
 
 | Request Mode | Execution contract | Lifecycle selection |
 | --- | --- | --- |
@@ -22,11 +52,14 @@ no unresolved architecture or domain decision, no public contract or sensitive
 semantic change, and a known verification boundary. It creates no Capability,
 Profile, Lifecycle Bundle, Startup Gate, or Workflow State.
 
-Bounded Mode is the Atomic Skill mode. The user or a user-trusted rule selects
-one exact Capability with declared effects, resources, evidence, and a terminal
-condition. It cannot claim planning, implementation ownership, general review,
-a remediation loop, Git completion, or a lifecycle stage. A required second
-Capability or broader responsibility triggers reclassification.
+Activated Bounded Mode is not normal Host Skill routing. It admits one selected
+Capability with declared effects, resources, evidence, and one terminal
+condition for one named observable deliverable. If the activated request names
+an exact Skill or Capability, selection is `user-explicit`. Otherwise OAW shows
+one Host-visible candidate and stops with `CAPABILITY_SELECTION_REQUIRED` until
+the user confirms. It cannot claim planning, implementation ownership, general
+review, a remediation loop, Git completion, or a lifecycle stage. A required
+second Capability or broader responsibility triggers reclassification.
 
 Workflow Mode covers unresolved requirements or root cause, domain and
 architecture decisions, interacting engineering responsibilities, public
@@ -34,26 +67,46 @@ contracts, schemas, dependencies, migrations, sensitive changes, multiple
 tickets, and long-lived delegation.
 
 Only Workflow Mode runs the Startup Gate. Complexity and Risk Class tune
-recommendations and verification, but they do not activate lifecycle selection
-for Direct or Bounded work. `DIRECT` and `BOUNDED` do not create Workflow State.
+recommendations and verification, but they do not activate OAW. `DIRECT` and
+`BOUNDED` do not create Workflow State.
 
-## Workflow Startup Gate
+## Workflow Selection Gates
 
-Before Workflow lifecycle work begins, OAW:
+At `core-backed` or `coordinator-backed`, the machine Startup Gate:
 
 1. reads the canonical policy;
-2. performs only enough read-only inspection to classify the request;
-3. states Request Mode, Complexity, Risk Class, and concrete evidence;
-4. resolves verified Provider Instances through OAW Core;
-5. shows every eligible built-in and user-defined Profile, eligible `CURRENT`
+2. states Assurance Level, Request Mode, Complexity, Risk Class, and evidence;
+3. resolves verified Provider Instances through OAW Core;
+4. shows every eligible built-in and user-defined Profile, eligible `CURRENT`
    or native `SUBAGENT` topology, recommendations, exclusions, and proposed
    bounded add-ons;
-6. waits for a blocking user choice with no timeout or silent default; and
-7. has OAW Core compile and record the immutable Lifecycle Bundle.
+5. waits for a blocking user choice with no timeout or silent default; and
+6. has OAW Core compile and record the immutable Lifecycle Bundle.
+
+At `policy-cooperative`, the Cooperative Selection Gate shows Host-visible
+Profile candidates, states the unavailable machine guarantees, exposes only
+`CURRENT`, lists every bounded add-on, and waits for explicit candidate,
+topology, add-on, and limitation acceptance. It then creates a cooperative
+Policy Workflow Plan and Progress Tracker before lifecycle work. An unverified
+candidate is never called an eligible Profile, and static instruction context
+cannot prove `SUBAGENT` availability.
 
 Provider detection is diagnostic input. It never chooses a Capability, Profile,
 or topology. Missing or ambiguous required Capabilities stop selection rather
 than being silently omitted or replaced.
+
+Policy-cooperative execution uses these stable stop reasons:
+
+| Reason | Recovery |
+| --- | --- |
+| `CAPABILITY_SELECTION_REQUIRED` | Select the Bounded candidate explicitly. |
+| `POLICY_ONLY_PROVIDER_UNVERIFIED` | Use a machine-backed integration or remove the verified-Provider requirement. |
+| `POLICY_ONLY_PROFILE_INCOMPLETE` | Supply a visible owner for every required responsibility or choose another complete candidate. |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | Select `CURRENT` or exit OAW. |
+| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | Remove the Grant, Lease, Receipt, idempotency, atomic revision, or recovery requirement, or use machine-backed assurance. |
+| `POLICY_ONLY_CONCURRENT_MUTATION` | Stop or serialize overlapping project or Git mutation. |
+| `POLICY_ONLY_EXECUTION_UNCERTAIN` | Reconcile an uncertain external or destructive effect; do not retry blindly. |
+| `POLICY_ONLY_CONTEXT_UNCERTAIN` | Reconfirm selection and progress instead of reconstructing authority. |
 
 ## Provider and Capability Model
 
@@ -272,8 +325,10 @@ references, and lag status. It excludes credentials, full Grants, sensitive
 evidence, and raw Provider output.
 
 Projection files are never parsed back as authority. A projection write failure
-records lag and does not roll back the committed revision. A policy-only lock
-is likewise non-authoritative and cannot grant physical execution authority.
+records lag and does not roll back the committed revision. Policy-cooperative
+work instead uses a human-readable Policy Workflow Plan and best-effort Progress
+Tracker. Neither is a Lifecycle Bundle, Lifecycle Lock, or Workflow State, and
+neither can grant physical execution authority.
 
 ## Stable Switching
 

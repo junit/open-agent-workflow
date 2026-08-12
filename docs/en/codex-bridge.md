@@ -6,6 +6,13 @@ The Codex Host Bridge is an explicit, audited Codex Plugin integration for Open 
 
 The Bridge is a Host integration, not a second runtime. The active Codex session invokes Skills and tools and performs every physical effect. OAW observes secret-free Host metadata, compiles policy, and exchanges Coordinator records. OAW does not start a child session, execute a lifecycle Capability, invoke a model, or reconstruct the Codex environment.
 
+Bridge installation does not activate OAW. Filesystem evidence, a registered
+Plugin, and the availability of `observe_current` are readiness facts only.
+Bridge and Core operations may begin only after the current top-level user
+request creates an active OAW Engagement. Assurance Preflight may then use the
+Bridge to establish `core-backed` or `coordinator-backed` support; before that,
+ordinary requests and ordinary Skill routing remain Native Host behavior.
+
 ## Command Surface
 
 Policy installation and Bridge installation are different actions:

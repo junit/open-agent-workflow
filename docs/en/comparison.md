@@ -16,6 +16,13 @@ provider skills, agents, triggers, and documentation can change. The table is
 not a universal benchmark, an empirical performance study, or a promise that
 one family wins every repository and task.
 
+These scores guide OAW recommendations only after explicit activation has
+created an Engagement. Normal Host Skill routing is outside this governance
+path: before activation, the Host may automatically or explicitly select any
+ordinary Skill without creating an OAW Request Mode. In `policy-cooperative`
+use, the comparison can identify Host-visible Profile candidates; only
+Core-backed inspection may call a Profile eligible.
+
 Scores are on a 1.0 to 5.0 scale and appear in **Superpowers / Matt / ECC**
 order. They help define an initial ownership map; they do not silently choose a
 Profile. The user's explicit selection remains authoritative. A Provider's
@@ -98,11 +105,13 @@ user's choices.
 
 ## How to Use This Comparison
 
-Use the table as transparent design context for a recommendation. Before work
-starts, OAW still shows every profile and any proposed bounded add-ons, then
-blocks for the user's choice. If provider versions or procedures change, the
+Use the table as transparent design context for an activated OAW
+recommendation. A machine-backed Workflow Startup Gate shows every eligible
+Profile and proposed bounded add-on, then blocks for the user's choice. A
+cooperative selection gate shows candidates and states its limitations instead
+of claiming eligibility. If Provider versions or procedures change, the
 evidence and scores should be reviewed together. A changed score alone must not
-rewrite an active lifecycle lock.
+rewrite active Workflow authority or a cooperative Progress Tracker.
 
 The [lifecycle guide](lifecycle.md) describes selection, persistence, and safe
 switching. The normative rules are in

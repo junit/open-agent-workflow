@@ -3,10 +3,10 @@
 [English](../en/extending-adapters.md) | [Adapter 证据](adapters.md) |
 [贡献指南](../../CONTRIBUTING-zh.md)
 
-Open Agent Workflow（OAW）adapter 是指向 canonical policy 的 thin、target-native
-entrypoint。新增 adapter 是实现与证据变更，不是新的 workflow 设计。Adapter
-**must not change lifecycle semantics**，也 **must not vendor a provider**。目标工具和
-每个 workflow provider 都保持独立安装。
+Open Agent Workflow（OAW）adapter 是 canonical policy 前的 thin、target-native Activation
+Router。新增 adapter 是实现与证据变更，不是新的 workflow 设计。Adapter
+**must not change lifecycle semantics**、**must not vendor a provider**，也 **must not eagerly import the
+Policy**。目标工具和每个 workflow provider 都保持独立安装。
 
 ## Host Integration 是独立边界
 
@@ -91,9 +91,10 @@ marker comment 定义 mechanical ownership，不定义 model precedence。
 并返回 prospective byte。它不得读取、创建、chmod、rename 或删除最终 destination；这些
 effect 归 transaction code 所有。
 
-对 output byte 做精确断言，包括 frontmatter、import syntax、quoting、final newline 与
-canonical policy 绝对路径。只有 provider 定义 import 时才使用 documented import；否则
-使用 model-visible bootstrap text，并明确这是 OAW choice。
+对 output byte 做精确断言，包括 frontmatter、quoting、final newline 与 canonical policy 绝对路径。
+每个 renderer 都必须输出 Activation Router 契约：普通工作保持原生 Host 行为，只在显式激活后
+读取完整 Policy。即使 provider 文档化 import syntax，也不得加入急切导入 Policy。Cursor、Windsurf
+和 Copilot 可保留 Host 要求的 metadata，但 metadata 不是激活信号。
 
 ## 解决 Shared Destination
 
@@ -118,7 +119,7 @@ download fallback。每个 fixture 都使用 **isolated `HOME`**、`XDG_CONFIG_H
 - 精确 destination byte、ownership mode、state row、origin 与 checksum；
 - pre-existing user content、foreign owned file、clean ownership、missing content、drift
   与符合条件的 forced backup；
-- provider-specific frontmatter、import/reference 行为、precedence caveat 与 reload 指南。
+- provider-specific frontmatter、惰性 Router 行为、不存在急切导入 Policy、precedence caveat 与 reload 指南。
 
 Core user adapter 放在 `tests/04-core-adapters-test.sh`；project adapter 与 shared-path 行为
 放在 `tests/05-project-adapters-test.sh`。Expected byte 应使用独立 literal，不能在测试中

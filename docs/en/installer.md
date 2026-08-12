@@ -41,6 +41,21 @@ or with `help`, `-h`, or `--help` prints help and exits 0. A command-scoped help
 request, such as `./install.sh install --help`, does the same without mutation.
 If the wrapper's sibling binary is missing or not executable, it exits 70.
 
+## Installation Does Not Activate OAW
+
+Installation does not activate OAW. `install`, `update`, and Bridge installation
+only distribute the Policy and lazy Activation Router, or manage Host-native
+integration files. They do not classify the current conversation, inspect a
+Provider for an OAW Engagement, create a Workflow, or change normal Host Skill
+routing. A later current top-level user instruction must explicitly activate
+OAW for one deliverable.
+
+`update` replaces a valid OAW-owned eager managed instruction with the lazy
+Activation Router while preserving non-OAW bytes. It does not convert an active
+legacy policy-only Markdown lifecycle lock into a Progress Tracker. Complete
+that legacy work under its prior contract or explicitly reactivate and reselect
+the deliverable under the current Policy.
+
 ## Syntax and Options
 
 ```text
@@ -161,10 +176,10 @@ under the XDG state root; see the [architecture guide](architecture.md) for
 exact paths and the record schema.
 
 Install State and Workflow State are disjoint; no automatic migration occurs.
-Management commands neither create Workflow State nor import existing
-policy-only tasks or Profile locks. Starting coordination or switching at a
-Stable Boundary is an explicit Workflow action, not a side effect of `install`,
-`update`, or `uninstall`.
+Management commands do not create Workflow State, a Policy Workflow Plan, or a
+Progress Tracker, and do not import existing policy-only tasks or Profile locks.
+Starting coordination or switching at a Stable Boundary is an explicit
+Workflow action, not a side effect of `install`, `update`, or `uninstall`.
 
 A normal `install` creates no operation backup. Clean `update` and `uninstall`
 need not create one. A forced `update` or `uninstall` creates an
@@ -185,7 +200,7 @@ oaw bridge install codex
 The first command installs only the policy adapter and `ENGINEERING.md`. It
 does not install an executable Plugin or claim current-session Host evidence.
 The second command is an explicit opt-in transaction for the audited Codex Host
-Bridge. Its management surface is:
+Bridge. Neither command activates OAW for a request. Its management surface is:
 
 ```text
 oaw bridge check codex

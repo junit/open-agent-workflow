@@ -6,9 +6,36 @@
 `policy/ENGINEERING.md 是规范来源`；如果本指南与
 [canonical policy](../../policy/ENGINEERING.md) 不一致，以 policy 为准。
 
+## 激活与 Assurance
+
+原生 Host 是默认状态。安装 OAW、任务复杂度、Host 自动选择 Skill，或直接调用一个
+普通 Skill 都不会激活 OAW。只有当前顶层用户指令，例如 `/oaw <task>`，才会为一个
+交付物建立 OAW Engagement。相关 follow-up 继承该 Engagement；无关交付物继续使用原生 Host。
+
+每个已激活 Engagement 都先运行保证等级预检（Assurance Preflight）：
+
+```text
+未显式激活 -> 原生 Host
+    -> 保证等级预检
+    -> DIRECT / BOUNDED / WORKFLOW
+    -> policy-cooperative / core-backed / coordinator-backed
+```
+
+Request Mode 描述已激活工作的契约；Assurance Level 单独描述当前 Host integration 能够
+支持哪些声明：
+
+| Assurance Level | 可用契约 |
+| --- | --- |
+| `policy-cooperative` | Cooperative Assessment、Host-visible candidate、协作式 Policy Workflow Plan、Progress Tracker、Execution Note 和 Conflict Warning；不能声称 Core 或 Coordinator record。 |
+| `core-backed` | Core classification、Host-verified Provider resolution、reason-coded eligibility、显式选择 preview 与 immutable Lifecycle Bundle。 |
+| `coordinator-backed` | 全部 `core-backed` 声明，加上 durable revision、Grant、协作式 Lease、normalized Receipt、transition 与 recovery state。 |
+
+已安装文件、Provider descriptor 或 Bridge 安装本身都不会提升 assurance。机器支撑等级必须有
+当前 Host-native session evidence。
+
 ## 三种 Request Mode
 
-OAW Core 在选择工程方法前，对每个新顶层工程请求分类：
+Request Mode 只存在于活跃 OAW Engagement 内。原生 Host 不是 Request Mode。
 
 | Request Mode | 执行契约 | 生命周期选择 |
 | --- | --- | --- |
@@ -20,8 +47,10 @@ Direct Mode 要求 change point 已知、需求明确、scope 有界、无未解
 decision、不改变 public contract 或敏感语义，并且 verification boundary 已知。它不创建
 Capability、Profile、Lifecycle Bundle、Startup Gate 或 Workflow State。
 
-Bounded Mode 是 Atomic Skill mode。用户或 user-trusted rule 选择一个精确 Capability，
-并声明 effect、resource、evidence 和 terminal condition。它不能拥有 planning、
+激活后的 Bounded Mode 不是原生 Host Skill routing。它只为一个命名、可观察交付物准入
+一个已选 Capability，并声明 effect、resource、evidence 和一个 terminal condition。如果激活
+请求明确命名 Skill 或 Capability，则为 `user-explicit`；否则 OAW 只展示一个 Host-visible
+candidate，并以 `CAPABILITY_SELECTION_REQUIRED` 停止，直到用户确认。它不能拥有 planning、
 implementation、general review、remediation loop、Git completion 或生命周期阶段。需要
 第二个 Capability 或更广职责时必须重新分类。
 
@@ -30,24 +59,41 @@ Workflow Mode 适用于未解决需求或 root cause、domain 与 architecture d
 委派。
 
 只有 Workflow Mode 运行 Startup Gate。Complexity 与 Risk Class 会调整推荐和验证强度，
-但不会为 Direct 或 Bounded 激活生命周期选择。`DIRECT` 与 `BOUNDED` 不创建 Workflow
-State。
+但不会激活 OAW。`DIRECT` 与 `BOUNDED` 不创建 Workflow State。
 
-## Workflow Startup Gate
+## Workflow 选择 Gate
 
-Workflow lifecycle 工作开始前，OAW：
+在 `core-backed` 或 `coordinator-backed` 下，machine Startup Gate：
 
 1. 读取 canonical policy；
-2. 只执行足以分类请求的只读检查；
-3. 陈述 Request Mode、Complexity、Risk Class 与具体 evidence；
-4. 通过 OAW Core 解析 verified Provider Instance；
-5. 展示每个可用的内置与用户自定义 Profile、可用的 `CURRENT` 或原生 `SUBAGENT`
+2. 陈述 Assurance Level、Request Mode、Complexity、Risk Class 与具体 evidence；
+3. 通过 OAW Core 解析 verified Provider Instance；
+4. 展示每个可用的内置与用户自定义 Profile、可用的 `CURRENT` 或原生 `SUBAGENT`
    topology、推荐、排除原因和拟议 bounded add-on；
-6. 等待没有超时或静默默认项的阻塞式用户选择；
-7. 由 OAW Core 编译并记录 immutable Lifecycle Bundle。
+5. 等待没有超时或静默默认项的阻塞式用户选择；
+6. 由 OAW Core 编译并记录 immutable Lifecycle Bundle。
+
+在 `policy-cooperative` 下，Cooperative Selection Gate 展示 Host-visible Profile candidate，
+声明不可用的机器保证，只展示 `CURRENT`，列出所有 bounded add-on，并等待用户显式
+接受 candidate、topology、add-on 和限制。然后在 lifecycle 工作前建立协作式 Policy Workflow
+Plan 与 Progress Tracker。未验证 candidate 不得称为 eligible Profile；静态指令上下文也不能
+证明 `SUBAGENT` 可用。
 
 Provider detection 只是诊断输入，绝不选择 Capability、Profile 或 topology。所需
 Capability 缺失或有歧义时停止选择，绝不静默省略或替换。
+
+Policy-cooperative 执行使用以下稳定 stop reason：
+
+| Reason | 恢复方式 |
+| --- | --- |
+| `CAPABILITY_SELECTION_REQUIRED` | 由用户显式选择 Bounded candidate。 |
+| `POLICY_ONLY_PROVIDER_UNVERIFIED` | 使用机器支撑 integration，或去除 verified Provider 要求。 |
+| `POLICY_ONLY_PROFILE_INCOMPLETE` | 为每个必需职责提供 visible owner，或选择另一个 complete candidate。 |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | 选择 `CURRENT` 或退出 OAW。 |
+| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | 去除 Grant、Lease、Receipt、idempotency、atomic revision 或 recovery 要求，或使用机器支撑 assurance。 |
+| `POLICY_ONLY_CONCURRENT_MUTATION` | 停止或串行化重叠的 project/Git 变更。 |
+| `POLICY_ONLY_EXECUTION_UNCERTAIN` | 先对不确定的外部或破坏性 effect 做对账，不得盲目重试。 |
+| `POLICY_ONLY_CONTEXT_UNCERTAIN` | 重新确认选择和进度，不得重建 authority。 |
 
 ## Provider 与 Capability 模型
 
@@ -243,7 +289,9 @@ digest-pinned evidence reference 和 lag status；排除 credential、完整 Gra
 和 raw Provider output。
 
 Projection 绝不会解析回 authority。Projection write failure 只记录 lag，不回滚 committed
-revision。Policy-only lock 同样不是权威来源，不能授予物理执行权限。
+revision。Policy-cooperative 工作改用人类可读的协作式 Policy Workflow Plan 和尽力维护的
+Progress Tracker。它们都不是 Lifecycle Bundle、Lifecycle Lock 或 Workflow State，也不能授予
+物理执行权限。
 
 ## 稳定切换
 

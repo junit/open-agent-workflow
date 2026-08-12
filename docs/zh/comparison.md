@@ -12,6 +12,11 @@ Code（ECC）提供的 workflow 流程，不比较模型质量或 agent 工具�
 的 skill、agent、trigger 和文档可能变化，因此结论会随版本变化。该表不是通用 benchmark，
 不是实证性能研究，也不承诺某个 family 在每个仓库和任务中都最好。
 
+这些分数只在显式激活后用于指导 OAW recommendation。原生 Host Skill routing 不在该治理
+路径中：激活前，Host 可以自动选择或由用户显式选择任意普通 Skill，而不会创建 OAW
+Request Mode。在 `policy-cooperative` 下，这份对比只能标出 Host-visible Profile
+candidate；只有 Core-backed inspection 才能把 Profile 称为 eligible。
+
 分数范围为 1.0 到 5.0，按 **Superpowers / Matt / ECC** 顺序排列。它们帮助定义初始
 所有权映射，但不会静默选择 Profile；用户的显式选择始终有效。Provider brand 不决定
 角色：OAW Core 编译 selected Recipe，为每项职责分配一个 owner。可选 Workflow
@@ -83,9 +88,11 @@ Profile。
 
 ## 怎样使用这份对比
 
-应把该表作为 recommendation 的透明设计背景。工作开始前，OAW 仍会展示全部 profile
-和拟议 bounded add-on，然后阻塞等待用户选择。如果 provider 版本或流程变化，应同时
-重新检查证据和分数。单独改变一个分数不能改写 active lifecycle lock。
+应把该表作为已激活 OAW recommendation 的透明设计背景。Machine-backed Workflow
+Startup Gate 会展示全部 eligible Profile 与拟议 bounded add-on，然后阻塞等待用户选择；
+cooperative selection gate 只展示 candidate 并说明限制，不能声称 eligibility。如果
+Provider 版本或流程变化，应同时重新检查证据和分数。单独改变一个分数不能改写 active
+Workflow authority 或协作式 Progress Tracker。
 
 [生命周期指南](lifecycle.md)解释选择、持久化与安全切换。规范规则位于
 [policy/ENGINEERING.md](../../policy/ENGINEERING.md)。

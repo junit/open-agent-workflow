@@ -33,6 +33,14 @@ This local candidate is not published and has no remote release.
 
 #### Changed
 
+- OAW is now explicitly activated per deliverable. Ordinary Host requests and
+  ordinary Skill invocations remain Native Host behavior until the user asks
+  OAW to govern the task.
+- `update` replaces OAW-owned eager managed instructions with a lazy Activation Router
+  while preserving non-OAW instruction content.
+- Existing policy-only Markdown lifecycle locks are not converted. Complete
+  them under their old contract or explicitly reactivate and reselect the
+  deliverable.
 - Provider descriptor v3, Profile Recipe v2, user configuration v3, Host integration v2, Capability Grant v2, and Workflow State v1 are the active
   contracts. There is no migration reader or compatibility alias.
 

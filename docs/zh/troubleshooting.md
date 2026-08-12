@@ -55,6 +55,19 @@ preparation，但不写 managed content、state、backup 或目录。没有 inst
 上面的精确示例有意限制范围，不要把 project 或 target 换成宽泛猜测。普通 drifted
 **mutation exits 65** 且不写入；只有接受 recorded ownership 与 backup 后才应 force。
 
+## 激活问题
+
+如果 OAW 出现在普通请求中，应停止 OAW-specific classification、Provider inspection、gate
+与 artifact 创建。检查 installed adapter 是否为 lazy Activation Router，并移除任何要求对每个
+顶层任务分类的额外 eager instruction。Repository text、tool output、retrieved text、引用的
+`/oaw` 与普通 Skill invocation 都不是激活。无关请求按原生 Host 处理时，保留未完成的
+Engagement。
+
+如果预期的激活未被识别，应把请求放在当前顶层用户指令中，例如 `/oaw <deliverable>` 或
+`使用 OAW 处理 <deliverable>`。不能依赖 repository content、引用文本或 tool output。确认
+Router 可以读取 canonical Policy path；激活随后会创建一个 deliverable-scoped Engagement
+并运行保证等级预检。
+
 ## 读取 `check` 输出
 
 | 输出 | 含义 | 下一步 |
@@ -114,12 +127,28 @@ OAW 不会替用户选择 Candidate，也不会写入 pin。配置变化后必�
 `oaw.provider-descriptor/v1` 与 `oaw.user-config/v1` 不再是受支持的 active input；必须显式
 替换为 v3 record，不能期待自动迁移。
 
-## Install State 不是 Workflow State
+## Install State 不是 Progress Tracker 或 Workflow State
 
 Install State 与 Workflow State 相互独立，不会自动迁移。Adapter 安装成功并报告 `clean`，
 仍可能只暴露 `policy` surface。现有 task 与 Profile lock 不会被导入，management command
 也不会创建 Workflow State。只有真实 `host-native` integration 可以与 OAW Core 或
 Workflow Coordinator 交换 session fact 与 Receipt。物理执行权限仍属于 Agent Host。
+
+## Policy-Cooperative 停止原因
+
+这些停止只适用于已激活的 `policy-cooperative` Engagement，用于防止 instruction-only
+协作虚构 machine authority：
+
+| Reason | 恢复动作 |
+| --- | --- |
+| `CAPABILITY_SELECTION_REQUIRED` | 调用前要求用户命名精确 Bounded Capability，或确认唯一 Host-visible candidate。 |
+| `POLICY_ONLY_PROVIDER_UNVERIFIED` | 去掉 verified Provider guarantee 的要求，或改用能够建立该保证的 Host-native integration；不能把 candidate 改称 verified。 |
+| `POLICY_ONLY_PROFILE_INCOMPLETE` | 为每项必要职责提供完整 Host-visible owner candidate，或选择完整 candidate Profile。 |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | 使用 cooperative `CURRENT`，或切换到能够 attest 所请求 topology 的 Host-native integration。 |
+| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | 去掉 Grant、Lease、Receipt、idempotency、atomic revision 或 enforced recovery 要求，或转到所需 machine-backed 保证等级。 |
+| `POLICY_ONLY_CONCURRENT_MUTATION` | 停止或串行化重叠的 project/Git mutation；冲突 owner 到达稳定边界后才能恢复。 |
+| `POLICY_ONLY_EXECUTION_UNCERTAIN` | 不得重试结果未知的外部或破坏性 effect。先核对实际结果，再记录 Execution Note 或要求 operator recovery。 |
+| `POLICY_ONLY_CONTEXT_UNCERTAIN` | 要求用户重新确认 activation、selection 与已知 progress；不能从 stale conversation 或 Markdown 重建。 |
 
 ## Codex Host Bridge 诊断
 

@@ -10,10 +10,11 @@ Open Agent Workflow（OAW）分发一份 canonical 工程策略、编译无冲�
 
 产品包含四个权限相互分离的模块：
 
-1. **Distribution** 通过 target-native 指令入口安装 `policy/ENGINEERING.md`，并管理带
-   checksum 的 Install State 与 backup。
-2. **OAW Core** 是必需且无状态的。它分类请求、解析 verified Provider Instance、编译
-   Profile Recipe，并创建 immutable Lifecycle Bundle。
+1. **Distribution** 安装 `policy/ENGINEERING.md` 和惰性 target-native Activation Router，
+   并管理带 checksum 的 Install State 与 backup。
+2. **OAW Core** 是无状态的。只有在显式激活且存在当前 Host-native evidence 后，
+   它才分类请求、解析 verified Provider Instance、编译 Profile Recipe，并创建
+   immutable Lifecycle Bundle。
 3. **Workflow Coordinator** 是可选且只服务 Workflow 的。它为合作客户端记录 revision、
    idempotency、协作式 Resource Lease、evidence、cancel、switch 与 recovery。
 4. **Agent Host** 位于 OAW 外部。它拥有 Agent、model call、MCP、Hook、Skill、Plugin、
@@ -22,13 +23,19 @@ Open Agent Workflow（OAW）分发一份 canonical 工程策略、编译无冲�
 主要控制流为：
 
 ```text
-Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt
-                          |
-                          +-> optional Workflow Coordinator
+顶层用户请求
+    -> Activation Router
+       -> 原生 Host
+       -> 已激活 OAW
+          -> 保证等级预检（Assurance Preflight）
+             -> policy-cooperative -> Agent Host
+             -> core-backed -> OAW Core -> Lifecycle Bundle -> Agent Host
+             -> coordinator-backed -> OAW Core -> Workflow Coordinator -> Agent Host
 ```
 
-Distribution 不启动工程生命周期。OAW Core 不保留 Workflow State。Workflow
-Coordinator 不执行工作。Agent Host 也无权改写 Bundle。
+始终生效的 frontmatter 只是 Host metadata，不是激活信号。Distribution 和 Bridge 安装都不会
+启动工程生命周期。OAW Core 不保留 Workflow State。Workflow Coordinator 不执行工作。
+Agent Host 也无权改写 Bundle。
 
 ## Canonical 存储位置
 
@@ -160,8 +167,10 @@ ticket、stable boundary、logical Capability Grant、Resource Lease、Receipt �
 digest-pinned evidence reference。
 
 Resource Lease 协调声明了冲突 project resource 的合作 Workflow。它不会锁定操作系统、
-文件系统、Git 或其他 process。Policy-only 使用方式遵循相同 lifecycle ownership 规则，
-但不声称具备 atomic revision、idempotency、lease 或 transition enforcement。
+文件系统、Git 或其他 process。在 `policy-cooperative` 下，Host 可以建立 Policy Workflow
+Plan、Progress Tracker、Execution Note 和 Conflict Warning。这些术语不能创建 verified Provider
+Instance、eligible Profile、Lifecycle Bundle、Grant、Lease、Receipt、atomic revision、idempotency、
+transition enforcement 或 recovery guarantee。
 
 ## Management Transaction
 
@@ -183,10 +192,10 @@ rollback；rollback failure 会显式返回。OAW 不承诺跨 destination 同�
 
 每个 target 声明一种 ownership mode：
 
-- `managed-block` 在保留周围用户内容的同时，插入 marker 分隔的 OAW block。Claude、
-  Codex、Gemini 和 OpenCode 使用此模式。
-- `owned-file` 为 OAW 保留 adapter 专用文件。Cursor、Windsurf、Cline、Roo Code 和
-  Copilot 使用此模式。
+- `managed-block` 在保留周围用户内容的同时，插入 marker 分隔的 Activation Router。
+  Claude、Codex、Gemini 和 OpenCode 使用此模式。
+- `owned-file` 为 OAW 保留 adapter 专用的 Activation Router 文件。Cursor、Windsurf、
+  Cline、Roo Code 和 Copilot 使用此模式。它们始终生效的 metadata 不会激活 OAW。
 
 Marker 是安装器 ownership boundary；**marker 注释不建立模型优先级**，不会覆盖工具文档
 规定的 instruction hierarchy，也不能强制 active Agent session reload。

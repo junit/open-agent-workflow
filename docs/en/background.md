@@ -24,11 +24,13 @@ tool can open a second remediation loop after another family already owns
 completion. A follow-up request can also retrigger selection and silently
 change methods halfway through the work.
 
-OAW prevents that ambiguity before family-specific work begins. It classifies
-the top-level task, shows every lifecycle profile, waits for explicit user
-choice, and locks the selected bundle to the deliverable. A profile assigns one
-owner to every applicable responsibility. Detection can inform the gate, but
-it never makes the choice.
+OAW does not arbitrate ordinary Host behavior. A normal request, including
+automatic Host Skill selection or direct invocation of one ordinary Skill,
+remains Native Host behavior. Only explicit activation creates a task-scoped
+OAW Engagement. Inside that Engagement, OAW assesses the task, shows the
+applicable choices, waits for explicit user selection, and binds that selection
+to the deliverable. Detection can inform the gate, but it never makes the
+choice.
 
 ## One Policy, Several Agent Tools
 
@@ -45,11 +47,11 @@ different switching rules. That difference is especially hard to notice when
 each file is valid for its own tool.
 
 OAW instead keeps one canonical rule source in its own XDG namespace. The
-installer renders thin target-native entrypoints that import, reference, or
-direct the agent to that policy using the supported behavior of each target.
-Adapters translate the instruction surface; they do not fork lifecycle
-semantics. Mechanical marker comments establish filesystem ownership only and
-do not claim model precedence.
+installer renders a small target-native Activation Router. The Router leaves
+ordinary requests alone and loads the complete Policy only after explicit
+activation. Adapters translate the instruction surface; they do not fork
+lifecycle semantics. Mechanical marker comments establish filesystem ownership
+only and do not claim model precedence.
 
 ## Provider Independence
 
@@ -78,11 +80,11 @@ compilation, checksummed Install State, and recoverable backups. The optional
 Workflow Coordinator owns only cooperating-client Workflow State. The Agent
 Host owns physical execution authority. This boundary is deliberately narrow:
 
-1. Classify the task as `DIRECT`, `BOUNDED`, or `WORKFLOW`.
-2. For Workflow Mode, present all Profiles, topologies, and exact proposed add-ons.
-3. Block until the user chooses; never use a timeout or silent default.
-4. Compile the Bundle and persist it only when a Coordinator is enabled.
-5. Render the same policy into selected user or project targets.
+1. Leave the request as Native Host unless the user explicitly activates OAW.
+2. Create one OAW Engagement for one deliverable and run Assurance Preflight.
+3. Classify the activated task as `DIRECT`, `BOUNDED`, or `WORKFLOW`.
+4. For Workflow Mode, present all supported choices and block for explicit selection.
+5. Use `policy-cooperative`, `core-backed`, or `coordinator-backed` claims truthfully.
 6. Fail closed on drift and back up before an explicitly forced mutation.
 7. Remove only OAW-owned artifacts during uninstall.
 
@@ -98,8 +100,8 @@ remain in [policy/ENGINEERING.md](../../policy/ENGINEERING.md); the
 
 ## Result
 
-The practical result is one explicit workflow decision per deliverable and one
-policy across supported clients. Providers can coexist without competing for
-the same stage, client configuration can change without creating a second
-governance source, and installation lifecycle operations remain local,
-reviewable, and recoverable.
+The practical result is Native Host behavior for ordinary work and one explicit
+workflow decision for each activated deliverable. Providers can coexist without
+competing inside an OAW Engagement, client configuration can change without
+creating a second governance source, and installation lifecycle operations
+remain local, reviewable, and recoverable.

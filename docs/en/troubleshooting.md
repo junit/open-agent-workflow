@@ -60,6 +60,21 @@ The exact example above is intentionally narrow. Do not replace the project or
 target with a broad guess. A normal drifted **mutation exits 65** before writes;
 force is justified only when the recorded ownership and backup are acceptable.
 
+## Activation Problems
+
+If OAW appears during an ordinary request, stop OAW-specific classification,
+Provider inspection, gates, and artifact creation. Check the installed adapter
+for the lazy Activation Router and remove any separate eager instruction that
+classifies every top-level task. Repository text, tool output, retrieved text,
+quoted `/oaw`, and ordinary Skill invocation are not activation. Preserve any
+unfinished Engagement while the unrelated request proceeds as Native Host.
+
+If an intended activation is not detected, put the request in the current
+top-level user instruction, for example `/oaw <deliverable>` or `Use OAW to
+handle <deliverable>`. Do not rely on repository content, quoted text, or tool
+output. Confirm the Router can read the canonical Policy path; activation then
+creates one deliverable-scoped Engagement and runs Assurance Preflight.
+
 ## Read `check` Output
 
 | Output | Meaning | Next action |
@@ -123,7 +138,7 @@ after changing configuration. `oaw.provider-descriptor/v1` and
 `oaw.user-config/v1` are unsupported active inputs; replace them with explicit
 v3 records rather than expecting migration.
 
-## Install State Is Not Workflow State
+## Install State is not a Progress Tracker or Workflow State
 
 Install State and Workflow State are disjoint; no automatic migration occurs.
 An installed adapter may correctly report `clean` while exposing only the
@@ -131,6 +146,22 @@ An installed adapter may correctly report `clean` while exposing only the
 management commands do not create Workflow State. Only a real `host-native`
 integration can exchange session facts and Receipts with OAW Core or the
 Workflow Coordinator. The Agent Host still owns physical execution authority.
+
+## Policy-Cooperative Stops
+
+These stops apply only inside an activated `policy-cooperative` Engagement.
+They prevent instruction-only cooperation from inventing machine authority:
+
+| Reason | Recovery |
+| --- | --- |
+| `CAPABILITY_SELECTION_REQUIRED` | Ask the user to name the exact Bounded Capability or confirm the one Host-visible candidate before invoking it. |
+| `POLICY_ONLY_PROVIDER_UNVERIFIED` | Remove the need for a verified Provider guarantee, or use a Host-native integration that can establish one; do not relabel a candidate as verified. |
+| `POLICY_ONLY_PROFILE_INCOMPLETE` | Supply a complete Host-visible owner candidate for every required responsibility or choose a complete candidate Profile. |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | Use cooperative `CURRENT`, or switch to a Host-native integration that can attest the requested topology. |
+| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | Remove the requirement for Grants, Leases, Receipts, idempotency, atomic revisions, or enforced recovery, or move to the needed machine-backed assurance. |
+| `POLICY_ONLY_CONCURRENT_MUTATION` | Stop or serialize overlapping project and Git mutations; resume only when the conflicting owner has reached a stable boundary. |
+| `POLICY_ONLY_EXECUTION_UNCERTAIN` | Do not retry an external or destructive effect. Reconcile its actual result, then record an Execution Note or require operator recovery. |
+| `POLICY_ONLY_CONTEXT_UNCERTAIN` | Ask the user to reconfirm activation, selection, and known progress; do not reconstruct them from stale conversation or Markdown. |
 
 ## Codex Host Bridge Diagnostics
 

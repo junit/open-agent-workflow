@@ -150,17 +150,31 @@ bash scripts/smoke-docker.sh \
   "$PWD/dist/open-agent-workflow_0.1.0_linux_${docker_arch}.tar.gz"
 ```
 
-## 任务门禁
+## 显式激活
 
-OAW 通过足够的只读检查，把每个顶层工程请求分类为 `DIRECT`、`BOUNDED` 或
-`WORKFLOW`。Direct Mode 由主 Agent 处理小型、明确、可恢复的变更；Bounded Mode 只为
-一个可观察交付物准入一个精确 Provider Capability。这两种模式都不选择生命周期。
+安装只会分发惰性 Activation Router，不会把日常工作自动纳入 OAW。在当前
+顶层用户请求明确要求 OAW 治理某个交付物之前，Host 始终保持原生 Host 行为，
+就像没有安装 OAW 一样。普通 Bug 修复、Host 自动选择 Skill，或用户直接调用普通
+Skill，都继续使用 Host 原有的 routing，不会产生 OAW mode、gate、推荐或 state。
 
-只有 Workflow Mode 运行 Startup Gate。OAW 随后展示全部可用的内置与用户自定义
-Profile、可用的 `CURRENT` 或原生 `SUBAGENT` 拓扑、推荐项和所有拟议 bounded add-on，
-由用户显式选择。没有超时自动选择，也没有静默默认项。OAW Core 编译的 Lifecycle
-Bundle 会锁定到当前交付物。只有用户能切换它，而且只能在规格批准、已完成 ticket、
-调试周期、复核或验证等 stable boundary 上切换。
+`/oaw <task>` 或“使用 OAW 处理 <task>”会为一个交付物建立 task-scoped
+`OAW Engagement`。相关 follow-up 继承该 Engagement；无关交付物仍使用原生 Host。随后
+OAW 先执行保证等级预检（Assurance Preflight），再对已激活任务分类：
+
+```text
+未显式激活 -> 原生 Host
+    -> 保证等级预检
+    -> DIRECT / BOUNDED / WORKFLOW
+    -> 协作式或机器支撑的执行
+```
+
+Assurance Level 与 Request Mode 相互独立。仅有指令分发能力的 Host 使用
+`policy-cooperative`；当前 Host-native integration 可能支持 `core-backed` 或
+`coordinator-backed`。激活后的 `DIRECT` 处理一个小型、可恢复变更；
+`BOUNDED` 处理一个由用户选择的 Capability 和一个命名交付物，它不是原生
+Host Skill routing；`WORKFLOW` 运行选择 gate。没有超时自动选择，也没有静默
+默认项。机器支撑的选择可以编译 Lifecycle Bundle；`policy-cooperative` 使用显式
+Profile candidate、`CURRENT`、协作式 Policy Workflow Plan 和 Progress Tracker，不冒充机器保证。
 
 ## 生命周期配置
 

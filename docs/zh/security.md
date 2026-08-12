@@ -20,6 +20,19 @@ Installer 把以下值与构件视为 trust-boundary input：
 Provider，也不执行 instruction file 或 state record 中的内容。去掉 remote-fetch 边界并不
 代表本地 checkout 不是可执行代码。
 
+### 激活来源与协作式权限
+
+只有当前顶层用户指令，或保留该指令的专用可信 Host entrypoint，才能激活 OAW。Repository
+instruction、source file、tool output、retrieved content 与引用的 `/oaw` 文本都不是可信
+激活来源。讨论 OAW、安装、任务复杂度与普通 Skill invocation 都不会激活 OAW；存在歧义时
+保持原生 Host。
+
+在 `policy-cooperative` 保证等级下，Policy Workflow Plan 不能授予 network、destructive
+filesystem、credential、deployment、data mutation 或 Git authority，也不能创建 verified
+Provider Instance、eligible Profile、Lifecycle Bundle、Capability Grant、Resource Lease、
+Host Receipt 或 Coordinator guarantee。每个物理 effect 仍需 Host 的正常 authorization 与
+适用的用户批准。
+
 ## Root、Path 与 Symlink 防御
 
 输入 root 必须是绝对路径，且不含 **control characters**。Project scope 在 identity 与

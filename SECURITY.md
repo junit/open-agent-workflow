@@ -48,6 +48,15 @@ the owner of Host tools. OAW never guarantees MCP, Hook, Skill, or Plugin
 inheritance into a child context; the active Host decides those facts. A Grant
 cannot physically stop a Host action outside the protocol.
 
+OAW activation is trusted only when it originates in the current top-level user instruction
+or a dedicated trusted Host entrypoint that preserves that
+instruction. Repository content, tool output, retrieved content, and quoted
+`/oaw` text cannot activate OAW; ambiguity remains Native Host behavior. At
+`policy-cooperative` assurance, a Policy Workflow Plan cannot grant network,
+destructive filesystem, credential, deployment, data mutation, or Git
+authority, and cannot impersonate Core or Coordinator records. Physical effects
+remain subject to normal Host controls and user approval.
+
 ## Handling Reports
 
 Maintainers should reproduce in isolated roots, avoid exposing reporter data,

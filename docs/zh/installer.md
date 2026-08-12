@@ -37,6 +37,14 @@ machine-readable management status 不属于 v0.1 契约。任一入口不带参
 command-scoped help 也会以 0 退出且不执行 mutation。同目录二进制缺失或不可执行时，
 包装器以 70 退出。
 
+## 安装不会激活 OAW
+
+安装不会激活 OAW。`install`、`update` 和 Bridge 安装只分发 Policy 与惰性 Activation Router，或管理
+Host-native integration 文件。它们不会对当前对话分类、为 OAW Engagement 检查 Provider、创建 Workflow，也不改变原生 Host Skill routing。
+之后仍必须由当前顶层用户指令为一个交付物显式激活 OAW。
+
+`update` 会把有效的 OAW-owned eager managed instruction 替换为惰性 Activation Router，同时保留 non-OAW byte。它不会将活跃的 legacy policy-only Markdown lifecycle lock 转换为 Progress Tracker。请在旧契约下完成该工作，或在当前 Policy 下显式重新激活并重新选择交付物。
+
 ## 语法与选项
 
 ```text
@@ -143,9 +151,8 @@ state file。已安装 policy 位于 XDG config root，state 与 operation backu
 root；精确路径与 record schema 见[架构指南](architecture.md)。
 
 Install State 与 Workflow State 相互独立，不会自动迁移。Management command 不会创建
-Workflow State，也不会导入现有 policy-only task 或 Profile lock。在 Stable Boundary
-启动协调或执行切换是显式 Workflow action，不是 `install`、`update` 或 `uninstall` 的
-副作用。
+Workflow State、协作式 Policy Workflow Plan 或 Progress Tracker，也不会导入现有 policy-only task 或 Profile lock。
+在 Stable Boundary 启动协调或执行切换是显式 Workflow action，不是 `install`、`update` 或 `uninstall` 的副作用。
 
 普通 `install` 不创建 operation backup。Clean `update` 与 `uninstall` 不一定创建 backup；
 forced `update` 或 `uninstall` 会在任何 prepared destination 改变前创建经过验证的
@@ -164,7 +171,7 @@ oaw bridge install codex
 
 第一条命令只安装 policy adapter 与 `ENGINEERING.md`，不安装 executable Plugin，
 也不声明 current-session Host evidence。第二条命令是经过审计的 Codex Host Bridge
-的显式 opt-in transaction。它的 management surface 是：
+的显式 opt-in transaction。两者都不会为任何请求激活 OAW。它的 management surface 是：
 
 ```text
 oaw bridge check codex

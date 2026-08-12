@@ -462,6 +462,122 @@ while IFS= read -r stale_activation_contract; do
   reject_literal policy/ENGINEERING.md "$stale_activation_contract"
 done <"$CHECK_TEMP/stale-activation-policy-contract"
 
+cat >"$CHECK_TEMP/activation-document-contract" <<'EOF'
+README.md|## Explicit Activation
+README.md|Native Host
+README.md|OAW Engagement
+README.md|Assurance Preflight
+README.md|policy-cooperative
+README.md|core-backed
+README.md|coordinator-backed
+README-zh.md|## 显式激活
+README-zh.md|原生 Host
+README-zh.md|OAW Engagement
+README-zh.md|保证等级预检
+README-zh.md|policy-cooperative
+README-zh.md|core-backed
+README-zh.md|coordinator-backed
+docs/en/background.md|explicit activation
+docs/en/background.md|Native Host
+docs/en/background.md|OAW Engagement
+docs/zh/background.md|显式激活
+docs/zh/background.md|原生 Host
+docs/zh/background.md|OAW Engagement
+docs/en/lifecycle.md|Assurance Preflight
+docs/en/lifecycle.md|Policy Workflow Plan
+docs/en/lifecycle.md|Progress Tracker
+docs/zh/lifecycle.md|保证等级预检
+docs/zh/lifecycle.md|协作式 Policy Workflow Plan
+docs/zh/lifecycle.md|Progress Tracker
+docs/en/architecture.md|Activation Router
+docs/en/architecture.md|Assurance Preflight
+docs/en/architecture.md|policy-cooperative
+docs/zh/architecture.md|Activation Router
+docs/zh/architecture.md|保证等级预检
+docs/zh/architecture.md|policy-cooperative
+docs/en/adapters.md|Activation Router
+docs/en/adapters.md|Claude and Gemini do not emit `@`
+docs/zh/adapters.md|Activation Router
+docs/zh/adapters.md|Claude 和 Gemini 不会输出 `@`
+docs/en/extending-adapters.md|Activation Router
+docs/en/extending-adapters.md|eager Policy import
+docs/zh/extending-adapters.md|Activation Router
+docs/zh/extending-adapters.md|急切导入 Policy
+docs/en/installer.md|Installation does not activate OAW
+docs/en/installer.md|Activation Router
+docs/zh/installer.md|安装不会激活 OAW
+docs/zh/installer.md|Activation Router
+docs/en/comparison.md|after explicit activation
+docs/en/comparison.md|Normal Host Skill routing
+docs/zh/comparison.md|显式激活后
+docs/zh/comparison.md|原生 Host Skill routing
+docs/en/codex-bridge.md|Bridge installation does not activate OAW
+docs/en/codex-bridge.md|active OAW Engagement
+docs/zh/codex-bridge.md|安装 Bridge 不会激活 OAW
+docs/zh/codex-bridge.md|活跃 OAW Engagement
+docs/en/security.md|current top-level user instruction
+docs/en/security.md|Policy Workflow Plan cannot grant
+docs/zh/security.md|当前顶层用户指令
+docs/zh/security.md|Policy Workflow Plan 不能授予
+SECURITY.md|current top-level user instruction
+SECURITY.md|Policy Workflow Plan cannot grant
+SECURITY-zh.md|当前顶层用户指令
+SECURITY-zh.md|Policy Workflow Plan 不能授予
+docs/en/troubleshooting.md|Install State is not a Progress Tracker or Workflow State
+docs/zh/troubleshooting.md|Install State 不是 Progress Tracker 或 Workflow State
+CHANGELOG.md|OAW is now explicitly activated per deliverable
+CHANGELOG.md|lazy Activation Router
+CHANGELOG.md|policy-only Markdown lifecycle locks are not converted
+EOF
+while IFS='|' read -r activation_document activation_literal; do
+  require_literal "$activation_document" "$activation_literal"
+done <"$CHECK_TEMP/activation-document-contract"
+
+for activation_lifecycle_document in docs/en/lifecycle.md docs/zh/lifecycle.md; do
+  for assurance_level in policy-cooperative core-backed coordinator-backed; do
+    require_literal "$activation_lifecycle_document" "$assurance_level"
+  done
+done
+
+for cooperative_stop_document in \
+  docs/en/lifecycle.md docs/zh/lifecycle.md \
+  docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  for cooperative_stop_reason in \
+    CAPABILITY_SELECTION_REQUIRED \
+    POLICY_ONLY_PROVIDER_UNVERIFIED \
+    POLICY_ONLY_PROFILE_INCOMPLETE \
+    POLICY_ONLY_TOPOLOGY_UNAVAILABLE \
+    POLICY_ONLY_GUARANTEE_UNAVAILABLE \
+    POLICY_ONLY_CONCURRENT_MUTATION \
+    POLICY_ONLY_EXECUTION_UNCERTAIN \
+    POLICY_ONLY_CONTEXT_UNCERTAIN; do
+    require_literal "$cooperative_stop_document" "$cooperative_stop_reason"
+  done
+done
+
+cat >"$CHECK_TEMP/stale-activation-document-contract" <<'EOF'
+OAW performs enough read-only inspection to classify each top-level engineering
+OAW Core classifies each new top-level engineering request
+OAW 通过足够的只读检查，把每个顶层工程请求分类为
+OAW Core 在选择工程方法前，对每个新顶层工程请求分类
+Bounded Mode is the Atomic Skill mode.
+Policy-only use follows the same lifecycle ownership rules
+A policy-only lock
+OAW writes a managed block containing `@<canonical-policy-path>`
+Claude and Gemini use documented Markdown import behavior.
+the lifecycle gate applies before engineering lifecycle work anywhere in the project
+EOF
+for activation_document in \
+  README.md README-zh.md SECURITY.md SECURITY-zh.md CHANGELOG.md \
+  "$REPOSITORY"/docs/en/*.md "$REPOSITORY"/docs/zh/*.md; do
+  case "$activation_document" in
+    "$REPOSITORY"/*) activation_document=${activation_document#"$REPOSITORY"/} ;;
+  esac
+  while IFS= read -r stale_activation_literal; do
+    reject_literal "$activation_document" "$stale_activation_literal"
+  done <"$CHECK_TEMP/stale-activation-document-contract"
+done
+
 for troubleshooting_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
   for provider_surface_reason in \
     PROVIDER_BINDING_CONTENT_MISMATCH \

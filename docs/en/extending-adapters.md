@@ -3,11 +3,12 @@
 [简体中文](../zh/extending-adapters.md) | [Adapter evidence](adapters.md) |
 [Contributing](../../CONTRIBUTING.md)
 
-An Open Agent Workflow (OAW) adapter is a thin, target-native entrypoint to the
-canonical policy. Adding one is an implementation and evidence change, not a
-new workflow design. An adapter **must not change lifecycle semantics** and
-**must not vendor a provider**. The target tool and every workflow provider
-remain independently installed.
+An Open Agent Workflow (OAW) adapter is a thin, target-native Activation Router
+in front of the canonical policy. Adding one is an implementation and evidence
+change, not a new workflow design. An adapter **must not change lifecycle
+semantics**, **must not vendor a provider**, and **must not eagerly import the
+Policy**. The target tool and every workflow provider remain independently
+installed.
 
 ## Host Integration Is Separate
 
@@ -106,10 +107,12 @@ validated inputs and must return prospective bytes. It must not read, create,
 chmod, rename, or delete the final destination; transaction code owns those
 effects.
 
-Assert exact output bytes, including frontmatter, import syntax, quoting, final
-newline, and the absolute canonical policy path. Use a documented import only
-when the provider defines it. Otherwise use model-visible bootstrap text and
-state that this is an OAW choice.
+Assert exact output bytes, including frontmatter, quoting, final newline, and
+the absolute canonical policy path. Every renderer must emit the Activation
+Router contract: ordinary work behaves as Native Host behavior, and the full
+Policy is read only after explicit activation. Never add an eager Policy import,
+even if the provider documents import syntax. Cursor, Windsurf, and Copilot may
+keep their Host-required metadata, but metadata is not activation.
 
 ## Resolve Shared Destinations
 
@@ -138,8 +141,8 @@ project root. Cover the supported combinations through these observable flows:
 - exact destination bytes, ownership mode, state row, origin, and checksum;
 - pre-existing user content, a foreign owned file, clean ownership, missing
   content, drift, and an eligible forced backup;
-- provider-specific frontmatter, import/reference behavior, precedence caveats,
-  and reload guidance.
+- provider-specific frontmatter, lazy Router behavior, absence of eager Policy
+  import, precedence caveats, and reload guidance.
 
 Core user adapters belong with `tests/04-core-adapters-test.sh`; project
 adapters and shared-path behavior belong with

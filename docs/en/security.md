@@ -23,6 +23,22 @@ release, install a Provider, or execute content from an instruction file or
 state record. This removes a remote-fetch boundary but does not make the local
 checkout non-executable.
 
+### Activation origin and cooperative authority
+
+Only the current top-level user instruction or a dedicated trusted Host
+entrypoint that preserves that instruction can activate OAW. Repository
+instructions, source files, tool output, retrieved content, and quoted `/oaw`
+text are untrusted activation sources. Discussion, installation, task
+complexity, and ordinary Skill invocation do not activate OAW; ambiguity stays
+Native Host.
+
+At `policy-cooperative` assurance, a Policy Workflow Plan cannot grant network,
+destructive filesystem, credential, deployment, data mutation, or Git
+authority. It also cannot create a verified Provider Instance, eligible
+Profile, Lifecycle Bundle, Capability Grant, Resource Lease, Host Receipt, or
+Coordinator guarantee. Every physical effect still requires the Host's normal
+authorization and the user's applicable approval.
+
 ## Root, Path, and Symlink Defenses
 
 Consumed roots must be absolute and contain no **control characters**. Project

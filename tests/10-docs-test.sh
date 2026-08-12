@@ -268,6 +268,80 @@ EOF
     POLICY_ONLY_EXECUTION_UNCERTAIN \
     POLICY_ONLY_CONTEXT_UNCERTAIN \
     >>"$fixture_root/policy/ENGINEERING.md"
+  printf '%s\n' \
+    '## Explicit Activation' \
+    'Native Host' \
+    'OAW Engagement' \
+    'Assurance Preflight' \
+    policy-cooperative core-backed coordinator-backed \
+    >>"$fixture_root/README.md"
+  printf '%s\n' \
+    '## 显式激活' \
+    '原生 Host' \
+    'OAW Engagement' \
+    '保证等级预检' \
+    policy-cooperative core-backed coordinator-backed \
+    >>"$fixture_root/README-zh.md"
+  printf '%s\n' 'explicit activation' 'Native Host' 'OAW Engagement' \
+    >>"$fixture_root/docs/en/background.md"
+  printf '%s\n' '显式激活' '原生 Host' 'OAW Engagement' \
+    >>"$fixture_root/docs/zh/background.md"
+  printf '%s\n' 'Assurance Preflight' 'Policy Workflow Plan' 'Progress Tracker' \
+    policy-cooperative core-backed coordinator-backed \
+    >>"$fixture_root/docs/en/lifecycle.md"
+  printf '%s\n' '保证等级预检' '协作式 Policy Workflow Plan' 'Progress Tracker' \
+    policy-cooperative core-backed coordinator-backed \
+    >>"$fixture_root/docs/zh/lifecycle.md"
+  printf '%s\n' 'Activation Router' 'Assurance Preflight' policy-cooperative \
+    >>"$fixture_root/docs/en/architecture.md"
+  printf '%s\n' 'Activation Router' '保证等级预检' policy-cooperative \
+    >>"$fixture_root/docs/zh/architecture.md"
+  printf '%s\n' 'Activation Router' 'Claude and Gemini do not emit `@`' \
+    >>"$fixture_root/docs/en/adapters.md"
+  printf '%s\n' 'Activation Router' 'Claude 和 Gemini 不会输出 `@`' \
+    >>"$fixture_root/docs/zh/adapters.md"
+  printf '%s\n' 'Activation Router' 'eager Policy import' \
+    >>"$fixture_root/docs/en/extending-adapters.md"
+  printf '%s\n' 'Activation Router' '急切导入 Policy' \
+    >>"$fixture_root/docs/zh/extending-adapters.md"
+  printf '%s\n' 'Installation does not activate OAW' 'Activation Router' \
+    >>"$fixture_root/docs/en/installer.md"
+  printf '%s\n' '安装不会激活 OAW' 'Activation Router' \
+    >>"$fixture_root/docs/zh/installer.md"
+  printf '%s\n' 'after explicit activation' 'Normal Host Skill routing' \
+    >>"$fixture_root/docs/en/comparison.md"
+  printf '%s\n' '显式激活后' '原生 Host Skill routing' \
+    >>"$fixture_root/docs/zh/comparison.md"
+  printf '%s\n' 'Bridge installation does not activate OAW' 'active OAW Engagement' \
+    >>"$fixture_root/docs/en/codex-bridge.md"
+  printf '%s\n' '安装 Bridge 不会激活 OAW' '活跃 OAW Engagement' \
+    >>"$fixture_root/docs/zh/codex-bridge.md"
+  for document_path in docs/en/security.md SECURITY.md; do
+    printf '%s\n' 'current top-level user instruction' 'Policy Workflow Plan cannot grant' \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in docs/zh/security.md SECURITY-zh.md; do
+    printf '%s\n' '当前顶层用户指令' 'Policy Workflow Plan 不能授予' \
+      >>"$fixture_root/$document_path"
+  done
+  printf '%s\n' 'Install State is not a Progress Tracker or Workflow State' \
+    >>"$fixture_root/docs/en/troubleshooting.md"
+  printf '%s\n' 'Install State 不是 Progress Tracker 或 Workflow State' \
+    >>"$fixture_root/docs/zh/troubleshooting.md"
+  for document_path in \
+    docs/en/lifecycle.md docs/zh/lifecycle.md \
+    docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+    printf '%s\n' \
+      CAPABILITY_SELECTION_REQUIRED \
+      POLICY_ONLY_PROVIDER_UNVERIFIED \
+      POLICY_ONLY_PROFILE_INCOMPLETE \
+      POLICY_ONLY_TOPOLOGY_UNAVAILABLE \
+      POLICY_ONLY_GUARANTEE_UNAVAILABLE \
+      POLICY_ONLY_CONCURRENT_MUTATION \
+      POLICY_ONLY_EXECUTION_UNCERTAIN \
+      POLICY_ONLY_CONTEXT_UNCERTAIN \
+      >>"$fixture_root/$document_path"
+  done
   for document_path in \
     policy/ENGINEERING.md docs/en/lifecycle.md docs/zh/lifecycle.md; do
     printf '%s\n' \
@@ -305,6 +379,11 @@ EOF
   printf '%s\n' '{"id":"oaw/matt"}' \
     >"$fixture_root/internal/assets/providers/oaw-matt.json"
   : >"$fixture_root/CHANGELOG.md"
+  printf '%s\n' \
+    'OAW is now explicitly activated per deliverable' \
+    'lazy Activation Router' \
+    'policy-only Markdown lifecycle locks are not converted' \
+    >>"$fixture_root/CHANGELOG.md"
   mkdir -p "$fixture_root/docs/adr" "$fixture_root/docs/superpowers/specs"
   printf '%s\n' 'Superseded by ADR 0009' \
     >"$fixture_root/docs/adr/0003-add-optional-capability-admission-runtime.md"
@@ -694,7 +773,7 @@ for english_heading in \
   '## Problems It Solves' \
   '## Capabilities' \
   '## Quick Start' \
-  '## Task Gate' \
+  '## Explicit Activation' \
   '## Lifecycle Profiles' \
   '## Matt-Superpowers Hybrid' \
   '## Supported Targets' \
@@ -725,7 +804,7 @@ for chinese_heading in \
   '## 解决的问题' \
   '## 核心能力' \
   '## 快速开始' \
-  '## 任务门禁' \
+  '## 显式激活' \
   '## 生命周期配置' \
   '## Matt-Superpowers 混合配置' \
   '## 支持的目标' \

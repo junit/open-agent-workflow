@@ -18,9 +18,10 @@ Superpowers、Matt Pocock skills 与 Everything Claude Code（ECC）都覆盖其
 review 工具也可能在另一 family 已拥有 completion 后再次开启 remediation loop。后续
 请求还可能重新触发选择，在任务中途静默更换方法。
 
-OAW 在 family-specific 工作开始前消除这种歧义。它先分类顶层任务，展示所有生命周期
-profile，等待用户显式选择，并把选定 bundle 锁定到交付物。每个 profile 为每项适用
-职责指定一个 owner。检测结果可以为门禁提供信息，但绝不会代替用户选择。
+OAW 不会仲裁普通 Host 行为。正常请求，包括 Host 自动选择 Skill 或用户直接调用
+一个普通 Skill，都继续使用原生 Host。只有显式激活才会建立 task-scoped OAW
+Engagement。在该 Engagement 内，OAW 评估任务、展示可用选择、等待用户显式确认，
+并把选择绑定到交付物。检测结果可以为 gate 提供信息，但绝不会代替用户选择。
 
 ## 一份策略，多个 Agent 工具
 
@@ -33,10 +34,10 @@ Roo Code 和 GitHub Copilot 之间切换时，workflow 所有权仍应保持稳�
 旧 hybrid 映射，或描述不同的切换规则。每个文件单独看都可能有效，因此这种差异尤其
 难以察觉。
 
-OAW 改为在自己的 XDG namespace 中维护一份 canonical rule source。安装器根据每个
-target 的受支持行为，渲染轻量的 target-native 入口，用于 import、reference 或指示
-agent 读取该策略。Adapter 只翻译指令入口，不分叉生命周期语义。机械 marker comment
-只建立文件系统所有权，不声称模型优先级。
+OAW 改为在自己的 XDG namespace 中维护一份 canonical rule source。安装器渲染一个
+小型 target-native Activation Router。Router 对普通请求保持安静，只在显式激活后读取完整
+Policy。Adapter 只翻译指令入口，不分叉生命周期语义。机械 marker comment 只建立
+文件系统所有权，不声称模型优先级。
 
 ## Provider 独立性
 
@@ -61,11 +62,11 @@ OAW 拥有仲裁策略、target-specific 入口、OAW Core 编译、带校验和
 可恢复 backup。可选 Workflow Coordinator 只拥有合作客户端的 Workflow State。Agent Host
 拥有物理执行权限。这个边界刻意保持有限：
 
-1. 将任务分类为 `DIRECT`、`BOUNDED` 或 `WORKFLOW`。
-2. 在 Workflow Mode 中展示所有 profile、topology 和精确的拟议 add-on。
-3. 阻塞等待用户选择，不使用超时或静默默认项。
-4. 编译 Bundle；只有启用 Coordinator 时才持久化 Workflow State。
-5. 把同一策略渲染到选定的用户级或项目级 target。
+1. 用户未显式激活 OAW 时，请求保持原生 Host。
+2. 为一个交付物建立一个 OAW Engagement，并先运行保证等级预检。
+3. 仅对已激活任务分类为 `DIRECT`、`BOUNDED` 或 `WORKFLOW`。
+4. 对 Workflow Mode 展示支持的选择，并阻塞等待显式确认。
+5. 如实使用 `policy-cooperative`、`core-backed` 或 `coordinator-backed` 声明。
 6. 遇到 drift 时关闭失败；只有用户显式 force 时才先备份再变更。
 7. uninstall 只删除 OAW-owned 构件。
 
@@ -79,6 +80,6 @@ OAW 不判断哪种方法论普遍最好。它的初始三 family 评估只是�
 
 ## 结果
 
-最终，每个交付物只有一个显式 workflow 决定，所有受支持客户端共享一份策略。Provider
-可以共存而不争夺同一阶段；客户端配置可以变化而不产生第二份治理来源；安装生命周期
-操作保持本地、可复核且可恢复。
+最终，普通工作保持原生 Host，每个已激活交付物只有一个显式 workflow 决定。
+Provider 可以在 OAW Engagement 内共存而不争夺同一阶段；客户端配置可以变化而不产生
+第二份治理来源；安装生命周期操作保持本地、可复核且可恢复。

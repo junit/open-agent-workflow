@@ -39,6 +39,13 @@ fact 与 Receipt，但不会让 OAW 拥有 Host tool。OAW never guarantees MCP�
 Plugin inheritance 到 child context；这些事实由 active Host 决定。Grant 不能物理阻止
 Host 在协议外执行 action。
 
+只有当前顶层用户指令，或保留该指令的专用可信 Host entrypoint，才能成为 OAW 的可信激活
+来源。Repository content、tool output、retrieved content 与引用的 `/oaw` 文本不能激活
+OAW；存在歧义时保持原生 Host。在 `policy-cooperative` 保证等级下，Policy Workflow Plan 不能授予
+network、destructive filesystem、credential、deployment、data mutation 或 Git
+authority，也不能冒充 Core 或 Coordinator record。物理 effect 仍受 Host 正常控制与用户
+批准约束。
+
 ## 报告处理
 
 维护者应在隔离根目录中复现，避免泄露报告者数据，记录可利用性和严重性，在合适时

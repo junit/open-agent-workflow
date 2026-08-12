@@ -162,21 +162,36 @@ bash scripts/smoke-docker.sh \
   "$PWD/dist/open-agent-workflow_0.1.0_linux_${docker_arch}.tar.gz"
 ```
 
-## Task Gate
+## Explicit Activation
 
-OAW performs enough read-only inspection to classify each top-level engineering
-request as `DIRECT`, `BOUNDED`, or `WORKFLOW`. Direct Mode covers small, clear,
-recoverable changes executed by the Main Agent. Bounded Mode admits one exact
-Provider Capability for one observable deliverable. Neither mode selects a
-lifecycle.
+Installation distributes a lazy Activation Router; it does not enroll ordinary
+work into OAW. Until the current top-level user request explicitly asks OAW to
+govern a deliverable, the Host remains Native Host behavior, as if OAW were not
+installed. An ordinary bug fix, Host-selected Skill, or direct invocation of an
+ordinary Skill follows the Host's normal routing with no OAW mode, gate,
+recommendation, or state.
 
-Only Workflow Mode runs the Startup Gate. OAW then shows every eligible
-built-in and user-defined Profile, eligible `CURRENT` or native `SUBAGENT`
-topologies, a recommendation, and any proposed bounded add-ons. The user must
-choose explicitly. There is no timeout or silent default. OAW Core compiles the
-Lifecycle Bundle, which remains locked to the deliverable. Only the user may
-switch it, and only at a stable boundary such as an approved specification, a
-completed ticket, debugging cycle, review, or verification.
+`/oaw <task>` or `Use OAW to handle <task>` creates one task-scoped
+`OAW Engagement`. Related follow-ups inherit it; unrelated deliverables remain Native
+Host behavior. OAW then performs Assurance Preflight before classifying the
+activated task:
+
+```text
+Native Host unless explicitly activated
+    -> Assurance Preflight
+    -> DIRECT / BOUNDED / WORKFLOW
+    -> cooperative or machine-backed execution
+```
+
+Assurance is separate from Request Mode. Instruction-only Hosts use
+`policy-cooperative`; a current Host-native integration may support
+`core-backed` or `coordinator-backed`. Activated `DIRECT` handles one small,
+recoverable change. Activated `BOUNDED` handles one user-selected Capability
+and one named deliverable; it is not normal Host Skill routing. Activated
+`WORKFLOW` runs a selection gate. There is no timeout or silent default.
+Machine-backed selection may compile a Lifecycle Bundle; policy-cooperative
+selection uses an explicit Profile candidate, `CURRENT`, a Policy Workflow
+Plan, and a Progress Tracker without claiming machine guarantees.
 
 ## Lifecycle Profiles
 

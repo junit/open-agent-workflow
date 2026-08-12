@@ -11,11 +11,11 @@ Providers remain independently installed and versioned.
 
 The product has four modules with separate authority:
 
-1. **Distribution** installs `policy/ENGINEERING.md` through target-native
-   instruction surfaces and manages checksummed Install State and backups.
-2. **OAW Core** is required and stateless. It classifies requests, resolves
-   verified Provider Instances, compiles Profile Recipes, and creates immutable
-   Lifecycle Bundles.
+1. **Distribution** installs `policy/ENGINEERING.md` plus a lazy target-native
+   Activation Router and manages checksummed Install State and backups.
+2. **OAW Core** is stateless. After explicit activation and current Host-native
+   evidence, it classifies requests, resolves verified Provider Instances,
+   compiles Profile Recipes, and creates immutable Lifecycle Bundles.
 3. **Workflow Coordinator** is optional and Workflow-only. It records revisions,
    idempotency, cooperative Resource Leases, evidence, cancellation, switching,
    and recovery for cooperating clients.
@@ -26,14 +26,20 @@ The product has four modules with separate authority:
 The primary control flow is:
 
 ```text
-Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt
-                          |
-                          +-> optional Workflow Coordinator
+Top-level user request
+    -> Activation Router
+       -> Native Host
+       -> Activated OAW
+          -> Assurance Preflight
+             -> policy-cooperative -> Agent Host
+             -> core-backed -> OAW Core -> Lifecycle Bundle -> Agent Host
+             -> coordinator-backed -> OAW Core -> Workflow Coordinator -> Agent Host
 ```
 
-Distribution does not begin an engineering lifecycle. OAW Core does not retain
-Workflow State. The Workflow Coordinator does not execute work. The Agent Host
-does not gain authority to rewrite a Bundle.
+Always-applied frontmatter is Host metadata, not activation. Distribution and
+Bridge installation do not begin an engineering lifecycle. OAW Core does not
+retain Workflow State. The Workflow Coordinator does not execute work. The
+Agent Host does not gain authority to rewrite a Bundle.
 
 ## Canonical Storage
 
@@ -184,9 +190,11 @@ references.
 
 Resource Leases coordinate cooperating Workflows that declare conflicting
 project resources. They do not lock the operating system, filesystem, Git, or
-another process. Policy-only use follows the same lifecycle ownership rules
-without claiming atomic revisions, idempotency, leases, or transition
-enforcement.
+another process. At `policy-cooperative`, the Host may create a Policy Workflow
+Plan, Progress Tracker, Execution Notes, and Conflict Warnings. Those terms
+cannot create a verified Provider Instance, eligible Profile, Lifecycle Bundle,
+Grant, Lease, Receipt, atomic revision, idempotency, transition enforcement, or
+recovery guarantee.
 
 ## Management Transaction
 
@@ -213,10 +221,11 @@ or automatic recovery from a process or machine crash.
 
 Every target declares one ownership mode:
 
-- `managed-block` inserts one marker-delimited OAW block while preserving
+- `managed-block` inserts one marker-delimited Activation Router while preserving
   surrounding user content. Claude, Codex, Gemini, and OpenCode use this mode.
-- `owned-file` reserves an adapter-specific file for OAW. Cursor, Windsurf,
-  Cline, Roo Code, and Copilot use this mode.
+- `owned-file` reserves an adapter-specific Activation Router file for OAW.
+  Cursor, Windsurf, Cline, Roo Code, and Copilot use this mode. Their
+  always-applied metadata does not activate OAW.
 
 Markers are an installer ownership boundary. **Marker comments do not establish model precedence**,
 override a tool's documented instruction hierarchy, or force a running Agent

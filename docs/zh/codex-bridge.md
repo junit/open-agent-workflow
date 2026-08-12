@@ -6,6 +6,11 @@ Codex Host Bridge 是 Open Agent Workflow (OAW) 的显式、经过审计的 Code
 
 Bridge 是 Host integration，不是第二个 Runtime。当前 Codex session 调用 Skill 与 tool 并执行所有物理 effect。OAW 只观察无 secret 的 Host metadata、编译 policy 并交换 Coordinator record。OAW 不启动 child session，不执行 lifecycle Capability，不调用 model，也不重建 Codex environment。
 
+安装 Bridge 不会激活 OAW。Filesystem evidence、已注册 Plugin 与 `observe_current` 可用性都
+只是 readiness fact。只有当前顶层用户请求创建活跃 OAW Engagement 后，才能调用 Bridge
+与 Core operation。保证等级预检随后可以使用 Bridge 建立 `core-backed` 或
+`coordinator-backed` 支持；在此之前，普通请求与普通 Skill routing 都保持原生 Host 行为。
+
 ## 命令表面
 
 Policy installation 与 Bridge installation 是两项不同的操作：
