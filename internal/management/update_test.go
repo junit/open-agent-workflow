@@ -75,6 +75,99 @@ func TestPrepareUpdateUsesCurrentCheckoutWithoutWrites(t *testing.T) {
 	}
 }
 
+func TestUpdateMigratesLegacyManagedBlockToActivationRouter(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+	legacyBlock := []byte(beginMarker + "\n" +
+		"Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n" +
+		"@" + installed.policyAction.destination + "\n" + endMarker + "\n")
+	targetBytes := append([]byte("before\n"), legacyBlock...)
+	targetBytes = append(targetBytes, []byte("after\n")...)
+	writePrepareFile(t, installed.targetActions[0].destination, targetBytes, 0o644)
+
+	state, err := parseInstallationState(installed.stateActions[0].data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range state.targets {
+		if state.targets[index].id == "claude" {
+			state.targets[index].checksum = checksumBytes(legacyBlock)
+		}
+	}
+	renderedState, err := serializeInstallState(state)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writePrepareFile(t, installed.stateActions[0].destination, renderedState, 0o600)
+
+	updated, err := NewSource("0.2.0", []byte("updated canonical policy\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Update(updated, fixture.environment, UpdateRequest{Targets: "claude"}); err != nil {
+		t.Fatal(err)
+	}
+
+	updatedTarget, err := os.ReadFile(installed.targetActions[0].destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.HasPrefix(updatedTarget, []byte("before\n")) || !bytes.HasSuffix(updatedTarget, []byte("after\n")) {
+		t.Fatalf("update did not preserve sentinels: %q", updatedTarget)
+	}
+	if bytes.Count(updatedTarget, []byte(beginMarker)) != 1 || bytes.Count(updatedTarget, []byte(endMarker)) != 1 {
+		t.Fatalf("update did not retain exactly one marker pair: %q", updatedTarget)
+	}
+	if bytes.Contains(updatedTarget, []byte("Before any new top-level engineering task that may use workflow skills")) ||
+		bytes.Contains(updatedTarget, []byte("\n@"+installed.policyAction.destination+"\n")) ||
+		!bytes.Contains(updatedTarget, []byte("Open Agent Workflow is opt-in.")) {
+		t.Fatalf("update did not migrate the legacy block: %q", updatedTarget)
+	}
+
+	expectedBlock, err := renderManagedBlock("claude", "user", installed.policyAction.destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updatedState, exists, err := readInstallationState(installed.stateActions[0].destination)
+	if err != nil || !exists {
+		t.Fatalf("updated state: exists=%v err=%v", exists, err)
+	}
+	if got := findPreparedRecord(t, updatedState.targets, "claude").checksum; got != checksumBytes(expectedBlock) {
+		t.Fatalf("updated checksum = %q, want %q", got, checksumBytes(expectedBlock))
+	}
+
+	targetSnapshot := append([]byte(nil), updatedTarget...)
+	policySnapshot, err := os.ReadFile(installed.policyAction.destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stateSnapshot, err := os.ReadFile(installed.stateActions[0].destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := Update(updated, fixture.environment, UpdateRequest{Targets: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"oaw: unchanged: claude", "oaw: unchanged: policy", "oaw: unchanged: state"}; !reflect.DeepEqual(result.Lines, want) {
+		t.Fatalf("repeat update result = %v, want %v", result.Lines, want)
+	}
+	for _, snapshot := range []struct {
+		name string
+		path string
+		data []byte
+	}{
+		{"target", installed.targetActions[0].destination, targetSnapshot},
+		{"policy", installed.policyAction.destination, policySnapshot},
+		{"state", installed.stateActions[0].destination, stateSnapshot},
+	} {
+		current, err := os.ReadFile(snapshot.path)
+		if err != nil || !bytes.Equal(current, snapshot.data) {
+			t.Fatalf("repeat update changed %s: %q, %v", snapshot.name, current, err)
+		}
+	}
+}
+
 func TestPrepareUpdateNormalizesSharedDestinationAndCoordinatesStates(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	materializeInstallRequest(t, fixture, InstallRequest{Targets: "codex"})

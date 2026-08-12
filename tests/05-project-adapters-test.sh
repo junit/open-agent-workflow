@@ -8,6 +8,41 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 trap cleanup_sandbox EXIT HUP INT TERM
 
+render_expected_activation_router() {
+  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
+}
+
+write_expected_router_block() {
+  expected_block=$1
+  expected_policy=$2
+  {
+    printf '%s\n' '<!-- BEGIN OPEN AGENT WORKFLOW -->'
+    render_expected_activation_router "$expected_policy"
+    printf '%s\n' '<!-- END OPEN AGENT WORKFLOW -->'
+  } >"$expected_block"
+}
+
+assert_lazy_router_file() {
+  router_file=$1
+  router_policy=$2
+  router_description=$3
+
+  grep -F 'Open Agent Workflow is opt-in.' "$router_file" >/dev/null ||
+    fail "$router_description is missing opt-in activation"
+  grep -F 'behave as the native Host' "$router_file" >/dev/null ||
+    fail "$router_description does not preserve Native Host behavior"
+  grep -F "On explicit activation, read \`$router_policy\`" "$router_file" >/dev/null ||
+    fail "$router_description does not retain the canonical policy path"
+  grep -F 'ordinary Skill invocation do not activate OAW' "$router_file" >/dev/null ||
+    fail "$router_description incorrectly governs normal Skill routing"
+  if grep -F "@$router_policy" "$router_file" >/dev/null ||
+    grep -F 'For every new top-level engineering request, first read' "$router_file" >/dev/null ||
+    grep -F 'Before engineering lifecycle work, read' "$router_file" >/dev/null ||
+    grep -F 'classify it as DIRECT, BOUNDED, or WORKFLOW' "$router_file" >/dev/null; then
+    fail "$router_description retains eager OAW activation"
+  fi
+}
+
 project_target_path_for_test() {
   case "$1" in
     claude) printf '.claude/CLAUDE.md\n' ;;
@@ -45,9 +80,10 @@ printf '%s\n' \
   'alwaysApply: true' \
   '---' \
   '' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  "$(render_expected_activation_router "$OAW_POLICY")" \
   >"$OAW_EXPECTED_CURSOR"
 cmp -s "$OAW_EXPECTED_CURSOR" "$OAW_CURSOR" || fail "Cursor adapter bytes are invalid"
+assert_lazy_router_file "$OAW_CURSOR" "$OAW_POLICY" "Cursor adapter"
 grep -F "$(printf 'target\tcursor\t%s\towned-file' "$OAW_CURSOR")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Cursor ownership"
 [ "$(cksum <"$OAW_PROJECT/.cursor/rules/personal.mdc")" = "$OAW_CURSOR_SIBLING_BEFORE" ] ||
@@ -123,9 +159,10 @@ printf '%s\n' \
   'trigger: always_on' \
   '---' \
   '' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  "$(render_expected_activation_router "$OAW_POLICY")" \
   >"$OAW_EXPECTED_WINDSURF"
 cmp -s "$OAW_EXPECTED_WINDSURF" "$OAW_WINDSURF" || fail "Windsurf adapter bytes are invalid"
+assert_lazy_router_file "$OAW_WINDSURF" "$OAW_POLICY" "Windsurf adapter"
 grep -F "$(printf 'target\twindsurf\t%s\towned-file' "$OAW_WINDSURF")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Windsurf ownership"
 [ "$(cksum <"$OAW_PROJECT/.devin/rules/personal.md")" = "$OAW_WINDSURF_SIBLING_BEFORE" ] ||
@@ -160,10 +197,9 @@ OAW_CLINE=$OAW_PROJECT_PHYSICAL/.clinerules/open-agent-workflow.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_CLINE=$OAW_SANDBOX/expected-cline.md
 
-printf '%s\n' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
-  >"$OAW_EXPECTED_CLINE"
+render_expected_activation_router "$OAW_POLICY" >"$OAW_EXPECTED_CLINE"
 cmp -s "$OAW_EXPECTED_CLINE" "$OAW_CLINE" || fail "Cline adapter bytes are invalid"
+assert_lazy_router_file "$OAW_CLINE" "$OAW_POLICY" "Cline adapter"
 grep -F "$(printf 'target\tcline\t%s\towned-file' "$OAW_CLINE")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Cline ownership"
 [ "$(cksum <"$OAW_PROJECT/.clinerules/personal.md")" = "$OAW_CLINE_SIBLING_BEFORE" ] ||
@@ -198,10 +234,9 @@ OAW_ROO=$OAW_PROJECT_PHYSICAL/.roo/rules/open-agent-workflow.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_ROO=$OAW_SANDBOX/expected-roo.md
 
-printf '%s\n' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
-  >"$OAW_EXPECTED_ROO"
+render_expected_activation_router "$OAW_POLICY" >"$OAW_EXPECTED_ROO"
 cmp -s "$OAW_EXPECTED_ROO" "$OAW_ROO" || fail "Roo adapter bytes are invalid"
+assert_lazy_router_file "$OAW_ROO" "$OAW_POLICY" "Roo adapter"
 grep -F "$(printf 'target\troo\t%s\towned-file' "$OAW_ROO")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Roo ownership"
 [ "$(cksum <"$OAW_PROJECT/.roo/rules/personal.md")" = "$OAW_ROO_SIBLING_BEFORE" ] ||
@@ -243,9 +278,10 @@ printf '%s\n' \
   'applyTo: "**"' \
   '---' \
   '' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
+  "$(render_expected_activation_router "$OAW_POLICY")" \
   >"$OAW_EXPECTED_COPILOT"
 cmp -s "$OAW_EXPECTED_COPILOT" "$OAW_COPILOT" || fail "Copilot adapter bytes are invalid"
+assert_lazy_router_file "$OAW_COPILOT" "$OAW_POLICY" "Copilot adapter"
 grep -F "$(printf 'target\tcopilot\t%s\towned-file' "$OAW_COPILOT")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Copilot ownership"
 [ "$(cksum <"$OAW_PROJECT/.github/instructions/personal.instructions.md")" = \
@@ -291,8 +327,10 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 
 [ -f "$OAW_POLICY" ] || fail "project install did not create the canonical policy"
 [ -f "$OAW_PROJECT_STATE" ] || fail "project install did not create identity-scoped state"
-grep -F "@$OAW_POLICY" "$OAW_PROJECT_CLAUDE" >/dev/null ||
-  fail "project Claude entrypoint does not import the canonical policy"
+if grep -F "@$OAW_POLICY" "$OAW_PROJECT_CLAUDE" >/dev/null; then
+  fail "project Claude entrypoint incorrectly imports the canonical policy"
+fi
+assert_lazy_router_file "$OAW_PROJECT_CLAUDE" "$OAW_POLICY" "project Claude instructions"
 grep -Fx 'personal project Claude instruction' "$OAW_PROJECT_CLAUDE" >/dev/null ||
   fail "project Claude install did not preserve project instructions"
 grep -F "$(printf 'scope\tproject')" "$OAW_PROJECT_STATE" >/dev/null ||
@@ -349,17 +387,15 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-project-agents-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-project-agents-block
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
   $0 == "<!-- END OPEN AGENT WORKFLOW -->" && copying { exit }
 ' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
-  fail "project Codex does not use the shared AGENTS bootstrap"
+  fail "project Codex does not use the shared AGENTS activation router"
+assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_POLICY" "project Codex instructions"
 grep -Fx 'personal shared project instruction' "$OAW_PROJECT_AGENTS" >/dev/null ||
   fail "project Codex install did not preserve project AGENTS content"
 grep -F "$(printf 'target\tcodex\t%s\tmanaged-block' "$OAW_PROJECT_AGENTS")" \
@@ -400,18 +436,18 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-project-gemini-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-project-gemini-block
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  'Follow the Open Agent Workflow policy before engineering lifecycle work:' \
-  "@$OAW_POLICY" \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
   $0 == "<!-- END OPEN AGENT WORKFLOW -->" && copying { exit }
 ' "$OAW_PROJECT_GEMINI" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
-  fail "project Gemini does not use its native policy import"
+  fail "project Gemini does not use the activation router"
+if grep -Fx "@$OAW_POLICY" "$OAW_PROJECT_GEMINI" >/dev/null; then
+  fail "project Gemini instructions incorrectly use a standalone Markdown import"
+fi
+assert_lazy_router_file "$OAW_PROJECT_GEMINI" "$OAW_POLICY" "project Gemini instructions"
 grep -Fx 'personal project Gemini instruction' "$OAW_PROJECT_GEMINI" >/dev/null ||
   fail "project Gemini install did not preserve project instructions"
 grep -F "$(printf 'target\tgemini\t%s\tmanaged-block' "$OAW_PROJECT_GEMINI")" \
@@ -450,17 +486,15 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-project-opencode-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-project-opencode-block
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
   $0 == "<!-- END OPEN AGENT WORKFLOW -->" && copying { exit }
 ' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
-  fail "project OpenCode does not use the shared AGENTS bootstrap"
+  fail "project OpenCode does not use the shared AGENTS activation router"
+assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_POLICY" "project OpenCode instructions"
 grep -Fx 'personal shared project instruction' "$OAW_PROJECT_AGENTS" >/dev/null ||
   fail "project OpenCode install did not preserve project AGENTS content"
 grep -F "$(printf 'target\topencode\t%s\tmanaged-block' "$OAW_PROJECT_AGENTS")" \
@@ -523,10 +557,7 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-shared-agents-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-shared-agents-block
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  "Before engineering lifecycle work, read \`$OAW_POLICY\`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task." \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
@@ -534,6 +565,7 @@ awk '
 ' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
   fail "shared project AGENTS block is not canonical"
+assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_POLICY" "shared project instructions"
 [ "$(awk '$0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { count++ } END { print count + 0 }' \
   "$OAW_PROJECT_AGENTS")" -eq 1 ] || fail "shared project AGENTS has duplicate OAW blocks"
 OAW_CODEX_CHECKSUM=$(awk -F '\t' '$1 == "target" && $2 == "codex" { print $4 }' "$OAW_PROJECT_STATE")
@@ -686,6 +718,7 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo 
   grep -F "TASK 4 MATRIX $OAW_MATRIX_TARGET UPDATE SENTINEL" "$OAW_POLICY" >/dev/null || fail "$OAW_MATRIX_TARGET update ignored checkout"
   grep -F "$(printf 'version\t0.1.1-project-%s' "$OAW_MATRIX_TARGET")" "$OAW_PROJECT_STATE" >/dev/null || fail "$OAW_MATRIX_TARGET update did not record version"
   [ -z "$OAW_MATRIX_SIBLING" ] || [ "$(cksum <"$OAW_MATRIX_SIBLING")" = "$OAW_MATRIX_SIBLING_BEFORE" ] || fail "$OAW_MATRIX_TARGET update changed sibling"
+  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET updated project instructions"
 
   OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
   OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
@@ -747,6 +780,11 @@ run_oaw update --project "$OAW_PROJECT"
 assert_status 0 "default project copied-checkout update"
 grep -F 'TASK 4 DEFAULT UPDATE SENTINEL' "$OAW_POLICY" >/dev/null || fail "default update ignored checkout"
 grep -F "$(printf 'version\t0.1.1-project-default')" "$OAW_PROJECT_STATE" >/dev/null || fail "default update did not record version"
+for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo copilot; do
+  OAW_MATRIX_RELATIVE=$(project_target_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_PATH=$OAW_PROJECT_PHYSICAL/$OAW_MATRIX_RELATIVE
+  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET default updated project instructions"
+done
 run_oaw uninstall --project "$OAW_PROJECT" --target cursor
 assert_status 0 "default project selected uninstall"
 [ ! -e "$OAW_DEFAULT_CURSOR" ] || fail "selected uninstall kept Cursor"

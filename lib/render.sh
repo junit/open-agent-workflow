@@ -3,27 +3,28 @@
 OAW_BEGIN_MARKER='<!-- BEGIN OPEN AGENT WORKFLOW -->'
 OAW_END_MARKER='<!-- END OPEN AGENT WORKFLOW -->'
 
+render_activation_router() {
+  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
+}
+
 render_claude() {
-  local policy_path=$1
-  printf '%s\n' \
-    'Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:' \
-    "@$policy_path"
+  render_activation_router "$1"
 }
 
 render_codex() {
-  printf 'For every new top-level engineering request, first read `%s`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n' "$1"
+  render_activation_router "$1"
 }
 
 render_gemini() {
-  printf 'Follow the Open Agent Workflow policy before engineering lifecycle work:\n@%s\n' "$1"
+  render_activation_router "$1"
 }
 
 render_opencode() {
-  printf 'Before engineering lifecycle work, use the Read tool to read `%s`, then follow its blocking selection gate and lifecycle lock.\n' "$1"
+  render_activation_router "$1"
 }
 
 render_project_bootstrap() {
-  printf 'Before engineering lifecycle work, read `%s`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n' "$1"
+  render_activation_router "$1"
 }
 
 render_cursor() {

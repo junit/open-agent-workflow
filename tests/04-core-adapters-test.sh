@@ -8,6 +8,41 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 trap cleanup_sandbox EXIT HUP INT TERM
 
+render_expected_activation_router() {
+  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
+}
+
+write_expected_router_block() {
+  expected_block=$1
+  expected_policy=$2
+  {
+    printf '%s\n' '<!-- BEGIN OPEN AGENT WORKFLOW -->'
+    render_expected_activation_router "$expected_policy"
+    printf '%s\n' '<!-- END OPEN AGENT WORKFLOW -->'
+  } >"$expected_block"
+}
+
+assert_lazy_router_file() {
+  router_file=$1
+  router_policy=$2
+  router_description=$3
+
+  grep -F 'Open Agent Workflow is opt-in.' "$router_file" >/dev/null ||
+    fail "$router_description is missing opt-in activation"
+  grep -F 'behave as the native Host' "$router_file" >/dev/null ||
+    fail "$router_description does not preserve Native Host behavior"
+  grep -F "On explicit activation, read \`$router_policy\`" "$router_file" >/dev/null ||
+    fail "$router_description does not retain the canonical policy path"
+  grep -F 'ordinary Skill invocation do not activate OAW' "$router_file" >/dev/null ||
+    fail "$router_description incorrectly governs normal Skill routing"
+  if grep -F "@$router_policy" "$router_file" >/dev/null ||
+    grep -F 'For every new top-level engineering request, first read' "$router_file" >/dev/null ||
+    grep -F 'Before engineering lifecycle work, read' "$router_file" >/dev/null ||
+    grep -F 'classify it as DIRECT, BOUNDED, or WORKFLOW' "$router_file" >/dev/null; then
+    fail "$router_description retains eager OAW activation"
+  fi
+}
+
 assert_state_targets() {
   state_file=$1
   expected_targets=$2
@@ -63,10 +98,7 @@ OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-codex-block
 [ -f "$OAW_CODEX" ] || fail "Codex instructions were not created at the user destination"
 [ -f "$OAW_INSTALL_STATE" ] || fail "Codex installation state was not created"
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  "For every new top-level engineering request, first read \`$OAW_POLICY\`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work." \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
@@ -83,6 +115,7 @@ grep -Fx 'personal instruction' "$OAW_CODEX" >/dev/null ||
 if grep -Fx "@$OAW_POLICY" "$OAW_CODEX" >/dev/null; then
   fail "Codex instructions incorrectly use a standalone Markdown import"
 fi
+assert_lazy_router_file "$OAW_CODEX" "$OAW_POLICY" "Codex instructions"
 awk -F '\t' -v expected_path="$OAW_CODEX" '
   $1 == "target" && $2 == "codex" && $3 == expected_path &&
     $4 == "managed-block" && $6 == "existing-file" { found++ }
@@ -122,11 +155,7 @@ OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-gemini-block
 [ -f "$OAW_GEMINI" ] || fail "Gemini instructions were not created at the user destination"
 [ -f "$OAW_INSTALL_STATE" ] || fail "Gemini installation state was not created"
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  'Follow the Open Agent Workflow policy before engineering lifecycle work:' \
-  "@$OAW_POLICY" \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
@@ -140,8 +169,10 @@ cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
   fail "Gemini instructions do not contain exactly one managed block"
 grep -Fx 'personal instruction' "$OAW_GEMINI" >/dev/null ||
   fail "existing Gemini instructions were not preserved"
-grep -Fx "@$OAW_POLICY" "$OAW_GEMINI" >/dev/null ||
-  fail "Gemini instructions do not import the canonical policy"
+if grep -Fx "@$OAW_POLICY" "$OAW_GEMINI" >/dev/null; then
+  fail "Gemini instructions incorrectly use a standalone Markdown import"
+fi
+assert_lazy_router_file "$OAW_GEMINI" "$OAW_POLICY" "Gemini instructions"
 awk -F '\t' -v expected_path="$OAW_GEMINI" '
   $1 == "target" && $2 == "gemini" && $3 == expected_path &&
     $4 == "managed-block" && $6 == "existing-file" { found++ }
@@ -181,10 +212,7 @@ OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-opencode-block
 [ -f "$OAW_OPENCODE" ] || fail "OpenCode instructions were not created at the user destination"
 [ -f "$OAW_INSTALL_STATE" ] || fail "OpenCode installation state was not created"
 
-printf '%s\n' \
-  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
-  "Before engineering lifecycle work, use the Read tool to read \`$OAW_POLICY\`, then follow its blocking selection gate and lifecycle lock." \
-  '<!-- END OPEN AGENT WORKFLOW -->' >"$OAW_EXPECTED_BLOCK"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
 
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
@@ -201,6 +229,7 @@ grep -Fx 'personal instruction' "$OAW_OPENCODE" >/dev/null ||
 if grep -Fx "@$OAW_POLICY" "$OAW_OPENCODE" >/dev/null; then
   fail "OpenCode instructions incorrectly use a standalone Markdown import"
 fi
+assert_lazy_router_file "$OAW_OPENCODE" "$OAW_POLICY" "OpenCode instructions"
 awk -F '\t' -v expected_path="$OAW_OPENCODE" '
   $1 == "target" && $2 == "opencode" && $3 == expected_path &&
     $4 == "managed-block" && $6 == "existing-file" { found++ }
@@ -381,6 +410,7 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
     fail "$OAW_MATRIX_TARGET update did not record the copied checkout version"
   grep -Fx "personal $OAW_MATRIX_TARGET instruction" "$OAW_MATRIX_PATH" >/dev/null ||
     fail "$OAW_MATRIX_TARGET update did not preserve user instructions"
+  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET updated instructions"
 
   OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
   OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
@@ -455,6 +485,10 @@ grep -F 'TASK 3 DEFAULT UPDATE SENTINEL' "$OAW_POLICY" >/dev/null ||
   fail "default update did not use copied checkout policy"
 grep -F "$(printf 'version\t0.1.1-default')" "$OAW_INSTALL_STATE" >/dev/null ||
   fail "default update did not record copied checkout version"
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET default updated instructions"
+done
 
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")

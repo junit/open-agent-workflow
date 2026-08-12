@@ -73,6 +73,12 @@ func TestPrepareUpdateForceRepairsSingleMissingMarker(t *testing.T) {
 			if bytes.Count(rendered, []byte(beginMarker)) != 1 || bytes.Count(rendered, []byte(endMarker)) != 1 {
 				t.Fatalf("repaired target = %q", rendered)
 			}
+			if !bytes.Contains(rendered, []byte("Open Agent Workflow is opt-in.")) {
+				t.Fatalf("repaired target does not contain the activation router: %q", rendered)
+			}
+			if bytes.Contains(rendered, []byte("\n@"+installed.policyAction.destination+"\n")) {
+				t.Fatalf("repaired target retains eager policy import: %q", rendered)
+			}
 			if !bytes.Equal(rendered, current) {
 				t.Fatalf("repaired bytes = %q, want original %q", rendered, current)
 			}

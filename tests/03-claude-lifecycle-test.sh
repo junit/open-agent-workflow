@@ -29,8 +29,17 @@ grep -F 'personal instruction' "$OAW_CLAUDE" >/dev/null ||
   fail "existing Claude instructions were not preserved"
 grep -F '<!-- BEGIN OPEN AGENT WORKFLOW -->' "$OAW_CLAUDE" >/dev/null ||
   fail "Claude managed block begin marker is missing"
-grep -F "@$OAW_POLICY" "$OAW_CLAUDE" >/dev/null ||
-  fail "Claude entrypoint does not import the canonical policy"
+grep -F 'Open Agent Workflow is opt-in.' "$OAW_CLAUDE" >/dev/null ||
+  fail "Claude entrypoint is missing opt-in activation"
+grep -F 'behave as the native Host' "$OAW_CLAUDE" >/dev/null ||
+  fail "Claude entrypoint does not preserve Native Host behavior"
+grep -F "On explicit activation, read \`$OAW_POLICY\`" "$OAW_CLAUDE" >/dev/null ||
+  fail "Claude entrypoint does not retain the canonical policy path"
+grep -F 'ordinary Skill invocation do not activate OAW' "$OAW_CLAUDE" >/dev/null ||
+  fail "Claude entrypoint incorrectly governs normal Skill routing"
+if grep -F "@$OAW_POLICY" "$OAW_CLAUDE" >/dev/null; then
+  fail "Claude entrypoint incorrectly imports the canonical policy"
+fi
 grep -F 'format' "$OAW_INSTALL_STATE" >/dev/null ||
   fail "installation state has no format record"
 

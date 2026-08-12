@@ -8,26 +8,26 @@ import (
 
 func TestRenderTargetMatchesBashBytes(t *testing.T) {
 	policyPath := "/config path/`policy`/ENGINEERING.md"
-	bootstrap := "Before engineering lifecycle work, read `" + policyPath + "`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n"
+	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `" + policyPath + "` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
 	tests := []struct {
 		name  string
 		scope scope
 		id    targetID
 		want  string
 	}{
-		{name: "user claude", scope: "user", id: "claude", want: "Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n@" + policyPath + "\n"},
-		{name: "user codex", scope: "user", id: "codex", want: "For every new top-level engineering request, first read `" + policyPath + "`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n"},
-		{name: "user gemini", scope: "user", id: "gemini", want: "Follow the Open Agent Workflow policy before engineering lifecycle work:\n@" + policyPath + "\n"},
-		{name: "user opencode", scope: "user", id: "opencode", want: "Before engineering lifecycle work, use the Read tool to read `" + policyPath + "`, then follow its blocking selection gate and lifecycle lock.\n"},
-		{name: "project claude", scope: "project", id: "claude", want: "Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n@" + policyPath + "\n"},
-		{name: "project codex", scope: "project", id: "codex", want: bootstrap},
-		{name: "project gemini", scope: "project", id: "gemini", want: "Follow the Open Agent Workflow policy before engineering lifecycle work:\n@" + policyPath + "\n"},
-		{name: "project opencode", scope: "project", id: "opencode", want: bootstrap},
-		{name: "project cursor", scope: "project", id: "cursor", want: "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + bootstrap},
-		{name: "project windsurf", scope: "project", id: "windsurf", want: "---\ntrigger: always_on\n---\n\n" + bootstrap},
-		{name: "project cline", scope: "project", id: "cline", want: bootstrap},
-		{name: "project roo", scope: "project", id: "roo", want: bootstrap},
-		{name: "project copilot", scope: "project", id: "copilot", want: "---\napplyTo: \"**\"\n---\n\n" + bootstrap},
+		{name: "user claude", scope: "user", id: "claude", want: router},
+		{name: "user codex", scope: "user", id: "codex", want: router},
+		{name: "user gemini", scope: "user", id: "gemini", want: router},
+		{name: "user opencode", scope: "user", id: "opencode", want: router},
+		{name: "project claude", scope: "project", id: "claude", want: router},
+		{name: "project codex", scope: "project", id: "codex", want: router},
+		{name: "project gemini", scope: "project", id: "gemini", want: router},
+		{name: "project opencode", scope: "project", id: "opencode", want: router},
+		{name: "project cursor", scope: "project", id: "cursor", want: "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + router},
+		{name: "project windsurf", scope: "project", id: "windsurf", want: "---\ntrigger: always_on\n---\n\n" + router},
+		{name: "project cline", scope: "project", id: "cline", want: router},
+		{name: "project roo", scope: "project", id: "roo", want: router},
+		{name: "project copilot", scope: "project", id: "copilot", want: "---\napplyTo: \"**\"\n---\n\n" + router},
 	}
 
 	for _, tt := range tests {
@@ -43,13 +43,62 @@ func TestRenderTargetMatchesBashBytes(t *testing.T) {
 	}
 }
 
+func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
+	policyPath := "/config/ENGINEERING.md"
+	targets := []struct {
+		scope scope
+		id    targetID
+	}{
+		{"user", "claude"}, {"user", "codex"}, {"user", "gemini"}, {"user", "opencode"},
+		{"project", "claude"}, {"project", "codex"}, {"project", "gemini"}, {"project", "opencode"},
+		{"project", "cursor"}, {"project", "windsurf"}, {"project", "cline"}, {"project", "roo"}, {"project", "copilot"},
+	}
+	for _, target := range targets {
+		t.Run(string(target.scope)+"/"+string(target.id), func(t *testing.T) {
+			rendered, err := renderTarget(target.id, target.scope, policyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(rendered)
+			for _, required := range []string{
+				"Open Agent Workflow is opt-in.",
+				"explicitly asks to use OAW",
+				"behave as the native Host",
+				"do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state",
+				"ordinary Skill invocation do not activate OAW",
+				"On explicit activation, read `" + policyPath + "`",
+				"apply it only to that deliverable",
+				"Related follow-ups inherit activation; unrelated requests remain native",
+				"explicit exit closes the OAW Engagement",
+			} {
+				if !strings.Contains(text, required) {
+					t.Fatalf("%s/%s omits %q: %q", target.scope, target.id, required, text)
+				}
+			}
+			for _, forbidden := range []string{
+				"\n@" + policyPath + "\n",
+				"For every new top-level engineering request, first read",
+				"Before engineering lifecycle work, read",
+				"classify it as DIRECT, BOUNDED, or WORKFLOW",
+				"follow its blocking selection gate",
+				"preserve the selected lifecycle bundle",
+			} {
+				if strings.Contains(text, forbidden) {
+					t.Fatalf("%s/%s retains forbidden %q: %q", target.scope, target.id, forbidden, text)
+				}
+			}
+		})
+	}
+}
+
 func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
 	got, err := renderManagedBlock("codex", "user", "/config/ENGINEERING.md")
 	if err != nil {
 		t.Fatal(err)
 	}
+	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `/config/ENGINEERING.md` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
 	want := "<!-- BEGIN OPEN AGENT WORKFLOW -->\n" +
-		"For every new top-level engineering request, first read `/config/ENGINEERING.md`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n" +
+		router +
 		"<!-- END OPEN AGENT WORKFLOW -->\n"
 	if !bytes.Equal(got, []byte(want)) {
 		t.Fatalf("renderManagedBlock() = %q, want %q", got, want)

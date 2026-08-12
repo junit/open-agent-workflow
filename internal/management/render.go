@@ -8,33 +8,29 @@ import (
 type scope string
 type targetID string
 
+const activationRouterFormat = "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+
 func renderTarget(id targetID, operationScope scope, policyPath string) ([]byte, error) {
 	var rendered string
 	switch string(operationScope) + ":" + string(id) {
-	case "user:claude", "project:claude":
-		rendered = "Before any new top-level engineering task that may use workflow skills, read and follow the Open Agent Workflow policy:\n@" + policyPath + "\n"
-	case "user:codex":
-		rendered = fmt.Sprintf("For every new top-level engineering request, first read `%s`, classify it as DIRECT, BOUNDED, or WORKFLOW, and run its blocking selection gate only for WORKFLOW. Preserve the selected Lifecycle Bundle for Workflow work.\n", policyPath)
-	case "user:gemini", "project:gemini":
-		rendered = "Follow the Open Agent Workflow policy before engineering lifecycle work:\n@" + policyPath + "\n"
-	case "user:opencode":
-		rendered = fmt.Sprintf("Before engineering lifecycle work, use the Read tool to read `%s`, then follow its blocking selection gate and lifecycle lock.\n", policyPath)
+	case "user:claude", "project:claude", "user:codex", "user:gemini", "project:gemini", "user:opencode":
+		rendered = renderActivationRouter(policyPath)
 	case "project:codex", "project:opencode", "project:cline", "project:roo":
-		rendered = renderProjectBootstrap(policyPath)
+		rendered = renderActivationRouter(policyPath)
 	case "project:cursor":
-		rendered = "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + renderProjectBootstrap(policyPath)
+		rendered = "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + renderActivationRouter(policyPath)
 	case "project:windsurf":
-		rendered = "---\ntrigger: always_on\n---\n\n" + renderProjectBootstrap(policyPath)
+		rendered = "---\ntrigger: always_on\n---\n\n" + renderActivationRouter(policyPath)
 	case "project:copilot":
-		rendered = "---\napplyTo: \"**\"\n---\n\n" + renderProjectBootstrap(policyPath)
+		rendered = "---\napplyTo: \"**\"\n---\n\n" + renderActivationRouter(policyPath)
 	default:
 		return nil, &Error{Status: 69, Message: fmt.Sprintf("no renderer for %s target '%s'", operationScope, id)}
 	}
 	return []byte(rendered), nil
 }
 
-func renderProjectBootstrap(policyPath string) string {
-	return fmt.Sprintf("Before engineering lifecycle work, read `%s`, follow its blocking selection gate, and preserve the selected lifecycle bundle for the task.\n", policyPath)
+func renderActivationRouter(policyPath string) string {
+	return fmt.Sprintf(activationRouterFormat, policyPath)
 }
 
 func renderManagedBlock(id targetID, operationScope scope, policyPath string) ([]byte, error) {
