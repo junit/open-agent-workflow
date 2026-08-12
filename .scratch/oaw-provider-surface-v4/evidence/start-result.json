@@ -1,0 +1,56 @@
+{
+  "schema_version": "oaw.task5-start-result/v1",
+  "recorded_at": "2026-08-12T07:25:20Z",
+  "kind": "NOT_SUBMITTED",
+  "workflow_id": "",
+  "revision": 0,
+  "input_digest": "5fd392dcdb01aee1a06a320ccbac01fe00396a4797a83779782b7879d16262fd",
+  "selection": {
+    "profile": "SP-FULL",
+    "topology": "CURRENT",
+    "add_ons": []
+  },
+  "inspection": {
+    "classification": {
+      "request_mode": "WORKFLOW",
+      "workflow_complexity": "complex",
+      "risk_class": "elevated",
+      "escalation_reasons": [
+        "WORKFLOW_REQUIRED_MULTIPLE_RESPONSIBILITIES",
+        "WORKFLOW_REQUIRED_MULTIPLE_TICKETS",
+        "WORKFLOW_REQUIRED_PUBLIC_CONTRACT",
+        "WORKFLOW_REQUIRED_SCHEMA",
+        "WORKFLOW_REQUIRED_SECURITY"
+      ]
+    },
+    "implicit_selection": false,
+    "built_in_aliases_exposed": 4,
+    "user_defined_builder_exposed": true,
+    "selection_eligible": false,
+    "confirmation_digest_returned": false,
+    "diagnostics": [
+      {
+        "code": "HOST_FEATURE_UNATTESTED",
+        "slot_id": "review-remediation",
+        "provider_id": "oaw/superpowers",
+        "binding_id": "codex-requesting-code-review",
+        "detail": "required child-delegation evidence is not live and available"
+      }
+    ]
+  },
+  "core_compile_called": false,
+  "start_called": false,
+  "idempotency_key_created": false,
+  "stop_reasons": [
+    {
+      "source": "startup-gate",
+      "condition": "single_governance_probe_already_used",
+      "detail": "The one permitted bounded child probe was used earlier in this Startup Gate; its ten-minute evidence expired, and a second probe is not authorized."
+    },
+    {
+      "code": "HOST_FEATURE_UNATTESTED",
+      "source": "core-inspect",
+      "detail": "SP-FULL / CURRENT has no confirmation digest, so Core compile and Coordinator START were not called."
+    }
+  ]
+}
