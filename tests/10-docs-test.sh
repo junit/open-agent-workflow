@@ -1368,7 +1368,7 @@ for adapter_file in docs/en/adapters.md docs/zh/adapters.md; do
     'user + project' \
     'project only' \
     'documented import' \
-    'OAW bootstrap' \
+    'Activation Router' \
     'precedence' \
     'reload' \
     'Retrieved: 2026-07-30'; do
