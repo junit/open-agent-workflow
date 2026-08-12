@@ -1,24 +1,28 @@
 # OAW Provider Surface v4 Verification
 
-## Final Increment (2026-08-12)
+## Final Increment (2026-08-13)
 
 - implementation base before final commit: `ed88a6c8369b4625f93ae0e10724492db58dbe18`
-- reviewed product commit: `1b14a25`
-- implementation diff digest against the base: `fb1aa7a13848d32a534faa3311e60f8b37a0e0ccc3cdd5e68bab1aa083a9f4cc`
-- `rtk go test ./... -count=1`: exit 0; 1793 passed in 32 packages.
-- `rtk go test -race ./internal/codexbridge ./internal/coordinator ./internal/integrity ./internal/discovery ./internal/provideraudit -count=1`: exit 0; 342 passed in 5 packages.
+- reviewed product commit: `71bedc9`
+- implementation diff digest against the base: `42f38fb5d65c0253d0855b08f3a8bc0248816afad2ecb9002b0fad16a3a1542b`
+- `rtk go test ./... -count=1`: exit 0; 1810 passed in 32 packages.
+- `rtk go test -race ./internal/profile ./internal/registry ./internal/host ./internal/core ./internal/admission ./internal/coordinator ./internal/codexbridge/... ./internal/cli ./internal/integration -count=1`: exit 0; 838 passed in 12 packages.
 - `rtk go vet ./...`: exit 0.
 - `rtk bash tests/run.sh`: exit 0; all repository shell cases passed, including Docker Linux smoke and Provider source audit.
-- `rtk bash scripts/check-core-coordinator-coverage.sh`: exit 0; aggregate coverage 82.5 percent.
+- `rtk bash scripts/check-core-coordinator-coverage.sh`: exit 0; aggregate coverage 82.6 percent.
 - `rtk bash scripts/check-codex-bridge.sh`: exit 0; aggregate Bridge coverage 81.6 percent and deterministic gate PASS.
 - `rtk bash scripts/check-docs.sh`: exit 0.
+- `rtk bash tests/10-docs-test.sh`, `rtk bash tests/16-core-coordinator-conformance-test.sh`, and `rtk bash tests/18-codex-bridge-protocol-test.sh`: exit 0; all black-box/documentation contracts passed.
+- `rtk bash scripts/check-codex-bridge.sh`: exit 0; aggregate Bridge coverage 81.6 percent and deterministic gate PASS.
 - `rtk bash scripts/audit-provider-sources.sh --check internal/assets/audits/provider-sources-v4.json`: exit 0 against all four pinned upstream checkouts.
-- TDD remediation covered START Graph authority pins, Workflow Snapshot active grant/dispatch invariants, rooted immutable manifest identity, and contained Distribution symlink hashing.
+- TDD remediation covered START/SWITCH Graph selection and classification alias isolation, Recipe content digest recomputation, Host component authority pins, Workflow Snapshot active grant/dispatch invariants, and immutable manifest same-inode rewrite detection.
 - Coordinator START live acceptance remains `NOT_SUBMITTED`: current Host child-delegation evidence was unavailable/expired, so no claim of accepted START is made.
 - known residual review note: Provider audit Git export buffers full tree/blob objects; current hardcoded pinned-source scope limits exploitability, but explicit export limits remain a follow-up.
 
+The final increment also passed the retained-classification alias regression five consecutive times. No tracked verification-only change is staged; `.serena/` and the local `oaw` binary remain excluded.
+
 implementation_base: 2a4e9fb189e01d5c3f6fe7242d3f65bf500656e7
-reviewed_head: dc2dae1
+reviewed_head: 71bedc9
 selected_lifecycle: SP-FULL / CURRENT / no Add-on
 verification_started_at: 2026-08-11T06:25:32Z
 verification_restarted_at: 2026-08-11T07:24:19Z

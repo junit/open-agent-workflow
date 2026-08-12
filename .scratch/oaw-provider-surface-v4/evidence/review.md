@@ -1,12 +1,13 @@
 # OAW Provider Surface v4 Fixed-Point Review
 
-## Final Increment Review (2026-08-12)
+## Final Increment Review (2026-08-13)
 
 The final increment was reviewed after the previous authority findings were remediated.
 
 - START now closes embedded Graph Host evidence, Registry, Recipe, and Graph Selection pins against trusted inputs.
+- START and SWITCH now isolate trusted Selection and Classification values across both Core calls, including retained alias mutation.
 - Workflow Snapshot schema now requires the runtime-consistent active Grant/Dispatch pair and rejects inactive residual authority.
-- Immutable source manifest reads are rooted, descriptor-bound, and revalidated after decode to reject replacement/symlink swaps.
+- Immutable source manifest reads are rooted, descriptor-bound, and revalidated after decode to reject replacement/symlink swaps and same-inode content rewrites.
 - Distribution tree hashing records contained relative symlinks without following them and rejects escaping targets; fixed pinned-source audit passes.
 - No new CRITICAL, HIGH, or MEDIUM correctness/security finding was found in the remediation increment.
 - LOW follow-up: `cmd/oaw-provider-audit` still buffers unbounded `ls-tree` and blob output; add entry/byte/export limits in a future hardening change.
@@ -23,7 +24,8 @@ remediation_plan_amendments: 5e01027, 32cd1f8, 8312502, 3cff78d, dc2dae1
 remediation_commit: 19451ed
 reopened_remediation_commit: acbfd65
 reopened_review_completed_at: 2026-08-11T07:18:10Z
-increment_review_base: dc2dae1
+increment_review_base: 7e2e1a7
+increment_reviewed_head: 71bedc9
 increment_review_status: remediated
 
 ## Spec Compliance
