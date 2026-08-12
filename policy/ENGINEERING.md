@@ -162,8 +162,7 @@ Policy Workflow Plan, and a Progress Tracker. An unverified Profile is a
 candidate, not an eligible Profile.
 
 Only Workflow Mode runs the Startup Gate in machine-backed assurance. Its
-policy-cooperative counterpart runs the Cooperative Selection Gate. `DIRECT`
-and `BOUNDED` do not create Workflow State. Only machine-backed `WORKFLOW` may
+policy-cooperative counterpart runs the Cooperative Selection Gate. DIRECT and BOUNDED do not create Workflow State. Only machine-backed `WORKFLOW` may
 use the optional Workflow Coordinator and its durable transition protocol.
 
 ## Machine Startup Gate
