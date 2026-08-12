@@ -5,8 +5,8 @@
 
 An Open Agent Workflow (OAW) adapter is a thin, target-native Activation Router
 in front of the canonical policy. Adding one is an implementation and evidence
-change, not a new workflow design. An adapter **must not change lifecycle
-semantics**, **must not vendor a provider**, and **must not eagerly import the
+change, not a new workflow design. An adapter **must not change lifecycle semantics**,
+**must not vendor a provider**, and **must not eagerly import the
 Policy**. The target tool and every workflow provider remain independently
 installed.
 
