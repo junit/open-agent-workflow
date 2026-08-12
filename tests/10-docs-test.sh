@@ -1026,10 +1026,14 @@ for chinese_boundary_document in \
   docs/zh/architecture.md docs/zh/lifecycle.md docs/zh/security.md; do
   assert_contains "$chinese_boundary_document" 'Agent Host 拥有物理执行权限'
 done
-assert_contains docs/en/architecture.md 'Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt'
-assert_contains docs/en/architecture.md '+-> optional Workflow Coordinator'
-assert_contains docs/zh/architecture.md 'Request -> OAW Core -> Lifecycle Bundle -> Agent Host -> Receipt'
-assert_contains docs/zh/architecture.md '+-> optional Workflow Coordinator'
+assert_contains docs/en/architecture.md 'Top-level user request'
+assert_contains docs/en/architecture.md '-> Activation Router'
+assert_contains docs/en/architecture.md '-> Native Host'
+assert_contains docs/en/architecture.md '-> coordinator-backed -> OAW Core -> Workflow Coordinator -> Agent Host'
+assert_contains docs/zh/architecture.md '顶层用户请求'
+assert_contains docs/zh/architecture.md '-> Activation Router'
+assert_contains docs/zh/architecture.md '-> 原生 Host'
+assert_contains docs/zh/architecture.md '-> coordinator-backed -> OAW Core -> Workflow Coordinator -> Agent Host'
 pass "bilingual architecture and lifecycle documents define Core, Coordinator, Host, topology, and Profile boundaries"
 
 for policy_contract in \
