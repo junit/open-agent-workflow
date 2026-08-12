@@ -21,12 +21,17 @@ func TestBuiltInProviderDescriptorsV4(t *testing.T) {
 	if got, want := len(providers), 3; got != want {
 		t.Fatalf("provider count = %d, want %d", got, want)
 	}
+	wantDistributions := map[string]int{
+		"oaw/ecc":         1,
+		"oaw/matt":        1,
+		"oaw/superpowers": 2,
+	}
 	for _, provider := range providers {
 		if provider.SchemaVersion != catalog.ProviderDescriptorSchemaV4 || provider.DescriptorVersion != "4.0.0" {
 			t.Errorf("%s version = %q/%q", provider.ID, provider.SchemaVersion, provider.DescriptorVersion)
 		}
-		if len(provider.Distributions) != 1 {
-			t.Errorf("%s Distribution count = %d, want 1", provider.ID, len(provider.Distributions))
+		if got, want := len(provider.Distributions), wantDistributions[provider.ID]; got != want {
+			t.Errorf("%s Distribution count = %d, want %d", provider.ID, got, want)
 		}
 	}
 }
@@ -34,24 +39,37 @@ func TestBuiltInProviderDescriptorsV4(t *testing.T) {
 func TestBuiltInProviderPinsMatchSourceAudit(t *testing.T) {
 	value := loadCatalog(t)
 	audit := loadAudit(t)
+	sourcesByProvider := map[string][]provideraudit.ProviderSource{}
 	for _, source := range audit.Providers {
-		provider := requireProvider(t, value, source.ProviderID)
-		if got := provider.Distributions[0]; got.ID != source.DistributionID || got.SourceURI != source.SourceURI || got.Revision != source.Revision || got.TreeDigest != source.DistributionTreeDigest {
-			t.Errorf("%s Distribution = %#v, want source audit pin", source.ProviderID, got)
+		sourcesByProvider[source.ProviderID] = append(sourcesByProvider[source.ProviderID], source)
+	}
+	for providerID, sources := range sourcesByProvider {
+		provider := requireProvider(t, value, providerID)
+		if len(provider.Distributions) != len(sources) {
+			t.Fatalf("%s Distribution count = %d, want %d", providerID, len(provider.Distributions), len(sources))
 		}
-		if len(provider.Bindings) != len(source.Bindings) {
-			t.Fatalf("%s Binding count = %d, want %d", source.ProviderID, len(provider.Bindings), len(source.Bindings))
-		}
+		distributions := distributionIndex(provider)
 		byID := bindingIndex(provider)
-		for _, audited := range source.Bindings {
-			binding, found := byID[audited.ID]
-			if !found {
-				t.Errorf("%s missing audited Binding %s", source.ProviderID, audited.ID)
-				continue
+		expectedBindings := 0
+		for _, source := range sources {
+			distribution, found := distributions[source.DistributionID]
+			if !found || distribution.SourceURI != source.SourceURI || distribution.Revision != source.Revision || distribution.TreeDigest != source.DistributionTreeDigest {
+				t.Errorf("%s/%s Distribution = %#v, want source audit pin", providerID, source.DistributionID, distribution)
 			}
-			if binding.DistributionID != source.DistributionID || binding.ContentRoot != audited.ContentRoot || binding.InstallRoot != audited.InstallRoot || binding.TreeDigest != audited.TreeDigest || string(binding.Kind) != audited.Kind || !slices.Contains(audited.References, binding.Reference) {
-				t.Errorf("%s/%s does not match source audit: %#v", source.ProviderID, audited.ID, binding)
+			expectedBindings += len(source.Bindings)
+			for _, audited := range source.Bindings {
+				binding, found := byID[audited.ID]
+				if !found {
+					t.Errorf("%s missing audited Binding %s", providerID, audited.ID)
+					continue
+				}
+				if binding.DistributionID != source.DistributionID || binding.ContentRoot != audited.ContentRoot || binding.InstallRoot != audited.InstallRoot || binding.TreeDigest != audited.TreeDigest || string(binding.Kind) != audited.Kind || !slices.Contains(audited.References, binding.Reference) {
+					t.Errorf("%s/%s does not match source audit: %#v", providerID, audited.ID, binding)
+				}
 			}
+		}
+		if len(provider.Bindings) != expectedBindings {
+			t.Fatalf("%s Binding count = %d, want %d", providerID, len(provider.Bindings), expectedBindings)
 		}
 	}
 }
@@ -123,21 +141,102 @@ func TestSuperpowersHasEveryAuditedReference(t *testing.T) {
 	}
 }
 
+func TestSuperpowersDistributionDiscoveryAndAlternativesAreExact(t *testing.T) {
+	provider := requireProvider(t, loadCatalog(t), "oaw/superpowers")
+	distributions := distributionIndex(provider)
+	if len(distributions) != 2 {
+		t.Fatalf("Superpowers Distributions = %#v", provider.Distributions)
+	}
+	if distributions["superpowers"].SourceURI != "https://github.com/obra/superpowers" || distributions["superpowers-codex"].SourceURI != "https://github.com/openai/plugins" {
+		t.Fatalf("Superpowers Distribution sources = %#v", provider.Distributions)
+	}
+
+	wantProbeDistributions := map[string]string{
+		"sp-claude-direct":            "superpowers",
+		"sp-codex-direct":             "superpowers",
+		"sp-claude-marketplace":       "superpowers",
+		"sp-claude-official-cache":    "superpowers",
+		"sp-claude-marketplace-cache": "superpowers",
+		"sp-codex-curated-cache":      "superpowers-codex",
+	}
+	if len(provider.Discovery) != len(wantProbeDistributions) {
+		t.Fatalf("Superpowers discovery count = %d, want %d", len(provider.Discovery), len(wantProbeDistributions))
+	}
+	for _, probe := range provider.Discovery {
+		if want := wantProbeDistributions[probe.ID]; probe.DistributionID != want {
+			t.Errorf("Superpowers probe %s Distribution = %q, want %q", probe.ID, probe.DistributionID, want)
+		}
+	}
+
+	for _, stem := range superpowersBindingStems() {
+		packagedID := "codex-" + stem
+		upstreamID := "codex-upstream-" + stem
+		claudeID := "claude-" + stem
+		packaged := requireBinding(t, provider, packagedID)
+		upstream := requireBinding(t, provider, upstreamID)
+		claude := requireBinding(t, provider, claudeID)
+		if packaged.DistributionID != "superpowers-codex" || upstream.DistributionID != "superpowers" || claude.DistributionID != "superpowers" {
+			t.Errorf("Superpowers %s Distribution mapping = %q / %q / %q", stem, packaged.DistributionID, upstream.DistributionID, claude.DistributionID)
+		}
+		packagedAlternatives := []string{claudeID, upstreamID}
+		upstreamAlternatives := []string{claudeID, packagedID}
+		claudeAlternatives := []string{packagedID, upstreamID}
+		sort.Strings(packagedAlternatives)
+		sort.Strings(upstreamAlternatives)
+		sort.Strings(claudeAlternatives)
+		if !slices.Equal(packaged.Alternatives, packagedAlternatives) || !slices.Equal(upstream.Alternatives, upstreamAlternatives) || !slices.Equal(claude.Alternatives, claudeAlternatives) {
+			t.Errorf("Superpowers %s alternatives = %#v / %#v / %#v", stem, packaged.Alternatives, upstream.Alternatives, claude.Alternatives)
+		}
+	}
+}
+
+func TestSuperpowersCapabilitiesReferenceEveryDistributionAlternative(t *testing.T) {
+	provider := requireProvider(t, loadCatalog(t), "oaw/superpowers")
+	wantStems := map[string]string{
+		"closeout":         "finishing-a-development-branch",
+		"debugging":        "systematic-debugging",
+		"discovery-design": "brainstorming",
+		"execution-inline": "executing-plans",
+		"execution-sdd":    "subagent-driven-development",
+		"planning":         "writing-plans",
+		"remediation":      "receiving-code-review",
+		"review":           "requesting-code-review",
+		"tdd":              "test-driven-development",
+		"verification":     "verification-before-completion",
+		"workspace":        "using-git-worktrees",
+	}
+	if len(provider.Capabilities) != len(wantStems) {
+		t.Fatalf("Superpowers Capability count = %d, want %d", len(provider.Capabilities), len(wantStems))
+	}
+	for _, capability := range provider.Capabilities {
+		stem, found := wantStems[capability.ID]
+		if !found {
+			t.Errorf("unexpected Superpowers Capability %s", capability.ID)
+			continue
+		}
+		want := []string{"claude-" + stem, "codex-" + stem, "codex-upstream-" + stem}
+		sort.Strings(want)
+		if !slices.Equal(capability.BindingRefs, want) {
+			t.Errorf("Superpowers Capability %s BindingRefs = %v, want %v", capability.ID, capability.BindingRefs, want)
+		}
+	}
+}
+
 func TestSuperpowersMacroModesAreExact(t *testing.T) {
 	provider := requireProvider(t, loadCatalog(t), "oaw/superpowers")
-	for _, host := range []string{"codex", "claude"} {
-		brainstorming := requireBinding(t, provider, host+"-brainstorming")
-		assertInternalCalls(t, brainstorming, []catalog.InternalCall{{BindingID: host + "-writing-plans", Required: true, Mode: catalog.InternalDispatchAfter, StageSpan: []catalog.SlotID{catalog.SlotDeliveryPlanning}}})
+	for _, prefix := range []string{"codex", "codex-upstream", "claude"} {
+		brainstorming := requireBinding(t, provider, prefix+"-brainstorming")
+		assertInternalCalls(t, brainstorming, []catalog.InternalCall{{BindingID: prefix + "-writing-plans", Required: true, Mode: catalog.InternalDispatchAfter, StageSpan: []catalog.SlotID{catalog.SlotDeliveryPlanning}}})
 
-		for _, executorID := range []string{host + "-subagent-driven-development", host + "-executing-plans"} {
+		for _, executorID := range []string{prefix + "-subagent-driven-development", prefix + "-executing-plans"} {
 			executor := requireBinding(t, provider, executorID)
 			assertInternalCalls(t, executor, []catalog.InternalCall{
-				{BindingID: host + "-using-git-worktrees", Required: true, Mode: catalog.InternalDispatchBefore, StageSpan: []catalog.SlotID{catalog.SlotWorkspacePreparation}},
-				{BindingID: host + "-finishing-a-development-branch", Required: true, Mode: catalog.InternalDispatchAfter, StageSpan: []catalog.SlotID{catalog.SlotCloseout}},
+				{BindingID: prefix + "-using-git-worktrees", Required: true, Mode: catalog.InternalDispatchBefore, StageSpan: []catalog.SlotID{catalog.SlotWorkspacePreparation}},
+				{BindingID: prefix + "-finishing-a-development-branch", Required: true, Mode: catalog.InternalDispatchAfter, StageSpan: []catalog.SlotID{catalog.SlotCloseout}},
 			})
 		}
 		for _, fictional := range []string{"test-driven-development", "requesting-code-review", "verification-before-completion"} {
-			for _, call := range requireBinding(t, provider, host+"-subagent-driven-development").InternalCalls {
+			for _, call := range requireBinding(t, provider, prefix+"-subagent-driven-development").InternalCalls {
 				if strings.Contains(call.BindingID, fictional) {
 					t.Errorf("SDD has fictional InternalCall %s", call.BindingID)
 				}
@@ -370,6 +469,30 @@ func bindingIndex(provider catalog.ProviderDescriptorRecord) map[string]catalog.
 		result[binding.ID] = binding
 	}
 	return result
+}
+
+func distributionIndex(provider catalog.ProviderDescriptorRecord) map[string]catalog.DistributionRecord {
+	result := make(map[string]catalog.DistributionRecord, len(provider.Distributions))
+	for _, distribution := range provider.Distributions {
+		result[distribution.ID] = distribution
+	}
+	return result
+}
+
+func superpowersBindingStems() []string {
+	return []string{
+		"brainstorming",
+		"writing-plans",
+		"using-git-worktrees",
+		"subagent-driven-development",
+		"executing-plans",
+		"test-driven-development",
+		"systematic-debugging",
+		"requesting-code-review",
+		"receiving-code-review",
+		"verification-before-completion",
+		"finishing-a-development-branch",
+	}
 }
 
 func requireBinding(t *testing.T, provider catalog.ProviderDescriptorRecord, id string) catalog.BindingRecord {

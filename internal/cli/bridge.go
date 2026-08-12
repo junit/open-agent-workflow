@@ -158,6 +158,26 @@ func runBridgeHook(stdin io.Reader, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "oaw: HOST_BRIDGE_CONTEXT_REQUIRED: read Hook input\n")
 		return 65
 	}
+	eventName, eventErr := hook.EventName(raw)
+	if eventErr == nil && eventName == "SubagentStart" {
+		input, parseErr := hook.ParseSubagentStart(raw)
+		if parseErr != nil {
+			fmt.Fprintf(stderr, "oaw: HOST_BRIDGE_CONTEXT_REQUIRED: process SubagentStart Hook input\n")
+			return 65
+		}
+		environment, environmentErr := bridgeEnvironment()
+		if environmentErr != nil {
+			fmt.Fprintf(stderr, "oaw: HOST_OBSERVATION_PARTIAL: session feature evidence unavailable\n")
+			return 0
+		}
+		featureStore, storeErr := codexbridge.NewSessionFeatureEvidenceStore(codexbridge.SessionFeatureEvidenceOptions{
+			Root: filepath.Join(environment.StateRoot, "features"), TTL: codexbridge.SessionFeatureEvidenceTTL,
+		})
+		if storeErr != nil || featureStore.RecordChildDelegation(codexbridge.HookContext{SessionID: input.SessionID, CWD: input.CWD}) != nil {
+			fmt.Fprintf(stderr, "oaw: HOST_OBSERVATION_PARTIAL: session feature evidence unavailable\n")
+		}
+		return 0
+	}
 	output, err := hook.ProcessPreToolUse(raw)
 	if err != nil {
 		fmt.Fprintf(stderr, "oaw: HOST_BRIDGE_CONTEXT_REQUIRED: process Hook input\n")
@@ -182,12 +202,18 @@ func runCodexBridgeServe(ctx context.Context, environment install.Environment) e
 		RequestTimeout:      10 * time.Second,
 	})
 	store := codexbridge.NewEvidenceStore(codexbridge.CacheOptions{TTL: 10 * time.Minute, MaximumEntries: 64})
+	featureStore, err := codexbridge.NewSessionFeatureEvidenceStore(codexbridge.SessionFeatureEvidenceOptions{
+		Root: filepath.Join(environment.StateRoot, "features"), TTL: codexbridge.SessionFeatureEvidenceTTL,
+	})
+	if err != nil {
+		return err
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return newBridgeCLIError("HOST_BRIDGE_UNAVAILABLE", "resolve current user home")
 	}
 	service, err := codexbridge.NewService(codexbridge.ServiceOptions{
-		Observer: client, Store: store, StateRoot: defaultWorkflowStateRoot(),
+		Observer: client, FeatureObserver: featureStore, Store: store, StateRoot: defaultWorkflowStateRoot(),
 		ProjectRoot: environment.ProjectRoot, UserConfigRoot: defaultConfigRoot(), UserHome: home,
 		BridgeVersion: oaw.Version(), Rules: classification.ClassificationRules{}, Authority: workflowAuthorityCeiling(),
 	})

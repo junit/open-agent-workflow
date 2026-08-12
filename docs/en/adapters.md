@@ -66,7 +66,10 @@ Binding kinds are `skill`, `agent`, `role`, and `instruction`. Skills, Claude
 custom Agents, Codex Roles, Instructions, Hooks, and tools never substitute for
 one another. Static adapter or multi-agent metadata can be `host-configured`;
 it cannot report live delegation as available. Current Codex observation proves
-only `skill`/`CURRENT`; other kinds and actions require a stable Host API.
+`skill`/`CURRENT`; a valid official `SubagentStart` event followed by a fresh
+observation may additionally prove only `child-delegation` for that exact
+session/CWD. Other kinds, parallel/nested delegation, and actions require a
+separate stable Host API.
 
 The Host may report `inherited`, `host-configured`, `restricted`, `unknown`, or
 `unavailable` environment observations. A Receipt is evidence of what the Host

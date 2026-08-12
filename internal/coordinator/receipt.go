@@ -98,7 +98,8 @@ func (engine *Engine) activeDispatch(current revisionRecord) (DispatchPacket, er
 		if err != nil {
 			return DispatchPacket{}, err
 		}
-		if record.Result.Dispatch != nil && sameCanonicalValue(record.Result.Dispatch.Grant, *current.Snapshot.ActiveGrant) {
+		if record.Result.Dispatch != nil && record.Result.Dispatch.Digest == current.Snapshot.ActiveDispatchDigest &&
+			sameCanonicalValue(record.Result.Dispatch.Grant, *current.Snapshot.ActiveGrant) {
 			return *record.Result.Dispatch, nil
 		}
 	}
@@ -213,6 +214,7 @@ func applyReceiptTransition(snapshot *Snapshot, graph profile.ExecutionGraphReco
 		}
 		snapshot.Status = StatusCancelled
 		snapshot.ActiveGrant = nil
+		snapshot.ActiveDispatchDigest = ""
 	}
 	return []Diagnostic{}, nil
 }
@@ -230,6 +232,7 @@ func applyFailedTransition(snapshot *Snapshot, graph profile.ExecutionGraphRecor
 	if err != nil {
 		snapshot.Status = StatusPaused
 		snapshot.ActiveGrant = nil
+		snapshot.ActiveDispatchDigest = ""
 		return []Diagnostic{{Code: "WORKFLOW_INCIDENT_UNROUTED", Detail: "Host reported an incident without a declared Bundle route"}}, nil
 	}
 	return applyTraversalResult(snapshot, transition)
@@ -237,6 +240,7 @@ func applyFailedTransition(snapshot *Snapshot, graph profile.ExecutionGraphRecor
 
 func applyTraversalResult(snapshot *Snapshot, transition profile.TraversalResult) ([]Diagnostic, error) {
 	snapshot.ActiveGrant = nil
+	snapshot.ActiveDispatchDigest = ""
 	switch transition.Disposition {
 	case profile.TraversalNext:
 		if transition.Cursor == nil {

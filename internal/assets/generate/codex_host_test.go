@@ -56,7 +56,8 @@ func TestGenerateCodexHostV3IsIdempotentAndPreservesPolicy(t *testing.T) {
 	if native.Manifest.ControlSurface != host.SurfaceHostNative || native.Audit.Status != host.AuditPassed || native.Conformance == nil ||
 		native.IntegrationVersion != "2.0.0" || native.Manifest.SchemaVersion != host.HostManifestSchemaV3 ||
 		native.Conformance.SchemaVersion != host.HostConformanceReportSchemaV4 ||
-		len(native.Manifest.DelegationFeatures) != 0 || len(native.Manifest.HostActions) != 0 {
+		!reflect.DeepEqual(native.Manifest.DelegationFeatures, []host.FeatureID{host.FeatureChildDelegation}) ||
+		!reflect.DeepEqual(native.Conformance.VerifiedDelegationFeatures, []host.FeatureID{host.FeatureChildDelegation}) || len(native.Manifest.HostActions) != 0 {
 		t.Fatalf("generated native Integration = %#v", native)
 	}
 	var transcript host.ConformanceTranscript

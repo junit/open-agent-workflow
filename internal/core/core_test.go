@@ -193,6 +193,33 @@ func TestCurrentCodexReportsReasonCodedExclusions(t *testing.T) {
 	}
 }
 
+func TestEligibilityOwnsDiagnosticsWithoutDuplicatingThemInRetainedPreviews(t *testing.T) {
+	fixture := newCoreV4Fixture(t, coreFixtureOptions{hostID: "codex", topology: execution.TopologyCurrent})
+	inspection := compileCore(t, fixture.request)
+	profileDiagnostics := 0
+	for _, eligibility := range inspection.EligibleProfiles {
+		profileDiagnostics += len(eligibility.Diagnostics)
+		if len(eligibility.Preview.Diagnostics) != 0 {
+			t.Fatalf("Profile %s duplicates diagnostics in Preview: eligibility=%#v preview=%#v", eligibility.Profile, eligibility.Diagnostics, eligibility.Preview.Diagnostics)
+		}
+		requireSelectionPreviewDigest(t, eligibility.Preview)
+	}
+	if profileDiagnostics == 0 {
+		t.Fatal("fixture did not exercise Profile eligibility diagnostics")
+	}
+	addOnDiagnostics := 0
+	for _, eligibility := range inspection.EligibleAddOns {
+		addOnDiagnostics += len(eligibility.Diagnostics)
+		if len(eligibility.Preview.Diagnostics) != 0 {
+			t.Fatalf("Add-on %s duplicates diagnostics in Preview: eligibility=%#v preview=%#v", eligibility.AddOnID, eligibility.Diagnostics, eligibility.Preview.Diagnostics)
+		}
+		requireSelectionPreviewDigest(t, eligibility.Preview)
+	}
+	if len(inspection.EligibleAddOns) != 0 && addOnDiagnostics == 0 {
+		t.Fatal("fixture did not exercise Add-on eligibility diagnostics")
+	}
+}
+
 func TestCompileBundleV4IsDeterministicAndDefensive(t *testing.T) {
 	fixture := newCoreV4Fixture(t, coreFixtureOptions{hostID: "codex", topology: execution.TopologyCurrent, complete: true})
 	inspection := compileCore(t, fixture.request)
@@ -347,8 +374,9 @@ func bindingObservations(t testing.TB, available catalog.Catalog, options coreFi
 	t.Helper()
 	result := []host.BindingObservation{}
 	for _, provider := range available.Providers() {
+		distribution := coreFixtureDistribution(t, provider, options.hostID)
 		for _, binding := range provider.Bindings {
-			if binding.Host != options.hostID || !options.complete && binding.Kind != catalog.BindingSkill {
+			if binding.Host != options.hostID || binding.DistributionID != distribution.ID || !options.complete && binding.Kind != catalog.BindingSkill {
 				continue
 			}
 			topologies := []execution.Topology{execution.TopologyCurrent}
@@ -472,6 +500,7 @@ func newTestRegistry(t testing.TB, available catalog.Catalog, inventory host.Bin
 	}
 	result := &testRegistry{hostID: hostID, providerByID: map[string]registry.ProviderInstance{}, bindings: map[string]registry.VerifiedBinding{}, capabilities: map[string]registry.VerifiedCapability{}}
 	for _, provider := range available.Providers() {
+		distribution := coreFixtureDistribution(t, provider, hostID)
 		verifiedBindings := []registry.VerifiedBinding{}
 		for _, binding := range provider.Bindings {
 			observation, found := observed[provider.ID+"\x00"+binding.ID]
@@ -479,8 +508,8 @@ func newTestRegistry(t testing.TB, available catalog.Catalog, inventory host.Bin
 				continue
 			}
 			verified := registry.VerifiedBinding{
-				BindingID: binding.ID, DistributionID: binding.DistributionID, DistributionRevision: provider.Distributions[0].Revision,
-				DistributionTreeDigest: provider.Distributions[0].TreeDigest, Surface: binding.Surface, Kind: binding.Kind,
+				BindingID: binding.ID, DistributionID: binding.DistributionID, DistributionRevision: distribution.Revision,
+				DistributionTreeDigest: distribution.TreeDigest, Surface: binding.Surface, Kind: binding.Kind,
 				Reference: binding.Reference, Invocation: binding.Invocation, BindingTreeDigest: binding.TreeDigest,
 				SupportedTopologies: append([]execution.Topology{}, observation.Topologies...), Delegation: binding.Delegation,
 				Provenance: discovery.ProvenanceDistributionAttested, BindingEvidenceDigest: observation.Digest,
@@ -512,8 +541,8 @@ func newTestRegistry(t testing.TB, available catalog.Catalog, inventory host.Bin
 		}
 		instance := registry.ProviderInstance{
 			ProviderID: provider.ID, HostID: hostID, DescriptorDigest: descriptorDigest,
-			DistributionID: provider.Distributions[0].ID, DistributionRevision: provider.Distributions[0].Revision,
-			DistributionTreeDigest: provider.Distributions[0].TreeDigest, InstallationKey: installationKey(provider.ID),
+			DistributionID: distribution.ID, DistributionRevision: distribution.Revision,
+			DistributionTreeDigest: distribution.TreeDigest, InstallationKey: installationKey(provider.ID),
 			ConfigurationDigest: canonicaljson.DigestBytes([]byte(provider.ID + "/configuration")), BindingInventoryDigest: inventory.Digest,
 			EvidenceDigest: canonicaljson.DigestBytes([]byte(provider.ID + "/evidence/" + inventory.Digest)),
 			Bindings:       verifiedBindings, Capabilities: verifiedCapabilities,
@@ -531,6 +560,32 @@ func newTestRegistry(t testing.TB, available catalog.Catalog, inventory host.Bin
 		Providers     []registry.ProviderInstance `json:"providers"`
 	}{"oaw.effective-registry/v4", hostID, result.providers})
 	return result
+}
+
+func coreFixtureDistribution(t testing.TB, provider catalog.ProviderDescriptorRecord, hostID string) catalog.DistributionRecord {
+	t.Helper()
+	distributionID := ""
+	if provider.ID == "oaw/superpowers" {
+		switch hostID {
+		case "codex":
+			distributionID = "superpowers-codex"
+		case "claude":
+			distributionID = "superpowers"
+		}
+	}
+	if distributionID == "" {
+		if len(provider.Distributions) != 1 {
+			t.Fatalf("Provider %s has no fixture Distribution for Host %s", provider.ID, hostID)
+		}
+		return provider.Distributions[0]
+	}
+	for _, distribution := range provider.Distributions {
+		if distribution.ID == distributionID {
+			return distribution
+		}
+	}
+	t.Fatalf("Provider %s is missing fixture Distribution %s", provider.ID, distributionID)
+	return catalog.DistributionRecord{}
 }
 
 func (value *testRegistry) HostID() string { return value.hostID }
@@ -642,6 +697,19 @@ func requireEligibility(t testing.TB, result core.CompilationResult, profileID, 
 	}
 	t.Fatalf("eligibility %s/%s missing from %#v", profileID, recipeID, result.EligibleProfiles)
 	return core.ProfileEligibility{}
+}
+
+func requireSelectionPreviewDigest(t testing.TB, value core.SelectionPreview) {
+	t.Helper()
+	want := value.Digest
+	value.Digest = ""
+	got, _, err := canonicaljson.Digest(value)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("Selection Preview digest=%s, want %s", want, got)
+	}
 }
 
 func requireBundleV4(t testing.TB, result core.CompilationResult) core.LifecycleBundle {

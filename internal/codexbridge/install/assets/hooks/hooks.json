@@ -25,6 +25,14 @@
           {"type": "command", "command": "{{OAW_HOOK_COMMAND}}"}
         ]
       }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {"type": "command", "command": "{{OAW_HOOK_COMMAND}}"}
+        ]
+      }
     ]
   }
 }

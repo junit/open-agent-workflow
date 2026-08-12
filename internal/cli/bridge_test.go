@@ -10,9 +10,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/install"
+	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
 func TestParseBridgeCommands(t *testing.T) {
@@ -125,6 +127,44 @@ func TestBridgeHookValidLaterOperationWritesNoStdout(t *testing.T) {
 	}
 	if stdout.Len() != 0 {
 		t.Fatalf("stdout = %q", stdout.Bytes())
+	}
+}
+
+func TestBridgeHookSubagentStartRecordsCooperativeSessionEvidenceFromValidStdin(t *testing.T) {
+	root := t.TempDir()
+	stateHome := filepath.Join(root, "state")
+	dataHome := filepath.Join(root, "data")
+	projectRoot := filepath.Join(root, "project")
+	for _, directory := range []string{stateHome, dataHome, projectRoot} {
+		if err := os.MkdirAll(directory, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Chdir(projectRoot)
+	input := `{"session_id":"session-private-a","transcript_path":"/private/transcript.jsonl","turn_id":"turn-a","cwd":"` + projectRoot + `","hook_event_name":"SubagentStart","model":"gpt-test","permission_mode":"default","agent_id":"agent-private-a","agent_type":"reviewer"}`
+	stdout := &bytes.Buffer{}
+	if status := runBridgeHook(strings.NewReader(input), stdout, io.Discard); status != 0 {
+		t.Fatalf("status = %d", status)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("SubagentStart wrote context: %q", stdout.Bytes())
+	}
+	environment, err := bridgeEnvironment()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, err := codexbridge.NewSessionFeatureEvidenceStore(codexbridge.SessionFeatureEvidenceOptions{
+		Root: filepath.Join(environment.StateRoot, "features"), TTL: 10 * time.Minute,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := store.ObserveFeatures(codexbridge.HookContext{SessionID: "session-private-a", CWD: projectRoot})
+	if len(result.Diagnostics) != 0 || len(result.Observations) != 1 || result.Observations[0].Feature != host.FeatureChildDelegation ||
+		!strings.HasPrefix(result.Observations[0].EvidenceReference, "evidence://codex/cooperative-subagent-start/") {
+		t.Fatalf("result = %#v", result)
 	}
 }
 

@@ -140,7 +140,7 @@ Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、�
 approval 和全部物理 effect。OAW 绝不启动 model process。
 
 `CURRENT` 原样使用当前会话。只有 active Host 提供原生 Subagent facility 时，
-`SUBAGENT` 才可用；不存在 process fallback。Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式安装并信任。当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。Role、instruction、agent、tool、delegation 与 Host action 只有在稳定 live API 证明后才可用，否则保持 unknown 或 unavailable。
+`SUBAGENT` 才可用；不存在 process fallback。Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式安装并信任。当前 Codex 证明 `skill` binding 与 `CURRENT` topology；在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`。Role、instruction、agent、tool、parallel/nested delegation 与 Host action 仍保持 unknown 或 unavailable。
 
 可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。在 macOS 上，如果 Docker Desktop 可用，应使用 `scripts/smoke-docker.sh` 验证 Linux 归档。WSL-specific 检查是可选项，`SKIP` 必须记录，绝不能报告为 pass。
 

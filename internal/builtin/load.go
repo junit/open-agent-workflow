@@ -122,31 +122,46 @@ func loadCatalogAndAuditFromFS(files fs.FS) (catalog.Catalog, provideraudit.Mani
 }
 
 func validateProviderAudit(providers []catalog.ProviderDescriptorRecord, audit provideraudit.Manifest) error {
-	if len(providers) != len(audit.Providers) {
-		return fmt.Errorf("Provider count mismatch")
-	}
 	byID := make(map[string]catalog.ProviderDescriptorRecord, len(providers))
 	for _, provider := range providers {
 		byID[provider.ID] = provider
 	}
+	sourcesByProvider := make(map[string][]provideraudit.ProviderSource, len(providers))
 	for _, source := range audit.Providers {
-		provider, found := byID[source.ProviderID]
-		if !found || len(provider.Distributions) != 1 || len(provider.Bindings) != len(source.Bindings) {
-			return fmt.Errorf("Provider %s inventory mismatch", source.ProviderID)
+		sourcesByProvider[source.ProviderID] = append(sourcesByProvider[source.ProviderID], source)
+	}
+	if len(byID) != len(sourcesByProvider) {
+		return fmt.Errorf("Provider count mismatch")
+	}
+	for providerID, provider := range byID {
+		sources, found := sourcesByProvider[providerID]
+		if !found || len(provider.Distributions) != len(sources) {
+			return fmt.Errorf("Provider %s inventory mismatch", providerID)
 		}
-		distribution := provider.Distributions[0]
-		if distribution.ID != source.DistributionID || distribution.SourceURI != source.SourceURI || distribution.Revision != source.Revision || distribution.TreeDigest != source.DistributionTreeDigest {
-			return fmt.Errorf("Provider %s Distribution mismatch", source.ProviderID)
+		distributions := make(map[string]catalog.DistributionRecord, len(provider.Distributions))
+		for _, distribution := range provider.Distributions {
+			distributions[distribution.ID] = distribution
 		}
 		bindings := make(map[string]catalog.BindingRecord, len(provider.Bindings))
 		for _, binding := range provider.Bindings {
 			bindings[binding.ID] = binding
 		}
-		for _, audited := range source.Bindings {
-			binding, found := bindings[audited.ID]
-			if !found || binding.DistributionID != source.DistributionID || binding.ContentRoot != audited.ContentRoot || binding.InstallRoot != audited.InstallRoot || binding.TreeDigest != audited.TreeDigest || string(binding.Kind) != audited.Kind || !slices.Contains(audited.References, binding.Reference) {
-				return fmt.Errorf("Provider %s Binding %s mismatch", source.ProviderID, audited.ID)
+		auditedBindingCount := 0
+		for _, source := range sources {
+			distribution, found := distributions[source.DistributionID]
+			if !found || distribution.SourceURI != source.SourceURI || distribution.Revision != source.Revision || distribution.TreeDigest != source.DistributionTreeDigest {
+				return fmt.Errorf("Provider %s Distribution mismatch", providerID)
 			}
+			auditedBindingCount += len(source.Bindings)
+			for _, audited := range source.Bindings {
+				binding, found := bindings[audited.ID]
+				if !found || binding.DistributionID != source.DistributionID || binding.ContentRoot != audited.ContentRoot || binding.InstallRoot != audited.InstallRoot || binding.TreeDigest != audited.TreeDigest || string(binding.Kind) != audited.Kind || !slices.Contains(audited.References, binding.Reference) {
+					return fmt.Errorf("Provider %s Binding %s mismatch", providerID, audited.ID)
+				}
+			}
+		}
+		if len(provider.Bindings) != auditedBindingCount {
+			return fmt.Errorf("Provider %s inventory mismatch", providerID)
 		}
 	}
 	return nil

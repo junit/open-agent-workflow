@@ -222,6 +222,35 @@ func TestV4BindingPreferenceResolvesByBindingID(t *testing.T) {
 		t.Fatalf("zero-match preference error = %v", err)
 	}
 
+	crossDistributionProvider := configProviderV4Record()
+	secondDistribution := crossDistributionProvider.Distributions[0]
+	secondDistribution.ID = "distribution-second"
+	secondDistribution.SourceURI = "https://example.test/provider-second"
+	secondDistribution.Revision = strings.Repeat("b", 40)
+	secondDistribution.TreeDigest = "sha256:" + strings.Repeat("b", 64)
+	crossDistributionProvider.Distributions = append(crossDistributionProvider.Distributions, secondDistribution)
+	secondProbe := crossDistributionProvider.Discovery[0]
+	secondProbe.ID = "probe-second"
+	secondProbe.DistributionID = secondDistribution.ID
+	secondProbe.CandidatePath = ".agents/skills-second"
+	crossDistributionProvider.Discovery = append(crossDistributionProvider.Discovery, secondProbe)
+	secondBinding := crossDistributionProvider.Bindings[0]
+	secondBinding.ID = "binding-second"
+	secondBinding.DistributionID = secondDistribution.ID
+	secondBinding.TreeDigest = "sha256:" + strings.Repeat("b", 64)
+	crossDistributionProvider.Bindings = append(crossDistributionProvider.Bindings, secondBinding)
+	crossDistributionProvider.Capabilities[0].BindingRefs = append(crossDistributionProvider.Capabilities[0].BindingRefs, secondBinding.ID)
+	crossDistributionCatalog, err := catalog.New([]catalog.ProviderDescriptorRecord{crossDistributionProvider}, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := buildProviderSettings(crossDistributionCatalog, UserConfigRecord{BindingPreferences: []BindingPreference{{
+		ProviderID: crossDistributionProvider.ID, CapabilityID: crossDistributionProvider.Capabilities[0].ID,
+		HostID: secondBinding.Host, Kind: string(secondBinding.Kind), Reference: secondBinding.Reference,
+	}}}, emptyProjectConfig()); err != nil {
+		t.Fatalf("cross-Distribution preference error = %v", err)
+	}
+
 	ambiguousProvider := configProviderV4Record()
 	duplicate := ambiguousProvider.Bindings[0]
 	duplicate.ID = "binding-second"

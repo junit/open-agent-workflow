@@ -211,12 +211,20 @@ func (context compilerContext) bindDelegation(selector catalog.BindingSelector, 
 		if !found || observation.State != host.AvailabilityAvailable || !liveSource(observation.Source) {
 			return nil, nil, []CompileDiagnostic{{
 				Code: "HOST_FEATURE_UNATTESTED", StepID: stepID, ProviderID: selector.ProviderID, BindingID: selector.BindingID, Topology: context.topology,
-				Detail: "required delegation feature is not live and available",
+				Detail: delegationFeatureUnattestedDetail(feature),
 			}}
 		}
 		evidence = append(evidence, observation.Digest)
 	}
 	return features, evidence, nil
+}
+
+func delegationFeatureUnattestedDetail(feature host.FeatureID) string {
+	detail := fmt.Sprintf("required delegation feature %q is not live and available", feature)
+	if feature == host.FeatureChildDelegation {
+		return detail + "; starting a new session alone does not attest it; when an explicit Profile/topology request is blocked only by this feature, the Startup Gate may run one bounded native child capability probe as a governance probe, observe again, and retry inspection"
+	}
+	return detail
 }
 
 func unavailableBindingDiagnostic(selector catalog.BindingSelector, stepID, detail string) []CompileDiagnostic {

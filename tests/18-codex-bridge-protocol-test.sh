@@ -35,6 +35,10 @@ assert_bridge_skill_v2() {
     'installation integrity' \
     'live protocol proof' \
     'same session and working directory' \
+    'SubagentStart' \
+    'bounded child probe' \
+    'cooperative same-user evidence' \
+    'authenticate Hook provenance' \
     'Never persist'; do
     grep -F -- "$required" "$skill" >/dev/null ||
       fail "installed Bridge Skill omits required v2 instruction: $required"
@@ -89,6 +93,18 @@ grep -F '"hookEventName":"PreToolUse"' "$OAW_SANDBOX/observe.stdout" >/dev/null 
 grep -F '"permissionDecision":"allow"' "$OAW_SANDBOX/observe.stdout" >/dev/null || fail 'observation was not allowed'
 grep -F '"_oaw_host_context"' "$OAW_SANDBOX/observe.stdout" >/dev/null || fail 'observation omitted reserved Host context'
 grep -F 'oaw.codex-hook-context/v2' "$OAW_SANDBOX/observe.stdout" >/dev/null || fail 'observation omitted Hook Context v2'
+
+cat >"$OAW_SANDBOX/subagent-start.json" <<'EOF'
+{"session_id":"session-a","transcript_path":"/private/transcript.jsonl","turn_id":"turn-a","cwd":"/repo","hook_event_name":"SubagentStart","model":"gpt-test","permission_mode":"default","agent_id":"agent-private-a","agent_type":"reviewer"}
+EOF
+run_input subagent-start 0 "$OAW_SANDBOX/subagent-start.json" bridge hook codex
+[ ! -s "$OAW_SANDBOX/subagent-start.stdout" ] || fail 'SubagentStart emitted Hook output'
+feature_root="$OAW_STATE/open-agent-workflow/codex-bridge/features"
+find "$feature_root" -type f -name 'child-*.json' -print -quit 2>/dev/null | grep . >/dev/null ||
+  fail 'valid cooperative SubagentStart stdin did not record session feature evidence'
+feature_record=$(find "$feature_root" -type f -name 'child-*.json' -print -quit)
+grep -F '"feature":"child-delegation"' "$feature_record" >/dev/null ||
+  fail 'SubagentStart evidence omitted child-delegation feature'
 
 digest_header() {
   kind=$1
@@ -153,4 +169,4 @@ fail_if_contains "$OAW_SANDBOX/missing-handle.stdout" 'updatedInput'
 
 (cd "$OAW_REPOSITORY" && go test ./internal/codexbridge -run 'BridgeV2|VersionEvidence|HandleV2|BindingTree|HostFactsV3|CoreInspectV4|CoreCompileV4|WorkflowV2|ReceiptV3|ConformanceV4') >/dev/null
 
-printf 'PASS: Codex Bridge MCP/Hook boundaries and fail-closed protocol cases passed\n'
+printf 'PASS: Codex Bridge cooperative MCP/Hook boundaries and fail-closed protocol cases passed\n'

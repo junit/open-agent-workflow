@@ -159,18 +159,22 @@ oaw bridge check codex --format json
 ```
 
 Management check 只证明 file 与 registration state，并始终报告
-`current_session_loaded: false`。只有新 Codex session 中 trusted `observe_current` Hook
-input 才能建立 current-session evidence。
+`current_session_loaded: false`。这表示 management command 没有观察 active session，
+并不表示 active session 未加载 Bridge。只有 trusted `observe_current` Hook input 能建立
+current-session evidence。
 
 Text mode 会写出 `proof_scope: installation-integrity` 与
-`live_protocol_proof: false`。绝不能把它当作 live Bridge proof。若报告需要 update 或新
-session，这是 operator decision；必须在 START 前停止，直到操作得到显式执行且 fresh
-observation 成功。
+`live_protocol_proof: false`。绝不能把它当作 live Bridge proof。若报告 installation
+drift、真实 installed-version mismatch 或 installation-authority mismatch，必须停止
+START。Management-only `requires_new_session` 只是 operator advice，不阻止在同一
+active session 中 fresh 调用 `observe_current`。成功且带 canonical VersionEvidence 的
+`observe_current` response 是 active session 的权威证据。若 live observation 返回
+`HOST_BRIDGE_PROTOCOL_MISMATCH` 或其他 version/authority diagnostic，则停止。
 
 | Reason | 诊断与恢复 |
 | --- | --- |
 | `HOST_BRIDGE_UNAVAILABLE` | Plugin 或 MCP Bridge 不可用。安装或启用它，检查 Codex `/hooks`，然后启动新 session。 |
-| `HOST_BRIDGE_CONTEXT_REQUIRED` | MCP call 缺少 trusted Hook context。检查并信任精确的四个 Hook matcher，然后启动新 session。 |
+| `HOST_BRIDGE_CONTEXT_REQUIRED` | `observe_current` call 缺少 trusted `PreToolUse` Hook context。检查它的精确 tool matcher 与 `SubagentStart`，信任后启动新 session。后续 operation 只使用 opaque evidence handle，不接受 public Hook context。 |
 | `HOST_BRIDGE_PROTOCOL_MISMATCH` | 完整 v4/v3/v2 VersionEvidence tuple 不一致。停止；得到 operator 显式授权后更新 Bridge、复核 Hook、启动新 session 并重新 observe。 |
 | `HOST_EVIDENCE_HANDLE_REQUIRED` | 后续 operation 缺少当前 handle。调用 `observe_current`，使用返回的 handle 重试。 |
 | `HOST_EVIDENCE_HANDLE_INVALID` | Handle malformed、edited、unknown、evicted 或来自重启后的 Bridge。丢弃它并重新调用 `observe_current`。 |
@@ -178,10 +182,10 @@ observation 成功。
 | `HOST_EVIDENCE_SESSION_MISMATCH` | Handle 属于另一 session 或 working directory。在 mutation 前停止，并在当前 session 重新 observe。 |
 | `HOST_OBSERVATION_FAILED` | 必需 stable metadata，尤其 `skills/list`，获取失败。修复本地 Codex/App Server capability；受影响 Provider 保持 unverified。 |
 | `HOST_OBSERVATION_PARTIAL` | 可选 Hook 或 configuration metadata 不完整。不可用 field 保持 `unknown`，不得推断 inheritance。 |
-| `HOST_SESSION_CHANGED` | active Bundle pin 的 fact 变化。暂停、重新 observe、返回 Startup Gate，并编译新的 Bundle generation。 |
+| `HOST_SESSION_CHANGED` | 稳定 reporter identity 已变化，或刷新后的 authority fact 无法签发下一 Dispatch。Recovery command 仍可用。已签发 Dispatch 可由原 reporter 提交匹配 Receipt 收敛；否则重新 observe，并在 `PREPARE` 前编译新 generation。 |
 | `PROVIDER_BINDING_CONTENT_MISMATCH` | Exact enabled Skill 或完整 Binding tree 与 pinned Distribution evidence 不同。修复或选择精确可信 installation；不能接受 same-name 或 partial-tree match。 |
 | `BINDING_EXPLICIT_INVOCATION_REQUIRED` | human-explicit Binding 缺少当前 Host/user invocation attestation。取得精确 invocation 或停止；prompt text 不是 attestation。 |
-| `HOST_FEATURE_UNATTESTED` | Recipe 需要 child、nested-child 或其他 live feature，但当前 Host 未 attest。使用 eligible Recipe/topology，或修复稳定 Host evidence。 |
+| `HOST_FEATURE_UNATTESTED` | Recipe 需要 child、nested-child 或其他 live feature，但当前 Host 未 attest。如果用户已显式请求 Profile/topology，且唯一阻断是 child-only reviewer requirement，Startup Gate 可将一次零项目副作用的 bounded native child probe 作为 Governance observation，再次 `observe_current` 并重新 inspect；其他情况使用 eligible Recipe/topology，或修复稳定 Host evidence。仅新建 session 不会 attest delegation。 |
 | `HOST_ACTION_UNAVAILABLE` | 必需的 `workspace.prepare-or-confirm`、`verification.execute` 或 `closeout.execute` action 不可用。提供精确 verified Host procedure，或选择其他 eligible Recipe。 |
 
 `skills/list` 是 required v2 Skill-observation authority；optional `hooks/list` 与
@@ -201,7 +205,7 @@ rollback 行为。
 | `SUBAGENT_UNAVAILABLE` | active Host session 无法创建原生 child。返回 Startup Gate 选择 `CURRENT`，或修复原生 Host 支持；绝不能用 model process fallback。 |
 | `MACRO_INTERNAL_CONFLICT` | Expansion 发现重复 owner 或未 credited internal call。修正 versioned Recipe，使 credit 与 dispatch edge 只执行一次。 |
 | `PROFILE_TOPOLOGY_UNAVAILABLE` | Profile、Binding、delegation 或 active Host 不支持请求的 topology。返回 Startup Gate；不得模拟 topology。 |
-| `HOST_SESSION_CHANGED` | session identity、topology availability 或 pin 的 Host fact digest 已变化。丢弃 stale Dispatch Packet，取得新 Host session report，并重新编译 eligibility 后再 dispatch。 |
+| `HOST_SESSION_CHANGED` | 稳定 reporter identity 已变化，或刷新后的 authority fact 不再支持新 Dispatch。不能让新 session 伪造 Receipt；原 reporter 可收敛已签发 Dispatch，否则在下一次 `PREPARE` 前重新编译。 |
 
 执行显式 pre-release state reset 前，先停止使用该 Workflow 的全部 client，确认精确路径位于
 `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/workflows` 下，并只把已识别的

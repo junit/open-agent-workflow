@@ -102,6 +102,7 @@ func (engine *Engine) prepare(command Command) (Result, error) {
 			snapshot.Revision = nextRevision
 			snapshot.Status = StatusPrepared
 			snapshot.ActiveGrant = &grant
+			snapshot.ActiveDispatchDigest = packet.Digest
 			snapshot.GrantHistory = append(snapshot.GrantHistory, admission.CloneGrant(grant))
 			if command.Prepare.Authorization != nil {
 				snapshot.UserAuthorizations = append(snapshot.UserAuthorizations, admission.CloneUserAuthorization(*command.Prepare.Authorization))

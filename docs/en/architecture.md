@@ -105,9 +105,11 @@ Lifecycle Bundle. Active schemas reject `oaw.provider-descriptor/v1` and
 
 Codex has a policy integration by default and a separate audited host-native
 Bridge at `oaw/codex-host`. The Bridge must be explicitly installed and trusted;
-Current Codex proves only `skill` bindings and `CURRENT` topology. The policy
-surface remains `oaw/codex-policy` and is never promoted by filesystem
-detection. Role, instruction, agent, tool, delegation, invocation,
+Current Codex proves `skill` bindings and `CURRENT` topology; a valid
+`SubagentStart` event can additionally prove `child-delegation` for the exact
+session/CWD. The policy surface remains `oaw/codex-policy` and is never promoted
+by filesystem detection. Role, instruction, agent, tool, parallel/nested
+delegation, invocation,
 `workspace.prepare-or-confirm`, `verification.execute`, and `closeout.execute`
 remain unknown or unavailable unless a stable live API attests them.
 

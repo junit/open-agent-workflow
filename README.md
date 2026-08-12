@@ -152,7 +152,7 @@ OAW Core is required and stateless. The Workflow Coordinator is optional and sto
 
 The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 
-`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default and a separate audited host-native Bridge that must be explicitly installed and trusted. Current Codex proves only `skill` bindings and `CURRENT` topology. Role, instruction, agent, tool, delegation, and Host-action availability remain unknown or unavailable unless a stable live API proves them.
+`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default and a separate audited host-native Bridge that must be explicitly installed and trusted. Current Codex proves `skill` bindings and `CURRENT` topology; after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation` for that exact session and CWD. Role, instruction, agent, tool, parallel/nested delegation, and Host-action availability remain unknown or unavailable.
 
 Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness. On macOS, use `scripts/smoke-docker.sh` for the native Linux archive when Docker Desktop is available. WSL-specific checks are optional and a `SKIP` is recorded, never reported as a pass.
 

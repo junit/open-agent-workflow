@@ -4,9 +4,12 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
@@ -145,6 +148,101 @@ func TestDiscoveryPreservesBindingRootOrderAndDefensiveCopies(t *testing.T) {
 	}
 }
 
+func TestDiscoveryAttestsDirectoryAndRegularFileBindingRoots(t *testing.T) {
+	home := t.TempDir()
+	root := filepath.Join(home, "provider")
+	writeFile(t, root, "probe.txt", "probe")
+	skillRoot := writeFile(t, root, "skills/review/SKILL.md", "skill")
+	agentRoot := writeFile(t, root, "reviewer.md", "agent")
+	roleRoot := writeFile(t, root, ".codex/agents/reviewer.toml", "role")
+	distributionDigest := "sha256:" + strings.Repeat("d", 64)
+	writeJSON(t, root, ".oaw-distribution.json", map[string]string{"distribution_id": "distribution", "revision": distributionRevision, "tree_digest": distributionDigest})
+	bindings := []catalog.BindingRecord{
+		bindingRecord("skill", "skills/review", treeDigest(t, filepath.Dir(skillRoot))),
+		bindingRecord("agent", "reviewer.md", bindingFileDigest(t, "agents/reviewer.md", agentRoot)),
+		bindingRecord("role", ".codex/agents/reviewer.toml", bindingFileDigest(t, ".codex/agents/reviewer.toml", roleRoot)),
+	}
+	for index := range bindings {
+		bindings[index].ContentRoot = bindings[index].InstallRoot
+	}
+	bindings[1].ContentRoot = "agents/reviewer.md"
+	value := testCatalogWithBindings(t, "oaw/ecc", "provider", bindings, distributionDigest, distributionRevision)
+
+	report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
+	if err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	candidate := report.Candidates("oaw/ecc")[0]
+	if candidate.Provenance != discovery.ProvenanceDistributionAttested || len(candidate.BindingRoots) != 3 {
+		t.Fatalf("mixed-root candidate = %#v", candidate)
+	}
+	if file := candidate.BindingRoots[0]; file.BindingID != "agent" || len(file.Tree.Entries) != 1 || file.Tree.Entries[0].Path != "agents/reviewer.md" {
+		t.Fatalf("agent file evidence = %#v", file)
+	}
+	if file := candidate.BindingRoots[1]; file.BindingID != "role" || len(file.Tree.Entries) != 1 || file.Tree.Entries[0].Path != ".codex/agents/reviewer.toml" {
+		t.Fatalf("role file evidence = %#v", file)
+	}
+	if directory := candidate.BindingRoots[2]; directory.BindingID != "skill" || len(directory.Tree.Entries) != 1 || directory.Tree.Entries[0].Path != "SKILL.md" {
+		t.Fatalf("skill directory evidence = %#v", directory)
+	}
+}
+
+func TestDiscoveryRejectsSymlinkedAndUnsupportedBindingRoots(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink and FIFO creation require platform-specific privileges")
+	}
+	for _, test := range []struct {
+		name        string
+		installRoot string
+		setup       func(t *testing.T, root string)
+	}{
+		{
+			name: "final symlink", installRoot: "reviewer.md",
+			setup: func(t *testing.T, root string) {
+				target := writeFile(t, root, "target.md", "agent")
+				if err := os.Symlink(target, filepath.Join(root, "reviewer.md")); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "symlinked ancestor", installRoot: "agents/reviewer.md",
+			setup: func(t *testing.T, root string) {
+				outside := t.TempDir()
+				writeFile(t, outside, "reviewer.md", "agent")
+				if err := os.Symlink(outside, filepath.Join(root, "agents")); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "fifo", installRoot: "reviewer",
+			setup: func(t *testing.T, root string) {
+				if err := syscall.Mkfifo(filepath.Join(root, "reviewer"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			home := t.TempDir()
+			root := filepath.Join(home, "provider")
+			writeFile(t, root, "probe.txt", "probe")
+			test.setup(t, root)
+			value := testCatalog(t, "oaw/ecc", "provider", test.installRoot, "sha256:"+strings.Repeat("a", 64), "sha256:"+strings.Repeat("b", 64), distributionRevision)
+
+			report, err := discovery.Discover(value, discovery.Options{HostID: "codex", UserHome: home})
+			if err != nil {
+				t.Fatalf("Discover() error = %v", err)
+			}
+			candidate := report.Candidates("oaw/ecc")[0]
+			if candidate.Provenance != "" || candidate.ObservedRevision != "" || candidate.DistributionTreeDigest != "" || len(candidate.BindingRoots) != 0 {
+				t.Fatalf("invalid-root candidate = %#v", candidate)
+			}
+		})
+	}
+}
+
 func TestDiscoverySeparatesProvidersAndSurfacesWithSameBindingIDs(t *testing.T) {
 	home := t.TempDir()
 	for _, provider := range []string{"matt", "other"} {
@@ -265,4 +363,28 @@ func treeDigest(t *testing.T, root string) string {
 		t.Fatalf("DigestTree() error = %v", err)
 	}
 	return evidence.RootDigest
+}
+
+func bindingFileDigest(t *testing.T, relative, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload := struct {
+		SchemaVersion string `json:"schema_version"`
+		Path          string `json:"path"`
+		Executable    bool   `json:"executable"`
+		Size          int64  `json:"size"`
+		Digest        string `json:"digest"`
+	}{"oaw.binding-file/v1", relative, info.Mode().Perm()&0o111 != 0, info.Size(), integrity.SHA256Digest(content)}
+	encoded, err := canonicaljson.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return integrity.SHA256Digest(encoded)
 }

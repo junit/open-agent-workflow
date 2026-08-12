@@ -129,6 +129,7 @@ func TestStartRejectsMismatchedCoreBundleWithoutWorkflowState(t *testing.T) {
 		{name: "selection", mutate: func(value *core.LifecycleBundle) { value.Selection.Profile = "MATT-FULL" }},
 		{name: "host", mutate: func(value *core.LifecycleBundle) { value.HostID = "claude-code" }},
 		{name: "host session", mutate: func(value *core.LifecycleBundle) { value.HostSessionDigest = strings.Repeat("f", 64) }},
+		{name: "reporter identity", mutate: func(value *core.LifecycleBundle) { value.ReporterIdentityDigest = strings.Repeat("f", 64) }},
 		{name: "environment report", mutate: func(value *core.LifecycleBundle) { value.EnvironmentReportDigest = strings.Repeat("f", 64) }},
 		{name: "provider inventory", mutate: func(value *core.LifecycleBundle) { value.ProviderInventoryDigest = strings.Repeat("f", 64) }},
 		{name: "topology", mutate: func(value *core.LifecycleBundle) { value.Topology = execution.TopologySubagent }},
@@ -136,6 +137,17 @@ func TestStartRejectsMismatchedCoreBundleWithoutWorkflowState(t *testing.T) {
 		{name: "input", mutate: func(value *core.LifecycleBundle) { value.InputDigest = strings.Repeat("f", 64) }},
 		{name: "generation", mutate: func(value *core.LifecycleBundle) { value.Generation = 2 }},
 		{name: "graph entry", mutate: func(value *core.LifecycleBundle) { value.Graph.EntrySlotID = "missing" }},
+		{name: "graph host evidence", mutate: func(value *core.LifecycleBundle) { value.Graph.HostEvidenceDigest = strings.Repeat("f", 64) }},
+		{name: "graph registry", mutate: func(value *core.LifecycleBundle) { value.Graph.RegistryDigest = strings.Repeat("f", 64) }},
+		{name: "graph recipe", mutate: func(value *core.LifecycleBundle) {
+			value.Graph.RecipeDigest = strings.Repeat("f", 64)
+			value.Graph.Selection.RecipeDigest = strings.Repeat("f", 64)
+			value.Graph.Selection.Digest = startTestDigest(value.Graph.Selection)
+		}},
+		{name: "graph selection", mutate: func(value *core.LifecycleBundle) {
+			value.Graph.Selection.Profile = "MATT-FULL"
+			value.Graph.Selection.Digest = startTestDigest(value.Graph.Selection)
+		}},
 		{name: "Bundle digest", corruptBundle: true},
 		{name: "Compilation Result digest", corruptResult: true},
 	}
@@ -269,7 +281,8 @@ func compiledStartTestBundle(request core.CompilationRequest) core.LifecycleBund
 		SchemaVersion: core.LifecycleBundleSchemaV4, ID: "bundle-0123456789abcdef0123456789abcdef", DeliverableID: request.DeliverableID, InputDigest: request.InputDigest,
 		Generation: request.Generation, Classification: request.Classification, ClassificationDigest: request.Classification.Digest(), Selection: *request.Selection,
 		Recipe: recipe, RecipeDigest: graphSelection.RecipeDigest,
-		HostID: hostRecord.HostID, HostSessionDigest: hostRecord.SessionDigest, HostManifestDigest: hostRecord.ManifestDigest,
+		HostID: hostRecord.HostID, HostSessionDigest: hostRecord.SessionDigest, ReporterIdentityDigest: hostRecord.ReporterIdentityDigest,
+		HostManifestDigest:      hostRecord.ManifestDigest,
 		EnvironmentReportDigest: hostRecord.EnvironmentDigest, ProviderInventoryDigest: hostRecord.InventoryDigest,
 		HostFeatureDigest: hostRecord.FeatureDigest, HostActionDigest: hostRecord.ActionDigest, HostEvidenceDigest: hostRecord.Digest,
 		Configuration: request.Configuration.Record(), ResolutionDigest: request.ResolutionDigest, RegistryDigest: request.Registry.Digest(),

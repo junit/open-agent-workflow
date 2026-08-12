@@ -179,6 +179,7 @@ type Snapshot struct {
 	Cursor                 execution.GraphCursor                     `json:"cursor"`
 	ActiveTicket           string                                    `json:"active_ticket"`
 	ActiveGrant            *admission.CapabilityGrant                `json:"active_grant,omitempty"`
+	ActiveDispatchDigest   string                                    `json:"active_dispatch_digest,omitempty"`
 	GrantHistory           []admission.CapabilityGrant               `json:"grant_history"`
 	UserAuthorizations     []admission.UserAuthorization             `json:"user_authorizations"`
 	InvocationAttestations []admission.ExplicitInvocationAttestation `json:"invocation_attestations"`
@@ -607,6 +608,7 @@ func validateResult(value Result) error {
 			return err
 		}
 		if value.Snapshot.Status != StatusPrepared || value.Snapshot.ActiveGrant == nil ||
+			value.Snapshot.ActiveDispatchDigest != value.Dispatch.Digest ||
 			!sameCanonicalValue(*value.Snapshot.ActiveGrant, value.Dispatch.Grant) {
 			return coordinatorError("WORKFLOW_DISPATCH_INVALID", "DISPATCH Result active Grant does not match Packet Grant", nil)
 		}

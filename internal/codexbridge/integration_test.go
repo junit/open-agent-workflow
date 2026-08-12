@@ -18,7 +18,7 @@ func TestCodexHostManifestDeclaresOnlyCurrentSkillEvidence(t *testing.T) {
 		manifest.SchemaVersion != host.HostManifestSchemaV3 || manifest.ManifestVersion != "2.0.0" ||
 		!slices.Equal(manifest.BindingKinds, []catalog.BindingKind{catalog.BindingSkill}) ||
 		!slices.Equal(manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) ||
-		len(manifest.DelegationFeatures) != 0 || len(manifest.HostActions) != 0 {
+		!slices.Equal(manifest.DelegationFeatures, []host.FeatureID{host.FeatureChildDelegation}) || len(manifest.HostActions) != 0 {
 		t.Fatalf("manifest = %#v", manifest)
 	}
 }

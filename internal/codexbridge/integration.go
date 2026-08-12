@@ -25,7 +25,7 @@ func CodexHostManifest() (host.Manifest, error) {
 			host.FeatureNormalizedReceipts,
 			host.FeatureProviderBindingInventory,
 		},
-		DelegationFeatures: []host.FeatureID{},
+		DelegationFeatures: []host.FeatureID{host.FeatureChildDelegation},
 		HostActions:        []host.HostActionContract{},
 	})
 }

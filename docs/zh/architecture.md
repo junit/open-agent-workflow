@@ -93,9 +93,10 @@ Lifecycle Bundle。active schema 会拒绝 `oaw.provider-descriptor/v1` 和
 `oaw.user-config/v1`，不会静默升级。
 
 Codex 默认提供 policy integration，并在 `oaw/codex-host` 提供独立的 audited
-host-native Bridge。Bridge 必须显式安装并信任。当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。
+host-native Bridge。Bridge 必须显式安装并信任。当前 Codex 证明 `skill` binding 与 `CURRENT`
+topology；有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`。
 `oaw/codex-policy` policy surface 不会因 filesystem detection 被
-提升。Role、instruction、agent、tool、delegation、invocation、
+提升。Role、instruction、agent、tool、parallel/nested delegation、invocation、
 `workspace.prepare-or-confirm`、`verification.execute` 与 `closeout.execute` 只有在稳定
 live API attestation 后才可用，否则保持 unknown 或 unavailable。
 

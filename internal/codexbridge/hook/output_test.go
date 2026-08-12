@@ -88,6 +88,20 @@ func TestObserveRewriteRejectsCallerSuppliedReservedContext(t *testing.T) {
 	}
 }
 
+func TestWorkflowRewriteRejectsCallerSuppliedReservedContext(t *testing.T) {
+	input := validHandleInput(t, "mcp__oaw_codex_bridge__workflow_exchange")
+	var decoded map[string]any
+	if err := json.Unmarshal(input.ToolInput, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	decoded["_oaw_host_context"] = map[string]any{}
+	input.ToolInput = mustMarshal(t, decoded)
+	result, err := ValidateHandleInput(input)
+	if err != nil || result.HookSpecificOutput == nil || result.HookSpecificOutput.PermissionDecision != "deny" {
+		t.Fatalf("caller-supplied workflow context = %#v, %v", result, err)
+	}
+}
+
 func TestLaterOperationWithMatchingHandleReturnsNoOutput(t *testing.T) {
 	for _, name := range []string{"mcp__oaw_codex_bridge__core_inspect", "mcp__oaw_codex_bridge__core_compile", "mcp__oaw_codex_bridge__workflow_exchange"} {
 		result, err := ProcessPreToolUse(mustJSON(t, validHandleInput(t, name)))

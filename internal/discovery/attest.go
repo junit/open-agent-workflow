@@ -1,14 +1,12 @@
 package discovery
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
-	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
@@ -42,11 +40,7 @@ func attestCandidate(provider catalog.ProviderDescriptorRecord, distribution cat
 	sort.Slice(bindings, func(i, j int) bool { return bindings[i].ID < bindings[j].ID })
 	roots := make([]BindingRootEvidence, 0, len(bindings))
 	for _, binding := range bindings {
-		path, found, err := resolvePhysicalBindingRoot(root, binding.InstallRoot)
-		if err != nil || !found {
-			return attestationResult{}
-		}
-		tree, err := integrity.DigestTree(path)
+		tree, err := integrity.DigestBindingRoot(root, binding.InstallRoot, binding.ContentRoot)
 		if err != nil || tree.RootDigest != binding.TreeDigest {
 			return attestationResult{}
 		}
@@ -60,7 +54,7 @@ func attestCandidate(provider catalog.ProviderDescriptorRecord, distribution cat
 		return attestationResult{provenance: ProvenanceDistributionAttested, observedRevision: record.Revision, distributionTreeDigest: record.TreeDigest, bindingRoots: roots}
 	}
 	if version != "" && version == distribution.Revision {
-		tree, err := integrity.DigestTree(root)
+		tree, err := integrity.DigestDistributionTree(root)
 		if err == nil && tree.RootDigest == distribution.TreeDigest {
 			return attestationResult{provenance: ProvenanceDistributionAttested, observedRevision: distribution.Revision, distributionTreeDigest: tree.RootDigest, bindingRoots: roots}
 		}
@@ -69,48 +63,50 @@ func attestCandidate(provider catalog.ProviderDescriptorRecord, distribution cat
 	return attestationResult{provenance: ProvenanceContentEquivalent, bindingRoots: roots}
 }
 
-func resolvePhysicalBindingRoot(root, relative string) (string, bool, error) {
-	if err := validateProbePath(relative); err != nil {
-		return "", false, err
-	}
-	current := root
-	for _, segment := range splitRelativePath(relative) {
-		current = filepath.Join(current, segment)
-		info, err := os.Lstat(current)
-		if errors.Is(err, os.ErrNotExist) {
-			return "", false, nil
-		}
-		if err != nil {
-			return "", false, err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return "", false, errors.New("Binding root contains a symlink")
-		}
-	}
-	if !pathContained(root, current) {
-		return "", false, errors.New("Binding root escapes installation")
-	}
-	return filepath.Clean(current), true, nil
-}
-
-func splitRelativePath(value string) []string {
-	return strings.Split(filepath.FromSlash(value), string(filepath.Separator))
-}
-
 func readImmutableSourceManifest(root string) (immutableSourceRecord, bool, error) {
-	path := filepath.Join(root, immutableSourceManifest)
-	info, err := os.Lstat(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return immutableSourceRecord{}, false, nil
+	rootInfo, err := os.Lstat(root)
+	if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+		return immutableSourceRecord{}, true, errors.New("invalid immutable-source manifest root")
 	}
-	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > 64<<10 {
-		return immutableSourceRecord{}, true, errors.New("invalid immutable-source manifest file")
-	}
-	raw, err := os.ReadFile(path)
+	rooted, err := os.OpenRoot(root)
 	if err != nil {
 		return immutableSourceRecord{}, true, err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
+	defer rooted.Close()
+	openedRoot, err := rooted.Stat(".")
+	if err != nil || !os.SameFile(rootInfo, openedRoot) {
+		return immutableSourceRecord{}, true, errors.New("immutable-source manifest root changed while opening")
+	}
+
+	info, err := rooted.Lstat(immutableSourceManifest)
+	if errors.Is(err, os.ErrNotExist) {
+		return immutableSourceRecord{}, false, nil
+	}
+	if err != nil {
+		return immutableSourceRecord{}, true, err
+	}
+	record, found, err := readRootedImmutableSourceManifest(rooted, info)
+	currentRoot, rootErr := os.Lstat(root)
+	if rootErr != nil || currentRoot.Mode()&os.ModeSymlink != 0 || !os.SameFile(rootInfo, currentRoot) {
+		return immutableSourceRecord{}, true, errors.New("immutable-source manifest root changed while reading")
+	}
+	return record, found, err
+}
+
+func readRootedImmutableSourceManifest(rooted *os.Root, info fs.FileInfo) (immutableSourceRecord, bool, error) {
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > 64<<10 {
+		return immutableSourceRecord{}, true, errors.New("invalid immutable-source manifest file")
+	}
+	file, err := rooted.Open(immutableSourceManifest)
+	if err != nil {
+		return immutableSourceRecord{}, true, err
+	}
+	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !sameImmutableManifestSnapshot(info, opened) || !opened.Mode().IsRegular() {
+		return immutableSourceRecord{}, true, errors.New("immutable-source manifest changed while opening")
+	}
+	decoder := json.NewDecoder(io.LimitReader(file, 64<<10+1))
 	decoder.DisallowUnknownFields()
 	var record immutableSourceRecord
 	if err := decoder.Decode(&record); err != nil {
@@ -123,5 +119,16 @@ func readImmutableSourceManifest(root string) (immutableSourceRecord, bool, erro
 	if record.DistributionID == "" || record.Revision == "" || record.TreeDigest == "" {
 		return immutableSourceRecord{}, true, errors.New("immutable-source manifest is incomplete")
 	}
+	after, statErr := file.Stat()
+	current, inspectErr := rooted.Lstat(immutableSourceManifest)
+	if statErr != nil || inspectErr != nil || after.Size() > 64<<10 ||
+		!sameImmutableManifestSnapshot(opened, after) || !sameImmutableManifestSnapshot(info, current) ||
+		current.Mode()&os.ModeSymlink != 0 {
+		return immutableSourceRecord{}, true, errors.New("immutable-source manifest changed while reading")
+	}
 	return record, true, nil
+}
+
+func sameImmutableManifestSnapshot(left, right fs.FileInfo) bool {
+	return os.SameFile(left, right) && left.Size() == right.Size() && left.Mode() == right.Mode() && left.ModTime().Equal(right.ModTime())
 }

@@ -133,14 +133,23 @@ eligibility check。OAW 不重建缺失 child environment，也不静默 fallbac
 ## Codex Host Bridge 边界
 
 Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式
-安装并信任。Bridge v2 支持 `CURRENT`，且当前 integration 只证明 `skill` binding。它不创建 child session，
-也不保证继承 MCP、Hook、Skill、Plugin、model、authentication、sandbox 或 approval
-behavior，除非 Host 提供稳定 observation。
+安装并信任。Bridge v2 支持 `CURRENT`；默认 binding observation 只证明 `skill` binding，
+而下文的 cooperative `SubagentStart` callback path 还可以报告 `child-delegation`。它不创建
+child session，也不保证继承 MCP、Hook、Skill、Plugin、model、authentication、sandbox 或
+approval behavior，除非 Host 提供稳定 observation。
 
 Trusted `PreToolUse` Hook input 是唯一的 current-session identity source。Agent 不能自行
-填写或替换 reserved `_oaw_host_context`。只有严格只读的 `observe_current` rewrite 可以
-得到自动 `allow`；后续 Core 与 Coordinator operation 保留正常 Host approval behavior，
+填写或替换 reserved `_oaw_host_context`。`observe_current` 仍是唯一创建 current-session
+evidence 并签发 handle 的 operation。`core_inspect` 与 `core_compile` 保留正常 Host approval
+behavior。`workflow_exchange` 也保留正常 approval：其 Hook 验证 handle/session/CWD 后输出
+零字节，因此不会 rewrite 或自动 allow 可变更的 Coordinator call。所有 operation 在
 session 或 working-directory 不匹配时 fail closed。
+
+`SubagentStart` feature evidence 使用更窄的 cooperative trust contract。Codex 文档中的 Hook
+payload 不包含 signature、Host-issued nonce 或 parent tool-use correlation identifier。手工
+构造且复制 Host field 的 `SubagentStart` JSON object 无法与真实 callback 区分，并可通过
+Bridge CLI 创建相同的短期 record。Closed parsing、精确 session/CWD binding、bounded TTL、
+mode `600` 与 record validation 仍然有效，但它们不能认证 provenance，也不能抵抗同一用户权限下的伪造
 
 `skills/list` 是 required v2 Skill-observation authority。`hooks/list` 与 allowlisted
 `config/read` projection 是 optional environment observation；这三个 method 构成 closed
@@ -162,9 +171,13 @@ CWD change、expiry 或 eviction 后复用。
 Public Bridge input 排除 user authorization、explicit invocation attestation 与 gate
 attestation；只有当前 Host evidence 能提供这些 fact。未 attested 的 delegation 或
 `workspace.prepare-or-confirm`、`verification.execute`、`closeout.execute` action 保持
-unavailable。每个非 START exchange 会在读取或签发 executable state 前检查全部八个
-Bundle authority digest。旧 Workflow record、stale fact、edited handle、unknown field、
-trailing value 与 caller-forged authority 都会在 effect 前被拒绝。
+unavailable。Opaque handle 的 bounded process-local entry 只保存可信 session ID 与 exact CWD，不保存
+turn、tool-use、model 或 permission metadata。`PREPARE` 使用这些内部坐标重新观测并重检
+稳定 reporter identity、当前 authority fact 与当前 unit 所需 feature；Recovery command
+不会因短期 feature drift 而失联。已签发
+Dispatch 的 Receipt 必须匹配原 reporter 与原 Dispatch pin。caller 的裸 cancellation flag
+不能释放 active Grant/Lease。旧 Workflow record、edited handle、unknown field、trailing
+value 与 caller-forged authority 都会在 effect 前被拒绝。
 
 这是 cooperation boundary，不是 operating-system isolation。具有相同用户权限的 process
 可以干扰本地 program、file 或 process I/O。OAW 可以验证 protocol record，但不能认证或

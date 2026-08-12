@@ -33,11 +33,18 @@ records Workflow State, while the Agent Host performs `CURRENT` or native
 
 This comparison is source-pinned rather than name-inferred:
 
-| Provider | Upstream | Audited revision |
-| --- | --- | --- |
-| Matt | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
-| Superpowers | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
-| ECC | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+| Provider | Distribution | Source | Audited revision |
+| --- | --- | --- | --- |
+| Matt | `matt-skills` | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
+| Superpowers | `superpowers` | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
+| Superpowers | `superpowers-codex` | `https://github.com/openai/plugins` (`plugins/superpowers`) | `11c74d6ba24d3a6d48f54a194cd00ef3beea18f9` |
+| ECC | `ecc` | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+
+The two Superpowers rows remain one Provider, `oaw/superpowers`. They are
+non-interchangeable audited Distributions: Claude and direct upstream installs
+use the obra tree, while the Codex packaged install uses the OpenAI plugin tree.
+Each Distribution must match its own complete-tree digest; no file is ignored
+and no Profile is added.
 
 The audited names are surface-specific. Matt begins with `grill-with-docs`
 and uses `to-spec`, `to-tickets`, `implement`, `tdd`, `diagnosing-bugs`, and

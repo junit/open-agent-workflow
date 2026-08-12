@@ -241,9 +241,12 @@ func compileProfileEligibility(request CompilationRequest, candidates []profileC
 		if err != nil {
 			return nil, err
 		}
+		diagnostics := append([]profile.CompileDiagnostic{}, preview.Diagnostics...)
+		preview.Diagnostics = []profile.CompileDiagnostic{}
+		preview.Digest = selectionPreviewDigest(preview)
 		result = append(result, ProfileEligibility{
 			Profile: candidate.Profile, RecipeID: candidate.RecipeID, Eligible: preview.Graph != nil,
-			Topology: selection.Topology, Diagnostics: append([]profile.CompileDiagnostic{}, preview.Diagnostics...), Preview: preview,
+			Topology: selection.Topology, Diagnostics: diagnostics, Preview: preview,
 		})
 	}
 	return result, nil
@@ -262,9 +265,12 @@ func compileAddOnEligibility(request CompilationRequest, candidates []profileCan
 			if err != nil {
 				return nil, err
 			}
+			diagnostics := append([]profile.CompileDiagnostic{}, preview.Diagnostics...)
+			preview.Diagnostics = []profile.CompileDiagnostic{}
+			preview.Digest = selectionPreviewDigest(preview)
 			result = append(result, AddOnEligibility{
 				Profile: candidate.Profile, RecipeID: candidate.RecipeID, AddOnID: addOn.ID, Kind: addOn.Kind, SlotID: addOn.SlotID,
-				Eligible: preview.Graph != nil, Diagnostics: append([]profile.CompileDiagnostic{}, preview.Diagnostics...), Preview: preview,
+				Eligible: preview.Graph != nil, Diagnostics: diagnostics, Preview: preview,
 			})
 		}
 	}
@@ -413,7 +419,8 @@ func compileBundle(request CompilationRequest, candidate profileCandidate, previ
 		SchemaVersion: LifecycleBundleSchemaV4, DeliverableID: request.DeliverableID, InputDigest: request.InputDigest, Generation: request.Generation,
 		Classification: cloneClassification(request.Classification), ClassificationDigest: request.Classification.Digest(),
 		Selection: selection, Recipe: candidate.Recipe, RecipeDigest: candidate.RecipeDigest,
-		HostID: hostRecord.HostID, HostSessionDigest: hostRecord.SessionDigest, HostManifestDigest: hostRecord.ManifestDigest,
+		HostID: hostRecord.HostID, HostSessionDigest: hostRecord.SessionDigest, ReporterIdentityDigest: hostRecord.ReporterIdentityDigest,
+		HostManifestDigest:      hostRecord.ManifestDigest,
 		EnvironmentReportDigest: hostRecord.EnvironmentDigest, ProviderInventoryDigest: hostRecord.InventoryDigest,
 		HostFeatureDigest: hostRecord.FeatureDigest, HostActionDigest: hostRecord.ActionDigest, HostEvidenceDigest: hostRecord.Digest,
 		Configuration: request.Configuration.Record(), ResolutionDigest: request.ResolutionDigest, RegistryDigest: request.Registry.Digest(),

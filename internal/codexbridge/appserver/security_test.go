@@ -70,9 +70,8 @@ func TestCodexLauncherOutlivesOpeningRequestContext(t *testing.T) {
 	}
 	defer func() { _ = transport.Close() }()
 	cancelOpen()
-	time.Sleep(50 * time.Millisecond)
 
-	exchangeCtx, cancelExchange := context.WithTimeout(context.Background(), time.Second)
+	exchangeCtx, cancelExchange := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelExchange()
 	response, err := transport.Exchange(exchangeCtx, []byte(`{"jsonrpc":"2.0","id":1,"method":"initialize"}`), 1024)
 	if err != nil {

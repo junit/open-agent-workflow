@@ -32,6 +32,10 @@ func TestSwitchRecompilesNextBundleGenerationInsideWorkflowLock(t *testing.T) {
 		Switch: &SwitchInput{Boundary: "problem-framing-complete", Selection: start.Start.Selection, HostSession: start.Start.HostSession, Environment: start.Start.Environment},
 	}
 	command.Switch.Selection.Profile = "MATT-FULL"
+	graphSelection := startTestGraphSelection()
+	graphSelection.Profile = "MATT-FULL"
+	graphSelection.Digest = ""
+	command.Switch.Selection.GraphSelectionDigest = startTestDigest(graphSelection)
 	switched := exchangeTask6(t, engine, command)
 	if switched.Snapshot.ActiveGeneration != 2 || len(switched.Snapshot.Bundles) != 2 || switched.Snapshot.Cursor != firstStartTestCursor(t, switched.Snapshot.Bundles[1].Graph) ||
 		switched.Snapshot.LastStableBoundary != "" || switched.Snapshot.ActiveGrant != nil || compiler.compileCalls != 2 || !compiler.compileInsideLock ||

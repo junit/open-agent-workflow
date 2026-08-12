@@ -37,6 +37,7 @@ type HostEvidenceHandle struct {
 
 type FactDigests struct {
 	Session       string `json:"session"`
+	Reporter      string `json:"reporter_identity"`
 	Inventory     string `json:"inventory"`
 	Environment   string `json:"environment"`
 	Features      string `json:"features"`

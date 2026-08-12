@@ -64,8 +64,9 @@ func TestProfileMatrixProjectionIncludesHostSurfaceAndSourcePins(t *testing.T) {
 				seenHosts[binding.Host] = true
 				provider := requireProvider(t, value, binding.ProviderID)
 				declared := requireBinding(t, provider, binding.BindingID)
+				distribution := requireDistribution(t, provider, declared.DistributionID)
 				audited, found := audit.Binding(binding.ProviderID, binding.BindingID)
-				if !found || binding.Surface != declared.Surface || binding.Kind != declared.Kind || binding.Reference != declared.Reference || binding.DistributionRevision != provider.Distributions[0].Revision || binding.BindingTreeDigest != audited.TreeDigest {
+				if !found || binding.Surface != declared.Surface || binding.Kind != declared.Kind || binding.Reference != declared.Reference || binding.DistributionRevision != distribution.Revision || binding.BindingTreeDigest != audited.TreeDigest {
 					t.Errorf("matrix Binding provenance mismatch: %#v", binding)
 				}
 			}
@@ -73,6 +74,34 @@ func TestProfileMatrixProjectionIncludesHostSurfaceAndSourcePins(t *testing.T) {
 	}
 	if !seenHosts["codex"] || !seenHosts["claude"] {
 		t.Fatalf("matrix Host coverage = %v", seenHosts)
+	}
+}
+
+func TestProfileMatrixProjectionRejectsBindingDistributionSubstitution(t *testing.T) {
+	value := loadCatalog(t)
+	providers := value.Providers()
+	found := false
+	for providerIndex := range providers {
+		if providers[providerIndex].ID != "oaw/superpowers" {
+			continue
+		}
+		for bindingIndex := range providers[providerIndex].Bindings {
+			binding := &providers[providerIndex].Bindings[bindingIndex]
+			if binding.ID == "codex-brainstorming" {
+				binding.DistributionID = "superpowers"
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("codex-brainstorming Binding not found")
+	}
+	tampered, err := catalog.New(providers, value.Recipes(), value.Aliases())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := BuildProfileMatrix(tampered, loadAudit(t)); err == nil || !strings.Contains(err.Error(), "Catalog source provenance is invalid") {
+		t.Fatalf("BuildProfileMatrix(Distribution substitution) error = %v", err)
 	}
 }
 
@@ -250,6 +279,17 @@ func matrixBindingIDs(values []MatrixBinding) []string {
 		result[index] = value.BindingID
 	}
 	return result
+}
+
+func requireDistribution(t *testing.T, provider catalog.ProviderDescriptorRecord, id string) catalog.DistributionRecord {
+	t.Helper()
+	for _, distribution := range provider.Distributions {
+		if distribution.ID == id {
+			return distribution
+		}
+	}
+	t.Fatalf("Distribution %s/%s not found", provider.ID, id)
+	return catalog.DistributionRecord{}
 }
 
 func canonicalMatrixBytes(t *testing.T, matrix ProfileMatrixRecord) []byte {

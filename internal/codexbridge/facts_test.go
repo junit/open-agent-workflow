@@ -81,6 +81,31 @@ func TestAssembleFactsKeepsMissingOptionalSurfacesUnknown(t *testing.T) {
 	}
 }
 
+func TestAssembleFactsProjectsOnlyLiveChildDelegationEvidence(t *testing.T) {
+	snapshot, report, inventory, resolution := emptyFactInputs(t)
+	live, err := host.NewFeatureObservation(host.FeatureObservation{
+		Feature: host.FeatureChildDelegation, State: host.AvailabilityAvailable, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex/subagent-start/live",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	facts, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution, "1.2.3", live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(facts.Session.FeatureObservations, []host.FeatureObservation{live}) {
+		t.Fatalf("features = %#v", facts.Session.FeatureObservations)
+	}
+	configured := live
+	configured.Source = host.SourceStaticConfig
+	configured.State = host.AvailabilityConfigured
+	configured.Digest = ""
+	if _, err := AssembleFacts(HookContext{SessionID: "session-codex-1", CWD: "/repo"}, completeFactMetadata(), snapshot, report, inventory, resolution, "1.2.3", configured); Code(err) != "HOST_OBSERVATION_FAILED" {
+		t.Fatalf("static delegation evidence error = %v", err)
+	}
+}
+
 func TestAssembleFactsChangesEnvironmentWhenHookEvidenceChanges(t *testing.T) {
 	snapshot, report, inventory, resolution := emptyFactInputs(t)
 	context := HookContext{SessionID: "session-codex-1", CWD: "/repo"}

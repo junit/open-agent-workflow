@@ -496,6 +496,9 @@ func validateSnapshot(snapshot Snapshot, workflowID string, revision uint64, per
 	if inactive && snapshot.ActiveGrant != nil || requiresActive && snapshot.ActiveGrant == nil {
 		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Workflow status does not match active Grant", nil)
 	}
+	if snapshot.ActiveGrant == nil && snapshot.ActiveDispatchDigest != "" || snapshot.ActiveGrant != nil && !validDigest(snapshot.ActiveDispatchDigest) {
+		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "Workflow active Dispatch does not match active Grant", nil)
+	}
 	if snapshot.ActiveGrant != nil {
 		if err := admission.ValidateGrant(*snapshot.ActiveGrant); err != nil || snapshot.ActiveGrant.WorkflowID != workflowID ||
 			snapshot.ActiveGrant.BundleGeneration != snapshot.ActiveGeneration || snapshot.ActiveGrant.Cursor != snapshot.Cursor ||
@@ -526,6 +529,11 @@ func validateRevisionTransition(previous, current revisionRecord) error {
 		if currentMessages[message.IdempotencyKey] != message {
 			return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "processed message history was rewritten", nil)
 		}
+	}
+	if previous.Snapshot.ActiveGrant != nil && current.Snapshot.ActiveGrant != nil &&
+		sameCanonicalValue(*previous.Snapshot.ActiveGrant, *current.Snapshot.ActiveGrant) &&
+		previous.Snapshot.ActiveDispatchDigest != current.Snapshot.ActiveDispatchDigest {
+		return coordinatorError("WORKFLOW_STATE_REVISION_INVALID", "active Dispatch identity changed while its Grant remained active", nil)
 	}
 	if err := validateAppendOnlyHistory(previous.Snapshot.Bundles, current.Snapshot.Bundles, "Lifecycle Bundle"); err != nil {
 		return err

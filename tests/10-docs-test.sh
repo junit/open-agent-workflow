@@ -215,9 +215,11 @@ EOF
   done
   for document_path in docs/en/comparison.md docs/zh/comparison.md; do
     printf '%s\n' \
-      84fdeffd12f2ee307994d1eb6feb48173b6e0502 \
-      44c9b2d6e889982ac18c27d05a19fefe335194e1 \
-      2d46e80e0925c7be0907f18c1812311ac212a6c5 \
+	      84fdeffd12f2ee307994d1eb6feb48173b6e0502 \
+	      44c9b2d6e889982ac18c27d05a19fefe335194e1 \
+	      11c74d6ba24d3a6d48f54a194cd00ef3beea18f9 \
+	      2d46e80e0925c7be0907f18c1812311ac212a6c5 \
+	      superpowers-codex \
       >>"$fixture_root/$document_path"
   done
   for document_path in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
@@ -245,8 +247,20 @@ EOF
       2.0.0 \
       'proof_scope: installation-integrity' \
       'live_protocol_proof: false' \
+      SubagentStart \
+      child-delegation \
+      agents.enabled \
       >>"$fixture_root/$document_path"
   done
+  for document_path in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+    printf '%s\n' 'bounded native child probe' 'Startup Gate' observe_current \
+      >>"$fixture_root/$document_path"
+  done
+  printf '%s\n' \
+    'Startup Gate Host capability probe' \
+    'explicitly requested a Profile and topology' \
+    'Governance observation' \
+    >>"$fixture_root/policy/ENGINEERING.md"
   printf '%s\n' \
     'Native Host is the default. It is not an OAW Request Mode.' \
     'Request Mode is evaluated only after explicit activation.' \
@@ -367,13 +381,13 @@ EOF
     printf '%s\n' skill agent role instruction Hooks tools \
       >>"$fixture_root/$document_path"
   done
-  printf '%s\n' 'Current Codex proves only `skill` bindings and `CURRENT` topology.' \
+  printf '%s\n' 'after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation`' \
     >>"$fixture_root/README.md"
-  printf '%s\n' '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。' \
+  printf '%s\n' '在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`' \
     >>"$fixture_root/README-zh.md"
-  printf '%s\n' 'Current Codex proves only `skill` bindings and `CURRENT` topology.' \
+  printf '%s\n' '`SubagentStart` event can additionally prove `child-delegation` for the exact' \
     >>"$fixture_root/docs/en/architecture.md"
-  printf '%s\n' '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。' \
+  printf '%s\n' '有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`' \
     >>"$fixture_root/docs/zh/architecture.md"
   mkdir -p "$fixture_root/internal/assets/providers"
   printf '%s\n' '{"id":"oaw/matt"}' \
@@ -563,6 +577,7 @@ assert_contains scripts/check-docs.sh "oaw.provider-descriptor/v4"
 assert_contains scripts/check-docs.sh "oaw.codex-bridge/v2"
 assert_contains scripts/check-docs.sh "84fdeffd12f2ee307994d1eb6feb48173b6e0502"
 assert_contains scripts/check-docs.sh "44c9b2d6e889982ac18c27d05a19fefe335194e1"
+assert_contains scripts/check-docs.sh "11c74d6ba24d3a6d48f54a194cd00ef3beea18f9"
 assert_contains scripts/check-docs.sh "2d46e80e0925c7be0907f18c1812311ac212a6c5"
 assert_contains scripts/check-docs.sh "forbidden provider claim"
 if grep -E '(^|[;&|[:space:]])(curl|wget)([[:space:]]|$)' \
@@ -982,8 +997,29 @@ for comparison_document in docs/en/comparison.md docs/zh/comparison.md; do
 done
 assert_not_contains internal/assets/providers/oaw-matt.json '"reference":"requirements"'
 assert_not_contains internal/assets/providers/oaw-matt.json '"reference":"verification-loop"'
-assert_contains README.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
-assert_contains README-zh.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
+assert_contains README.md 'after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation`'
+assert_contains README-zh.md '在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`'
+assert_contains docs/en/architecture.md '`SubagentStart` event can additionally prove `child-delegation` for the exact'
+assert_contains docs/zh/architecture.md '有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`'
+assert_contains docs/en/codex-bridge.md '`SubagentStart` Hook is the only live callback path the Bridge currently'
+assert_contains docs/zh/codex-bridge.md '`SubagentStart` Hook 是 Bridge 当前用于记录 `child-delegation` 的唯一 live callback path'
+assert_contains docs/en/codex-bridge.md 'cooperative same-user'
+assert_contains docs/en/codex-bridge.md 'evidence, not authenticated proof of Hook provenance'
+assert_contains docs/zh/codex-bridge.md 'cooperative same-user evidence，而不是经过认证的 Hook provenance proof'
+assert_contains docs/en/security.md 'A hand-authored `SubagentStart` JSON object'
+assert_contains docs/en/security.md 'with copied Host fields is indistinguishable from a genuine callback'
+assert_contains docs/zh/security.md '构造且复制 Host field 的 `SubagentStart` JSON object 无法与真实 callback 区分'
+assert_not_contains docs/en/codex-bridge.md 'or synthetic event'
+assert_not_contains docs/zh/codex-bridge.md 'synthetic event 都必须保持'
+assert_contains docs/en/codex-bridge.md 'A successful `observe_current` response with canonical'
+assert_contains docs/en/codex-bridge.md 'authoritative for the active session; management-only `requires_new_session`'
+assert_contains docs/en/troubleshooting.md '`requires_new_session` value is operator advice and does not block a fresh'
+assert_contains docs/zh/codex-bridge.md '成功且带 canonical VersionEvidence 的 `observe_current` response 是 active session 的'
+assert_contains docs/zh/troubleshooting.md 'Management-only `requires_new_session` 只是 operator advice，不阻止在同一'
+assert_not_contains docs/en/codex-bridge.md 'reports drift, version mismatch, or a required new'
+assert_not_contains docs/zh/codex-bridge.md 'drift、version mismatch 或需要新 session'
+assert_contains docs/superpowers/plans/2026-08-10-oaw-provider-surface-v4-04-builtins-profile-matrix.md '--openai-plugins-root'
+assert_not_contains docs/superpowers/plans/2026-08-10-oaw-provider-surface-v4-04-builtins-profile-matrix.md '--superpowers-codex-root'
 pass "provider surface v4 docs pin real sources, canonical slots, and conservative Codex facts"
 
 for boundary_document in \

@@ -391,10 +391,10 @@ func TestRecoveryAcrossEnginesPreservesLeasesAndUncertainty(t *testing.T) {
 		t.Fatalf("recovered uncertainty Result = %#v", recoveredPending)
 	}
 	confirmed := exchangeWorkflow(t, afterPending, coordinator.Command{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandCancel,
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
 		MessageID: "message-recovery-confirmed", IdempotencyKey: "recovery-confirmed", WorkflowID: pending.WorkflowID,
 		ExpectedRevision: recoveredPending.Revision,
-		Cancel:           &coordinator.CancelInput{Reason: "host termination confirmed", InvocationTerminal: true},
+		Receipt:          &coordinator.ReceiptInput{Receipt: hosttest.CancelledReceipt(t, identity, "")},
 	})
 	if confirmed.Snapshot.Status != coordinator.StatusCancelled || confirmed.Snapshot.ActiveGrant != nil || confirmed.Snapshot.ResourceLeases[0].ReleasedRevision != confirmed.Revision {
 		t.Fatalf("confirmed uncertainty Result = %#v", confirmed)
@@ -404,11 +404,20 @@ func TestRecoveryAcrossEnginesPreservesLeasesAndUncertainty(t *testing.T) {
 	if secondPrepared.Snapshot.Status != coordinator.StatusPrepared || len(secondPrepared.Snapshot.ResourceLeases) != 1 {
 		t.Fatalf("second Workflow after release = %#v", secondPrepared)
 	}
-	secondCancelled := exchangeWorkflow(t, second, coordinator.Command{
+	secondPending := exchangeWorkflow(t, second, coordinator.Command{
 		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandCancel,
 		MessageID: "message-recovery-second-cancel", IdempotencyKey: "recovery-second-cancel", WorkflowID: secondReady.WorkflowID,
 		ExpectedRevision: secondPrepared.Revision,
 		Cancel:           &coordinator.CancelInput{Reason: "release test Workflow", InvocationTerminal: true},
+	})
+	if secondPending.Snapshot.Status != coordinator.StatusPaused || secondPending.Snapshot.ActiveGrant == nil {
+		t.Fatalf("second Workflow pending cancellation = %#v", secondPending)
+	}
+	secondCancelled := exchangeWorkflow(t, second, coordinator.Command{
+		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
+		MessageID: "message-recovery-second-receipt", IdempotencyKey: "recovery-second-receipt", WorkflowID: secondReady.WorkflowID,
+		ExpectedRevision: secondPending.Revision,
+		Receipt:          &coordinator.ReceiptInput{Receipt: hosttest.CancelledReceipt(t, cutoverReceiptIdentity(*secondPrepared.Dispatch), "")},
 	})
 	if secondCancelled.Snapshot.Status != coordinator.StatusCancelled || secondCancelled.Snapshot.ResourceLeases[0].ReleasedRevision != secondCancelled.Revision {
 		t.Fatalf("second Workflow cancellation = %#v", secondCancelled)
@@ -484,8 +493,9 @@ func completeBuiltInCutoverRegistry(t *testing.T, available catalog.Catalog, hos
 	t.Helper()
 	observations := make([]host.BindingObservation, 0)
 	for _, provider := range available.Providers() {
+		distribution := cutoverFixtureDistributionForHost(t, provider, hostID)
 		for _, binding := range provider.Bindings {
-			if binding.Host != hostID {
+			if binding.Host != hostID || binding.DistributionID != distribution.ID {
 				continue
 			}
 			observation, err := host.NewBindingObservation(host.BindingObservation{
@@ -510,17 +520,11 @@ func completeBuiltInCutoverRegistry(t *testing.T, available catalog.Catalog, hos
 		bindings: map[string]registry.VerifiedBinding{}, capabilities: map[string]registry.VerifiedCapability{},
 	}
 	for _, provider := range available.Providers() {
+		distribution := cutoverFixtureDistributionForHost(t, provider, hostID)
 		verifiedBindings := make([]registry.VerifiedBinding, 0)
 		for _, binding := range provider.Bindings {
-			if binding.Host != hostID {
+			if binding.Host != hostID || binding.DistributionID != distribution.ID {
 				continue
-			}
-			var distribution catalog.DistributionRecord
-			for _, candidate := range provider.Distributions {
-				if candidate.ID == binding.DistributionID {
-					distribution = candidate
-					break
-				}
 			}
 			var observation host.BindingObservation
 			for _, candidate := range inventory.Observations {
@@ -562,7 +566,6 @@ func completeBuiltInCutoverRegistry(t *testing.T, available catalog.Catalog, hos
 		if err != nil {
 			t.Fatal(err)
 		}
-		distribution := provider.Distributions[0]
 		instance := registry.ProviderInstance{
 			ProviderID: provider.ID, HostID: hostID, DescriptorDigest: descriptorDigest,
 			DistributionID: distribution.ID, DistributionRevision: distribution.Revision, DistributionTreeDigest: distribution.TreeDigest,
@@ -586,6 +589,32 @@ func completeBuiltInCutoverRegistry(t *testing.T, available catalog.Catalog, hos
 		t.Fatal(err)
 	}
 	return effective, inventory
+}
+
+func cutoverFixtureDistributionForHost(t testing.TB, provider catalog.ProviderDescriptorRecord, hostID string) catalog.DistributionRecord {
+	t.Helper()
+	distributionID := ""
+	if provider.ID == "oaw/superpowers" {
+		switch hostID {
+		case "codex":
+			distributionID = "superpowers-codex"
+		case "claude":
+			distributionID = "superpowers"
+		}
+	}
+	if distributionID == "" {
+		if len(provider.Distributions) != 1 {
+			t.Fatalf("Provider %s has no fixture Distribution for Host %s", provider.ID, hostID)
+		}
+		return provider.Distributions[0]
+	}
+	for _, distribution := range provider.Distributions {
+		if distribution.ID == distributionID {
+			return distribution
+		}
+	}
+	t.Fatalf("Provider %s is missing fixture Distribution %s", provider.ID, distributionID)
+	return catalog.DistributionRecord{}
 }
 
 func cutoverProviderInstanceDigest(instance registry.ProviderInstance) string {

@@ -207,6 +207,7 @@ type HostEvidenceRecord struct {
 	ActionObservations      []host.HostActionObservation       `json:"action_observations"`
 	EnvironmentObservations []execution.EnvironmentObservation `json:"environment_observations"`
 	SessionDigest           string                             `json:"session_digest"`
+	ReporterIdentityDigest  string                             `json:"reporter_identity_digest"`
 	ManifestDigest          string                             `json:"manifest_digest"`
 	InventoryDigest         string                             `json:"inventory_digest"`
 	FeatureDigest           string                             `json:"feature_digest"`

@@ -189,9 +189,15 @@ Bridge 在 `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/codex-brid
 不编辑 Codex config 或 cache，不创建隔离用户主目录，也不投影 Host configuration。
 
 使用 Bridge 前，在 Codex `/hooks` 中检查并信任 rendered `hooks/hooks.json` 的四个
-精确 `PreToolUse` matcher。安装或 update 后启动新的 Codex session。只有该新 session
-中成功的 `observe_current` 才能证明 current-session evidence；`bridge check` 永远
+精确 `PreToolUse` matcher 与 `SubagentStart` matcher。安装或 update 后启动新的 Codex
+session。只有该新 session 中成功的 `observe_current` 才能证明 current-session evidence；
+`bridge check` 永远
 报告 `current_session_loaded: false`。
+
+仅启动新 session 不会证明 `child-delegation`。当用户已显式请求 Profile/topology（例如
+`SP-FULL / CURRENT`），且唯一阻断是 reviewer child requirement 时，Startup Gate 可在该
+session 中仅启动一次零项目副作用的原生 child capability probe。child 只报告已启动并立即
+终止；随后重新调用 `observe_current`，再重复 `core_inspect`。
 
 Bridge install 与 update 是 transactional。它们渲染 running binary 的
 digest-pinned copy，使用 OAW-owned local marketplace；official Codex registration

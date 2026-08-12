@@ -448,6 +448,13 @@ func TestUninstallRemovesOnlyRecordedCleanFiles(t *testing.T) {
 
 func TestUninstallRemovesEmptyOAWRoots(t *testing.T) {
 	environment, runner, _ := installedFixture(t)
+	features := filepath.Join(environment.StateRoot, "features")
+	if err := os.MkdirAll(features, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(features, "child-stale.json"), []byte("stale"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := Uninstall(context.Background(), environment, runner, UninstallRequest{}); err != nil {
 		t.Fatal(err)
 	}

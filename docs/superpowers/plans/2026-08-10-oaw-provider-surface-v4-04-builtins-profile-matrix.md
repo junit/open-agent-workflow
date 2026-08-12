@@ -4,7 +4,7 @@
 
 **Goal:** Replace the invalid built-in Provider and Recipe records with source-pinned v4/v3 assets for `MATT-FULL`, `SP-FULL`, `ECC-FULL`, and the immutable `MATT-SP-HYBRID/default` template, then prove their host-specific matrix and compiler behavior through integration tests.
 
-**Architecture:** A read-only source audit pins each upstream revision and every Binding tree before the assets are authored. Host-qualified Descriptor Bindings preserve the exact upstream surface (`skill`, `agent`, `role`, or `instruction`); Recipe v3 records express ordered N:M pipelines, macro spans, neutral Host actions, gates, alternatives, incident routes, and explicit Hybrid overlays. Built-in loading validates the complete asset set, while a deterministic projection records the declared matrix without treating installation or a recommendation as eligibility.
+**Architecture:** A read-only source audit pins each Distribution revision and every Binding tree before the assets are authored. Host-qualified Descriptor Bindings preserve the exact upstream surface (`skill`, `agent`, `role`, or `instruction`); Recipe v3 records express ordered N:M pipelines, macro spans, neutral Host actions, gates, alternatives, incident routes, and explicit Hybrid overlays. Built-in loading validates the complete asset set, while a deterministic projection records the declared matrix without treating installation or a recommendation as eligibility.
 
 **Tech Stack:** Go 1.26, strict JSON and canonical SHA-256, `internal/integrity` tree evidence, JSON assets, table-driven tests, `fstest.MapFS`, shell drift checks, and race-enabled integration tests.
 
@@ -19,7 +19,7 @@
 - Plan 03's `profile` compiler and Builder API, especially `CompileProfile`, `CompileRecipe`, `NewHostEvidence`, `ValidateExecutionGraphRecord`, `BuilderProjection`, and `ConfirmedRecipe`.
 - The approved v4 design and the read-only audit evidence in `.scratch/oaw-provider-profile-audit/upstream-skill-audit.md` and `.scratch/oaw-provider-profile-audit/canonical-profile-stage-matrix.md`.
 
-**Produces:** Three pinned Provider descriptors, four active Recipe assets, four aliases, the source audit manifest, the generated Profile Matrix projection, built-in loader validation, and the complete built-in/profile integration test surface. This plan never installs a Provider, changes a Host configuration, or selects a lifecycle.
+**Produces:** Three pinned Provider descriptors covering exactly three Providers and four Distributions, four active Recipe assets, four aliases, the source audit manifest, the generated Profile Matrix projection, built-in loader validation, and the complete built-in/profile integration test surface. This plan never installs a Provider, changes a Host configuration, or selects a lifecycle.
 
 ## Ownership and Cutover Rules
 
@@ -43,50 +43,71 @@ There is no compatibility conversion for a v3 Provider descriptor, v2 Recipe, ol
 
 ## Locked Upstream Evidence
 
-The source audit uses these immutable revisions and no branch or floating tag:
+The source audit uses these immutable Distribution revisions and no branch or
+floating tag:
 
-| Provider | Repository | Revision |
-| --- | --- | --- |
-| Matt | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
-| Superpowers | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
-| ECC | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+| Provider ID | Distribution ID | Repository | Revision | Distribution root | Host use |
+| --- | --- | --- | --- | --- | --- |
+| `oaw/matt` | `matt-skills` | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` | `.` | Matt Host surfaces |
+| `oaw/superpowers` | `superpowers` | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` | `.` | Claude and direct-upstream Codex installations |
+| `oaw/superpowers` | `superpowers-codex` | `https://github.com/openai/plugins` | `11c74d6ba24d3a6d48f54a194cd00ef3beea18f9` | `plugins/superpowers` | OpenAI-packaged Codex cache installations |
+| `oaw/ecc` | `ecc` | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` | `.` | ECC Host surfaces |
 
 The audit manifest records a concrete `sha256:` tree digest for every listed Binding root and a complete Distribution tree digest. The canonical audited matrix digest remains `49ec1819ab22364d763d0875d9af299ee332de3d6d39a7178a715c2b13272ccf`; this value is evidence input, not a recommendation.
 
-Use these stable Distribution IDs in both the audit manifest and Descriptor assets: `matt-skills` for Matt, `superpowers` for Superpowers, and `ecc` for ECC. Discovery probes may expose multiple Host installation channels, but every channel points to the one pinned Distribution record for its Provider family; a channel name never creates a second authority or revision.
+The earlier one-Distribution-per-Provider assertion is invalid and superseded.
+Use `matt-skills` for `oaw/matt`, both `superpowers` and
+`superpowers-codex` for the single `oaw/superpowers` Provider, and `ecc` for
+`oaw/ecc`. This is exactly three Providers and four content-distinct
+Distributions. `MATT-SP-HYBRID` remains a Recipe and never becomes a Provider.
+
+Discovery channels select the Distribution whose immutable content they
+actually install. Claude and direct-upstream Codex Superpowers channels point
+to `superpowers`; the OpenAI-packaged Codex cache points to
+`superpowers-codex`. A channel name does not create another Provider or
+Profile. The `openai-api-curated` path component and the legacy
+`sp-codex-curated-cache` probe ID identify an installation channel only;
+`curated` is not a product identity.
 
 ### Locked discovery probes
 
 Discovery remains diagnostic until Plan 02 intersects a complete Distribution/Binding tree and live Host observation. Use these exact built-in probes; no probe may treat its shared ancestor as provenance:
 
-| Probe ID | Host / logical surface | Kind | Candidate or prefix | Evidence |
-| --- | --- | --- | --- | --- |
-| `matt-codex-skill-lock` | `codex` / `codex-user-skills` | `path-exists` | candidate `.agents` | `.skill-lock.json`; each selected skill must also match its exact manifest source/path and complete tree |
-| `matt-claude-official-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/mattpocock-skills` | `.claude-plugin/plugin.json` |
-| `sp-claude-direct` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-codex-direct` | `codex` / `codex-plugin` | `path-exists` | candidate `.codex/plugins/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-claude-marketplace` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/marketplaces/superpowers-marketplace` | `skills/using-superpowers/SKILL.md` |
-| `sp-claude-official-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-claude-marketplace-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/superpowers-marketplace/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `sp-codex-curated-cache` | `codex` / `codex-plugin` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/openai-api-curated/superpowers` | `skills/using-superpowers/SKILL.md` |
-| `ecc-claude-marketplace` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/marketplaces/everything-claude-code/plugins/ecc` | `.codex-plugin/plugin.json` |
-| `ecc-claude-cache` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
-| `ecc-codex-direct` | `codex` / `codex-plugin` | `path-exists` | candidate `.codex/plugins/ecc` | `.codex-plugin/plugin.json` |
-| `ecc-codex-cache` | `codex` / `codex-plugin` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
+| Probe ID | Distribution | Host / logical surface | Kind | Candidate or prefix | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| `matt-codex-skill-lock` | `matt-skills` | `codex` / `codex-user-skills` | `path-exists` | candidate `.agents` | `.skill-lock.json`; each selected skill must also match its exact manifest source/path and complete tree |
+| `matt-claude-official-cache` | `matt-skills` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/mattpocock-skills` | `.claude-plugin/plugin.json` |
+| `sp-claude-direct` | `superpowers` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `sp-codex-direct` | `superpowers` | `codex` / `codex-plugin` | `path-exists` | candidate `.codex/plugins/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `sp-claude-marketplace` | `superpowers` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/marketplaces/superpowers-marketplace` | `skills/using-superpowers/SKILL.md` |
+| `sp-claude-official-cache` | `superpowers` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/claude-plugins-official/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `sp-claude-marketplace-cache` | `superpowers` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/superpowers-marketplace/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `sp-codex-curated-cache` | `superpowers-codex` | `codex` / `codex-plugin` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/openai-api-curated/superpowers` | `skills/using-superpowers/SKILL.md` |
+| `ecc-claude-marketplace` | `ecc` | `claude` / `claude-plugin` | `path-exists` | candidate `.claude/plugins/marketplaces/everything-claude-code/plugins/ecc` | `.codex-plugin/plugin.json` |
+| `ecc-claude-cache` | `ecc` | `claude` / `claude-plugin` | `one-level-version-path-exists` | prefix `.claude/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
+| `ecc-codex-direct` | `ecc` | `codex` / `codex-plugin` | `path-exists` | candidate `.codex/plugins/ecc` | `.codex-plugin/plugin.json` |
+| `ecc-codex-cache` | `ecc` | `codex` / `codex-plugin` | `one-level-version-path-exists` | prefix `.codex/plugins/cache/everything-claude-code/ecc` | `.codex-plugin/plugin.json` |
 
 The Matt lock probe never verifies an unrelated same-name directory under `.agents/skills`; the lock entry must name `mattpocock/skills`, the pinned source, and the exact `skillPath`, followed by a complete content-equivalence check. Matt's pinned README and `.claude-plugin/plugin.json` establish the official Claude plugin distribution and its managed cache channel. Multiple probes for one Host share a logical surface (`claude-plugin` or `codex-plugin`); the probe ID/path records the installation channel, while the surface remains stable so one Host-qualified Binding can verify through any audited channel. ECC's old aggregate `~/.agents/skills/everything-claude-code/SKILL.md` probe is removed because it cannot prove the repository-root skill, Agent, Role, or instruction trees. A Host installation outside these exact channels is supplied through trusted user/project configuration and follows the same evidence rules.
 
 ### Exact audited Binding sets
 
-Binding IDs are local, host-qualified IDs so two Host surfaces cannot collide. The `reference` column is the exact upstream invocation name; the ID prefix is OAW metadata and is never presented as an upstream skill name. For every row, the Descriptor also records the source revision, Distribution ID, independent relative `content_root` and `install_root`, tree digest, artifact schemas, effects, resources, topology support, and delegation requirements.
+Binding IDs are local, Host-and-Distribution-qualified IDs so distinct Host
+surfaces and distinct Distributions cannot collide. The `reference` column is
+the exact upstream invocation name; the ID prefix is OAW metadata and is never
+presented as an upstream skill name. For every row, the Descriptor also records
+the source revision, Distribution ID, independent relative `content_root` and
+`install_root`, tree digest, artifact schemas, effects, resources, topology
+support, and delegation requirements.
 
 The path mapping is exact and source-pinned. Matt's `ContentRoot` is the full
 upstream path listed below while its flattened Host `InstallRoot` is the skill
 directory name, for example `skills/engineering/to-spec -> to-spec`.
-Superpowers and ECC use repository-style Provider roots, so each Binding's
-`InstallRoot` equals its `ContentRoot`. A trusted user-defined descriptor may
-declare another explicit mapping, but no built-in or resolver derives a path
-from a basename, reference, Provider brand, or directory ancestry.
+Both Superpowers Distributions and ECC use repository-style Distribution
+roots, so each Binding's `InstallRoot` equals its `ContentRoot` relative to the
+selected Distribution root. A trusted user-defined descriptor may declare
+another explicit mapping, but no built-in or resolver derives a path from a
+basename, reference, Provider brand, or directory ancestry.
 
 Matt source roots are `skills/engineering/grill-with-docs`, `skills/productivity/grilling`, `skills/engineering/domain-modeling`, `skills/engineering/to-spec`, `skills/engineering/to-tickets`, `skills/engineering/implement`, `skills/engineering/tdd`, `skills/engineering/diagnosing-bugs`, and `skills/engineering/code-review`.
 
@@ -104,21 +125,44 @@ Matt source roots are `skills/engineering/grill-with-docs`, `skills/productivity
 
 Matt has no `requirements`, `verification-loop`, workspace, completion, or generic build/dependency/type-repair Binding. Tests must search both IDs and exact references so a same-named skill from another Provider cannot be attributed to Matt.
 
-Superpowers source roots are `skills/brainstorming`, `skills/writing-plans`, `skills/using-git-worktrees`, `skills/subagent-driven-development`, `skills/executing-plans`, `skills/test-driven-development`, `skills/systematic-debugging`, `skills/requesting-code-review`, `skills/receiving-code-review`, `skills/verification-before-completion`, and `skills/finishing-a-development-branch`.
+Superpowers source roots are `skills/brainstorming`, `skills/writing-plans`,
+`skills/using-git-worktrees`, `skills/subagent-driven-development`,
+`skills/executing-plans`, `skills/test-driven-development`,
+`skills/systematic-debugging`, `skills/requesting-code-review`,
+`skills/receiving-code-review`, `skills/verification-before-completion`, and
+`skills/finishing-a-development-branch`. Each root is audited independently in
+both `superpowers` and `superpowers-codex`; matching relative paths or
+references do not imply matching content.
 
-| Host-qualified ID pattern | Exact reference | Kind / invocation | Span / internal contract |
+Each audited reference produces exactly three Bindings under the unchanged
+`oaw/superpowers` Provider:
+
+- existing `codex-<stem>` uses `superpowers-codex` for the OpenAI-packaged
+  Codex cache and lists `codex-upstream-<stem>`, then `claude-<stem>`, as its
+  complete alternatives;
+- new `codex-upstream-<stem>` uses `superpowers` for direct-upstream Codex and
+  lists `codex-<stem>`, then `claude-<stem>`, as its complete alternatives; and
+- `claude-<stem>` remains on `superpowers` and lists `codex-<stem>`, then
+  `codex-upstream-<stem>`, as its complete alternatives.
+
+| Packaged Codex / upstream Codex / Claude Binding IDs | Exact reference | Kind / invocation | Span / internal contract |
 | --- | --- | --- | --- |
-| `codex-brainstorming`, `claude-brainstorming` | `superpowers:brainstorming` | `skill` / `model` | slots 1-3 macro envelope; parent owns slots 1-2 and dispatch-after `writing-plans` owns slot 3 after design approval |
-| `codex-writing-plans`, `claude-writing-plans` | `superpowers:writing-plans` | `skill` / `model` | slot 3 |
-| `codex-using-git-worktrees`, `claude-using-git-worktrees` | `superpowers:using-git-worktrees` | `skill` / `model` | slot 4; one workspace result |
-| `codex-subagent-driven-development`, `claude-subagent-driven-development` | `superpowers:subagent-driven-development` | `skill` / `model` | slots 4-10 macro envelope; dispatch-before workspace and dispatch-after finish are its only cross-skill calls; the parent owns implementation plus its embedded per-task/final two-stage review responsibility |
-| `codex-executing-plans`, `claude-executing-plans` | `superpowers:executing-plans` | `skill` / `model` | slots 4-10 inline macro envelope; dispatch-before workspace and dispatch-after finish |
-| `codex-test-driven-development`, `claude-test-driven-development` | `superpowers:test-driven-development` | `skill` / `model` | standalone slot 6 procedure on both SDD and inline paths; SDD does not call this skill |
-| `codex-systematic-debugging`, `claude-systematic-debugging` | `superpowers:systematic-debugging` | `skill` / `model` | typed technical incident handler in slot 7 |
-| `codex-requesting-code-review`, `claude-requesting-code-review` | `superpowers:requesting-code-review` | `skill` / `model` | standalone slot 8 review dispatch on the inline path; reviewer child required; SDD instead owns its documented embedded two-stage review |
-| `codex-receiving-code-review`, `claude-receiving-code-review` | `superpowers:receiving-code-review` | `skill` / `model` | slot 8 remediation procedure; one finding at a time and re-review |
-| `codex-verification-before-completion`, `claude-verification-before-completion` | `superpowers:verification-before-completion` | `skill` / `model` | standalone slot 9 fresh proof on both execution paths; SDD does not call this skill |
-| `codex-finishing-a-development-branch`, `claude-finishing-a-development-branch` | `superpowers:finishing-a-development-branch` | `skill` / `model` | slot 10; user-authority choice |
+| `codex-brainstorming`, `codex-upstream-brainstorming`, `claude-brainstorming` | `superpowers:brainstorming` | `skill` / `model` | slots 1-3 macro envelope; parent owns slots 1-2 and dispatch-after `writing-plans` owns slot 3 after design approval |
+| `codex-writing-plans`, `codex-upstream-writing-plans`, `claude-writing-plans` | `superpowers:writing-plans` | `skill` / `model` | slot 3 |
+| `codex-using-git-worktrees`, `codex-upstream-using-git-worktrees`, `claude-using-git-worktrees` | `superpowers:using-git-worktrees` | `skill` / `model` | slot 4; one workspace result |
+| `codex-subagent-driven-development`, `codex-upstream-subagent-driven-development`, `claude-subagent-driven-development` | `superpowers:subagent-driven-development` | `skill` / `model` | slots 4-10 macro envelope; dispatch-before workspace and dispatch-after finish are its only cross-skill calls; the parent owns implementation plus its embedded per-task/final two-stage review responsibility |
+| `codex-executing-plans`, `codex-upstream-executing-plans`, `claude-executing-plans` | `superpowers:executing-plans` | `skill` / `model` | slots 4-10 inline macro envelope; dispatch-before workspace and dispatch-after finish |
+| `codex-test-driven-development`, `codex-upstream-test-driven-development`, `claude-test-driven-development` | `superpowers:test-driven-development` | `skill` / `model` | standalone slot 6 procedure on both SDD and inline paths; SDD does not call this skill |
+| `codex-systematic-debugging`, `codex-upstream-systematic-debugging`, `claude-systematic-debugging` | `superpowers:systematic-debugging` | `skill` / `model` | typed technical incident handler in slot 7 |
+| `codex-requesting-code-review`, `codex-upstream-requesting-code-review`, `claude-requesting-code-review` | `superpowers:requesting-code-review` | `skill` / `model` | standalone slot 8 review dispatch on the inline path; reviewer child required; SDD instead owns its documented embedded two-stage review |
+| `codex-receiving-code-review`, `codex-upstream-receiving-code-review`, `claude-receiving-code-review` | `superpowers:receiving-code-review` | `skill` / `model` | slot 8 remediation procedure; one finding at a time and re-review |
+| `codex-verification-before-completion`, `codex-upstream-verification-before-completion`, `claude-verification-before-completion` | `superpowers:verification-before-completion` | `skill` / `model` | standalone slot 9 fresh proof on both execution paths; SDD does not call this skill |
+| `codex-finishing-a-development-branch`, `codex-upstream-finishing-a-development-branch`, `claude-finishing-a-development-branch` | `superpowers:finishing-a-development-branch` | `skill` / `model` | slot 10; user-authority choice |
+
+Every Superpowers `CapabilityRecord.binding_refs` contains all three matching
+Binding IDs. A Capability never references only the packaged or only the
+upstream pair, and alternative resolution never substitutes one
+Distribution's digest for another.
 
 All Superpowers references include the exact `superpowers:` namespace. SDD requires child delegation under `CURRENT` and nested-child delegation under outer `SUBAGENT`; its implementer, spec-review, and quality-review dispatches are embedded responsibilities described by SDD's own prompt assets, not invocations of `requesting-code-review`. Standalone `requesting-code-review` likewise requires a reviewer child or nested child according to the outer topology. Inline execution removes only SDD's implementation-child requirement and keeps the standalone reviewer-child requirement. Matt `code-review`, independently, retains its audited parallel review requirement. No lexical alternative is selected.
 
@@ -247,9 +291,9 @@ The Recipe has no selected ECC Add-on. Its declared optional add-ons, when a use
 
 - [ ] **Step 1: Write strict manifest and tree-audit tests first.**
 
-Add table-driven tests named `TestDecodeManifestRejectsUnknownFields`, `TestDecodeManifestRejectsRetiredVersion`, `TestManifestRequiresExactProviderPins`, `TestManifestRequiresUniqueBindingRoots`, `TestManifestRequiresExactInstallRootMappings`, `TestManifestRequiresPrefixedTreeDigests`, `TestManifestRequiresCanonicalMatrixDigest`, `TestBuildManifestUsesTrackedBindingRoots`, `TestBuildManifestRejectsRevisionDrift`, `TestBuildManifestRejectsMissingRoot`, and `TestAuditCLIUsesExplicitRoots`. The fixture must contain all three source/revision pairs and every root listed above; it must reject a missing `grill-with-docs`, a duplicate Binding ID or duplicate mapping for one Host-qualified Binding, an absent or inferred install root, a path containing `..`, a 64-character bare digest, and a branch name. The same upstream `ContentRoot` may legitimately occur on two Host-qualified rows when their exact Host surfaces are distinct.
+Add table-driven tests named `TestDecodeManifestRejectsUnknownFields`, `TestDecodeManifestRejectsRetiredVersion`, `TestManifestRequiresExactProviderPins`, `TestManifestRequiresUniqueBindingRoots`, `TestManifestRequiresExactInstallRootMappings`, `TestManifestRequiresPrefixedTreeDigests`, `TestManifestRequiresCanonicalMatrixDigest`, `TestBuildManifestUsesTrackedBindingRoots`, `TestBuildManifestRejectsRevisionDrift`, `TestBuildManifestRejectsMissingRoot`, and `TestAuditCLIUsesExplicitRoots`. The fixture must contain all four Distribution source/revision/root tuples and every root listed above while retaining exactly three Provider IDs; it must reject a missing `grill-with-docs`, a duplicate Binding ID or duplicate mapping for one Host-qualified Binding, an absent or inferred install root, a path containing `..`, a 64-character bare digest, and a branch name. The same upstream `ContentRoot` may legitimately occur on distinct Host-qualified rows when their exact Host or Distribution identities differ.
 
-Add `tests/19-provider-source-audit-test.sh` as an offline test. It invokes the CLI's `--validate` mode against the committed JSON, checks the schema ID, the three exact revisions, the canonical matrix digest, every Binding ID/reference/root, and no extra Provider. It does not require network access and exits nonzero for a malformed manifest.
+Add `tests/19-provider-source-audit-test.sh` as an offline test. It invokes the CLI's `--validate` mode against the committed JSON, checks the schema ID, all four exact Distribution pins, the canonical matrix digest, every Binding ID/reference/root, exactly three Provider IDs, and no extra Provider or Distribution. It does not require network access and exits nonzero for a malformed manifest.
 
 - [ ] **Step 2: Run RED.**
 
@@ -288,12 +332,13 @@ type BindingCheckout struct {
 }
 
 type Checkout struct {
-    ProviderID      string            `json:"provider_id"`
-    SourceURI       string            `json:"source_uri"`
-    Revision        string            `json:"revision"`
-    Root            string            `json:"root"`
+    ProviderID       string            `json:"provider_id"`
+    DistributionID  string            `json:"distribution_id"`
+    SourceURI        string            `json:"source_uri"`
+    Revision         string            `json:"revision"`
+    Root             string            `json:"root"`
     DistributionRoot string           `json:"distribution_root"`
-    BindingRoots    []BindingCheckout `json:"binding_roots"`
+    BindingRoots     []BindingCheckout `json:"binding_roots"`
 }
 
 type ProviderSource struct {
@@ -321,7 +366,7 @@ func (value Manifest) Digest() string
 func (value Manifest) Binding(providerID, bindingID string) (BindingSource, bool)
 ```
 
-`Decode` uses `json.Decoder.DisallowUnknownFields`, rejects trailing JSON, validates the exact revision strings, both clean relative root fields, exact built-in path mappings, and digest patterns, sorts only set-like evidence roots, and verifies the stored canonical digest. `Build` accepts explicit `Checkout{ProviderID, SourceURI, Revision, Root, DistributionRoot, BindingRoots}` values whose `Root` is an exported tracked tree, calls `integrity.DigestTree` for the Distribution and every `ContentRoot`, retains the declared `InstallRoot` mapping without resolving it against the source checkout, and rejects a supplied revision that differs from the locked Provider specification. The CLI verifies `git rev-parse HEAD` on the source checkout before exporting the exact object; `Build` never hashes `.git` and never executes a network or Git mutation.
+`Decode` uses `json.Decoder.DisallowUnknownFields`, rejects trailing JSON, validates the exact revision strings, both clean relative root fields, exact built-in path mappings, and digest patterns, sorts only set-like evidence roots, and verifies the stored canonical digest. `Manifest.Providers` contains four Distribution source records across exactly three Provider IDs; repeated `oaw/superpowers` is valid only for the two exact, unique Distribution IDs above. `Build` accepts explicit `Checkout{ProviderID, DistributionID, SourceURI, Revision, Root, DistributionRoot, BindingRoots}` values whose `Root` is an exported tracked tree, calls `integrity.DigestTree` for the Distribution and every `ContentRoot`, retains the declared `InstallRoot` mapping without resolving it against the source checkout, and rejects a supplied Distribution tuple that differs from the locked specification. The CLI verifies `git rev-parse HEAD` on each source checkout before exporting the exact object; `Build` never hashes `.git` and never executes a network or Git mutation.
 
 - [ ] **Step 4: Implement the read-only CLI and wrapper.**
 
@@ -329,11 +374,11 @@ The CLI accepts either:
 
 ```text
 rtk go run ./cmd/oaw-provider-audit --validate --manifest internal/assets/audits/provider-sources-v4.json
-rtk go run ./cmd/oaw-provider-audit --write --output internal/assets/audits/provider-sources-v4.json --matt-root /tmp/oaw-provider-audit/matt --superpowers-root /tmp/oaw-provider-audit/superpowers --ecc-root /tmp/oaw-provider-audit/ecc
-rtk go run ./cmd/oaw-provider-audit --check --manifest internal/assets/audits/provider-sources-v4.json --matt-root /tmp/oaw-provider-audit/matt --superpowers-root /tmp/oaw-provider-audit/superpowers --ecc-root /tmp/oaw-provider-audit/ecc
+rtk go run ./cmd/oaw-provider-audit --write --output internal/assets/audits/provider-sources-v4.json --matt-root /tmp/oaw-provider-audit/matt --superpowers-root /tmp/oaw-provider-audit/superpowers --openai-plugins-root /tmp/oaw-provider-audit/openai-plugins --ecc-root /tmp/oaw-provider-audit/ecc
+rtk go run ./cmd/oaw-provider-audit --check --manifest internal/assets/audits/provider-sources-v4.json --matt-root /tmp/oaw-provider-audit/matt --superpowers-root /tmp/oaw-provider-audit/superpowers --openai-plugins-root /tmp/oaw-provider-audit/openai-plugins --ecc-root /tmp/oaw-provider-audit/ecc
 ```
 
-The shell wrapper requires all three roots when supplied, otherwise creates a private `rtk mktemp -d`, performs read-only detached checkout of the three exact revisions, exports tracked content, runs the CLI, compares `--check` output byte-for-byte, and removes only that private directory. Network failure returns 77 for the optional drift check and never rewrites the committed manifest. No Provider install, user configuration, credentials, push, or publication is performed.
+The shell wrapper requires all four Distribution roots when supplied, otherwise creates a private `rtk mktemp -d`, performs read-only detached checkout of the four exact revisions, exports tracked content, runs the CLI, compares `--check` output byte-for-byte, and removes only that private directory. The `superpowers-codex` export is rooted at `plugins/superpowers` inside the pinned `openai/plugins` checkout. Network failure returns 77 for the optional drift check and never rewrites the committed manifest. No Provider install, user configuration, credentials, push, or publication is performed.
 
 - [ ] **Step 5: Generate the concrete manifest and run GREEN.**
 
@@ -380,6 +425,7 @@ Rewrite `internal/builtin/load_test.go` with these exact tests:
 
 ```go
 func TestBuiltInProviderDescriptorsV4(t *testing.T)
+func TestSuperpowersDistributionsMatchHostInstallations(t *testing.T)
 func TestBuiltInProviderPinsMatchSourceAudit(t *testing.T)
 func TestBuiltInHostQualifiedBindingSets(t *testing.T)
 func TestMattHasOnlyAuditedBindings(t *testing.T)
@@ -398,7 +444,7 @@ func TestLoadRejectsSourceAuditDrift(t *testing.T)
 func TestBuiltInAssetLoadIsDeterministic(t *testing.T)
 ```
 
-The tests must compare exact ID/reference/kind/Host/invocation/content-root/install-root/span/internal-call sets, not only capability counts. They assert the flattened Matt mappings and repository-style Superpowers/ECC mappings independently. `TestMattRejectsFictionalRequirementsVerificationAndCompletion` searches both `BindingRecord.ID` and `BindingRecord.Reference` and asserts that no Matt record contains `requirements`, `verification-loop`, or a completion binding. `TestECCSeparatesSkillAgentRoleInstructionAndHookEvidence` asserts that `kind=agent` appears only with `host=claude`, the three exact role IDs are the only Codex role records, `commands/plan.md` and `commands/feature-dev.md` are instructions, and no Hook appears in `Bindings`. `TestSuperpowersMacroModesAreExact` asserts that SDD has exactly one dispatch-before workspace call and one dispatch-after finish call, that its embedded review is not encoded as another Binding call, and that TDD and fresh verification remain standalone Recipe units. It rejects fictional SDD calls to `test-driven-development`, `requesting-code-review`, or `verification-before-completion`.
+The tests must compare exact ID/reference/kind/Host/invocation/content-root/install-root/span/internal-call sets, not only capability counts. They assert the flattened Matt mappings and repository-style Superpowers/ECC mappings independently. `TestSuperpowersDistributionsMatchHostInstallations` proves the direct Codex probe selects `superpowers`, the OpenAI-packaged cache probe selects `superpowers-codex`, existing `codex-*` Bindings use `superpowers-codex`, new `codex-upstream-*` and existing `claude-*` Bindings use `superpowers`, all three alternatives completely cross-reference one another, and every Superpowers Capability references all three sets. `TestMattRejectsFictionalRequirementsVerificationAndCompletion` searches both `BindingRecord.ID` and `BindingRecord.Reference` and asserts that no Matt record contains `requirements`, `verification-loop`, or a completion binding. `TestECCSeparatesSkillAgentRoleInstructionAndHookEvidence` asserts that `kind=agent` appears only with `host=claude`, the three exact role IDs are the only Codex role records, `commands/plan.md` and `commands/feature-dev.md` are instructions, and no Hook appears in `Bindings`. `TestSuperpowersMacroModesAreExact` asserts that SDD has exactly one dispatch-before workspace call and one dispatch-after finish call, that its embedded review is not encoded as another Binding call, and that TDD and fresh verification remain standalone Recipe units. It rejects fictional SDD calls to `test-driven-development`, `requesting-code-review`, or `verification-before-completion`.
 
 - [ ] **Step 2: Run RED against the complete package boundary.**
 
@@ -414,7 +460,7 @@ Expected: failure from the old v3/v2 assets and loader. This is the intended RED
 
 - [ ] **Step 3: Write Descriptor v4 assets from the locked binding sets.**
 
-Set every Descriptor to `schema_version = oaw.provider-descriptor/v4` and `descriptor_version = 4.0.0`. Add one `DistributionRecord` per pinned source and one host-qualified `BindingRecord` per exact Host surface. A host-qualified ID is deterministic (`codex-` or `claude-` followed by the upstream reference with punctuation normalized to `-`); the `reference` field remains the exact upstream name. Every Binding's `ContentRoot`, `InstallRoot`, and `tree_digest` must equal the source audit manifest, and every `CapabilityRecord.binding_refs` must point only to Binding IDs in that same Descriptor.
+Set every Descriptor to `schema_version = oaw.provider-descriptor/v4` and `descriptor_version = 4.0.0`. Add one `DistributionRecord` per pinned source and one Host-and-Distribution-qualified `BindingRecord` per exact Host surface. Matt and ECC retain their existing `codex-`/`claude-` rules. For Superpowers, existing `codex-` IDs are the OpenAI-packaged `superpowers-codex` Bindings, new `codex-upstream-` IDs are direct-upstream `superpowers` Bindings, and `claude-` IDs remain `superpowers` Bindings; the `reference` field remains the exact upstream name. Each trio's alternatives list the other two exact IDs, and every Superpowers `CapabilityRecord.binding_refs` includes the complete trio. Every Binding's `ContentRoot`, `InstallRoot`, and `tree_digest` must equal its own Distribution row in the source audit manifest; no source-equivalence shortcut is allowed.
 
 Encode the Matt rows and responsibilities exactly as the audit table: `grill-with-docs` credits `grilling` and `domain-modeling`; `to-spec`, `to-tickets`, and `implement` are `human-explicit`; `implement` uses the slots 5-8 macro envelope, calls `tdd` and `code-review` as credit-only internals, has no incident, completion, or workspace responsibility, and the internal `code-review` is the exact slot 8 owner; `diagnosing-bugs` accepts only functional/hard-bug/performance incident types; `code-review` requires child and parallel-child (nested equivalents for outer `SUBAGENT`).
 
@@ -459,7 +505,7 @@ rtk gofmt -w internal/builtin/load.go internal/builtin/load_test.go
 rtk go test ./internal/catalog ./internal/schema ./internal/builtin -run 'BuiltIn|Matt|Superpowers|ECC|Aliases|Hardening|Load' -count=1
 ```
 
-Expected: all Descriptor/Recipe tests pass; the package contains exactly three Providers, four Recipes, and four aliases. The integration and matrix tests remain deferred to Tasks 3-4.
+Expected: all Descriptor/Recipe tests pass; the package contains exactly three Providers, four Distributions, four Recipes, and four aliases. The integration and matrix tests remain deferred to Tasks 3-4.
 
 - [ ] **Step 7: Commit the hard cutover with exact paths.**
 

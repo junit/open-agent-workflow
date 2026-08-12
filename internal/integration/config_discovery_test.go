@@ -79,6 +79,27 @@ func TestTicket02VerticalSliceProducesImmutableEffectiveRegistry(t *testing.T) {
 	}
 }
 
+func TestCuratedSuperpowersDiscoveryUsesPackagedDistribution(t *testing.T) {
+	snapshot, err := config.Load(config.LoadOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := t.TempDir()
+	writeFile(t, home, ".codex/plugins/cache/openai-api-curated/superpowers/11c74d6b/skills/using-superpowers/SKILL.md", "packaged")
+	report, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := report.Candidates("oaw/superpowers")
+	if len(candidates) != 1 {
+		t.Fatalf("curated Superpowers candidates = %#v", candidates)
+	}
+	candidate := candidates[0]
+	if candidate.DistributionID != "superpowers-codex" || len(candidate.Evidence) != 1 || candidate.Evidence[0].ProbeID != "sp-codex-curated-cache" {
+		t.Fatalf("curated Superpowers candidate = %#v", candidate)
+	}
+}
+
 func TestTicket02NegativeProjectDescriptorDriftBecomesUntrusted(t *testing.T) {
 	projectRoot := t.TempDir()
 	projectProvider := testProviderDocument(t, "acme/project", fixtureTreeDigest("a"), fixtureTreeDigest("b"))

@@ -107,6 +107,23 @@ func TestEvidenceStoreReturnsDefensiveFactCopies(t *testing.T) {
 	}
 }
 
+func TestEvidenceStoreReturnsMinimalTrustedReobservationContext(t *testing.T) {
+	store := NewEvidenceStore(CacheOptions{Now: fixedTime, TTL: time.Minute, MaximumEntries: 2, Random: rand.Reader})
+	context := testContext("session-a", "/repo/a")
+	handle := mustPut(t, store, context, testFacts(t, "session-a", "/repo/a"))
+	_, trusted, err := store.GetWithContext(handle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if trusted.SchemaVersion != HookContextSchemaV2 || trusted.BridgeProtocolVersion != BridgeProtocolVersion ||
+		trusted.SessionID != context.SessionID || trusted.CWD != context.CWD {
+		t.Fatalf("trusted reobservation context = %#v", trusted)
+	}
+	if trusted.TurnID != "" || trusted.ToolUseID != "" || trusted.Model != "" || trusted.PermissionMode != "" {
+		t.Fatalf("trusted reobservation context retained volatile authority metadata: %#v", trusted)
+	}
+}
+
 func TestEvidenceStoreRejectsMismatchedFactDigest(t *testing.T) {
 	store := NewEvidenceStore(CacheOptions{Now: fixedTime, TTL: time.Minute, MaximumEntries: 2, Random: rand.Reader})
 	facts := testFacts(t, "session-a", "/repo/a")
@@ -266,10 +283,11 @@ func testFacts(t *testing.T, sessionID, _ string) Facts {
 	if err != nil {
 		t.Fatal(err)
 	}
+	reporter := strings.Repeat("9", 64)
 	return Facts{
 		Session: session, Inventory: inventory, Environment: environment,
-		VersionEvidence: version,
-		FactDigests: FactDigests{Session: session.Digest, Inventory: inventory.Digest, Environment: environment.Digest,
+		VersionEvidence: version, ReporterIdentityDigest: reporter,
+		FactDigests: FactDigests{Session: session.Digest, Reporter: reporter, Inventory: inventory.Digest, Environment: environment.Digest,
 			Features: session.FeatureDigest, Actions: session.HostActionDigest, Version: version.Digest},
 	}
 }

@@ -34,7 +34,7 @@
 | Modify | internal/codexbridge/facts_test.go | Conservative Host v3 observation and private-data exclusion tests. |
 | Modify | internal/codexbridge/evidence.go | Immutable v2 fact set validation and complete fact cloning. |
 | Modify | internal/codexbridge/inputs.go | Closed Bridge projections for Core and Coordinator v2. |
-| Modify | internal/codexbridge/service.go | v4 inspect/compile and v2 workflow exchange with eight-digest preflight. |
+| Modify | internal/codexbridge/service.go | v4 inspect/compile and v2 workflow exchange with stable reporter identity, PREPARE authority revalidation, and Dispatch-bound recovery. |
 | Modify | internal/codexbridge/service_test.go | Builder, selection, Host-owned evidence, drift, and START tests. |
 | Modify | internal/codexbridge/mcp.go | Four closed MCP tools and v2 Hook-context validation. |
 | Modify | internal/codexbridge/mcp_test.go | Closed schemas, reserved context, caller-forged authority, and v1 rejection tests. |
@@ -170,6 +170,78 @@ to the production Workflow v2 and Host v3 constructors, retain the expected
 closed rejection caused by unavailable trusted Host-native evidence, and keep
 the Policy-only file plus no-model boundaries unchanged.
 
+The following paths are a fifth review-discovered Plan 06 amendment. A fresh
+Bridge v2 observation proved the Superpowers Distribution but exposed that the
+Codex Host Manifest declared no child-delegation feature, so the built-in
+`SP-FULL / CURRENT` reviewer Binding remained correctly ineligible. The repair
+must use Codex's stable `SubagentStart` Hook as the only positive signal; it
+must not infer delegation from `agents.enabled`, parse the unstable transcript,
+remove the reviewer-child requirement, or replace review with self-review.
+
+| Action | Path | Responsibility |
+| --- | --- | --- |
+| Create | internal/codexbridge/feature_evidence.go | Record and observe short-lived session/CWD-bound child-delegation evidence without private Hook fields. |
+| Create | internal/codexbridge/feature_evidence_test.go | Prove exact-session success plus missing, foreign, stale, malformed, tampered, and symlink fail-closed cases. |
+| Modify | internal/codexbridge/hook/input.go | Strictly decode the stable `SubagentStart` event separately from `PreToolUse`. |
+| Modify | internal/codexbridge/hook/input_test.go | Prove required identity, closed fields, size limits, and private-data non-persistence boundaries. |
+| Modify | internal/codexbridge/integration.go | Declare child delegation, but not parallel or nested delegation, in the Codex Host Manifest. |
+| Modify | internal/codexbridge/integration_test.go | Lock the exact single delegation feature declaration. |
+| Modify | internal/codexbridge/facts.go | Accept only normalized live feature observations when assembling the Host Session. |
+| Modify | internal/codexbridge/facts_test.go | Prove live child evidence is projected and static configuration cannot attest it. |
+| Modify | internal/codexbridge/service.go | Query the injected session feature observer during `observe_current`. |
+| Modify | internal/codexbridge/service_test.go | Prove no evidence stays unavailable and exact live evidence makes `SP-FULL / CURRENT` confirmable. |
+| Modify | internal/cli/bridge.go | Route `SubagentStart` Hook input to the bounded feature store and wire the same store into Bridge service observation. |
+| Modify | internal/cli/bridge_test.go | Prove real Hook recording, no Hook output, and closed malformed-event handling. |
+| Modify | internal/codexbridge/install/assets/hooks/hooks.json | Install the official `SubagentStart` Hook beside the four MCP `PreToolUse` matchers. |
+| Modify | internal/codexbridge/install/templates.go | Validate the exact fifth Hook surface without weakening the four locked tool matchers. |
+| Modify | internal/codexbridge/install/templates_test.go | Lock the `SubagentStart` matcher and reject missing or additional Hook events. |
+| Modify | internal/codexbridge/install/assets/skills/oaw-codex-bridge/SKILL.md | Run one bounded child probe only when the chosen Profile requires live child delegation, then re-observe. |
+| Modify | internal/assets/host-integrations.json | Regenerate the active Manifest with the exact child-delegation declaration. |
+| Modify | internal/assets/conformance/codex-host-v3.json | Regenerate an isolated synthetic Conformance scenario for the declared Hook feature; it is never current-session authority. |
+| Modify | internal/assets/embed_test.go | Lock generated Manifest parity and conservative empty static feature observations. |
+| Modify | internal/integration/codex_bridge_blackbox_test.go | Exercise observation with and without exact session evidence through the public Bridge boundary. |
+| Modify | tests/18-codex-bridge-protocol-test.sh | Exercise both Hook event types and retain every v2 context denial case. |
+| Modify | docs/superpowers/specs/2026-08-10-oaw-provider-surface-contract-v4-design.md | Record the stable Hook proof boundary and preserve the reviewer-child rule. |
+| Modify | docs/en/codex-bridge.md | Document bounded live delegation probing and fail-closed recovery. |
+| Modify | docs/zh/codex-bridge.md | Keep the live delegation proof contract in Chinese parity. |
+| Modify | docs/en/troubleshooting.md | Explain `HOST_FEATURE_UNATTESTED` recovery through a fresh bounded child probe. |
+| Modify | docs/zh/troubleshooting.md | Keep the diagnostic recovery in Chinese parity. |
+
+Implement this amendment test-first. RED must prove that a valid
+`SubagentStart` cannot yet make `SP-FULL / CURRENT` eligible. GREEN requires an
+atomic, mode-restricted, symlink-safe evidence record containing only the
+feature ID, hashed session/CWD identity, bounded timestamps, and its canonical
+digest. `observe_current` may project `child-delegation` as `available` with
+`native-api` source only while that exact record is current and valid. Missing,
+foreign-session, foreign-CWD, expired, malformed, non-canonical, tampered, or
+symlinked evidence produces no positive observation. No Hook prompt, transcript
+path or content, raw session/turn/agent identifier, credential, model output,
+or Host evidence handle is persisted.
+
+The following paths are a sixth review-discovered Plan 06 amendment. The
+increment review found that the new binding-root and distribution-tree hashing
+implementations are production integrity code but were absent from the locked
+file map and reviewed-path ledger. The amendment records their exact ownership
+before they are accepted as part of the fixed-point review. The same review
+also requires the already-authorized Codex Bridge integration test to exercise
+the real `SubagentStart` Hook, feature store, public `observe_current`, and
+`core_inspect` boundary.
+
+| Action | Path | Responsibility |
+| --- | --- | --- |
+| Modify | internal/integration/codex_bridge_blackbox_test.go | Exercise the real Hook, feature store, observation, and inspection boundary for missing, foreign, and exact session evidence. |
+| Create | internal/integrity/binding_root.go | Rooted, symlink-safe Binding InstallRoot/ContentRoot hashing with identity and TOCTOU checks. |
+| Create | internal/integrity/binding_root_test.go | Regression coverage for regular-file and directory roots, symlinks, ancestor swaps, and directory drift. |
+| Create | internal/integrity/distribution_tree.go | Rooted, complete Distribution tree hashing with identity, symlink, and TOCTOU checks. |
+| Create | internal/integrity/distribution_tree_test.go | Regression coverage for contained symlinks, directory swaps, and entry-set drift. |
+
+The public Bridge integration case must record valid and foreign
+`SubagentStart` events through `cli.RunWithInput`, then observe and inspect
+through the same MCP Service and feature store. It must prove missing and
+foreign-session evidence remain unavailable and exact session/CWD evidence
+makes the selected CURRENT profile confirmable. No synthetic feature observer
+may replace this boundary case.
+
 ## Locked Bridge Contract
 
 ~~~go
@@ -241,7 +313,7 @@ Negotiation reconstructs and validates the canonical digest, mutates no caller s
 
 The public Workflow projection defines Bridge-owned Start, Prepare, Receipt, Switch, and Cancel input structs. It must not reuse coordinator.PrepareInput because that would expose Host-owned authority fields through generated MCP schemas. In particular, public callers cannot provide UserAuthorization, GateAttestation, or ExplicitInvocationAttestation. The Bridge hydrates Host Session, Inventory, Environment, Features, Actions, Registry, Gate, user authorization, and explicit invocation evidence only from the current Host evidence handle; when the stable Host surface cannot attest one, the operation fails closed.
 
-Before every non-START Coordinator command, compare the active Bundle with the exact eight authority digests from Plan 05: Host Session, Environment Report, Provider Inventory, Host Features, Host Actions, Configuration, Resolution, and Registry. Discovery evidence may remain in the private fact set, but it is not substituted for any Bundle digest. A difference returns HOST_SESSION_CHANGED before a Grant, Dispatch Packet, state read with executable authority, or Receipt transition.
+Before each PREPARE, compare the active Bundle with the stable reporter identity plus current Environment Report, Provider Inventory, Host Actions, Configuration, Resolution, Registry, and only the live features required by the current graph unit. INSPECT, SWITCH, and CANCEL remain reachable after short-lived authority changes. An already committed Dispatch can converge through its exact Receipt after authority drift, but the Receipt must come from the same reporter identity and retain the original Dispatch, Host Session, and Environment pins. A public cancellation boolean never releases an active Grant or Lease; a Dispatch-bound CANCELLED Receipt is required.
 
 Current Codex observation remains conservative:
 
@@ -307,7 +379,7 @@ Construct Host Manifest, Session, and Inventory v3 plus Environment Report v2. P
 
 Define Bridge-specific public Prepare and Receipt projections rather than embedding Coordinator input types that carry Host authority. Decode with unknown-field and trailing-value rejection. Hydrate all Host-owned facts from the v2 handle. Make core.inspect return the taxonomy, four aliases, USER-DEFINED Builder projection, exact exclusions, alternatives, and confirmation digest without a Bundle. Make core.compile require the exact confirmation digest and return only Bundle v4.
 
-workflow_exchange accepts only Workflow Command v2. START uses Host-hydrated facts and can return only Workflow Result/Snapshot/Revision v2 containing Bundle/Graph v4. PREPARE cannot accept caller-forged UserAuthorization, GateAttestation, or ExplicitInvocationAttestation; network-mutate and human-explicit units therefore stop unless the current Host evidence proves the exact Plan 05 record. All non-START commands run the eight-digest preflight before executable state is used.
+workflow_exchange accepts only Workflow Command v2. START uses Host-hydrated facts and can return only Workflow Result/Snapshot/Revision v2 containing Bundle/Graph v4. PREPARE cannot accept caller-forged UserAuthorization, GateAttestation, or ExplicitInvocationAttestation; network-mutate and human-explicit units therefore stop unless the current Host evidence proves the exact Plan 05 record. PREPARE revalidates current authority and required unit features, recovery commands remain reachable, and Receipt hydration uses the committed active Dispatch identity rather than current mutable authority facts.
 
 - [ ] **Step 6: Advance Conformance, Integration, installed instructions, and generated assets**
 
@@ -399,7 +471,7 @@ Document these exact built-in semantics:
 | Profile | Required mapping |
 | --- | --- |
 | MATT-FULL | grill-with-docs expands grilling plus domain-modeling once; to-spec then to-tickets; implement includes Matt tdd and reporting review; diagnosing-bugs is functional incident handling; workspace, remediation, broad fresh verification, and closeout require separately verified Host procedures and otherwise remain exact gaps. |
-| SP-FULL | brainstorming spans alignment/specification and calls writing-plans once; using-git-worktrees prepares the workspace; subagent-driven-development is the preferred macro when child delegation is live, with executing-plans as its declared alternative; test-driven-development, systematic-debugging, requesting-code-review, verification-before-completion, and finishing-a-development-branch retain their exact scopes. |
+| SP-FULL | brainstorming spans alignment/specification and calls writing-plans once; using-git-worktrees prepares the workspace; the built-in Profile always uses inline executing-plans so its standalone review/remediation path remains the sole review owner; subagent-driven-development remains available only to a versioned USER-DEFINED Recipe with the required live child and nested-child delegation; test-driven-development, systematic-debugging, requesting-code-review, verification-before-completion, and finishing-a-development-branch retain their exact scopes. |
 | ECC-FULL | Skills, Claude custom Agents, Codex Roles, Instructions, Hooks, and tools stay distinct; only exact Host-observed bindings compile; Codex never infers architect, planner, tdd-guide, build-error-resolver, or code-reviewer roles from Claude files; specialist E2E/review agents do not become broad verification or completion. |
 | MATT-SP-HYBRID | Matt owns grill-with-docs, to-spec, to-tickets, tdd, and diagnosing-bugs; Superpowers owns writing-plans, using-git-worktrees, inline executing-plans, standalone review/remediation, verification-before-completion, and finishing-a-development-branch; an ECC build/type handler is only an explicitly selected Add-on. |
 
@@ -409,7 +481,7 @@ All four aliases remain active even when the current Host cannot compile one. El
 
 Keep the English and Chinese headings, tables, diagnostics, versions, and limitations in parity. Explain that FULL means the Provider-led lifecycle plus neutral Host/user controls, not Provider ownership of the Host. Explain USER-DEFINED as a versioned Recipe assembled from installed, trusted, Host-verified compatible Bindings, with exactly one outcome owner and no silent default.
 
-In both languages distinguish installation integrity from live proof: bridge check reports managed files and registration only; a fresh observe_current negotiation proves the active Bridge v2 tuple. Document exact recovery for HOST_BRIDGE_PROTOCOL_MISMATCH, HOST_SESSION_CHANGED, PROVIDER_BINDING_CONTENT_MISMATCH, BINDING_EXPLICIT_INVOCATION_REQUIRED, HOST_FEATURE_UNATTESTED, HOST_ACTION_UNAVAILABLE, MACRO_INTERNAL_CONFLICT, PROFILE_TOPOLOGY_UNAVAILABLE, and WORKFLOW_STATE_UNSUPPORTED.
+In both languages distinguish installation integrity from live proof: bridge check reports managed files and registration only; a fresh observe_current negotiation proves the active Bridge v2 tuple. Installation drift or a real installed-version/installation-authority mismatch stops START, but the management-only `requires_new_session` disposition does not block a fresh observation in the same active session. A successful observation with canonical VersionEvidence supersedes that management advice for active-session authority. Document exact recovery for HOST_BRIDGE_PROTOCOL_MISMATCH, HOST_SESSION_CHANGED, PROVIDER_BINDING_CONTENT_MISMATCH, BINDING_EXPLICIT_INVOCATION_REQUIRED, HOST_FEATURE_UNATTESTED, HOST_ACTION_UNAVAILABLE, MACRO_INTERNAL_CONFLICT, PROFILE_TOPOLOGY_UNAVAILABLE, and WORKFLOW_STATE_UNSUPPORTED.
 
 - [ ] **Step 5: Run GREEN and inspect the documentation diff**
 
@@ -598,13 +670,23 @@ rtk go run ./cmd/oaw bridge check codex --format text
 
 Expected: the management result reports OAW-owned files, Marketplace registration, Plugin registration, installed version, and whether a new session is required. This command proves installation integrity only. It does not negotiate VersionEvidence and must never be cited as live protocol proof.
 
-If drift, a version mismatch, or a required new session is reported, stop before START. Bridge update, Plugin/Marketplace mutation, and starting a replacement Host session require the user's explicit authorization; this plan grants none of them.
+If `bridge check` reports installation drift, a real installed-version
+mismatch, or an installation-authority mismatch, stop before START. A
+management-only `requires_new_session` disposition is operator advice and does
+not block Step 2's fresh `observe_current` call in the same active session.
+A successful `observe_current` response with canonical VersionEvidence is authoritative for the active session.
+If that live observation instead returns `HOST_BRIDGE_PROTOCOL_MISMATCH` or
+another version/authority diagnostic, stop before START. This precedence does
+not change `Check()` semantics; it only prevents management-only session advice
+from being treated as live protocol evidence. Bridge update,
+Plugin/Marketplace mutation, and starting a replacement Host session require
+the user's explicit authorization; this plan grants none of them.
 
 - [ ] **Step 2: Obtain the live proof with a fresh observe_current call**
 
 Call observe_current once through the active Codex Host Bridge. Require the complete canonical VersionEvidence tuple above and a new opaque v2 handle bound to the current session and CWD.
 
-Expected: either observation succeeds with Bridge v2 and secret-free Host facts, or it returns HOST_BRIDGE_PROTOCOL_MISMATCH or another exact closed diagnostic. A v1 context, v1 handle, stale digest, old schema tuple, missing skills/list method, or old session cannot continue. Keep the handle only in active process/session memory.
+Expected: either observation succeeds with Bridge v2, canonical VersionEvidence, and secret-free Host facts, in which case it is the active-session authority even when management state reported `requires_new_session`, or it returns HOST_BRIDGE_PROTOCOL_MISMATCH or another exact closed diagnostic. A v1 context, v1 handle, stale digest, old schema tuple, missing skills/list method, or old session cannot continue. Keep the handle only in active process/session memory.
 
 Write host-summary.json with only Provider state, short fact digests, CURRENT topology, Binding-kind availability, feature/action dispositions, diagnostics, and VersionEvidence digest. Exclude the handle token, absolute paths, credentials, raw Hook data, and model transcript.
 

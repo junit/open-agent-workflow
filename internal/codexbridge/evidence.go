@@ -12,15 +12,16 @@ import (
 )
 
 type Facts struct {
-	Session         host.SessionSnapshot
-	Inventory       host.BindingInventory
-	Environment     host.EnvironmentReport
-	Configuration   config.Snapshot
-	Discovery       discovery.Report
-	Resolutions     registry.ResolutionReport
-	Registry        registry.Registry
-	VersionEvidence VersionEvidence
-	FactDigests     FactDigests
+	Session                host.SessionSnapshot
+	Inventory              host.BindingInventory
+	Environment            host.EnvironmentReport
+	Configuration          config.Snapshot
+	Discovery              discovery.Report
+	Resolutions            registry.ResolutionReport
+	Registry               registry.Registry
+	VersionEvidence        VersionEvidence
+	ReporterIdentityDigest string
+	FactDigests            FactDigests
 }
 
 func cloneFacts(value Facts) Facts {
@@ -32,6 +33,9 @@ func cloneFacts(value Facts) Facts {
 }
 
 func validateFacts(value Facts) error {
+	if len(value.ReporterIdentityDigest) != 64 || strings.Trim(value.ReporterIdentityDigest, "0123456789abcdef") != "" {
+		return NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host reporter identity is not canonical", nil)
+	}
 	manifest, err := bridgeManifest(value.Session)
 	if err != nil {
 		return err
@@ -83,6 +87,7 @@ func validateFactDigests(value Facts) error {
 		actual   string
 	}{
 		{"session", value.FactDigests.Session, value.Session.Digest},
+		{"reporter identity", value.FactDigests.Reporter, value.ReporterIdentityDigest},
 		{"inventory", value.FactDigests.Inventory, value.Inventory.Digest},
 		{"environment", value.FactDigests.Environment, value.Environment.Digest},
 		{"features", value.FactDigests.Features, value.Session.FeatureDigest},

@@ -22,6 +22,10 @@ The design preserves all four core selections:
 - `ECC-FULL`
 - `MATT-SP-HYBRID`
 
+These are exactly four built-in Profile aliases resolved through exactly three
+built-in Provider IDs: `oaw/matt`, `oaw/superpowers`, and `oaw/ecc`.
+`MATT-SP-HYBRID` is a Recipe composition, not a fourth Provider.
+
 It also makes `USER-DEFINED` a first-class way to build additional Profiles by
 combining verified installed Bindings at each lifecycle slot.
 
@@ -56,13 +60,19 @@ Canonical matrix digest:
 
 `49ec1819ab22364d763d0875d9af299ee332de3d6d39a7178a715c2b13272ccf`
 
-The initial v4 built-ins are pinned to these immutable upstream revisions:
+The initial v4 built-ins are pinned to these immutable Distribution sources:
 
-| Provider | Repository | Revision |
-| --- | --- | --- |
-| Matt | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
-| Superpowers | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
-| ECC | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+| Provider ID | Distribution ID | Repository | Revision | Distribution root | Host use |
+| --- | --- | --- | --- | --- | --- |
+| `oaw/matt` | `matt-skills` | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` | `.` | Matt Host surfaces |
+| `oaw/superpowers` | `superpowers` | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` | `.` | Claude and direct-upstream Codex installations |
+| `oaw/superpowers` | `superpowers-codex` | `https://github.com/openai/plugins` | `11c74d6ba24d3a6d48f54a194cd00ef3beea18f9` | `plugins/superpowers` | OpenAI-packaged Codex cache installations |
+| `oaw/ecc` | `ecc` | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` | `.` | ECC Host surfaces |
+
+This is exactly three Providers and four real, content-distinct Distributions.
+Both Superpowers Distributions remain under `oaw/superpowers`; neither creates
+a Provider or Profile. `curated` may describe an installation channel or
+filesystem path, but it is not a Provider, Distribution, or Profile identity.
 
 Confirmed facts that drive the design:
 
@@ -73,15 +83,20 @@ Confirmed facts that drive the design:
    perform a new interview.
 3. Matt `implement` calls `tdd` and `code-review`, commits locally, and
    explicitly has no completion step or built-in remediation loop.
-4. All audited Superpowers skill names exist, but SDD and review require native
+4. The two Superpowers Distributions expose the audited skill references but
+   have different immutable content trees and therefore require distinct
+   Distribution and Binding evidence.
+5. All audited Superpowers skill names exist, but SDD and review require native
    child delegation. A top-level child needs nested delegation.
-5. ECC ships real Skills, Claude custom Agents, Codex Roles, Instructions, and
+6. ECC ships real Skills, Claude custom Agents, Codex Roles, Instructions, and
    Hooks. These are different Host surfaces and cannot be substituted by name.
-6. ECC `e2e-runner` is not broad verification, `code-reviewer` is not
+7. ECC `e2e-runner` is not broad verification, `code-reviewer` is not
    completion, and `delivery-gate` is a Claude Stop Hook rather than a Git
    delivery procedure.
-7. Current Codex Bridge v1 attests `skill` Bindings and `CURRENT` only. It does
-   not attest reviewer delegation, nested delegation, Codex Roles, Claude
+8. Current Codex Bridge v2 attests `skill` Bindings and `CURRENT` by default.
+   A valid official `SubagentStart` Hook can additionally attest only
+   `child-delegation` for the exact session and CWD. It does not attest
+   reviewer results, parallel or nested delegation, Codex Roles, Claude
    Agents, or neutral Host actions.
 
 ## 3. Goals and Non-Goals
@@ -428,6 +443,20 @@ Required invariants:
 `oaw.provider-descriptor/v4` binds semantic claims to immutable Distributions
 and exact Host surfaces.
 
+Provider and Distribution identity are not one-to-one. In particular, the
+single `oaw/superpowers` descriptor contains both `superpowers` and
+`superpowers-codex` from the exact sources, revisions, and roots pinned above.
+The former supplies every `claude-*` Binding and every direct-upstream Codex
+`codex-upstream-*` Binding. The latter supplies every existing packaged Codex
+`codex-*` Binding.
+
+For each audited Superpowers reference, those three Host-qualified Bindings are
+semantic alternatives without sharing provenance. Each Binding's
+`alternatives` lists the other two exact IDs, and each Superpowers Capability
+references all three IDs. Resolution still verifies one exact Distribution,
+content tree, Host surface, and installation; an alternative never allows one
+Distribution's digest to attest another.
+
 Each descriptor records:
 
 - Provider family and Distribution IDs;
@@ -493,6 +522,17 @@ Outer topology and internal delegation remain orthogonal:
 
 Static config may report `host-configured` or `unknown`; only live Host-native
 evidence may report `available`.
+
+For Codex, the stable `SubagentStart` Hook is the only live proof path for
+`child-delegation`. The Bridge stores only hashed session/CWD identity,
+bounded timestamps, the feature ID, and a canonical digest. When the user has
+explicitly requested a Profile/topology and its only inspection blocker is a
+bounded reviewer Binding's child requirement, the Startup Gate may request one
+zero-project-effect native child capability probe. The child only reports that
+it started and terminates. This is a Governance observation, not lifecycle
+execution or Profile selection; the caller must then re-run `observe_current`
+before inspection. No Hook prompt, transcript, agent identifier, model output,
+or private Host configuration becomes authority.
 
 Host Manifest v3 and Host Binding Inventory v3 add:
 
@@ -578,6 +618,12 @@ meaning does not change. User Config v3 remains readable because deny, pin,
 preference, installation, and trusted-recipe references are not the source of
 the defect. References that identify a removed v3/v2 authority object fail
 explicitly.
+
+A Host-scoped Binding preference may name the same semantic reference in
+different Distribution-and-surface candidates, but it never chooses a
+Distribution. Config validation requires at most one matching Binding per
+possible Provider Instance, and Registry resolution requires exactly one match
+inside the exact observed Distribution and surface.
 
 Hard-cut rules:
 
@@ -731,9 +777,10 @@ The migration is complete only when:
   inventory evidence can make it eligible.
 - Neutral gates judge evidence; they do not run commands. Commands are produced
   only by an attested Provider procedure or Host action.
-- Current Codex Bridge v1 cannot prove the delegation and Host-action facts
-  required by several target Profiles. The migration must improve observation
-  or truthfully leave those Profiles ineligible.
+- Current Codex Bridge v2 can prove `child-delegation` only after a real,
+  current-session `SubagentStart` Hook event; it still cannot prove parallel,
+  nested, Role, or Host-action facts. Profiles requiring any of those remain
+  ineligible unless a separate stable Host proof is added.
 - A user can freely compose only verified compatible Bindings. OAW guarantees
   fail-closed composition, not that every arbitrary installed skill can satisfy
   every slot.

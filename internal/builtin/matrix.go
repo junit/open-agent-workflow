@@ -73,7 +73,11 @@ func BuildProfileMatrix(value catalog.Catalog, audit provideraudit.Manifest) (Pr
 	if err := provideraudit.Validate(audit); err != nil {
 		return ProfileMatrixRecord{}, matrixError("source audit is invalid", err)
 	}
-	providers := providerRecordIndex(value.Providers())
+	providerRecords := value.Providers()
+	if err := validateProviderAudit(providerRecords, audit); err != nil {
+		return ProfileMatrixRecord{}, matrixError("Catalog source provenance is invalid", err)
+	}
+	providers := providerRecordIndex(providerRecords)
 	recipes := recipeRecordIndex(value.Recipes())
 	aliases := value.Aliases()
 	if len(providers) != 3 || len(recipes) != 4 || len(aliases) != 4 {
@@ -87,7 +91,7 @@ func BuildProfileMatrix(value catalog.Catalog, audit provideraudit.Manifest) (Pr
 		if !found {
 			return ProfileMatrixRecord{}, matrixError("alias Recipe is missing", nil)
 		}
-		_, recipeDigest, err := catalog.NormalizeAndDigestRecipe(value.Providers(), recipe)
+		_, recipeDigest, err := catalog.NormalizeAndDigestRecipe(providerRecords, recipe)
 		if err != nil {
 			return ProfileMatrixRecord{}, matrixError("Recipe cannot be normalized", err)
 		}
@@ -357,13 +361,14 @@ func appendSelectorProjection(profile *MatrixProfile, selector catalog.BindingSe
 
 func projectBinding(providerID string, provider catalog.ProviderDescriptorRecord, binding catalog.BindingRecord, span []catalog.SlotID, mode catalog.InternalCallMode, paused bool, audit provideraudit.Manifest) (MatrixBinding, error) {
 	audited, found := audit.Binding(providerID, binding.ID)
-	if !found || len(provider.Distributions) != 1 || binding.TreeDigest != audited.TreeDigest {
+	distribution, distributionFound := descriptorMatrixDistribution(provider, binding.DistributionID)
+	if !found || !distributionFound || binding.TreeDigest != audited.TreeDigest {
 		return MatrixBinding{}, matrixError("Binding source provenance is missing", nil)
 	}
 	return MatrixBinding{
 		ProviderID: providerID, BindingID: binding.ID, Host: binding.Host, Surface: binding.Surface, Kind: binding.Kind,
 		Reference: binding.Reference, Invocation: binding.Invocation, StageSpan: append([]catalog.SlotID{}, span...), MacroMode: mode,
-		DistributionRevision: provider.Distributions[0].Revision, BindingTreeDigest: audited.TreeDigest,
+		DistributionRevision: distribution.Revision, BindingTreeDigest: audited.TreeDigest,
 		RequiredFeatures: delegationFeatures(binding.Delegation), Topologies: append([]execution.Topology{}, binding.SupportedTopologies...), Paused: paused,
 	}, nil
 }
@@ -422,6 +427,15 @@ func descriptorMatrixBinding(provider catalog.ProviderDescriptorRecord, id strin
 		}
 	}
 	return catalog.BindingRecord{}, false
+}
+
+func descriptorMatrixDistribution(provider catalog.ProviderDescriptorRecord, id string) (catalog.DistributionRecord, bool) {
+	for _, distribution := range provider.Distributions {
+		if distribution.ID == id {
+			return distribution, true
+		}
+	}
+	return catalog.DistributionRecord{}, false
 }
 
 func matrixSlotPointer(slots []MatrixSlot, id catalog.SlotID) *MatrixSlot {

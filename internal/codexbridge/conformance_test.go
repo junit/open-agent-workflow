@@ -37,8 +37,10 @@ func TestCodexBridgeConformanceTranscriptVerifiesDeclaredFeatures(t *testing.T) 
 		host.FeatureNormalizedReceipts,
 		host.FeatureProviderBindingInventory,
 	}
+	wantDelegation := []host.FeatureID{host.FeatureChildDelegation}
 	if transcript.SchemaVersion != host.HostConformanceTranscriptSchemaV4 || report.SchemaVersion != host.HostConformanceReportSchemaV4 ||
-		report.TranscriptDigest != transcript.Digest || !slices.Equal(report.VerifiedFeatures, want) || len(report.Diagnostics) != 0 {
+		report.TranscriptDigest != transcript.Digest || !slices.Equal(report.VerifiedFeatures, want) ||
+		!slices.Equal(report.VerifiedDelegationFeatures, wantDelegation) || len(report.Diagnostics) != 0 {
 		t.Fatalf("report = %#v", report)
 	}
 	if service == nil || len(facts.Inventory.Observations) != 1 || facts.Inventory.Observations[0].Reference != "acme:delivery" {
@@ -85,7 +87,8 @@ func TestCodexBridgeConformanceTranscriptAssetIsCanonical(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(report.VerifiedFeatures, manifest.Features) || len(report.Diagnostics) != 0 {
+	if !slices.Equal(report.VerifiedFeatures, manifest.Features) ||
+		!slices.Equal(report.VerifiedDelegationFeatures, []host.FeatureID{host.FeatureChildDelegation}) || len(report.Diagnostics) != 0 {
 		t.Fatalf("asset conformance report = %#v", report)
 	}
 }
@@ -103,8 +106,14 @@ func observedConformanceService(t *testing.T) (*Service, Facts) {
 		Transport: &conformanceTransport{t: t, cwd: projectRoot, skillPath: skillPath},
 	})
 	store := NewEvidenceStore(CacheOptions{MaximumEntries: 2, Random: strings.NewReader(strings.Repeat("c", 64))})
+	featureStore, err := NewSessionFeatureEvidenceStore(SessionFeatureEvidenceOptions{
+		Root: filepath.Join(t.TempDir(), "open-agent-workflow", "codex-bridge", "features"), TTL: SessionFeatureEvidenceTTL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	service, err := NewService(ServiceOptions{
-		Observer: observer, Store: store, StateRoot: t.TempDir(), ProjectRoot: projectRoot,
+		Observer: observer, FeatureObserver: featureStore, Store: store, StateRoot: t.TempDir(), ProjectRoot: projectRoot,
 		UserConfigRoot: userConfigRoot, UserHome: userHome, BridgeVersion: BridgeIntegrationVersion,
 	})
 	if err != nil {
@@ -112,6 +121,9 @@ func observedConformanceService(t *testing.T) (*Service, Facts) {
 	}
 	installUserProvider(t, service)
 	hostContext := testHookContext("session-codex-conformance", projectRoot)
+	if err := featureStore.RecordChildDelegation(hostContext); err != nil {
+		t.Fatal(err)
+	}
 	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, hostContext)
 	if err != nil {
 		t.Fatal(err)

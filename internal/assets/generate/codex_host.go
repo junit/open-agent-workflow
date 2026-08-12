@@ -98,7 +98,7 @@ func buildCodexHostFixture() (host.ConformanceTranscript, host.IntegrationRecord
 		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1}, BindingKinds: []catalog.BindingKind{catalog.BindingSkill},
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
 		Features:            []host.Feature{host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
-		DelegationFeatures:  []host.FeatureID{}, HostActions: []host.HostActionContract{},
+		DelegationFeatures:  []host.FeatureID{host.FeatureChildDelegation}, HostActions: []host.HostActionContract{},
 	})
 	if err != nil {
 		return host.ConformanceTranscript{}, host.IntegrationRecord{}, fmt.Errorf("build Codex Host Manifest: %w", err)
@@ -124,11 +124,18 @@ func buildCodexHostFixture() (host.ConformanceTranscript, host.IntegrationRecord
 	if err != nil {
 		return host.ConformanceTranscript{}, host.IntegrationRecord{}, fmt.Errorf("build Codex Environment Report: %w", err)
 	}
+	feature, err := host.NewFeatureObservation(host.FeatureObservation{
+		Feature: host.FeatureChildDelegation, State: host.AvailabilityAvailable, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex-host/conformance/subagent-start",
+	})
+	if err != nil {
+		return host.ConformanceTranscript{}, host.IntegrationRecord{}, fmt.Errorf("build Codex child-delegation observation: %w", err)
+	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
 		SchemaVersion: host.HostSessionSchemaV3, HostID: "codex", IntegrationID: codexHostIntegrationID,
 		IntegrationVersion: codexHostIntegrationVersion, SessionID: "session-codex-conformance", ManifestDigest: manifest.Digest,
 		SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, ProviderInventoryDigest: inventory.Digest,
-		FeatureObservations: []host.FeatureObservation{}, HostActionObservations: []host.HostActionObservation{}, EnvironmentReportDigest: environment.Digest,
+		FeatureObservations: []host.FeatureObservation{feature}, HostActionObservations: []host.HostActionObservation{}, EnvironmentReportDigest: environment.Digest,
 	})
 	if err != nil {
 		return host.ConformanceTranscript{}, host.IntegrationRecord{}, fmt.Errorf("build Codex Host Session: %w", err)

@@ -2,8 +2,12 @@ package codexbridge
 
 import (
 	"errors"
+	"fmt"
+	"sort"
 	"strings"
 )
+
+const maximumObserveCurrentDiagnostics = 32
 
 type Diagnostic struct {
 	Code                     string   `json:"code"`
@@ -59,6 +63,108 @@ func NewDiagnostic(code, layer, detail string, directAvailable bool) Diagnostic 
 		RecoveryAction:           recoveryAction(code),
 		EvidenceDigest:           "",
 	}
+}
+
+type diagnosticKey struct {
+	code                     string
+	layer                    string
+	detail                   string
+	directAvailable          bool
+	recoverableByObservation bool
+	recoveryAction           string
+	evidenceDigest           string
+}
+
+func normalizeDiagnostics(values []Diagnostic, limit int) []Diagnostic {
+	result := aggregateDiagnostics(values)
+	if len(result) == 0 {
+		return result
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if len(result) <= limit {
+		return result
+	}
+
+	retained := limit - 1
+	omitted := result[retained:]
+	summary := NewDiagnostic(
+		"HOST_DIAGNOSTICS_TRUNCATED", "observation",
+		fmt.Sprintf("%d additional diagnostic groups omitted by the output budget", len(omitted)), true,
+	)
+	for _, value := range omitted {
+		summary.AffectedProviders = append(summary.AffectedProviders, value.AffectedProviders...)
+		summary.AffectedProfiles = append(summary.AffectedProfiles, value.AffectedProfiles...)
+	}
+	summary.AffectedProviders = sortedUniqueDiagnosticOwners(summary.AffectedProviders)
+	summary.AffectedProfiles = sortedUniqueDiagnosticOwners(summary.AffectedProfiles)
+	return append(result[:retained], summary)
+}
+
+func aggregateDiagnostics(values []Diagnostic) []Diagnostic {
+	if len(values) == 0 {
+		return []Diagnostic{}
+	}
+	aggregated := make(map[diagnosticKey]Diagnostic, len(values))
+	for _, value := range values {
+		key := diagnosticKey{
+			code: value.Code, layer: value.Layer, detail: value.Detail, directAvailable: value.DirectAvailable,
+			recoverableByObservation: value.RecoverableByObservation, recoveryAction: value.RecoveryAction,
+			evidenceDigest: value.EvidenceDigest,
+		}
+		current, found := aggregated[key]
+		if !found {
+			current = value
+			current.AffectedProviders = []string{}
+			current.AffectedProfiles = []string{}
+		}
+		current.AffectedProviders = append(current.AffectedProviders, value.AffectedProviders...)
+		current.AffectedProfiles = append(current.AffectedProfiles, value.AffectedProfiles...)
+		aggregated[key] = current
+	}
+
+	result := make([]Diagnostic, 0, len(aggregated))
+	for _, value := range aggregated {
+		value.AffectedProviders = sortedUniqueDiagnosticOwners(value.AffectedProviders)
+		value.AffectedProfiles = sortedUniqueDiagnosticOwners(value.AffectedProfiles)
+		result = append(result, value)
+	}
+	sort.Slice(result, func(left, right int) bool {
+		return diagnosticSortKey(result[left]) < diagnosticSortKey(result[right])
+	})
+	return result
+}
+
+func sortedUniqueDiagnosticOwners(values []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	sort.Strings(result)
+	return compactSortedStrings(result)
+}
+
+func compactSortedStrings(values []string) []string {
+	if len(values) == 0 {
+		return []string{}
+	}
+	result := values[:1]
+	for _, value := range values[1:] {
+		if value != result[len(result)-1] {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func diagnosticSortKey(value Diagnostic) string {
+	return strings.Join([]string{
+		value.Code, value.Layer, value.Detail, fmt.Sprintf("%t", value.DirectAvailable),
+		fmt.Sprintf("%t", value.RecoverableByObservation), value.RecoveryAction, value.EvidenceDigest,
+	}, "\x00")
 }
 
 func redactDiagnosticDetail(value string) string {

@@ -186,7 +186,8 @@ type hookMatcher struct {
 }
 
 type hookEvents struct {
-	PreToolUse []hookMatcher `json:"PreToolUse"`
+	PreToolUse    []hookMatcher `json:"PreToolUse"`
+	SubagentStart []hookMatcher `json:"SubagentStart"`
 }
 
 type hookDocument struct {
@@ -240,6 +241,10 @@ func validateRenderedFiles(files map[string][]byte, options RenderOptions, hookC
 		if matcher.Matcher != expectedHookMatchers[index] || len(matcher.Hooks) != 1 || matcher.Hooks[0].Type != "command" || matcher.Hooks[0].Command != hookCommand {
 			return invalidTemplate("Hook matcher does not match the locked Bridge surface", nil)
 		}
+	}
+	if len(hooks.Hooks.SubagentStart) != 1 || hooks.Hooks.SubagentStart[0].Matcher != "*" || len(hooks.Hooks.SubagentStart[0].Hooks) != 1 ||
+		hooks.Hooks.SubagentStart[0].Hooks[0].Type != "command" || hooks.Hooks.SubagentStart[0].Hooks[0].Command != hookCommand {
+		return invalidTemplate("Hook configuration must contain the locked SubagentStart matcher", nil)
 	}
 
 	marketplace := marketplaceManifest{}

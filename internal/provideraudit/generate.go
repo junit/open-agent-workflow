@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
@@ -13,26 +12,33 @@ import (
 
 func Build(checkouts []Checkout) (Manifest, error) {
 	if len(checkouts) != len(lockedProviderSpecs) {
-		return Manifest{}, invalidAudit("exactly three Provider checkouts are required", nil)
+		return Manifest{}, invalidAudit("exactly four source checkouts are required", nil)
 	}
-	byProvider := make(map[string]Checkout, len(checkouts))
+	bySource := make(map[sourceKey]Checkout, len(checkouts))
 	for _, checkout := range checkouts {
-		if _, duplicate := byProvider[checkout.ProviderID]; duplicate {
-			return Manifest{}, invalidAudit("duplicate Provider checkout", nil)
+		key := sourceKey{ProviderID: checkout.ProviderID, DistributionID: checkout.DistributionID}
+		if _, duplicate := bySource[key]; duplicate {
+			return Manifest{}, invalidAudit("duplicate source checkout", nil)
 		}
-		byProvider[checkout.ProviderID] = checkout
+		bySource[key] = checkout
 	}
 	providers := make([]ProviderSource, len(lockedProviderSpecs))
 	for index, spec := range lockedProviderSpecs {
-		checkout, found := byProvider[spec.ID]
-		if !found || checkout.SourceURI != spec.SourceURI || checkout.Revision != spec.Revision || checkout.DistributionRoot != "." || checkout.Root == "" || len(checkout.BindingRoots) != len(spec.Bindings) {
+		key := sourceKey{ProviderID: spec.ID, DistributionID: spec.DistributionID}
+		checkout, found := bySource[key]
+		if !found || checkout.SourceURI != spec.SourceURI || checkout.Revision != spec.Revision || checkout.DistributionRoot != spec.DistributionRoot || checkout.Root == "" || len(checkout.BindingRoots) != len(spec.Bindings) {
 			return Manifest{}, invalidAudit("Provider checkout pin mismatch", nil)
 		}
-		rootInfo, err := os.Stat(checkout.Root)
-		if err != nil || !rootInfo.IsDir() {
-			return Manifest{}, invalidAudit("Provider checkout root is unavailable", err)
+		distributionRoot, err := physicalDistributionRoot(checkout.Root, checkout.DistributionRoot)
+		if err != nil {
+			return Manifest{}, invalidAudit("Provider Distribution root is unavailable", err)
 		}
-		distributionDigest, err := digestDistributionRoot(filepath.Join(checkout.Root, filepath.FromSlash(checkout.DistributionRoot)))
+		for _, evidenceRoot := range spec.EvidenceRoots {
+			if _, _, err := physicalSourceRoot(distributionRoot, evidenceRoot, "evidence"); err != nil {
+				return Manifest{}, invalidAudit("Provider evidence root is unavailable", err)
+			}
+		}
+		distributionDigest, err := digestDistributionRoot(distributionRoot)
 		if err != nil {
 			return Manifest{}, invalidAudit("digest Distribution tree", err)
 		}
@@ -49,13 +55,13 @@ func Build(checkouts []Checkout) (Manifest, error) {
 			if !found || binding.ContentRoot != expected.ContentRoot || binding.InstallRoot != expected.InstallRoot || binding.Root != expected.ContentRoot || !cleanRelative(binding.Root, false) {
 				return Manifest{}, invalidAudit("Binding checkout mapping mismatch", nil)
 			}
-			digest, err := digestBindingRoot(checkout.Root, binding.Root)
+			digest, err := digestBindingRoot(distributionRoot, binding.Root)
 			if err != nil {
 				return Manifest{}, invalidAudit("digest Binding root", err)
 			}
 			bindings[bindingIndex] = BindingSource{ID: expected.ID, ContentRoot: expected.ContentRoot, InstallRoot: expected.InstallRoot, TreeDigest: digest, Kind: expected.Kind, References: append([]string{}, expected.References...)}
 		}
-		providers[index] = ProviderSource{ProviderID: spec.ID, SourceURI: spec.SourceURI, Revision: spec.Revision, DistributionID: spec.DistributionID, DistributionRoot: ".", DistributionTreeDigest: distributionDigest, Bindings: bindings, EvidenceRoots: append([]string{}, spec.EvidenceRoots...)}
+		providers[index] = ProviderSource{ProviderID: spec.ID, SourceURI: spec.SourceURI, Revision: spec.Revision, DistributionID: spec.DistributionID, DistributionRoot: spec.DistributionRoot, DistributionTreeDigest: distributionDigest, Bindings: bindings, EvidenceRoots: append([]string{}, spec.EvidenceRoots...)}
 	}
 	manifest := Manifest{SchemaVersion: ProviderSourceAuditSchemaV1, CanonicalMatrixDigest: CanonicalMatrixDigest, Providers: providers}
 	manifest.Digest = manifest.ContentDigest()
@@ -65,115 +71,49 @@ func Build(checkouts []Checkout) (Manifest, error) {
 	return cloneManifest(manifest), nil
 }
 
-func digestDistributionRoot(root string) (string, error) {
-	absolute, err := filepath.Abs(root)
+func physicalDistributionRoot(checkoutRoot, relative string) (string, error) {
+	if !cleanRelative(relative, true) {
+		return "", fmt.Errorf("Distribution root is not canonical")
+	}
+	absolute, err := filepath.Abs(checkoutRoot)
 	if err != nil {
 		return "", err
 	}
 	absolute = filepath.Clean(absolute)
-	rootInfo, err := os.Lstat(absolute)
+	info, err := os.Lstat(absolute)
 	if err != nil {
 		return "", err
 	}
-	if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-		return "", fmt.Errorf("Distribution root must be a physical directory")
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", fmt.Errorf("checkout root must be a physical directory")
 	}
-
-	type distributionEntry struct {
-		Path   string `json:"path"`
-		Kind   string `json:"kind"`
-		Mode   uint32 `json:"mode"`
-		Size   int64  `json:"size"`
-		Digest string `json:"digest"`
+	current := absolute
+	if relative == "." {
+		return current, nil
 	}
-	entries := make([]distributionEntry, 0)
-	err = filepath.WalkDir(absolute, func(entryPath string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		info, err := os.Lstat(entryPath)
+	for _, component := range strings.Split(relative, "/") {
+		current = filepath.Join(current, filepath.FromSlash(component))
+		info, err = os.Lstat(current)
 		if err != nil {
-			return err
+			return "", err
 		}
-		if entryPath == absolute {
-			if !info.IsDir() || !os.SameFile(rootInfo, info) {
-				return fmt.Errorf("Distribution root identity changed")
-			}
-			return nil
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return "", fmt.Errorf("Distribution root must contain only physical directories")
 		}
-		relative, err := filepath.Rel(absolute, entryPath)
-		if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return fmt.Errorf("Distribution entry escapes root")
-		}
-		canonicalPath := filepath.ToSlash(relative)
-		if canonicalPath == "" || strings.HasPrefix(canonicalPath, "/") || strings.Contains(canonicalPath, "\\") {
-			return fmt.Errorf("Distribution entry path is not canonical")
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if info.Mode()&os.ModeSymlink != 0 || entry.Type()&os.ModeSymlink != 0 {
-			target, err := os.Readlink(entryPath)
-			if err != nil {
-				return err
-			}
-			if !containedSymlinkTarget(absolute, entryPath, target) {
-				return fmt.Errorf("Distribution symlink escapes root")
-			}
-			entries = append(entries, distributionEntry{Path: canonicalPath, Kind: "symlink", Size: int64(len(target)), Digest: integrity.SHA256Digest([]byte(target))})
-			return nil
-		}
-		if !info.Mode().IsRegular() {
-			return fmt.Errorf("Distribution entry is not a regular file or contained symlink")
-		}
-		content, err := os.ReadFile(entryPath)
-		if err != nil {
-			return err
-		}
-		current, err := os.Lstat(entryPath)
-		if err != nil {
-			return err
-		}
-		if !os.SameFile(info, current) || info.Size() != current.Size() || info.Mode() != current.Mode() || info.ModTime() != current.ModTime() || int64(len(content)) != current.Size() {
-			return fmt.Errorf("Distribution file changed during read")
-		}
-		entries = append(entries, distributionEntry{Path: canonicalPath, Kind: "file", Mode: uint32(current.Mode().Perm() & 0o111), Size: current.Size(), Digest: integrity.SHA256Digest(content)})
-		return nil
-	})
-	if err != nil {
-		return "", err
 	}
-	currentRoot, err := os.Lstat(absolute)
-	if err != nil || !currentRoot.IsDir() || !os.SameFile(rootInfo, currentRoot) {
-		return "", fmt.Errorf("Distribution root identity changed")
-	}
-	if len(entries) == 0 {
-		return "", fmt.Errorf("Distribution tree is empty")
-	}
-	sort.Slice(entries, func(left, right int) bool { return entries[left].Path < entries[right].Path })
-	payload := struct {
-		SchemaVersion string              `json:"schema_version"`
-		Entries       []distributionEntry `json:"entries"`
-	}{SchemaVersion: "oaw.distribution-tree/v1", Entries: entries}
-	encoded, err := canonicaljson.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-	return integrity.SHA256Digest(encoded), nil
+	return current, nil
 }
 
-func containedSymlinkTarget(root, linkPath, target string) bool {
-	if target == "" || filepath.IsAbs(target) || strings.Contains(target, "\\") || filepath.Clean(target) != target {
-		return false
+func digestDistributionRoot(root string) (string, error) {
+	evidence, err := integrity.DigestDistributionTree(root)
+	if err != nil {
+		return "", err
 	}
-	resolved := filepath.Clean(filepath.Join(filepath.Dir(linkPath), target))
-	relative, err := filepath.Rel(root, resolved)
-	return err == nil && relative != ".." && !filepath.IsAbs(relative) && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+	return evidence.RootDigest, nil
 }
 
 func digestBindingRoot(checkoutRoot, relative string) (string, error) {
-	root := filepath.Join(checkoutRoot, filepath.FromSlash(relative))
-	info, err := os.Lstat(root)
+	root, info, err := physicalSourceRoot(checkoutRoot, relative, "Binding")
 	if err != nil {
 		return "", err
 	}
@@ -203,4 +143,41 @@ func digestBindingRoot(checkoutRoot, relative string) (string, error) {
 		return "", err
 	}
 	return integrity.SHA256Digest(encoded), nil
+}
+
+func physicalSourceRoot(distributionRoot, relative, label string) (string, os.FileInfo, error) {
+	if !cleanRelative(relative, false) {
+		return "", nil, fmt.Errorf("%s root is not canonical", label)
+	}
+	absolute, err := filepath.Abs(distributionRoot)
+	if err != nil {
+		return "", nil, err
+	}
+	absolute = filepath.Clean(absolute)
+	info, err := os.Lstat(absolute)
+	if err != nil {
+		return "", nil, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", nil, fmt.Errorf("Distribution root must be a physical directory")
+	}
+	current := absolute
+	components := strings.Split(relative, "/")
+	for index, component := range components {
+		current = filepath.Join(current, filepath.FromSlash(component))
+		info, err = os.Lstat(current)
+		if err != nil {
+			return "", nil, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", nil, fmt.Errorf("%s root must not traverse symlinks", label)
+		}
+		if index < len(components)-1 && !info.IsDir() {
+			return "", nil, fmt.Errorf("%s root ancestors must be physical directories", label)
+		}
+	}
+	if !info.IsDir() && !info.Mode().IsRegular() {
+		return "", nil, fmt.Errorf("%s root is not a regular file or directory", label)
+	}
+	return current, info, nil
 }

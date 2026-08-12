@@ -219,11 +219,19 @@ Host state. OAW invokes official Codex Plugin commands through fixed argument
 vectors; it never edits Codex config or cache, creates an alternate user home, or
 projects Host configuration.
 
-Review the exact four `PreToolUse` matchers in rendered `hooks/hooks.json` and
-trust them in Codex `/hooks` before using the Bridge. Start a new Codex session
-after install or update. Only successful `observe_current` in that new session
-proves current-session evidence; `bridge check` always reports
+Review the exact four `PreToolUse` matchers and the `SubagentStart` matcher in
+rendered `hooks/hooks.json`, then trust them in Codex `/hooks` before using the
+Bridge. Start a new Codex session after install or update. Only successful
+`observe_current` in that new session proves current-session evidence;
+`bridge check` always reports
 `current_session_loaded: false`.
+
+Starting a new session does not by itself attest `child-delegation`. When the
+user explicitly requests a Profile/topology such as `SP-FULL / CURRENT` and
+its only blocker is the reviewer child requirement, the Startup Gate may start
+exactly one zero-project-effect native child capability probe in that session.
+The child only reports that it started and terminates. Run `observe_current`
+again before repeating `core_inspect`.
 
 Bridge install and update are transactional. They render a digest-pinned copy
 of the running binary, use an OAW-owned local marketplace, and roll back

@@ -157,6 +157,9 @@ func hydrateReceipt(workflowID string, input WorkflowReceiptInput, facts Facts, 
 		return host.InvocationReceipt{}, NewError("HOST_SESSION_CHANGED", "active Bundle is unavailable for Receipt hydration", nil)
 	}
 	dispatchDigest := ""
+	if current.Snapshot.ActiveDispatchDigest != "" {
+		dispatchDigest = current.Snapshot.ActiveDispatchDigest
+	}
 	if current.Dispatch != nil && current.Dispatch.WorkflowID == workflowID && current.Dispatch.BundleDigest == bundle.Digest && current.Dispatch.Cursor == current.Snapshot.Cursor {
 		dispatchDigest = current.Dispatch.Digest
 	}
@@ -175,8 +178,8 @@ func hydrateReceipt(workflowID string, input WorkflowReceiptInput, facts Facts, 
 	receipt, err := host.NewInvocationReceipt(host.InvocationReceipt{
 		SchemaVersion: host.HostInvocationReceiptSchemaV3, Kind: input.Kind, WorkflowID: workflowID,
 		BundleID: bundle.ID, BundleGeneration: bundle.Generation, BundleDigest: bundle.Digest,
-		Cursor: current.Snapshot.Cursor, Topology: bundle.Topology, HostSessionDigest: facts.Session.Digest,
-		DispatchDigest: dispatchDigest, ContextFreshness: host.ContextShared, EnvironmentReportDigest: facts.Environment.Digest,
+		Cursor: current.Snapshot.Cursor, Topology: bundle.Topology, HostSessionDigest: bundle.HostSessionDigest,
+		DispatchDigest: dispatchDigest, ContextFreshness: host.ContextShared, EnvironmentReportDigest: bundle.EnvironmentReportDigest,
 		Outcome: input.Outcome, FailureCode: input.FailureCode,
 		Outputs: append([]host.OutputReference{}, input.Outputs...), Evidence: append([]host.EvidenceReference{}, input.Evidence...),
 	})

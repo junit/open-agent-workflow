@@ -23,6 +23,10 @@ func RewriteObserveInput(input PreToolUseInput) (HookOutput, error) {
 	if !isObservationTool(input.ToolName) {
 		return HookOutput{}, codexbridge.NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "unexpected observation tool", nil)
 	}
+	return rewriteWithHookContext(input)
+}
+
+func rewriteWithHookContext(input PreToolUseInput) (HookOutput, error) {
 	var public map[string]json.RawMessage
 	if err := json.Unmarshal(input.ToolInput, &public); err != nil || public == nil {
 		return HookOutput{}, codexbridge.NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "tool input must be an object", err)
@@ -69,6 +73,9 @@ func ValidateHandleInput(input PreToolUseInput) (HookOutput, error) {
 	}
 	var object map[string]json.RawMessage
 	if err := json.Unmarshal(input.ToolInput, &object); err != nil || object == nil {
+		return denyContextMismatch(), nil
+	}
+	if _, exists := object["_oaw_host_context"]; exists {
 		return denyContextMismatch(), nil
 	}
 	encoded, ok := object["host_evidence_handle"]

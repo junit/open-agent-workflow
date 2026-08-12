@@ -276,6 +276,10 @@ func RemoveState(environment Environment, expectedDigest string) error {
 		root.Close()
 		return installError("BRIDGE_INSTALL_STATE_CONFLICT", "Bridge state changed before removal", inspectErr)
 	}
+	if err := removeSessionFeatureEvidence(root); err != nil {
+		root.Close()
+		return err
+	}
 	if err := root.Remove("install.json"); err != nil {
 		root.Close()
 		return installError("BRIDGE_INSTALL_IO", "remove Bridge state", err)
@@ -283,6 +287,20 @@ func RemoveState(environment Environment, expectedDigest string) error {
 	syncRoot(root)
 	root.Close()
 	removeEmptyManagedRoot(environment.StateRoot)
+	return nil
+}
+
+func removeSessionFeatureEvidence(root *os.Root) error {
+	info, err := root.Lstat("features")
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return unsafePath("Bridge feature evidence root is unsafe", err)
+	}
+	if err := root.RemoveAll("features"); err != nil {
+		return installError("BRIDGE_INSTALL_IO", "remove Bridge feature evidence", err)
+	}
 	return nil
 }
 

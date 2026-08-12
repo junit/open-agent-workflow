@@ -14,7 +14,7 @@ import (
 
 var observedMetadataMethods = []string{"config/read", "hooks/list", "skills/list"}
 
-func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, snapshot config.Snapshot, report discovery.Report, inventory host.BindingInventory, resolution core.ResolutionResult, bridgeVersion string) (Facts, error) {
+func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, snapshot config.Snapshot, report discovery.Report, inventory host.BindingInventory, resolution core.ResolutionResult, bridgeVersion string, featureObservations ...host.FeatureObservation) (Facts, error) {
 	rebuilt, err := host.ValidateBindingInventory(inventory)
 	if err != nil || inventory.HostID != "codex" {
 		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Skill inventory is not canonical", err)
@@ -44,6 +44,10 @@ func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, 
 	if err != nil {
 		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Codex Host Manifest is invalid", err)
 	}
+	features, err := normalizeLiveFeatureObservations(featureObservations)
+	if err != nil {
+		return Facts{}, err
+	}
 	session, err := host.NewSessionSnapshot(manifest, host.SessionSnapshot{
 		SchemaVersion:           host.HostSessionSchemaV3,
 		HostID:                  "codex",
@@ -53,25 +57,57 @@ func AssembleFacts(context HookContext, metadata appserver.MetadataObservation, 
 		ManifestDigest:          manifest.Digest,
 		SupportedTopologies:     []execution.Topology{execution.TopologyCurrent},
 		ProviderInventoryDigest: rebuilt.Digest,
-		FeatureObservations:     []host.FeatureObservation{},
+		FeatureObservations:     features,
 		HostActionObservations:  []host.HostActionObservation{},
 		EnvironmentReportDigest: environment.Digest,
 	})
 	if err != nil {
 		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Codex Host Session cannot be assembled", err)
 	}
+	reporterIdentityDigest, _, err := canonicaljson.Digest(struct {
+		SchemaVersion      string `json:"schema_version"`
+		HostID             string `json:"host_id"`
+		IntegrationID      string `json:"integration_id"`
+		IntegrationVersion string `json:"integration_version"`
+		SessionID          string `json:"session_id"`
+		ProjectRoot        string `json:"project_root"`
+		ManifestDigest     string `json:"manifest_digest"`
+		BridgeProtocol     string `json:"bridge_protocol"`
+		HookContextSchema  string `json:"hook_context_schema"`
+		PluginVersion      string `json:"plugin_version"`
+		CodexVersion       string `json:"codex_version"`
+	}{
+		"oaw.codex-reporter-identity/v1", "codex", BridgeIntegrationID, BridgeIntegrationVersion,
+		context.SessionID, snapshot.Record().ProjectRoot, manifest.Digest, BridgeProtocolVersion, HookContextSchemaV2,
+		versionEvidence.PluginVersion, versionEvidence.CodexVersion,
+	})
+	if err != nil {
+		return Facts{}, NewError("HOST_OBSERVATION_FAILED", "Codex reporter identity cannot be canonicalized", err)
+	}
 	return Facts{
 		Session: session, Inventory: rebuilt, Environment: environment,
 		Configuration: snapshot, Discovery: report, Resolutions: resolution.Report, Registry: resolution.Registry,
-		VersionEvidence: versionEvidence,
+		VersionEvidence: versionEvidence, ReporterIdentityDigest: reporterIdentityDigest,
 		FactDigests: FactDigests{
-			Session: session.Digest, Inventory: rebuilt.Digest, Environment: environment.Digest,
+			Session: session.Digest, Reporter: reporterIdentityDigest, Inventory: rebuilt.Digest, Environment: environment.Digest,
 			Features: session.FeatureDigest, Actions: session.HostActionDigest,
 			Configuration: snapshot.Digest(), Discovery: report.Digest(),
 			Resolution: resolution.Report.Digest(), Registry: resolution.Registry.Digest(),
 			Version: versionEvidence.Digest,
 		},
 	}, nil
+}
+
+func normalizeLiveFeatureObservations(values []host.FeatureObservation) ([]host.FeatureObservation, error) {
+	result := make([]host.FeatureObservation, len(values))
+	for index, value := range values {
+		normalized, err := host.NewFeatureObservation(value)
+		if err != nil || normalized.Feature != host.FeatureChildDelegation || normalized.State != host.AvailabilityAvailable || normalized.Source != host.SourceNativeAPI {
+			return nil, NewError("HOST_OBSERVATION_FAILED", "delegation evidence is not a live Codex observation", err)
+		}
+		result[index] = normalized
+	}
+	return result, nil
 }
 
 func validateMetadataObservation(context HookContext, metadata appserver.MetadataObservation, bridgeVersion string) error {

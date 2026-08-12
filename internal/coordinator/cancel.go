@@ -39,8 +39,7 @@ func (engine *Engine) cancel(command Command) (Result, error) {
 		snapshot.Revision = nextRevision
 		diagnostics := []Diagnostic{}
 		event := "WORKFLOW_CANCELLED"
-		invocationUncertain := snapshot.ActiveGrant != nil &&
-			(snapshot.Status == StatusInFlight || snapshot.Status == StatusPaused) && !command.Cancel.InvocationTerminal
+		invocationUncertain := snapshot.ActiveGrant != nil
 		if invocationUncertain {
 			snapshot.Status = StatusPaused
 			diagnostics = []Diagnostic{{Code: "WORKFLOW_CANCELLATION_PENDING", Detail: "Host invocation termination is not confirmed"}}

@@ -78,7 +78,7 @@ type ProfileEligibility struct {
 	RecipeID             string                      `json:"recipe_id"`
 	Eligible             bool                        `json:"eligible"`
 	Topology             execution.Topology          `json:"topology"`
-	Diagnostics          []profile.CompileDiagnostic `json:"diagnostics"`
+	Diagnostics          []profile.CompileDiagnostic `json:"diagnostics"` // Canonical diagnostics for this eligibility decision.
 	Preview              SelectionPreview            `json:"preview"`
 	Recommended          bool                        `json:"recommended"`
 	RecommendationReason string                      `json:"recommendation_reason,omitempty"`
@@ -91,7 +91,7 @@ type AddOnEligibility struct {
 	Kind        catalog.AddOnKind           `json:"kind"`
 	SlotID      catalog.SlotID              `json:"slot_id"`
 	Eligible    bool                        `json:"eligible"`
-	Diagnostics []profile.CompileDiagnostic `json:"diagnostics"`
+	Diagnostics []profile.CompileDiagnostic `json:"diagnostics"` // Canonical diagnostics for this eligibility decision.
 	Preview     SelectionPreview            `json:"preview"`
 }
 
@@ -108,6 +108,7 @@ type LifecycleBundle struct {
 	RecipeDigest            string                                `json:"recipe_digest"`
 	HostID                  string                                `json:"host_id"`
 	HostSessionDigest       string                                `json:"host_session_digest"`
+	ReporterIdentityDigest  string                                `json:"reporter_identity_digest"`
 	HostManifestDigest      string                                `json:"host_manifest_digest"`
 	EnvironmentReportDigest string                                `json:"environment_report_digest"`
 	ProviderInventoryDigest string                                `json:"provider_inventory_digest"`

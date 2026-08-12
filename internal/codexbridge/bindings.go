@@ -22,12 +22,14 @@ const maximumSkillEvidenceBytes int64 = 4 << 20
 
 func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metadata appserver.MetadataObservation, cwd string) (host.BindingInventory, []Diagnostic, error) {
 	diagnostics := make([]Diagnostic, 0)
-	add := func(code, detail string) {
-		diagnostics = append(diagnostics, NewDiagnostic(code, "binding", detail, true))
+	add := func(code, detail string, providerIDs ...string) {
+		diagnostic := NewDiagnostic(code, "binding", detail, true)
+		diagnostic.AffectedProviders, diagnostic.AffectedProfiles = diagnosticOwnership(value, providerIDs)
+		diagnostics = append(diagnostics, diagnostic)
 	}
 	empty := func() (host.BindingInventory, []Diagnostic, error) {
 		inventory, err := host.BuildBindingInventoryV3("codex", nil)
-		return inventory, diagnostics, err
+		return inventory, aggregateDiagnostics(diagnostics), err
 	}
 	if report.HostID() != "codex" || !validCanonicalPath(cwd) || metadata.Skills.CWD != cwd {
 		add("HOST_OBSERVATION_FAILED", "Skill metadata CWD does not match the requested canonical CWD")
@@ -45,22 +47,22 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 		}
 		path, err := canonicalSkillPath(entry.Path)
 		if err != nil {
-			add("PROVIDER_BINDING_CONTENT_MISMATCH", "enabled Skill path is not a physical regular SKILL.md")
+			add("PROVIDER_BINDING_CONTENT_MISMATCH", "enabled Skill path is not a physical regular SKILL.md", providerIDsForSkill(value, entry.Name)...)
 			continue
 		}
 		candidates := candidatesContaining(value, report, path)
 		if len(candidates) == 0 {
-			add("HOST_SKILL_ORPHAN", "enabled Skill is outside every discovered Candidate")
+			add("HOST_SKILL_ORPHAN", "enabled Skill is outside every discovered Candidate", providerIDsForSkill(value, entry.Name)...)
 			continue
 		}
 		if len(candidates) != 1 {
-			add("HOST_SKILL_INSTALLATION_AMBIGUOUS", "Skill path belongs to more than one Candidate")
+			add("HOST_SKILL_INSTALLATION_AMBIGUOUS", "Skill path belongs to more than one Candidate", candidateProviderIDs(candidates)...)
 			continue
 		}
 		candidate := candidates[0]
 		bindings := skillBindings(value, candidate, entry.Name)
 		if len(bindings) == 0 {
-			add("HOST_BINDING_EVIDENCE_REQUIRED", "no declared Skill binding matches the enabled Skill")
+			add("HOST_BINDING_EVIDENCE_REQUIRED", "no declared Skill binding matches the enabled Skill", candidate.ProviderID)
 			continue
 		}
 
@@ -68,28 +70,28 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 		for _, binding := range bindings {
 			topologies := intersectTopologies(binding.SupportedTopologies, []execution.Topology{execution.TopologyCurrent})
 			if len(topologies) == 0 {
-				add("HOST_BINDING_TOPOLOGY_UNAVAILABLE", "declared Skill binding does not support CURRENT")
+				add("HOST_BINDING_TOPOLOGY_UNAVAILABLE", "declared Skill binding does not support CURRENT", candidate.ProviderID)
 				continue
 			}
 			rootEvidence, found := bindingRoot(candidate.BindingRoots, binding.ID)
 			if !found {
-				add("PROVIDER_BINDING_CONTENT_MISMATCH", "discovery did not attest the declared Binding tree")
+				add("PROVIDER_BINDING_CONTENT_MISMATCH", "discovery did not attest the declared Binding tree", candidate.ProviderID)
 				continue
 			}
 			root, err := physicalBindingRoot(candidate, binding)
 			if err != nil {
-				add("PROVIDER_BINDING_CONTENT_MISMATCH", "declared Binding InstallRoot is not a physical tree")
+				add("PROVIDER_BINDING_CONTENT_MISMATCH", "declared Binding InstallRoot is not a physical tree", candidate.ProviderID)
 				continue
 			}
 			if path != filepath.Join(root, "SKILL.md") {
-				add("HOST_BINDING_INSTALL_ROOT_MISMATCH", "enabled Skill does not belong to the exact declared InstallRoot")
+				add("HOST_BINDING_INSTALL_ROOT_MISMATCH", "enabled Skill does not belong to the exact declared InstallRoot", candidate.ProviderID)
 				continue
 			}
 			matchedRoot = true
-			tree, err := integrity.DigestTree(root)
+			tree, err := digestLiveBindingRoot(candidate, binding)
 			if err != nil || rootEvidence.BindingID != binding.ID || rootEvidence.ContentRoot != binding.ContentRoot ||
 				rootEvidence.InstallRoot != binding.InstallRoot || tree.RootDigest != rootEvidence.Tree.RootDigest || tree.RootDigest != binding.TreeDigest {
-				add("PROVIDER_BINDING_CONTENT_MISMATCH", "live Binding tree differs from Descriptor and discovery evidence")
+				add("PROVIDER_BINDING_CONTENT_MISMATCH", "live Binding tree differs from Descriptor and discovery evidence", candidate.ProviderID)
 				continue
 			}
 			evidenceDigest, _, err := canonicaljson.Digest(struct {
@@ -132,7 +134,90 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 	if err != nil {
 		return host.BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill inventory cannot be normalized", err)
 	}
-	return inventory, diagnostics, nil
+	return inventory, aggregateDiagnostics(diagnostics), nil
+}
+
+func digestLiveBindingRoot(candidate discovery.Candidate, binding catalog.BindingRecord) (integrity.TreeEvidence, error) {
+	if !validCanonicalPath(candidate.DiagnosticLocation) {
+		return integrity.TreeEvidence{}, errors.New("invalid Binding installation root")
+	}
+	return integrity.DigestBindingRoot(candidate.DiagnosticLocation, binding.InstallRoot, binding.ContentRoot)
+}
+
+func providerIDsForSkill(value catalog.Catalog, skillName string) []string {
+	providerIDs := make([]string, 0)
+	for _, provider := range value.Providers() {
+		for _, binding := range provider.Bindings {
+			if binding.Host == "codex" && binding.Kind == catalog.BindingSkill && binding.Reference == skillName {
+				providerIDs = append(providerIDs, provider.ID)
+				break
+			}
+		}
+	}
+	return sortedUniqueDiagnosticOwners(providerIDs)
+}
+
+func candidateProviderIDs(values []discovery.Candidate) []string {
+	providerIDs := make([]string, 0, len(values))
+	for _, value := range values {
+		providerIDs = append(providerIDs, value.ProviderID)
+	}
+	return sortedUniqueDiagnosticOwners(providerIDs)
+}
+
+func diagnosticOwnership(value catalog.Catalog, providerIDs []string) ([]string, []string) {
+	providers := sortedUniqueDiagnosticOwners(providerIDs)
+	providerSet := make(map[string]struct{}, len(providers))
+	for _, providerID := range providers {
+		providerSet[providerID] = struct{}{}
+	}
+	recipeProfiles := make(map[string][]string)
+	for _, alias := range value.Aliases() {
+		recipeProfiles[alias.RecipeID] = append(recipeProfiles[alias.RecipeID], alias.Alias)
+	}
+	profiles := make([]string, 0)
+	for _, recipe := range value.Recipes() {
+		if recipeUsesProvider(recipe, providerSet) {
+			aliases := recipeProfiles[recipe.ID]
+			profiles = append(profiles, aliases...)
+			if len(aliases) == 0 && !strings.HasPrefix(recipe.ID, "oaw/") {
+				profiles = append(profiles, "USER-DEFINED")
+			}
+		}
+	}
+	return providers, sortedUniqueDiagnosticOwners(profiles)
+}
+
+func recipeUsesProvider(recipe catalog.ProfileRecipeRecord, providers map[string]struct{}) bool {
+	uses := func(providerID string) bool {
+		_, found := providers[providerID]
+		return found
+	}
+	for _, slot := range recipe.Slots {
+		for _, step := range slot.Pipeline {
+			if uses(step.Selector.ProviderID) {
+				return true
+			}
+		}
+	}
+	for _, addOn := range recipe.AddOns {
+		if uses(addOn.Selector.ProviderID) {
+			return true
+		}
+	}
+	for _, route := range recipe.IncidentRoutes {
+		if uses(route.Handler.ProviderID) {
+			return true
+		}
+	}
+	for _, overlay := range recipe.Overlays {
+		for _, paused := range overlay.PausedBindings {
+			if uses(paused.ProviderID) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func canonicalSkillPath(value string) (string, error) {

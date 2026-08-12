@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,6 +36,73 @@ func TestCodexBridgeCurrentWorkflowTranscript(t *testing.T) {
 	if started.Snapshot == nil || len(started.Snapshot.Bundles) != 1 ||
 		started.Snapshot.Bundles[0].HostSessionDigest[:16] != inspection.HostSummary.SessionDigest {
 		t.Fatalf("started=%#v", started)
+	}
+}
+
+func TestSPFullCurrentConfirmationRequiresLiveChildDelegation(t *testing.T) {
+	fixture := newCodexBridgeFixtureWithDelegation(t, true)
+
+	assertUserDefinedCurrentUnavailable(t, callInspectThroughMCP(
+		t, fixture, callObserveThroughMCP(t, fixture).HostEvidenceHandle,
+	))
+
+	foreignContext := fixture.hostContext
+	foreignContext.SessionID = "bridge-blackbox-foreign-session"
+	recordSubagentStartThroughCLI(t, foreignContext)
+	assertUserDefinedCurrentUnavailable(t, callInspectThroughMCP(
+		t, fixture, callObserveThroughMCP(t, fixture).HostEvidenceHandle,
+	))
+
+	recordSubagentStartThroughCLI(t, fixture.hostContext)
+	inspection := callInspectThroughMCP(t, fixture, callObserveThroughMCP(t, fixture).HostEvidenceHandle)
+	eligibility := userDefinedCurrentEligibility(t, inspection)
+	if !eligibility.Eligible || eligibility.Preview.Graph == nil || eligibility.Preview.Selection.ConfirmationDigest == "" || len(eligibility.Diagnostics) != 0 {
+		t.Fatalf("exact SubagentStart evidence did not make CURRENT eligible: %#v", eligibility)
+	}
+}
+
+func assertUserDefinedCurrentUnavailable(t *testing.T, inspection codexbridge.CoreInspectOutput) {
+	t.Helper()
+	eligibility := userDefinedCurrentEligibility(t, inspection)
+	if eligibility.Eligible || eligibility.Preview.Graph != nil || eligibility.Preview.Selection.ConfirmationDigest != "" {
+		t.Fatalf("CURRENT became eligible without exact SubagentStart evidence: %#v", eligibility)
+	}
+	for _, diagnostic := range eligibility.Diagnostics {
+		if diagnostic.Code == "HOST_FEATURE_UNATTESTED" && diagnostic.BindingID == "codex-delivery" {
+			return
+		}
+	}
+	t.Fatalf("CURRENT did not retain its child-delegation diagnostic: %#v", eligibility)
+}
+
+func userDefinedCurrentEligibility(t *testing.T, inspection codexbridge.CoreInspectOutput) core.ProfileEligibility {
+	t.Helper()
+	if inspection.Compilation == nil {
+		t.Fatalf("inspection omitted Workflow compilation: %#v", inspection)
+	}
+	for _, eligibility := range inspection.Compilation.EligibleProfiles {
+		if eligibility.Profile == core.UserDefinedProfile && eligibility.Topology == execution.TopologyCurrent {
+			return eligibility
+		}
+	}
+	t.Fatalf("USER-DEFINED / CURRENT eligibility missing: %#v", inspection.Compilation.EligibleProfiles)
+	return core.ProfileEligibility{}
+}
+
+func recordSubagentStartThroughCLI(t *testing.T, hostContext codexbridge.HookContext) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{
+		"session_id": hostContext.SessionID, "transcript_path": "/private/transcript.jsonl",
+		"turn_id": hostContext.TurnID, "cwd": hostContext.CWD, "hook_event_name": "SubagentStart",
+		"model": hostContext.Model, "permission_mode": hostContext.PermissionMode,
+		"agent_id": "agent-private", "agent_type": "reviewer",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	if status := cli.RunWithInput([]string{"bridge", "hook", "codex"}, bytes.NewReader(raw), io.Discard, &stderr); status != 0 || stderr.Len() != 0 {
+		t.Fatalf("SubagentStart Hook status=%d stderr=%q", status, stderr.String())
 	}
 }
 
@@ -76,12 +144,22 @@ func (observer codexBridgeObserver) Observe(_ context.Context, cwd string) (apps
 }
 
 func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
+	return newCodexBridgeFixtureWithDelegation(t, false)
+}
+
+func newCodexBridgeFixtureWithDelegation(t *testing.T, requireChild bool) codexBridgeFixture {
 	t.Helper()
 	projectRoot := t.TempDir()
 	userHome := t.TempDir()
 	userConfigRoot := t.TempDir()
+	stateHome := t.TempDir()
+	dataHome := t.TempDir()
+	t.Setenv("HOME", userHome)
+	t.Setenv("XDG_STATE_HOME", stateHome)
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	t.Chdir(projectRoot)
 	metadata := appserver.MetadataObservation{
-		Skills: appserver.SkillsEntry{Errors: []appserver.MetadataError{}, Skills: installUserDefinedSkillFixture(t, userHome, userConfigRoot)},
+		Skills: appserver.SkillsEntry{Errors: []appserver.MetadataError{}, Skills: installUserDefinedSkillFixture(t, userHome, userConfigRoot, requireChild)},
 		Hooks:  appserver.HooksEntry{Errors: []appserver.MetadataError{}, Warnings: []string{}, Hooks: []appserver.HookMetadata{}},
 		Config: appserver.ConfigProjection{
 			CWDObserved: true, SandboxDisposition: "host-configured", MCPDisposition: "host-configured",
@@ -95,8 +173,16 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 		Model: "gpt-test", PermissionMode: "workspace-write",
 	}
 	observer := codexBridgeObserver{metadata: metadata}
+	featureStore, err := codexbridge.NewSessionFeatureEvidenceStore(codexbridge.SessionFeatureEvidenceOptions{
+		Root: filepath.Join(stateHome, "open-agent-workflow", "codex-bridge", "features"),
+		TTL:  codexbridge.SessionFeatureEvidenceTTL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	service, err := codexbridge.NewService(codexbridge.ServiceOptions{
-		Observer: observer, Store: codexbridge.NewEvidenceStore(codexbridge.CacheOptions{MaximumEntries: 8}),
+		Observer: observer, FeatureObserver: featureStore,
+		Store:     codexbridge.NewEvidenceStore(codexbridge.CacheOptions{MaximumEntries: 8}),
 		StateRoot: t.TempDir(), ProjectRoot: projectRoot, UserConfigRoot: userConfigRoot,
 		UserHome: userHome, BridgeVersion: "1.2.3",
 	})
@@ -110,7 +196,7 @@ func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
 	}
 }
 
-func installUserDefinedSkillFixture(t *testing.T, userHome, userConfigRoot string) []appserver.SkillMetadata {
+func installUserDefinedSkillFixture(t *testing.T, userHome, userConfigRoot string, requireChild bool) []appserver.SkillMetadata {
 	t.Helper()
 	installRoot := filepath.Join(userHome, ".codex", "plugins", "acme")
 	skillRoot := filepath.Join(installRoot, "skills", "delivery")
@@ -148,7 +234,7 @@ func installUserDefinedSkillFixture(t *testing.T, userHome, userConfigRoot strin
 			Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:delivery", Invocation: catalog.InvocationModel,
 			Responsibilities: claims, InputArtifact: "oaw.workflow-artifact/v1", OutputArtifact: "oaw.workflow-artifact/v1",
 			MaximumEffects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project-worktree"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{}, StageSpan: stageSpan,
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{Child: requireChild}, StageSpan: stageSpan,
 			InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
 		}},
 		Capabilities: []catalog.CapabilityRecord{{

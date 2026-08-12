@@ -140,8 +140,9 @@ func profileBindingObservations(t testing.TB, available catalog.Catalog, options
 	t.Helper()
 	result := []host.BindingObservation{}
 	for _, provider := range available.Providers() {
+		distribution := profileFixtureDistributionForHost(t, provider, options.hostID)
 		for _, binding := range provider.Bindings {
-			if binding.Host != options.hostID || !options.complete && binding.Kind != catalog.BindingSkill {
+			if binding.Host != options.hostID || binding.DistributionID != distribution.ID || !options.complete && binding.Kind != catalog.BindingSkill {
 				continue
 			}
 			observation, err := host.NewBindingObservation(host.BindingObservation{
@@ -262,6 +263,7 @@ func profileEffectiveRegistry(t testing.TB, available catalog.Catalog, inventory
 		capabilities: map[string]registry.VerifiedCapability{},
 	}
 	for _, provider := range available.Providers() {
+		distribution := profileFixtureDistributionForHost(t, provider, hostID)
 		verifiedBindings := []registry.VerifiedBinding{}
 		for _, binding := range provider.Bindings {
 			observation, found := observed[provider.ID+"\x00"+binding.ID]
@@ -269,8 +271,8 @@ func profileEffectiveRegistry(t testing.TB, available catalog.Catalog, inventory
 				continue
 			}
 			verified := registry.VerifiedBinding{
-				BindingID: binding.ID, DistributionID: binding.DistributionID, DistributionRevision: provider.Distributions[0].Revision,
-				DistributionTreeDigest: provider.Distributions[0].TreeDigest, Surface: binding.Surface, Kind: binding.Kind,
+				BindingID: binding.ID, DistributionID: binding.DistributionID, DistributionRevision: distribution.Revision,
+				DistributionTreeDigest: distribution.TreeDigest, Surface: binding.Surface, Kind: binding.Kind,
 				Reference: binding.Reference, Invocation: binding.Invocation, BindingTreeDigest: binding.TreeDigest,
 				SupportedTopologies: append([]execution.Topology{}, observation.Topologies...), Delegation: binding.Delegation,
 				Provenance: discovery.ProvenanceDistributionAttested, BindingEvidenceDigest: observation.Digest,
@@ -302,8 +304,8 @@ func profileEffectiveRegistry(t testing.TB, available catalog.Catalog, inventory
 		}
 		instance := registry.ProviderInstance{
 			ProviderID: provider.ID, HostID: hostID, DescriptorDigest: descriptorDigest,
-			DistributionID: provider.Distributions[0].ID, DistributionRevision: provider.Distributions[0].Revision,
-			DistributionTreeDigest: provider.Distributions[0].TreeDigest, InstallationKey: profileInstallationKey(provider.ID),
+			DistributionID: distribution.ID, DistributionRevision: distribution.Revision,
+			DistributionTreeDigest: distribution.TreeDigest, InstallationKey: profileInstallationKey(provider.ID),
 			ConfigurationDigest: canonicaljson.DigestBytes([]byte(provider.ID + "/configuration")), BindingInventoryDigest: inventory.Digest,
 			EvidenceDigest: canonicaljson.DigestBytes([]byte(provider.ID + "/evidence/" + inventory.Digest)),
 			Bindings:       verifiedBindings, Capabilities: verifiedCapabilities,
@@ -321,6 +323,32 @@ func profileEffectiveRegistry(t testing.TB, available catalog.Catalog, inventory
 		Providers []registry.ProviderInstance `json:"providers"`
 	}{hostID, inventory.Digest, result.providers})
 	return result
+}
+
+func profileFixtureDistributionForHost(t testing.TB, provider catalog.ProviderDescriptorRecord, hostID string) catalog.DistributionRecord {
+	t.Helper()
+	distributionID := ""
+	if provider.ID == "oaw/superpowers" {
+		switch hostID {
+		case "codex":
+			distributionID = "superpowers-codex"
+		case "claude":
+			distributionID = "superpowers"
+		}
+	}
+	if distributionID == "" {
+		if len(provider.Distributions) != 1 {
+			t.Fatalf("Provider %s has no fixture Distribution for Host %s", provider.ID, hostID)
+		}
+		return provider.Distributions[0]
+	}
+	for _, distribution := range provider.Distributions {
+		if distribution.ID == distributionID {
+			return distribution
+		}
+	}
+	t.Fatalf("Provider %s is missing fixture Distribution %s", provider.ID, distributionID)
+	return catalog.DistributionRecord{}
 }
 
 func profileRecordDigest(value registry.ProviderInstance) string {

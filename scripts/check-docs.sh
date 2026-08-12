@@ -176,7 +176,7 @@ for current_document_path in \
     [ -n "$forbidden_literal" ] || continue
     if grep -nF -- "$forbidden_literal" "$current_document_path" \
       >"$CHECK_TEMP/forbidden-execution-vocabulary-matches"; then
-      while IFS=: read -r line_number ignored_match; do
+      while IFS=: read -r line_number _; do
         printf '%s:%s:%s\n' "$current_document" "$line_number" \
           "$forbidden_literal" >>"$CHECK_VIOLATIONS"
       done <"$CHECK_TEMP/forbidden-execution-vocabulary-matches"
@@ -224,7 +224,7 @@ for current_document_path in \
     [ -n "$forbidden_claim" ] || continue
     if grep -nF -- "$forbidden_claim" "$current_document_path" \
       >"$CHECK_TEMP/forbidden-authority-claim-matches"; then
-      while IFS=: read -r line_number ignored_match; do
+      while IFS=: read -r line_number _; do
         printf 'docs: error: forbidden positive authority claim: %s:%s:%s\n' \
           "$current_document" "$line_number" "$forbidden_claim" >&2
       done <"$CHECK_TEMP/forbidden-authority-claim-matches"
@@ -355,9 +355,11 @@ for comparison_document in docs/en/comparison.md docs/zh/comparison.md; do
   for upstream_revision in \
     84fdeffd12f2ee307994d1eb6feb48173b6e0502 \
     44c9b2d6e889982ac18c27d05a19fefe335194e1 \
+    11c74d6ba24d3a6d48f54a194cd00ef3beea18f9 \
     2d46e80e0925c7be0907f18c1812311ac212a6c5; do
     require_literal "$comparison_document" "$upstream_revision"
   done
+  require_literal "$comparison_document" 'superpowers-codex'
 done
 
 cat >"$CHECK_TEMP/provider-surface-version-tuple" <<'EOF'
@@ -389,6 +391,9 @@ for bridge_document in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
   require_literal "$bridge_document" '2.0.0'
   require_literal "$bridge_document" 'proof_scope: installation-integrity'
   require_literal "$bridge_document" 'live_protocol_proof: false'
+  require_literal "$bridge_document" 'SubagentStart'
+  require_literal "$bridge_document" 'child-delegation'
+  require_literal "$bridge_document" 'agents.enabled'
 done
 
 for lifecycle_document in policy/ENGINEERING.md docs/en/lifecycle.md docs/zh/lifecycle.md; do
@@ -423,10 +428,13 @@ for binding_document in \
   require_literal "$binding_document" 'tools'
 done
 
-require_literal README.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
-require_literal README-zh.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
-require_literal docs/en/architecture.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
-require_literal docs/zh/architecture.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
+require_literal README.md 'after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation`'
+require_literal README-zh.md '在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`'
+require_literal docs/en/architecture.md '`SubagentStart` event can additionally prove `child-delegation` for the exact'
+require_literal docs/zh/architecture.md '有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`'
+require_literal policy/ENGINEERING.md 'Startup Gate Host capability probe'
+require_literal policy/ENGINEERING.md 'explicitly requested a Profile and topology'
+require_literal policy/ENGINEERING.md 'Governance observation'
 
 cat >"$CHECK_TEMP/activation-policy-contract" <<'EOF'
 Native Host is the default. It is not an OAW Request Mode.
@@ -589,6 +597,9 @@ for troubleshooting_document in docs/en/troubleshooting.md docs/zh/troubleshooti
     WORKFLOW_STATE_UNSUPPORTED; do
     require_literal "$troubleshooting_document" "$provider_surface_reason"
   done
+  require_literal "$troubleshooting_document" 'bounded native child probe'
+  require_literal "$troubleshooting_document" 'Startup Gate'
+  require_literal "$troubleshooting_document" 'observe_current'
 done
 
 require_literal internal/assets/providers/oaw-matt.json '"id":"oaw/matt"'
@@ -644,7 +655,7 @@ for current_document_path in \
     [ -n "$forbidden_claim" ] || continue
     if grep -nF -- "$forbidden_claim" "$current_document_path" \
       >"$CHECK_TEMP/forbidden-provider-claim-matches"; then
-      while IFS=: read -r line_number ignored_match; do
+      while IFS=: read -r line_number _; do
         printf 'docs: error: forbidden provider claim: %s:%s:%s\n' \
           "$current_document" "$line_number" "$forbidden_claim" >&2
       done <"$CHECK_TEMP/forbidden-provider-claim-matches"

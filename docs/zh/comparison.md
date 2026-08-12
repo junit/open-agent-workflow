@@ -24,11 +24,17 @@ Coordinator 记录 Workflow State，Agent Host 执行 `CURRENT` 或原生 `SUBAG
 
 本对比固定到 source revision，不通过名称推断：
 
-| Provider | Upstream | 审计 revision |
-| --- | --- | --- |
-| Matt | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
-| Superpowers | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
-| ECC | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+| Provider | Distribution | Source | 审计 revision |
+| --- | --- | --- | --- |
+| Matt | `matt-skills` | `https://github.com/mattpocock/skills` | `84fdeffd12f2ee307994d1eb6feb48173b6e0502` |
+| Superpowers | `superpowers` | `https://github.com/obra/superpowers` | `44c9b2d6e889982ac18c27d05a19fefe335194e1` |
+| Superpowers | `superpowers-codex` | `https://github.com/openai/plugins`（`plugins/superpowers`） | `11c74d6ba24d3a6d48f54a194cd00ef3beea18f9` |
+| ECC | `ecc` | `https://github.com/affaan-m/ECC` | `2d46e80e0925c7be0907f18c1812311ac212a6c5` |
+
+两条 Superpowers 记录仍属于同一个 Provider `oaw/superpowers`。它们是不可互换的已审计
+Distribution：Claude 与 Codex 直接上游安装使用 obra 完整树，Codex packaged 安装使用
+OpenAI plugin 完整树。每个 Distribution 精确校验自己的完整树，不忽略文件，也不增加
+Profile。
 
 审计名称按 surface 区分。Matt 从 `grill-with-docs` 开始，并使用 `to-spec`、
 `to-tickets`、`implement`、`tdd`、`diagnosing-bugs` 与 `code-review`。

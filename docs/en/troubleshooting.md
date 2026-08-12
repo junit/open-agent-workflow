@@ -172,18 +172,24 @@ oaw bridge check codex --format json
 ```
 
 The management check proves file and registration state only. It always reports
-`current_session_loaded: false`; only trusted `observe_current` Hook input in a
-fresh Codex session can establish current-session evidence.
+`current_session_loaded: false`; that means the management command did not
+observe the active session, not that the active session is unloaded. Only
+trusted `observe_current` Hook input can establish current-session evidence.
 
 Text mode states `proof_scope: installation-integrity` and
 `live_protocol_proof: false`. Never cite that result as live Bridge proof. A
-reported update or required new session is an operator decision; stop before
-START until it is explicitly performed and a fresh observation succeeds.
+reported installation drift, real installed-version mismatch, or
+installation-authority mismatch stops START. A management-only
+`requires_new_session` value is operator advice and does not block a fresh
+`observe_current` call in the same active session. A successful
+`observe_current` response with canonical VersionEvidence is authoritative for
+the active session. Stop if live observation instead returns
+`HOST_BRIDGE_PROTOCOL_MISMATCH` or another version/authority diagnostic.
 
 | Reason | Diagnosis and recovery |
 | --- | --- |
 | `HOST_BRIDGE_UNAVAILABLE` | The Plugin or MCP Bridge is unavailable. Install or enable it, inspect Codex `/hooks`, and start a new session. |
-| `HOST_BRIDGE_CONTEXT_REQUIRED` | MCP was called without trusted Hook context. Review and trust the exact four Hook matchers, then start a new session. |
+| `HOST_BRIDGE_CONTEXT_REQUIRED` | `observe_current` was called without trusted `PreToolUse` Hook context. Review its exact tool matcher plus `SubagentStart`, trust them, then start a new session. Later operations use the opaque evidence handle and do not accept public Hook context. |
 | `HOST_BRIDGE_PROTOCOL_MISMATCH` | The complete v4/v3/v2 VersionEvidence tuple differs. Stop; after explicit operator authorization, update the Bridge, review Hooks, start a new session, and observe again. |
 | `HOST_EVIDENCE_HANDLE_REQUIRED` | A later operation omitted its current handle. Call `observe_current` and retry with the returned handle. |
 | `HOST_EVIDENCE_HANDLE_INVALID` | The handle is malformed, edited, unknown, evicted, or from a restarted Bridge. Discard it and call `observe_current` again. |
@@ -191,10 +197,10 @@ START until it is explicitly performed and a fresh observation succeeds.
 | `HOST_EVIDENCE_SESSION_MISMATCH` | The handle belongs to another session or working directory. Stop before mutation and observe again in the current session. |
 | `HOST_OBSERVATION_FAILED` | Required stable metadata, especially `skills/list`, failed. Repair the local Codex/App Server capability; affected Providers remain unverified. |
 | `HOST_OBSERVATION_PARTIAL` | Optional Hook or configuration metadata is incomplete. Keep unavailable fields `unknown`; do not infer inheritance. |
-| `HOST_SESSION_CHANGED` | Facts pinned by the active Bundle changed. Pause, observe again, return to the Startup Gate, and compile a new Bundle generation. |
+| `HOST_SESSION_CHANGED` | Stable reporter identity changed, or refreshed authority facts cannot issue the next Dispatch. Recovery commands remain reachable. Converge an already issued Dispatch with its matching Receipt from the original reporter; otherwise observe again and compile a new generation before `PREPARE`. |
 | `PROVIDER_BINDING_CONTENT_MISMATCH` | The exact enabled Skill or complete Binding tree differs from the pinned Distribution evidence. Repair or select the exact trusted installation; never accept a same-name or partial-tree match. |
 | `BINDING_EXPLICIT_INVOCATION_REQUIRED` | A human-explicit Binding lacks current Host/user invocation attestation. Obtain that exact invocation or stop; prompt text is not attestation. |
-| `HOST_FEATURE_UNATTESTED` | A Recipe needs child, nested-child, or another live feature that the current Host did not attest. Use an eligible Recipe/topology or repair stable Host evidence. |
+| `HOST_FEATURE_UNATTESTED` | A Recipe needs child, nested-child, or another live feature that the current Host did not attest. If the user explicitly requested the Profile/topology and its only blocker is a child-only reviewer requirement, the Startup Gate may run one zero-project-effect bounded native child probe as a Governance observation, then call `observe_current` and inspect again. Otherwise use an eligible Recipe/topology or repair stable Host evidence. A new session alone does not attest delegation. |
 | `HOST_ACTION_UNAVAILABLE` | A required `workspace.prepare-or-confirm`, `verification.execute`, or `closeout.execute` action is unavailable. Supply an exact verified Host procedure or choose another eligible Recipe. |
 
 `skills/list` is the required v2 Skill-observation authority; optional
@@ -216,7 +222,7 @@ than installation management:
 | `SUBAGENT_UNAVAILABLE` | The active Host session cannot create a native child. Return to the Startup Gate and select `CURRENT`, or repair native Host support; never launch a model process as fallback. |
 | `MACRO_INTERNAL_CONFLICT` | Expansion found a duplicate owner or uncredited internal call. Fix the versioned Recipe so credit and dispatch edges execute exactly once. |
 | `PROFILE_TOPOLOGY_UNAVAILABLE` | The Profile, Binding, delegation, or active Host cannot support the requested topology. Return to the Startup Gate; do not simulate the topology. |
-| `HOST_SESSION_CHANGED` | Session identity, topology availability, or a pinned Host fact digest changed. Discard the stale Dispatch Packet, obtain a new Host session report, and recompile eligibility before dispatch. |
+| `HOST_SESSION_CHANGED` | Stable reporter identity changed, or refreshed authority facts no longer support a new Dispatch. Do not forge a Receipt from a new session. The original reporter may still converge an issued Dispatch; otherwise recompile before the next `PREPARE`. |
 
 For an explicit pre-release state reset, first stop every client using the
 Workflow, verify the exact path under

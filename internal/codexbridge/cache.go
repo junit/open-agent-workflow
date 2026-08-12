@@ -20,6 +20,7 @@ import (
 type EvidenceStore interface {
 	Put(HookContext, Facts) (HostEvidenceHandle, error)
 	Get(HostEvidenceHandle) (Facts, error)
+	GetWithContext(HostEvidenceHandle) (Facts, HookContext, error)
 	Reset()
 }
 
@@ -114,25 +115,33 @@ func (store *evidenceStore) Put(context HookContext, facts Facts) (HostEvidenceH
 }
 
 func (store *evidenceStore) Get(handle HostEvidenceHandle) (Facts, error) {
+	facts, _, err := store.GetWithContext(handle)
+	return facts, err
+}
+
+func (store *evidenceStore) GetWithContext(handle HostEvidenceHandle) (Facts, HookContext, error) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	element, found := store.entries[handle.Token]
 	if !found || handle.Token == "" {
-		return Facts{}, NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host evidence handle is unknown", nil)
+		return Facts{}, HookContext{}, NewError("HOST_EVIDENCE_HANDLE_INVALID", "Host evidence handle is unknown", nil)
 	}
 	entry := element.Value.(*cacheEntry)
 	if handle.Version != entry.handle.Version ||
 		subtle.ConstantTimeCompare([]byte(handle.SessionDigest), []byte(digestHeader("session", entry.sessionID))) != 1 ||
 		subtle.ConstantTimeCompare([]byte(handle.CWDDigest), []byte(digestHeader("cwd", entry.cwd))) != 1 {
-		return Facts{}, NewError("HOST_EVIDENCE_SESSION_MISMATCH", "handle headers do not match the cached Host context", nil)
+		return Facts{}, HookContext{}, NewError("HOST_EVIDENCE_SESSION_MISMATCH", "handle headers do not match the cached Host context", nil)
 	}
 	now := store.now()
 	if now.Before(entry.issued) || !now.Before(entry.expires) {
 		store.removeElement(element)
-		return Facts{}, NewError("HOST_EVIDENCE_EXPIRED", "Host evidence handle has expired", nil)
+		return Facts{}, HookContext{}, NewError("HOST_EVIDENCE_EXPIRED", "Host evidence handle has expired", nil)
 	}
 	store.lru.MoveToFront(element)
-	return cloneFacts(entry.facts), nil
+	return cloneFacts(entry.facts), HookContext{
+		SchemaVersion: HookContextSchemaV2, BridgeProtocolVersion: BridgeProtocolVersion,
+		SessionID: entry.sessionID, CWD: entry.cwd,
+	}, nil
 }
 
 func (store *evidenceStore) Reset() {

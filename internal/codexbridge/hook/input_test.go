@@ -66,6 +66,31 @@ func TestHookInputV2AcceptsOnlyFourBridgeTools(t *testing.T) {
 	}
 }
 
+func TestParseSubagentStartRequiresClosedDocumentAndReportedIdentity(t *testing.T) {
+	valid := []byte(`{"session_id":"session-a","transcript_path":"/private/transcript.jsonl","turn_id":"turn-a","cwd":"/repo","hook_event_name":"SubagentStart","model":"gpt-test","permission_mode":"default","agent_id":"agent-private-a","agent_type":"reviewer"}`)
+	input, err := ParseSubagentStart(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if input.SessionID != "session-a" || input.TurnID != "turn-a" || input.CWD != "/repo" ||
+		input.AgentID != "agent-private-a" || input.AgentType != "reviewer" || input.HookEventName != "SubagentStart" {
+		t.Fatalf("input = %#v", input)
+	}
+	nullTranscript := []byte(`{"session_id":"session-a","transcript_path":null,"turn_id":"turn-a","cwd":"/repo","hook_event_name":"SubagentStart","model":"gpt-test","permission_mode":"default","agent_id":"agent-private-a","agent_type":"reviewer"}`)
+	if input, err := ParseSubagentStart(nullTranscript); err != nil || input.TranscriptPath != nil {
+		t.Fatalf("null transcript input = %#v, error = %v", input, err)
+	}
+	for _, raw := range [][]byte{
+		[]byte(`{"session_id":"session-a","turn_id":"turn-a","cwd":"/repo","hook_event_name":"SubagentStart","model":"gpt-test","permission_mode":"default","agent_type":"reviewer"}`),
+		[]byte(`{"session_id":"session-a","turn_id":"turn-a","cwd":"/repo","hook_event_name":"SubagentStop","model":"gpt-test","permission_mode":"default","agent_id":"agent-a","agent_type":"reviewer"}`),
+		[]byte(`{"session_id":"session-a","turn_id":"turn-a","cwd":"/repo","hook_event_name":"SubagentStart","model":"gpt-test","permission_mode":"default","agent_id":"agent-a","agent_type":"reviewer","prompt":"private"}`),
+	} {
+		if _, err := ParseSubagentStart(raw); codexbridge.Code(err) != "HOST_BRIDGE_CONTEXT_REQUIRED" {
+			t.Fatalf("raw=%s error=%v", raw, err)
+		}
+	}
+}
+
 func TestProcessMalformedInputReturnsDeny(t *testing.T) {
 	result, err := ProcessPreToolUse([]byte(`{"hook_event_name":"PreToolUse"}`))
 	if err != nil || result.HookSpecificOutput == nil || result.HookSpecificOutput.PermissionDecision != "deny" {

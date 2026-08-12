@@ -91,6 +91,11 @@ func FailedReceipt(t testing.TB, identity ReceiptIdentity, handle, code string) 
 	}})
 }
 
+func CancelledReceipt(t testing.TB, identity ReceiptIdentity, handle string) host.InvocationReceipt {
+	t.Helper()
+	return newReceipt(t, identity, host.ReceiptCancelled, handle, "cancelled", "", nil, nil)
+}
+
 func currentEnvironment(t testing.TB, sessionID string) host.EnvironmentReport {
 	t.Helper()
 	report, err := host.NewEnvironmentReport(host.EnvironmentReport{

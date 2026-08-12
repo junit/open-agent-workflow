@@ -495,24 +495,30 @@ func validateSettingsAgainstCatalog(settings ProviderSettings, value catalog.Cat
 	}
 	for _, preference := range settings.Preferences {
 		capability, found := capabilities[preference.CapabilityID]
-		if !found || preference.ProviderID != provider.ID || preference.HostID != settings.HostID || !resolvesOneBinding(*provider, capability, preference) {
+		if !found || preference.ProviderID != provider.ID || preference.HostID != settings.HostID || !resolvesOneBindingPerProviderInstance(*provider, capability, preference) {
 			return fmt.Errorf("BINDING_PREFERENCE_UNDECLARED: %s/%s", settings.ProviderID, preference.CapabilityID)
 		}
 	}
 	return nil
 }
 
-func resolvesOneBinding(provider catalog.ProviderDescriptorRecord, capability catalog.CapabilityRecord, preference BindingPreference) bool {
+func resolvesOneBindingPerProviderInstance(provider catalog.ProviderDescriptorRecord, capability catalog.CapabilityRecord, preference BindingPreference) bool {
 	matches := 0
+	instances := make(map[string]struct{})
 	for _, bindingID := range capability.BindingRefs {
 		for _, binding := range provider.Bindings {
 			if binding.ID == bindingID && binding.Host == preference.HostID && binding.Kind == catalog.BindingKind(preference.Kind) && binding.Reference == preference.Reference {
+				instanceKey := binding.DistributionID + "\x00" + binding.Surface
+				if _, duplicate := instances[instanceKey]; duplicate {
+					return false
+				}
+				instances[instanceKey] = struct{}{}
 				matches++
 				break
 			}
 		}
 	}
-	return matches == 1
+	return matches > 0
 }
 
 func (snapshot Snapshot) Digest() string { return snapshot.digest }

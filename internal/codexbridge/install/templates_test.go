@@ -44,6 +44,22 @@ func TestRenderPluginHasExactSurface(t *testing.T) {
 	assertPluginManifest(t, files["plugins/oaw-codex-host/.codex-plugin/plugin.json"])
 	assertDirectMCPMap(t, files["plugins/oaw-codex-host/.mcp.json"], "/state/bin/oaw")
 	assertExactMatchers(t, files["plugins/oaw-codex-host/hooks/hooks.json"], quotePOSIX("/state/bin/oaw")+" bridge hook codex")
+	skill := string(files["plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md"])
+	for _, required := range []string{
+		"Startup Gate selection",
+		"cooperative same-user evidence",
+		"does not",
+		"authenticate Hook provenance",
+		"hand-authored JSON",
+		"with copied Host fields",
+	} {
+		if !strings.Contains(skill, required) {
+			t.Fatalf("Bridge Skill is missing trust-boundary text %q", required)
+		}
+	}
+	if strings.Contains(skill, "already selected Open Agent Workflow") {
+		t.Fatal("Bridge Skill trigger excludes Startup Gate selection")
+	}
 	assertMarketplaceSource(t, files[".agents/plugins/marketplace.json"])
 }
 
@@ -118,6 +134,15 @@ func TestRenderedProjectionRejectsEverySurfaceDrift(t *testing.T) {
 				t.Fatal(err)
 			}
 			document.Hooks.PreToolUse = document.Hooks.PreToolUse[:3]
+			files[path], _ = json.Marshal(document)
+		}},
+		{name: "subagent start hook", mutate: func(files map[string][]byte) {
+			path := "plugins/oaw-codex-host/hooks/hooks.json"
+			var document hookDocument
+			if err := json.Unmarshal(files[path], &document); err != nil {
+				t.Fatal(err)
+			}
+			document.Hooks.SubagentStart = nil
 			files[path], _ = json.Marshal(document)
 		}},
 		{name: "marketplace", mutate: func(files map[string][]byte) {
@@ -236,7 +261,8 @@ func assertExactMatchers(t *testing.T, content []byte, command string) {
 		Hooks   []handlerProjection `json:"hooks"`
 	}
 	type hooksProjection struct {
-		PreToolUse []matcherProjection `json:"PreToolUse"`
+		PreToolUse    []matcherProjection `json:"PreToolUse"`
+		SubagentStart []matcherProjection `json:"SubagentStart"`
 	}
 	type documentProjection struct {
 		Hooks hooksProjection `json:"hooks"`
@@ -259,6 +285,11 @@ func assertExactMatchers(t *testing.T, content []byte, command string) {
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("PreToolUse matchers = %q, want %q", got, want)
+	}
+	if len(document.Hooks.SubagentStart) != 1 || document.Hooks.SubagentStart[0].Matcher != "*" ||
+		len(document.Hooks.SubagentStart[0].Hooks) != 1 || document.Hooks.SubagentStart[0].Hooks[0].Type != "command" ||
+		document.Hooks.SubagentStart[0].Hooks[0].Command != command {
+		t.Fatalf("SubagentStart hook = %#v", document.Hooks.SubagentStart)
 	}
 }
 

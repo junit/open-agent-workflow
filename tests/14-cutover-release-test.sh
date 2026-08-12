@@ -376,7 +376,7 @@ run_host_native_contract() {
   fi
 
   set +e
-  OAW_HOST_NATIVE_TRANSCRIPT= bash "$host_native_script" \
+  OAW_HOST_NATIVE_TRANSCRIPT='' bash "$host_native_script" \
     >"$CUTOVER_TEMP/host-native-unset.stdout" \
     2>"$CUTOVER_TEMP/host-native-unset.stderr"
   unset_status=$?

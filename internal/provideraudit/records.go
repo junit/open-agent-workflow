@@ -37,6 +37,7 @@ type BindingCheckout struct {
 
 type Checkout struct {
 	ProviderID       string            `json:"provider_id"`
+	DistributionID   string            `json:"distribution_id"`
 	SourceURI        string            `json:"source_uri"`
 	Revision         string            `json:"revision"`
 	Root             string            `json:"root"`
@@ -71,12 +72,18 @@ type bindingSpec struct {
 }
 
 type providerSpec struct {
-	ID             string
-	SourceURI      string
-	Revision       string
+	ID               string
+	SourceURI        string
+	Revision         string
+	DistributionID   string
+	DistributionRoot string
+	Bindings         []bindingSpec
+	EvidenceRoots    []string
+}
+
+type sourceKey struct {
+	ProviderID     string
 	DistributionID string
-	Bindings       []bindingSpec
-	EvidenceRoots  []string
 }
 
 var (
@@ -89,7 +96,7 @@ var (
 
 var lockedProviderSpecs = []providerSpec{
 	{
-		ID: "oaw/matt", SourceURI: "https://github.com/mattpocock/skills", Revision: "84fdeffd12f2ee307994d1eb6feb48173b6e0502", DistributionID: "matt-skills",
+		ID: "oaw/matt", SourceURI: "https://github.com/mattpocock/skills", Revision: "84fdeffd12f2ee307994d1eb6feb48173b6e0502", DistributionID: "matt-skills", DistributionRoot: ".",
 		Bindings: hostSkillBindings([]skillRoot{
 			{"grill-with-docs", "skills/engineering/grill-with-docs", "grill-with-docs"},
 			{"grilling", "skills/productivity/grilling", "grilling"},
@@ -104,24 +111,17 @@ var lockedProviderSpecs = []providerSpec{
 		EvidenceRoots: []string{".agents/invocation.md", ".claude-plugin/plugin.json", "README.md"},
 	},
 	{
-		ID: "oaw/superpowers", SourceURI: "https://github.com/obra/superpowers", Revision: "44c9b2d6e889982ac18c27d05a19fefe335194e1", DistributionID: "superpowers",
-		Bindings: hostSkillBindings([]skillRoot{
-			{"brainstorming", "skills/brainstorming", "skills/brainstorming"},
-			{"writing-plans", "skills/writing-plans", "skills/writing-plans"},
-			{"using-git-worktrees", "skills/using-git-worktrees", "skills/using-git-worktrees"},
-			{"subagent-driven-development", "skills/subagent-driven-development", "skills/subagent-driven-development"},
-			{"executing-plans", "skills/executing-plans", "skills/executing-plans"},
-			{"test-driven-development", "skills/test-driven-development", "skills/test-driven-development"},
-			{"systematic-debugging", "skills/systematic-debugging", "skills/systematic-debugging"},
-			{"requesting-code-review", "skills/requesting-code-review", "skills/requesting-code-review"},
-			{"receiving-code-review", "skills/receiving-code-review", "skills/receiving-code-review"},
-			{"verification-before-completion", "skills/verification-before-completion", "skills/verification-before-completion"},
-			{"finishing-a-development-branch", "skills/finishing-a-development-branch", "skills/finishing-a-development-branch"},
-		}, true),
+		ID: "oaw/superpowers", SourceURI: "https://github.com/obra/superpowers", Revision: "44c9b2d6e889982ac18c27d05a19fefe335194e1", DistributionID: "superpowers", DistributionRoot: ".",
+		Bindings:      qualifiedSkillBindings(superpowersSkillRoots(), []string{"codex-upstream", "claude"}, true),
 		EvidenceRoots: []string{"README.md", "RELEASE-NOTES.md", "skills/using-superpowers"},
 	},
 	{
-		ID: "oaw/ecc", SourceURI: "https://github.com/affaan-m/ECC", Revision: "2d46e80e0925c7be0907f18c1812311ac212a6c5", DistributionID: "ecc",
+		ID: "oaw/superpowers", SourceURI: "https://github.com/openai/plugins", Revision: "11c74d6ba24d3a6d48f54a194cd00ef3beea18f9", DistributionID: "superpowers-codex", DistributionRoot: "plugins/superpowers",
+		Bindings:      qualifiedSkillBindings(superpowersSkillRoots(), []string{"codex"}, true),
+		EvidenceRoots: []string{".codex-plugin/plugin.json", "README.md", "skills/using-superpowers"},
+	},
+	{
+		ID: "oaw/ecc", SourceURI: "https://github.com/affaan-m/ECC", Revision: "2d46e80e0925c7be0907f18c1812311ac212a6c5", DistributionID: "ecc", DistributionRoot: ".",
 		Bindings:      eccBindings(),
 		EvidenceRoots: []string{".codex-plugin/plugin.json", "AGENTS.md", "hooks"},
 	},
@@ -134,17 +134,37 @@ type skillRoot struct {
 }
 
 func hostSkillBindings(values []skillRoot, superpowersNamespace bool) []bindingSpec {
-	result := make([]bindingSpec, 0, len(values)*2)
-	for _, hostName := range []string{"codex", "claude"} {
+	return qualifiedSkillBindings(values, []string{"codex", "claude"}, superpowersNamespace)
+}
+
+func qualifiedSkillBindings(values []skillRoot, prefixes []string, superpowersNamespace bool) []bindingSpec {
+	result := make([]bindingSpec, 0, len(values)*len(prefixes))
+	for _, prefix := range prefixes {
 		for _, value := range values {
 			reference := value.Name
 			if superpowersNamespace {
 				reference = "superpowers:" + value.Name
 			}
-			result = append(result, bindingSpec{ID: hostName + "-" + value.Name, ContentRoot: value.ContentRoot, InstallRoot: value.InstallRoot, Kind: "skill", References: []string{reference}})
+			result = append(result, bindingSpec{ID: prefix + "-" + value.Name, ContentRoot: value.ContentRoot, InstallRoot: value.InstallRoot, Kind: "skill", References: []string{reference}})
 		}
 	}
 	return result
+}
+
+func superpowersSkillRoots() []skillRoot {
+	return []skillRoot{
+		{"brainstorming", "skills/brainstorming", "skills/brainstorming"},
+		{"writing-plans", "skills/writing-plans", "skills/writing-plans"},
+		{"using-git-worktrees", "skills/using-git-worktrees", "skills/using-git-worktrees"},
+		{"subagent-driven-development", "skills/subagent-driven-development", "skills/subagent-driven-development"},
+		{"executing-plans", "skills/executing-plans", "skills/executing-plans"},
+		{"test-driven-development", "skills/test-driven-development", "skills/test-driven-development"},
+		{"systematic-debugging", "skills/systematic-debugging", "skills/systematic-debugging"},
+		{"requesting-code-review", "skills/requesting-code-review", "skills/requesting-code-review"},
+		{"receiving-code-review", "skills/receiving-code-review", "skills/receiving-code-review"},
+		{"verification-before-completion", "skills/verification-before-completion", "skills/verification-before-completion"},
+		{"finishing-a-development-branch", "skills/finishing-a-development-branch", "skills/finishing-a-development-branch"},
+	}
 }
 
 func eccBindings() []bindingSpec {
@@ -200,7 +220,7 @@ func Validate(value Manifest) error {
 	}
 	for index, spec := range lockedProviderSpecs {
 		provider := value.Providers[index]
-		if provider.ProviderID != spec.ID || provider.SourceURI != spec.SourceURI || provider.Revision != spec.Revision || provider.DistributionID != spec.DistributionID || provider.DistributionRoot != "." || !revisionPattern.MatchString(provider.Revision) || !treeDigestPattern.MatchString(provider.DistributionTreeDigest) || len(provider.Bindings) != len(spec.Bindings) || !reflect.DeepEqual(provider.EvidenceRoots, spec.EvidenceRoots) {
+		if provider.ProviderID != spec.ID || provider.SourceURI != spec.SourceURI || provider.Revision != spec.Revision || provider.DistributionID != spec.DistributionID || provider.DistributionRoot != spec.DistributionRoot || !revisionPattern.MatchString(provider.Revision) || !treeDigestPattern.MatchString(provider.DistributionTreeDigest) || len(provider.Bindings) != len(spec.Bindings) || !reflect.DeepEqual(provider.EvidenceRoots, spec.EvidenceRoots) {
 			return invalidAudit("Provider source pin mismatch", nil)
 		}
 		seen := make(map[string]struct{}, len(provider.Bindings))
@@ -214,7 +234,7 @@ func Validate(value Manifest) error {
 				return invalidAudit("Binding source mapping mismatch", nil)
 			}
 		}
-		if !qualifiedIDPattern.MatchString(provider.ProviderID) || !validLocalID(provider.DistributionID) {
+		if !qualifiedIDPattern.MatchString(provider.ProviderID) || !validLocalID(provider.DistributionID) || !cleanRelative(provider.DistributionRoot, true) {
 			return invalidAudit("invalid Provider identity", nil)
 		}
 	}
@@ -246,22 +266,28 @@ func (value Manifest) Binding(providerID, bindingID string) (BindingSource, bool
 	return BindingSource{}, false
 }
 
-func LockedCheckouts(mattRoot, superpowersRoot, eccRoot string) []Checkout {
-	roots := map[string]string{"oaw/matt": mattRoot, "oaw/superpowers": superpowersRoot, "oaw/ecc": eccRoot}
+func LockedCheckouts(mattRoot, superpowersRoot, openaiPluginsRoot, eccRoot string) []Checkout {
+	roots := map[sourceKey]string{
+		{ProviderID: "oaw/matt", DistributionID: "matt-skills"}:              mattRoot,
+		{ProviderID: "oaw/superpowers", DistributionID: "superpowers"}:       superpowersRoot,
+		{ProviderID: "oaw/superpowers", DistributionID: "superpowers-codex"}: openaiPluginsRoot,
+		{ProviderID: "oaw/ecc", DistributionID: "ecc"}:                       eccRoot,
+	}
 	result := make([]Checkout, len(lockedProviderSpecs))
 	for index, spec := range lockedProviderSpecs {
 		bindings := make([]BindingCheckout, len(spec.Bindings))
 		for bindingIndex, binding := range spec.Bindings {
 			bindings[bindingIndex] = BindingCheckout{ID: binding.ID, ContentRoot: binding.ContentRoot, InstallRoot: binding.InstallRoot, Root: binding.ContentRoot}
 		}
-		result[index] = Checkout{ProviderID: spec.ID, SourceURI: spec.SourceURI, Revision: spec.Revision, Root: roots[spec.ID], DistributionRoot: ".", BindingRoots: bindings}
+		key := sourceKey{ProviderID: spec.ID, DistributionID: spec.DistributionID}
+		result[index] = Checkout{ProviderID: spec.ID, DistributionID: spec.DistributionID, SourceURI: spec.SourceURI, Revision: spec.Revision, Root: roots[key], DistributionRoot: spec.DistributionRoot, BindingRoots: bindings}
 	}
 	return result
 }
 
-func LockedRevision(providerID string) (string, bool) {
+func LockedRevision(providerID, distributionID string) (string, bool) {
 	for _, spec := range lockedProviderSpecs {
-		if spec.ID == providerID {
+		if spec.ID == providerID && spec.DistributionID == distributionID {
 			return spec.Revision, true
 		}
 	}

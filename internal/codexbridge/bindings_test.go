@@ -6,10 +6,12 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
 	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
 func TestBuildBindingInventoryMatchesPathAndName(t *testing.T) {
@@ -38,6 +40,25 @@ func TestBindingTreeRejectsSiblingDriftAfterDiscovery(t *testing.T) {
 	}
 	if len(inventory.Observations) != 0 || !hasDiagnostic(diagnostics, "PROVIDER_BINDING_CONTENT_MISMATCH") {
 		t.Fatalf("inventory=%#v diagnostics=%#v", inventory, diagnostics)
+	}
+}
+
+func TestLiveBindingRootUsesRootedDigestForRegularFile(t *testing.T) {
+	installation := t.TempDir()
+	writeSkillFixture(t, filepath.Join(installation, "agents/reviewer.md"), "reviewer")
+	candidate := discovery.Candidate{DiagnosticLocation: installation}
+	binding := catalog.BindingRecord{InstallRoot: "agents/reviewer.md", ContentRoot: "agents/reviewer.md"}
+
+	got, err := digestLiveBindingRoot(candidate, binding)
+	if err != nil {
+		t.Fatalf("digestLiveBindingRoot() error = %v", err)
+	}
+	want, err := integrity.DigestBindingRoot(installation, binding.InstallRoot, binding.ContentRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RootDigest != want.RootDigest || len(got.Entries) != 1 || got.Entries[0].Path != binding.ContentRoot {
+		t.Fatalf("live evidence = %#v, want %#v", got, want)
 	}
 }
 
@@ -101,6 +122,39 @@ func TestBuildBindingInventoryRejectsDisabledOrphanAndUnboundSkills(t *testing.T
 	}
 	if !hasDiagnostic(diagnostics, "HOST_SKILL_ORPHAN") || !hasDiagnostic(diagnostics, "HOST_BINDING_EVIDENCE_REQUIRED") {
 		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+}
+
+func TestBuildBindingInventoryAggregatesRepeatedSkillDiagnosticsWithOwnership(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
+	unbound := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills/unbound/SKILL.md")
+	writeSkillFixture(t, unbound, "unbound")
+	metadata := appserver.MetadataObservation{Skills: appserver.SkillsEntry{CWD: fixture.Home, Skills: []appserver.SkillMetadata{
+		{Name: "unbound", Enabled: true, Path: unbound, Scope: "user"},
+		{Name: "unbound", Enabled: true, Path: unbound, Scope: "user"},
+		{Name: "unbound", Enabled: true, Path: unbound, Scope: "user"},
+	}}}
+
+	_, diagnostics, err := BuildBindingInventory(fixture.Catalog, fixture.Discovery, metadata, fixture.Home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(diagnostics) != 1 || diagnostics[0].Code != "HOST_BINDING_EVIDENCE_REQUIRED" {
+		t.Fatalf("diagnostics=%#v", diagnostics)
+	}
+	if !slices.Equal(diagnostics[0].AffectedProviders, []string{"acme/suite"}) {
+		t.Fatalf("affected providers=%q", diagnostics[0].AffectedProviders)
+	}
+}
+
+func TestDiagnosticOwnershipIncludesProfilesForKnownProvider(t *testing.T) {
+	value, err := builtin.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	providers, profiles := diagnosticOwnership(value, []string{"oaw/superpowers"})
+	if !slices.Equal(providers, []string{"oaw/superpowers"}) || !slices.Equal(profiles, []string{"MATT-SP-HYBRID", "SP-FULL"}) {
+		t.Fatalf("providers=%q profiles=%q", providers, profiles)
 	}
 }
 

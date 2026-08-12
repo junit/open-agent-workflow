@@ -141,7 +141,8 @@ func verifyStartCompilation(request core.CompilationRequest, result core.Compila
 func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleBundle) error {
 	if bundle.SchemaVersion != core.LifecycleBundleSchemaV4 || !validStableID("bundle-", bundle.ID) || bundle.DeliverableID != request.DeliverableID ||
 		bundle.InputDigest != request.InputDigest || bundle.Generation != request.Generation || bundle.ClassificationDigest != request.Classification.Digest() ||
-		bundle.HostID != request.Host.Record().HostID || bundle.HostSessionDigest != request.Host.Record().SessionDigest || bundle.EnvironmentReportDigest != request.Host.Record().EnvironmentDigest ||
+		bundle.HostID != request.Host.Record().HostID || bundle.HostSessionDigest != request.Host.Record().SessionDigest ||
+		bundle.ReporterIdentityDigest != request.Host.Record().ReporterIdentityDigest || bundle.EnvironmentReportDigest != request.Host.Record().EnvironmentDigest ||
 		bundle.ProviderInventoryDigest != request.Host.Record().InventoryDigest ||
 		bundle.Topology != request.Selection.Topology || bundle.ResolutionDigest != request.ResolutionDigest || bundle.RegistryDigest != request.Registry.Digest() {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle does not match trusted START inputs", nil)
@@ -154,8 +155,11 @@ func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleB
 	if err := profile.ValidateExecutionGraphRecord(bundle.Graph); err != nil {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph is invalid", err)
 	}
-	if bundle.Graph.HostID != request.Host.Record().HostID || bundle.Graph.EntrySlotID == "" || bundle.Graph.Topology != request.Selection.Topology {
-		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph topology or entry is invalid", nil)
+	if bundle.Graph.HostID != request.Host.Record().HostID || bundle.Graph.HostEvidenceDigest != request.Host.Record().Digest ||
+		bundle.Graph.RegistryDigest != request.Registry.Digest() || bundle.Graph.RecipeID != bundle.Recipe.ID ||
+		bundle.Graph.RecipeDigest != bundle.RecipeDigest || bundle.Graph.Selection.Digest != request.Selection.GraphSelectionDigest ||
+		bundle.Graph.EntrySlotID == "" || bundle.Graph.Topology != request.Selection.Topology {
+		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph authority or topology is invalid", nil)
 	}
 	if !sameCanonicalValue(bundle.ProviderInstances, bundle.Graph.ProviderInstances) || !sameCanonicalValue(bundle.EnvironmentRequirements, bundle.Graph.EnvironmentRequirements) {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph projections differ", nil)

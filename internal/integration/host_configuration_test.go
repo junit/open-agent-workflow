@@ -36,7 +36,8 @@ func TestDefaultConfigurationKeepsPolicyAndHostIntegrationsSeparate(t *testing.T
 				record.Manifest.SchemaVersion != host.HostManifestSchemaV3 ||
 				!slices.Equal(record.Manifest.BindingKinds, []catalog.BindingKind{catalog.BindingSkill}) ||
 				!slices.Equal(record.Manifest.SupportedTopologies, []execution.Topology{execution.TopologyCurrent}) ||
-				len(record.Manifest.DelegationFeatures) != 0 || len(record.Manifest.HostActions) != 0 ||
+				!slices.Equal(record.Manifest.DelegationFeatures, []host.FeatureID{host.FeatureChildDelegation}) ||
+				len(record.Manifest.HostActions) != 0 ||
 				record.Conformance == nil || record.Conformance.SchemaVersion != host.HostConformanceReportSchemaV4 ||
 				!integrationCanSupplyInventory(snapshot, record.ID) {
 				t.Fatalf("unexpected Host-native Integration: %#v", record)

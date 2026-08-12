@@ -1,8 +1,8 @@
 package main
 
 import (
-	"archive/tar"
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/provideraudit"
@@ -30,11 +31,11 @@ func run(args []string) error {
 	validateMode := flags.Bool("validate", false, "validate a committed manifest")
 	writeMode := flags.Bool("write", false, "write a manifest from pinned checkouts")
 	checkMode := flags.Bool("check", false, "compare pinned checkouts with a committed manifest")
-	exportedMode := flags.Bool("exported", false, "use roots exported from an exact pinned archive")
 	manifestPath := flags.String("manifest", "", "committed manifest path")
 	outputPath := flags.String("output", "", "output manifest path")
 	mattRoot := flags.String("matt-root", "", "Matt source checkout")
 	superpowersRoot := flags.String("superpowers-root", "", "Superpowers source checkout")
+	openaiPluginsRoot := flags.String("openai-plugins-root", "", "OpenAI plugins source checkout")
 	eccRoot := flags.String("ecc-root", "", "ECC source checkout")
 	if err := flags.Parse(args); err != nil {
 		return fmt.Errorf("CLI_ARGUMENT_INVALID: %w", err)
@@ -52,7 +53,7 @@ func run(args []string) error {
 		return fmt.Errorf("CLI_ARGUMENT_INVALID: select exactly one of --validate, --write, or --check")
 	}
 	if *validateMode {
-		if *manifestPath == "" || *outputPath != "" || *mattRoot != "" || *superpowersRoot != "" || *eccRoot != "" || *exportedMode {
+		if *manifestPath == "" || *outputPath != "" || *mattRoot != "" || *superpowersRoot != "" || *openaiPluginsRoot != "" || *eccRoot != "" {
 			return fmt.Errorf("CLI_ARGUMENT_INVALID: --validate requires only an explicit --manifest")
 		}
 		raw, err := os.ReadFile(*manifestPath)
@@ -72,16 +73,10 @@ func run(args []string) error {
 	if *checkMode && (*manifestPath == "" || *outputPath != "") {
 		return fmt.Errorf("CLI_ARGUMENT_INVALID: --check requires only an explicit --manifest")
 	}
-	if *mattRoot == "" || *superpowersRoot == "" || *eccRoot == "" {
-		return fmt.Errorf("CLI_ARGUMENT_INVALID: all three explicit Provider roots are required")
+	if *mattRoot == "" || *superpowersRoot == "" || *openaiPluginsRoot == "" || *eccRoot == "" {
+		return fmt.Errorf("CLI_ARGUMENT_INVALID: all four explicit Distribution roots are required")
 	}
-	var manifest provideraudit.Manifest
-	var err error
-	if *exportedMode {
-		manifest, err = provideraudit.Build(provideraudit.LockedCheckouts(*mattRoot, *superpowersRoot, *eccRoot))
-	} else {
-		manifest, err = buildFromPinnedGitCheckouts(*mattRoot, *superpowersRoot, *eccRoot)
-	}
+	manifest, err := buildFromPinnedGitCheckouts(*mattRoot, *superpowersRoot, *openaiPluginsRoot, *eccRoot)
 	if err != nil {
 		return err
 	}
@@ -105,8 +100,8 @@ func run(args []string) error {
 	return nil
 }
 
-func buildFromPinnedGitCheckouts(mattRoot, superpowersRoot, eccRoot string) (provideraudit.Manifest, error) {
-	checkouts := provideraudit.LockedCheckouts(mattRoot, superpowersRoot, eccRoot)
+func buildFromPinnedGitCheckouts(mattRoot, superpowersRoot, openaiPluginsRoot, eccRoot string) (provideraudit.Manifest, error) {
+	checkouts := provideraudit.LockedCheckouts(mattRoot, superpowersRoot, openaiPluginsRoot, eccRoot)
 	exportRoot, err := os.MkdirTemp("", "oaw-provider-audit-")
 	if err != nil {
 		return provideraudit.Manifest{}, err
@@ -117,7 +112,8 @@ func buildFromPinnedGitCheckouts(mattRoot, superpowersRoot, eccRoot string) (pro
 		if err := verifyGitRevision(checkout.Root, checkout.Revision); err != nil {
 			return provideraudit.Manifest{}, err
 		}
-		destination := filepath.Join(exportRoot, strings.ReplaceAll(checkout.ProviderID, "/", "-"))
+		destinationName := strings.ReplaceAll(checkout.ProviderID+"-"+checkout.DistributionID, "/", "-")
+		destination := filepath.Join(exportRoot, destinationName)
 		if err := exportGitTree(checkout.Root, checkout.Revision, destination); err != nil {
 			return provideraudit.Manifest{}, err
 		}
@@ -127,8 +123,7 @@ func buildFromPinnedGitCheckouts(mattRoot, superpowersRoot, eccRoot string) (pro
 }
 
 func verifyGitRevision(root, expected string) error {
-	command := exec.Command("git", "-C", root, "rev-parse", "HEAD")
-	output, err := command.Output()
+	output, err := gitOutput(root, "rev-parse", "HEAD")
 	if err != nil {
 		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: verify %s: %w", root, err)
 	}
@@ -139,96 +134,234 @@ func verifyGitRevision(root, expected string) error {
 }
 
 func exportGitTree(root, revision, destination string) error {
-	if err := os.MkdirAll(destination, 0o700); err != nil {
-		return err
+	if err := os.Mkdir(destination, 0o700); err != nil {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: create private export destination: %w", err)
 	}
-	command := exec.Command("git", "-C", root, "archive", "--format=tar", revision)
-	stdout, err := command.StdoutPipe()
+	removeDestination := true
+	defer func() {
+		if removeDestination {
+			_ = os.RemoveAll(destination)
+		}
+	}()
+
+	encodedTree, err := gitOutput(root, "ls-tree", "-rz", "--full-tree", revision)
+	if err != nil {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: read locked tree: %w", err)
+	}
+	entries, err := parseGitTree(encodedTree)
 	if err != nil {
 		return err
 	}
-	if err := command.Start(); err != nil {
+	for _, entry := range entries {
+		if err := exportGitTreeEntry(root, destination, entry); err != nil {
+			return err
+		}
+	}
+	removeDestination = false
+	return nil
+}
+
+type gitTreeEntry struct {
+	mode     string
+	objectID string
+	path     string
+}
+
+func parseGitTree(encoded []byte) ([]gitTreeEntry, error) {
+	entries := make([]gitTreeEntry, 0)
+	seen := make(map[string]struct{})
+	for len(encoded) > 0 {
+		terminator := bytes.IndexByte(encoded, 0)
+		if terminator < 0 {
+			return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unterminated tree entry")
+		}
+		record := encoded[:terminator]
+		encoded = encoded[terminator+1:]
+		if !utf8.Valid(record) {
+			return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: tree entry is not UTF-8")
+		}
+		metadata, name, found := bytes.Cut(record, []byte{'\t'})
+		fields := strings.Split(string(metadata), " ")
+		if !found || len(fields) != 3 || !validGitObjectID(fields[2]) {
+			return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: malformed tree entry %q", record)
+		}
+		mode, objectType := fields[0], fields[1]
+		if objectType != "blob" || (mode != "100644" && mode != "100755" && mode != "120000") {
+			return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unsupported tree entry mode %q and type %q", mode, objectType)
+		}
+		entryPath := string(name)
+		if !safeGitTreePath(entryPath) {
+			return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unsafe tree path %q", entryPath)
+		}
+		if _, duplicate := seen[entryPath]; duplicate {
+			return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: duplicate tree path %q", entryPath)
+		}
+		seen[entryPath] = struct{}{}
+		entries = append(entries, gitTreeEntry{mode: mode, objectID: fields[2], path: entryPath})
+	}
+	for _, entry := range entries {
+		for ancestor := path.Dir(entry.path); ancestor != "."; ancestor = path.Dir(ancestor) {
+			if _, conflict := seen[ancestor]; conflict {
+				return nil, fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: tree path %q has non-directory ancestor %q", entry.path, ancestor)
+			}
+		}
+	}
+	return entries, nil
+}
+
+func validGitObjectID(value string) bool {
+	if len(value) != 40 && len(value) != 64 {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
+}
+
+func safeGitTreePath(value string) bool {
+	cleaned := path.Clean(value)
+	if value == "" || !utf8.ValidString(value) || path.IsAbs(value) || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || cleaned != value || strings.Contains(value, "\\") {
+		return false
+	}
+	local := filepath.FromSlash(value)
+	return filepath.VolumeName(local) == "" && !filepath.IsAbs(local)
+}
+
+func exportGitTreeEntry(root, destination string, entry gitTreeEntry) error {
+	if err := ensurePhysicalExportParent(destination, entry.path); err != nil {
 		return err
 	}
-	archiveErr := extractTrackedArchive(tar.NewReader(stdout), destination)
-	if archiveErr != nil {
-		_ = stdout.Close()
-		_ = command.Process.Kill()
-		_ = command.Wait()
-		return archiveErr
+	content, err := gitOutput(root, "cat-file", "blob", entry.objectID)
+	if err != nil {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: read blob %s: %w", entry.objectID, err)
 	}
-	waitErr := command.Wait()
-	if waitErr != nil {
-		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: export tracked tree: %w", waitErr)
+	target := filepath.Join(destination, filepath.FromSlash(entry.path))
+	if entry.mode == "120000" {
+		linkTarget := string(content)
+		if !containedGitSymlink(destination, target, linkTarget) {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unsafe symlink target %q", linkTarget)
+		}
+		if err := os.Symlink(linkTarget, target); err != nil {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: create symlink %q: %w", entry.path, err)
+		}
+		return nil
+	}
+	mode := os.FileMode(0o600)
+	if entry.mode == "100755" {
+		mode |= 0o111
+	}
+	file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	if err != nil {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: create file %q: %w", entry.path, err)
+	}
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: set file mode %q: %w", entry.path, err)
+	}
+	written, writeErr := file.Write(content)
+	closeErr := file.Close()
+	if writeErr != nil {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: write file %q: %w", entry.path, writeErr)
+	}
+	if written != len(content) {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: write file %q: %w", entry.path, io.ErrShortWrite)
+	}
+	if closeErr != nil {
+		return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: close file %q: %w", entry.path, closeErr)
 	}
 	return nil
 }
 
-func extractTrackedArchive(reader *tar.Reader, destination string) error {
-	for {
-		header, err := reader.Next()
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		archiveName := header.Name
-		if header.Typeflag == tar.TypeDir {
-			archiveName = strings.TrimSuffix(archiveName, "/")
-		}
-		cleaned := path.Clean(archiveName)
-		if cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") || strings.HasPrefix(cleaned, "/") || cleaned != archiveName {
-			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unsafe archive path %q", header.Name)
-		}
-		target := filepath.Join(destination, filepath.FromSlash(cleaned))
-		switch header.Typeflag {
-		case tar.TypeXHeader, tar.TypeXGlobalHeader:
+func ensurePhysicalExportParent(destination, entryPath string) error {
+	parent := path.Dir(entryPath)
+	if parent == "." {
+		return nil
+	}
+	current := destination
+	for _, component := range strings.Split(parent, "/") {
+		physicalParent := current
+		current = filepath.Join(current, filepath.FromSlash(component))
+		if err := os.Mkdir(current, 0o700); err == nil {
+			if err := os.Chmod(current, 0o700); err != nil {
+				return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: set export directory mode %q: %w", parent, err)
+			}
 			continue
-		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o700); err != nil {
-				return err
+		} else if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: create export directory %q: %w", parent, err)
+		}
+		children, err := os.ReadDir(physicalParent)
+		if err != nil {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: inspect export directory %q: %w", parent, err)
+		}
+		exact := false
+		for _, child := range children {
+			if child.Name() == component {
+				exact = true
+				break
 			}
-		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return err
-			}
-			mode := os.FileMode(0o600) | os.FileMode(header.Mode&0o111)
-			file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
-			if err != nil {
-				return err
-			}
-			_, copyErr := io.CopyN(file, reader, header.Size)
-			closeErr := file.Close()
-			if copyErr != nil {
-				return copyErr
-			}
-			if closeErr != nil {
-				return closeErr
-			}
-		case tar.TypeSymlink:
-			if !containedArchiveSymlink(destination, target, header.Linkname) {
-				return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unsafe symlink target %q", header.Linkname)
-			}
-			if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
-				return err
-			}
-			if err := os.Symlink(header.Linkname, target); err != nil {
-				return err
-			}
-		default:
-			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: unsupported tracked entry type %d", header.Typeflag)
+		}
+		if !exact {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: tree path %q aliases an existing filesystem path", entryPath)
+		}
+		info, err := os.Lstat(current)
+		if err != nil {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: inspect export ancestor %q: %w", component, err)
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("PROVIDER_AUDIT_GIT_INVALID: tree path %q has non-directory filesystem ancestor %q", entryPath, component)
 		}
 	}
+	return nil
 }
 
-func containedArchiveSymlink(destination, linkPath, target string) bool {
-	if target == "" || path.IsAbs(target) || path.Clean(target) != target || strings.Contains(target, "\\") {
+func containedGitSymlink(destination, linkPath, target string) bool {
+	if target == "" || !utf8.ValidString(target) || strings.ContainsRune(target, 0) || path.IsAbs(target) || path.Clean(target) != target || strings.Contains(target, "\\") {
 		return false
 	}
 	resolved := filepath.Clean(filepath.Join(filepath.Dir(linkPath), filepath.FromSlash(target)))
 	relative, err := filepath.Rel(destination, resolved)
 	return err == nil && relative != ".." && !filepath.IsAbs(relative) && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
+}
+
+func gitOutput(root string, args ...string) ([]byte, error) {
+	command := gitCommand(root, args...)
+	output, err := command.Output()
+	if err == nil {
+		return output, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		if stderr := strings.TrimSpace(string(exitErr.Stderr)); stderr != "" {
+			return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, stderr)
+		}
+	}
+	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+}
+
+func gitCommand(root string, args ...string) *exec.Cmd {
+	gitArgs := make([]string, 0, len(args)+3)
+	gitArgs = append(gitArgs, "--no-replace-objects", "-C", root)
+	gitArgs = append(gitArgs, args...)
+	command := exec.Command("git", gitArgs...)
+	command.Env = isolatedGitEnvironment(os.Environ())
+	return command
+}
+
+func isolatedGitEnvironment(environment []string) []string {
+	result := make([]string, 0, len(environment)+5)
+	for _, entry := range environment {
+		key, _, _ := strings.Cut(entry, "=")
+		if len(key) >= 4 && strings.EqualFold(key[:4], "GIT_") {
+			continue
+		}
+		result = append(result, entry)
+	}
+	return append(result,
+		"GIT_CONFIG_NOSYSTEM=1",
+		"GIT_CONFIG_GLOBAL="+os.DevNull,
+		"GIT_CONFIG_SYSTEM="+os.DevNull,
+		"GIT_NO_LAZY_FETCH=1",
+		"GIT_TERMINAL_PROMPT=0",
+	)
 }
 
 func canonicalManifest(manifest provideraudit.Manifest) ([]byte, error) {

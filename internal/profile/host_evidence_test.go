@@ -26,6 +26,18 @@ func TestNewHostEvidencePinsOneValidatedSession(t *testing.T) {
 	}
 }
 
+func TestNewHostEvidenceWithReporterIdentityPinsExplicitDigest(t *testing.T) {
+	manifest, session, inventory, environment := hostEvidenceRecords(t, true)
+	reporterIdentity := strings.Repeat("9", 64)
+	evidence, err := profile.NewHostEvidenceWithReporterIdentity(manifest, session, inventory, environment, reporterIdentity)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evidence.Record().ReporterIdentityDigest != reporterIdentity {
+		t.Fatalf("reporter identity = %q", evidence.Record().ReporterIdentityDigest)
+	}
+}
+
 func TestNewHostEvidenceRejectsHostDigestEnvironmentOrSourceDrift(t *testing.T) {
 	manifest, session, inventory, environment := hostEvidenceRecords(t, true)
 	tests := []struct {

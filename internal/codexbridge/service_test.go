@@ -3,6 +3,7 @@ package codexbridge
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/wifibaby4u/open-agent-workflow/internal/admission"
 	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
@@ -46,6 +48,57 @@ func TestObserveCurrentPropagatesOptionalMetadataDiagnostics(t *testing.T) {
 	}
 	if !hasDiagnostic(result.HostSummary.Diagnostics, "HOST_OBSERVATION_PARTIAL") {
 		t.Fatalf("summary = %#v", result.HostSummary)
+	}
+}
+
+func TestObserveCurrentUsesOnlyExactLiveFeatureEvidence(t *testing.T) {
+	service := newTestService(t)
+	without, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	withoutFacts, err := service.getFacts(without.HostEvidenceHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(withoutFacts.Session.FeatureObservations) != 0 {
+		t.Fatalf("missing evidence became available: %#v", withoutFacts.Session.FeatureObservations)
+	}
+	live, err := host.NewFeatureObservation(host.FeatureObservation{
+		Feature: host.FeatureChildDelegation, State: host.AvailabilityAvailable, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex/subagent-start/test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.featureObserver = staticFeatureObserver{result: FeatureEvidenceResult{Observations: []host.FeatureObservation{live}}}
+	with, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	withFacts, err := service.getFacts(with.HostEvidenceHandle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(withFacts.Session.FeatureObservations, []host.FeatureObservation{live}) {
+		t.Fatalf("live features = %#v", withFacts.Session.FeatureObservations)
+	}
+}
+
+func TestObserveCurrentCapsCombinedDiagnosticsAtWireBoundary(t *testing.T) {
+	service := newTestService(t)
+	values := make([]Diagnostic, maximumObserveCurrentDiagnostics+7)
+	for index := range values {
+		values[index] = NewDiagnostic(fmt.Sprintf("TEST_MIXED_%03d", index), "observation", fmt.Sprintf("mixed diagnostic %03d", index), true)
+	}
+	service.featureObserver = staticFeatureObserver{result: FeatureEvidenceResult{Diagnostics: values}}
+	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observed.HostSummary.Diagnostics) != maximumObserveCurrentDiagnostics ||
+		observed.HostSummary.Diagnostics[len(observed.HostSummary.Diagnostics)-1].Code != "HOST_DIAGNOSTICS_TRUNCATED" {
+		t.Fatalf("wire diagnostics=%#v", observed.HostSummary.Diagnostics)
 	}
 }
 
@@ -188,7 +241,7 @@ func TestCoreInspectAndCompileUseVerifiedCurrentFacts(t *testing.T) {
 	}
 }
 
-func TestWorkflowExchangeRejectsChangedPinnedFactsBeforeMutation(t *testing.T) {
+func TestWorkflowPrepareRejectsChangedStableFactsBeforeMutation(t *testing.T) {
 	service, handle, cancel := startedWorkflow(t)
 	service.observer.(*fakeObserver).SetSandboxDisposition("unknown")
 	changed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
@@ -199,7 +252,13 @@ func TestWorkflowExchangeRejectsChangedPinnedFactsBeforeMutation(t *testing.T) {
 		t.Fatal("changed observation reused the old handle")
 	}
 	if _, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
-		HostEvidenceHandle: changed.HostEvidenceHandle, Command: publicCommand(cancel),
+		HostEvidenceHandle: changed.HostEvidenceHandle, Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+			MessageID: "message-prepare-after-environment-change", IdempotencyKey: "prepare-after-environment-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+			Prepare: &WorkflowPrepareInput{RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"},
+				TerminationCondition: "prepared", InputReferences: []WorkflowArtifactReference{}, EvidenceRequirements: []WorkflowEvidenceRequirement{}},
+		},
 	}); Code(err) != "HOST_SESSION_CHANGED" {
 		t.Fatalf("error = %v", err)
 	}
@@ -216,10 +275,230 @@ func TestWorkflowExchangeRejectsChangedPinnedFactsBeforeMutation(t *testing.T) {
 	}
 }
 
+func TestWorkflowRecoveryCommandsRemainReachableAfterDelegationEvidenceChanges(t *testing.T) {
+	for _, kind := range []coordinator.CommandKind{coordinator.CommandInspect, coordinator.CommandCancel, coordinator.CommandSwitch} {
+		t.Run(string(kind), func(t *testing.T) {
+			service, _, cancel := startedWorkflowWithFeatureEvidence(t)
+			service.featureObserver = nil
+			changed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := WorkflowCommandInput{
+				SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: kind,
+				WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+			}
+			switch kind {
+			case coordinator.CommandInspect:
+				result, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{HostEvidenceHandle: changed.HostEvidenceHandle, Command: command})
+				if err != nil || result.Revision != 1 {
+					t.Fatalf("INSPECT result=%#v error=%v", result, err)
+				}
+			case coordinator.CommandCancel:
+				command.MessageID = "message-cancel-after-feature-change"
+				command.IdempotencyKey = "cancel-after-feature-change"
+				command.Cancel = &WorkflowCancelInput{Reason: "recover after feature evidence change", InvocationTerminal: true}
+				result, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{HostEvidenceHandle: changed.HostEvidenceHandle, Command: command})
+				if err != nil || result.Snapshot == nil || result.Snapshot.Status != coordinator.StatusCancelled {
+					t.Fatalf("CANCEL result=%#v error=%v", result, err)
+				}
+			case coordinator.CommandSwitch:
+				command.MessageID = "message-switch-after-feature-change"
+				command.IdempotencyKey = "switch-after-feature-change"
+				command.Switch = &WorkflowSwitchInput{Boundary: "not-yet-stable", Selection: core.Selection{}}
+				_, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{HostEvidenceHandle: changed.HostEvidenceHandle, Command: command})
+				if Code(err) == "HOST_SESSION_CHANGED" {
+					t.Fatalf("SWITCH recovery was blocked before stable-boundary validation: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestWorkflowReceiptKeepsOriginalDispatchPinsAfterDelegationEvidenceChanges(t *testing.T) {
+	service, handle, cancel := startedWorkflowWithFeatureEvidence(t)
+	prepared, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: handle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+			MessageID: "message-prepare", IdempotencyKey: "prepare-before-feature-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+			Prepare: &WorkflowPrepareInput{
+				RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "started",
+				InputReferences: []WorkflowArtifactReference{}, EvidenceRequirements: []WorkflowEvidenceRequirement{},
+			},
+		},
+	})
+	if err != nil || prepared.Dispatch == nil {
+		t.Fatalf("PREPARE result=%#v error=%v", prepared, err)
+	}
+	service.featureObserver = nil
+	changed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: changed.HostEvidenceHandle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
+			MessageID: "message-receipt-started", IdempotencyKey: "receipt-started-after-feature-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: prepared.Revision,
+			Receipt: &WorkflowReceiptInput{Kind: host.ReceiptStarted, Outputs: []host.OutputReference{}, Evidence: []host.EvidenceReference{}},
+		},
+	})
+	if err != nil || started.Snapshot == nil || started.Snapshot.Status != coordinator.StatusInFlight {
+		t.Fatalf("RECEIPT result=%#v error=%v", started, err)
+	}
+}
+
+func TestWorkflowReceiptConvergesAfterAuthorityFactsChange(t *testing.T) {
+	service, handle, cancel := startedWorkflowWithFeatureEvidence(t)
+	prepared, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: handle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+			MessageID: "message-prepare-before-authority-change", IdempotencyKey: "prepare-before-authority-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+			Prepare: &WorkflowPrepareInput{
+				RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "started",
+				InputReferences: []WorkflowArtifactReference{}, EvidenceRequirements: []WorkflowEvidenceRequirement{},
+			},
+		},
+	})
+	if err != nil || prepared.Dispatch == nil {
+		t.Fatalf("PREPARE result=%#v error=%v", prepared, err)
+	}
+	service.observer.(*fakeObserver).SetSandboxDisposition("unknown")
+	changed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	started, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: changed.HostEvidenceHandle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
+			MessageID: "message-receipt-after-authority-change", IdempotencyKey: "receipt-after-authority-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: prepared.Revision,
+			Receipt: &WorkflowReceiptInput{Kind: host.ReceiptStarted, Outputs: []host.OutputReference{}, Evidence: []host.EvidenceReference{}},
+		},
+	})
+	if err != nil || started.Snapshot == nil || started.Snapshot.Status != coordinator.StatusInFlight {
+		t.Fatalf("RECEIPT result=%#v error=%v", started, err)
+	}
+}
+
+func TestWorkflowReceiptRejectsDifferentReporterSession(t *testing.T) {
+	service, handle, cancel := startedWorkflowWithFeatureEvidence(t)
+	prepared, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: handle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+			MessageID: "message-prepare-before-session-change", IdempotencyKey: "prepare-before-session-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+			Prepare: &WorkflowPrepareInput{
+				RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "started",
+				InputReferences: []WorkflowArtifactReference{}, EvidenceRequirements: []WorkflowEvidenceRequirement{},
+			},
+		},
+	})
+	if err != nil || prepared.Dispatch == nil {
+		t.Fatalf("PREPARE result=%#v error=%v", prepared, err)
+	}
+	changed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-2", service.projectRoot))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: changed.HostEvidenceHandle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandReceipt,
+			MessageID: "message-receipt-after-session-change", IdempotencyKey: "receipt-after-session-change",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: prepared.Revision,
+			Receipt: &WorkflowReceiptInput{Kind: host.ReceiptStarted, Outputs: []host.OutputReference{}, Evidence: []host.EvidenceReference{}},
+		},
+	})
+	if Code(err) != "HOST_SESSION_CHANGED" {
+		t.Fatalf("different reporter session error=%v", err)
+	}
+}
+
+func TestWorkflowPrepareRevalidatesOnlyCurrentUnitDelegationFeatures(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		requireChild bool
+		wantCode     string
+	}{
+		{name: "current unit has no delegation requirement", requireChild: false},
+		{name: "current unit requires fresh child delegation", requireChild: true, wantCode: "HOST_FEATURE_UNATTESTED"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service, _, cancel := startedWorkflowWithDelegationRequirement(t, test.requireChild)
+			service.featureObserver = nil
+			changed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
+			if err != nil {
+				t.Fatal(err)
+			}
+			prepared, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+				HostEvidenceHandle: changed.HostEvidenceHandle,
+				Command: WorkflowCommandInput{
+					SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+					MessageID: "message-prepare-after-feature-change", IdempotencyKey: "prepare-after-feature-change",
+					WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+					Prepare: &WorkflowPrepareInput{
+						RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "prepared",
+						InputReferences: []WorkflowArtifactReference{}, EvidenceRequirements: []WorkflowEvidenceRequirement{},
+					},
+				},
+			})
+			if test.wantCode != "" {
+				if Code(err) != test.wantCode {
+					t.Fatalf("PREPARE error=%v, want %s", err, test.wantCode)
+				}
+				return
+			}
+			if err != nil || prepared.Dispatch == nil {
+				t.Fatalf("PREPARE result=%#v error=%v", prepared, err)
+			}
+		})
+	}
+}
+
+func TestWorkflowPrepareCannotReuseHandleAfterLiveDelegationEvidenceDisappears(t *testing.T) {
+	service, staleHandle, cancel := startedWorkflowWithDelegationRequirement(t, true)
+	service.featureObserver = nil
+
+	_, err := service.WorkflowExchange(context.Background(), WorkflowExchangeInput{
+		HostEvidenceHandle: staleHandle,
+		Command: WorkflowCommandInput{
+			SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandPrepare,
+			MessageID: "message-prepare-with-stale-handle", IdempotencyKey: "prepare-with-stale-handle",
+			WorkflowID: cancel.WorkflowID, ExpectedRevision: cancel.ExpectedRevision,
+			Prepare: &WorkflowPrepareInput{
+				RequestedEffects: []string{"read-project"}, RequestedResources: []string{"project-worktree"}, TerminationCondition: "prepared",
+				InputReferences: []WorkflowArtifactReference{}, EvidenceRequirements: []WorkflowEvidenceRequirement{},
+			},
+		},
+	})
+	if Code(err) != "HOST_FEATURE_UNATTESTED" {
+		t.Fatalf("stale PREPARE handle error=%v", err)
+	}
+}
+
 type fakeObserver struct {
 	mu          sync.Mutex
 	metadata    appserver.MetadataObservation
 	diagnostics []appserver.ObservationDiagnostic
+}
+
+type staticFeatureObserver struct {
+	result FeatureEvidenceResult
+}
+
+func (observer staticFeatureObserver) ObserveFeatures(HookContext) FeatureEvidenceResult {
+	return FeatureEvidenceResult{
+		Observations: append([]host.FeatureObservation{}, observer.result.Observations...),
+		Diagnostics:  append([]Diagnostic{}, observer.result.Diagnostics...),
+	}
 }
 
 func (observer *fakeObserver) SetDiagnostics(values []appserver.ObservationDiagnostic) {
@@ -265,6 +544,7 @@ func newTestService(t *testing.T) *Service {
 	service, err := NewService(ServiceOptions{
 		Observer: observer, Store: NewEvidenceStore(CacheOptions{MaximumEntries: 8}), StateRoot: t.TempDir(),
 		ProjectRoot: projectRoot, UserConfigRoot: t.TempDir(), UserHome: t.TempDir(), BridgeVersion: "1.2.3",
+		Authority: admission.AuthorityCeiling{Effects: []string{"read-project"}, Resources: []string{"project-worktree"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -281,6 +561,10 @@ func testHookContext(sessionID, cwd string) HookContext {
 }
 
 func installUserProvider(t *testing.T, service *Service) {
+	installUserProviderWithDelegation(t, service, catalog.DelegationRequirements{})
+}
+
+func installUserProviderWithDelegation(t *testing.T, service *Service, delegation catalog.DelegationRequirements) {
 	t.Helper()
 	providerInstallRoot := filepath.Join(service.userHome, ".codex", "plugins", "acme")
 	skillRoot := filepath.Join(providerInstallRoot, "skills", "delivery")
@@ -313,7 +597,7 @@ func installUserProvider(t *testing.T, service *Service) {
 			Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:delivery", Invocation: catalog.InvocationModel,
 			Responsibilities: claims, InputArtifact: "oaw.workflow-artifact/v1", OutputArtifact: "oaw.workflow-artifact/v1",
 			MaximumEffects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project-worktree"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{}, StageSpan: stageSpan,
+			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: delegation, StageSpan: stageSpan,
 			InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
 		}},
 		Capabilities: []catalog.CapabilityRecord{{
@@ -427,7 +711,36 @@ func testDigest(value string) string {
 func startedWorkflow(t *testing.T) (*Service, HostEvidenceHandle, coordinator.Command) {
 	t.Helper()
 	service := newTestService(t)
-	installUserProvider(t, service)
+	return startWorkflowWithService(t, service)
+}
+
+func startedWorkflowWithFeatureEvidence(t *testing.T) (*Service, HostEvidenceHandle, coordinator.Command) {
+	return startedWorkflowWithDelegationRequirement(t, false)
+}
+
+func startedWorkflowWithDelegationRequirement(t *testing.T, requireChild bool) (*Service, HostEvidenceHandle, coordinator.Command) {
+	t.Helper()
+	service := newTestService(t)
+	live, err := host.NewFeatureObservation(host.FeatureObservation{
+		Feature: host.FeatureChildDelegation, State: host.AvailabilityAvailable, Source: host.SourceNativeAPI,
+		EvidenceReference: "evidence://codex/subagent-start/workflow-recovery",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.featureObserver = staticFeatureObserver{result: FeatureEvidenceResult{Observations: []host.FeatureObservation{live}}}
+	delegation := catalog.DelegationRequirements{}
+	delegation.Child = requireChild
+	return startWorkflowWithServiceAndDelegation(t, service, delegation)
+}
+
+func startWorkflowWithService(t *testing.T, service *Service) (*Service, HostEvidenceHandle, coordinator.Command) {
+	return startWorkflowWithServiceAndDelegation(t, service, catalog.DelegationRequirements{})
+}
+
+func startWorkflowWithServiceAndDelegation(t *testing.T, service *Service, delegation catalog.DelegationRequirements) (*Service, HostEvidenceHandle, coordinator.Command) {
+	t.Helper()
+	installUserProviderWithDelegation(t, service, delegation)
 	observed, err := service.ObserveCurrent(context.Background(), ObserveCurrentInput{}, testHookContext("session-1", service.projectRoot))
 	if err != nil {
 		t.Fatal(err)

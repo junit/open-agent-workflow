@@ -222,8 +222,17 @@ func TestCompileRequiresLiveDelegationForSelectedTopology(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, found := result.Graph(); found || !slices.ContainsFunc(result.Diagnostics(), func(value profile.CompileDiagnostic) bool { return value.Code == "HOST_FEATURE_UNATTESTED" }) {
+	diagnosticIndex := slices.IndexFunc(result.Diagnostics(), func(value profile.CompileDiagnostic) bool {
+		return value.Code == "HOST_FEATURE_UNATTESTED"
+	})
+	if _, found := result.Graph(); found || diagnosticIndex < 0 {
 		t.Fatalf("delegation result = %#v", result.Diagnostics())
+	}
+	detail := result.Diagnostics()[diagnosticIndex].Detail
+	for _, expected := range []string{"new session alone", "Startup Gate", "explicit Profile/topology request", "governance probe", "observe again"} {
+		if !strings.Contains(detail, expected) {
+			t.Fatalf("delegation diagnostic detail = %q, want %q", detail, expected)
+		}
 	}
 }
 

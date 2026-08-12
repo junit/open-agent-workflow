@@ -16,6 +16,21 @@ import (
 var recordDigestPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 func NewHostEvidence(manifest host.Manifest, session host.SessionSnapshot, inventory host.BindingInventory, environment host.EnvironmentReport) (HostEvidence, error) {
+	reporterIdentity, _, err := canonicaljson.Digest(struct {
+		SchemaVersion      string `json:"schema_version"`
+		HostID             string `json:"host_id"`
+		IntegrationID      string `json:"integration_id"`
+		IntegrationVersion string `json:"integration_version"`
+		SessionID          string `json:"session_id"`
+		ManifestDigest     string `json:"manifest_digest"`
+	}{"oaw.host-reporter-identity/v1", session.HostID, session.IntegrationID, session.IntegrationVersion, session.SessionID, manifest.Digest})
+	if err != nil {
+		return HostEvidence{}, fmt.Errorf("PROFILE_HOST_EVIDENCE_INVALID: reporter identity cannot be canonicalized")
+	}
+	return NewHostEvidenceWithReporterIdentity(manifest, session, inventory, environment, reporterIdentity)
+}
+
+func NewHostEvidenceWithReporterIdentity(manifest host.Manifest, session host.SessionSnapshot, inventory host.BindingInventory, environment host.EnvironmentReport, reporterIdentity string) (HostEvidence, error) {
 	normalizedManifest, err := host.NewManifest(manifest)
 	if err != nil || !reflect.DeepEqual(normalizedManifest, manifest) {
 		return HostEvidence{}, fmt.Errorf("PROFILE_HOST_EVIDENCE_INVALID: invalid Host Manifest")
@@ -36,12 +51,16 @@ func NewHostEvidence(manifest host.Manifest, session host.SessionSnapshot, inven
 		normalizedSession.EnvironmentReportDigest != environment.Digest {
 		return HostEvidence{}, fmt.Errorf("PROFILE_HOST_EVIDENCE_INVALID: Host evidence identity changed")
 	}
+	if !recordDigestPattern.MatchString(reporterIdentity) {
+		return HostEvidence{}, fmt.Errorf("PROFILE_HOST_EVIDENCE_INVALID: invalid reporter identity")
+	}
 	record := HostEvidenceRecord{
 		SchemaVersion: HostEvidenceSchemaV1, HostID: normalizedSession.HostID, Topology: environment.Topology,
 		FeatureObservations:     append([]host.FeatureObservation{}, normalizedSession.FeatureObservations...),
 		ActionObservations:      cloneHostEvidenceRecord(HostEvidenceRecord{ActionObservations: normalizedSession.HostActionObservations}).ActionObservations,
 		EnvironmentObservations: append([]execution.EnvironmentObservation{}, environment.Observations...),
-		SessionDigest:           normalizedSession.Digest, ManifestDigest: normalizedManifest.Digest, InventoryDigest: normalizedInventory.Digest,
+		SessionDigest:           normalizedSession.Digest, ReporterIdentityDigest: reporterIdentity,
+		ManifestDigest: normalizedManifest.Digest, InventoryDigest: normalizedInventory.Digest,
 		FeatureDigest: normalizedSession.FeatureDigest, ActionDigest: normalizedSession.HostActionDigest, EnvironmentDigest: environment.Digest,
 	}
 	if record.FeatureObservations == nil {
@@ -64,7 +83,8 @@ func ValidateHostEvidenceRecord(record HostEvidenceRecord) error {
 	if record.SchemaVersion != HostEvidenceSchemaV1 || record.FeatureObservations == nil || record.ActionObservations == nil || record.EnvironmentObservations == nil {
 		return fmt.Errorf("PROFILE_HOST_EVIDENCE_INVALID: incomplete record")
 	}
-	if !recordDigestPattern.MatchString(record.SessionDigest) || !recordDigestPattern.MatchString(record.ManifestDigest) || !recordDigestPattern.MatchString(record.InventoryDigest) ||
+	if !recordDigestPattern.MatchString(record.SessionDigest) || !recordDigestPattern.MatchString(record.ReporterIdentityDigest) ||
+		!recordDigestPattern.MatchString(record.ManifestDigest) || !recordDigestPattern.MatchString(record.InventoryDigest) ||
 		!recordDigestPattern.MatchString(record.FeatureDigest) || !recordDigestPattern.MatchString(record.ActionDigest) || !recordDigestPattern.MatchString(record.EnvironmentDigest) {
 		return fmt.Errorf("PROFILE_HOST_EVIDENCE_INVALID: invalid evidence pin")
 	}
