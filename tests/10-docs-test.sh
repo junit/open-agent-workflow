@@ -247,6 +247,27 @@ EOF
       'live_protocol_proof: false' \
       >>"$fixture_root/$document_path"
   done
+  printf '%s\n' \
+    'Native Host is the default. It is not an OAW Request Mode.' \
+    'Request Mode is evaluated only after explicit activation.' \
+    'Assurance Level is orthogonal to Request Mode.' \
+    policy-cooperative \
+    core-backed \
+    coordinator-backed \
+    'Activated `BOUNDED` is not a generic Skill router.' \
+    'The current `bounded_capability_defaults` interface does not define a matching predicate' \
+    'Policy-only execution supports `CURRENT`. It cannot declare `SUBAGENT` eligible' \
+    'Policy Workflow Plan' \
+    'Progress Tracker' \
+    CAPABILITY_SELECTION_REQUIRED \
+    POLICY_ONLY_PROVIDER_UNVERIFIED \
+    POLICY_ONLY_PROFILE_INCOMPLETE \
+    POLICY_ONLY_TOPOLOGY_UNAVAILABLE \
+    POLICY_ONLY_GUARANTEE_UNAVAILABLE \
+    POLICY_ONLY_CONCURRENT_MUTATION \
+    POLICY_ONLY_EXECUTION_UNCERTAIN \
+    POLICY_ONLY_CONTEXT_UNCERTAIN \
+    >>"$fixture_root/policy/ENGINEERING.md"
   for document_path in \
     policy/ENGINEERING.md docs/en/lifecycle.md docs/zh/lifecycle.md; do
     printf '%s\n' \
@@ -953,6 +974,34 @@ for policy_contract in \
   assert_contains policy/ENGINEERING.md "$policy_contract"
 done
 assert_not_contains policy/ENGINEERING.md 'CUSTOM-LOCKED'
+for activation_policy_contract in \
+  'Native Host is the default. It is not an OAW Request Mode.' \
+  'Request Mode is evaluated only after explicit activation.' \
+  'Assurance Level is orthogonal to Request Mode.' \
+  policy-cooperative \
+  core-backed \
+  coordinator-backed \
+  'Activated `BOUNDED` is not a generic Skill router.' \
+  'The current `bounded_capability_defaults` interface does not define a matching predicate' \
+  'Policy-only execution supports `CURRENT`. It cannot declare `SUBAGENT` eligible' \
+  'Policy Workflow Plan' \
+  'Progress Tracker' \
+  CAPABILITY_SELECTION_REQUIRED \
+  POLICY_ONLY_PROVIDER_UNVERIFIED \
+  POLICY_ONLY_PROFILE_INCOMPLETE \
+  POLICY_ONLY_TOPOLOGY_UNAVAILABLE \
+  POLICY_ONLY_GUARANTEE_UNAVAILABLE \
+  POLICY_ONLY_CONCURRENT_MUTATION \
+  POLICY_ONLY_EXECUTION_UNCERTAIN \
+  POLICY_ONLY_CONTEXT_UNCERTAIN; do
+  assert_contains policy/ENGINEERING.md "$activation_policy_contract"
+done
+for stale_activation_policy_contract in \
+  'Classify every new top-level engineering request as exactly one Request Mode:' \
+  'In policy-only use, the caller receives the same Core-produced Bundle' \
+  'Policy-only Hosts may coordinate the same ownership model with a local lock'; do
+  assert_not_contains policy/ENGINEERING.md "$stale_activation_policy_contract"
+done
 assert_not_contains docs/en/comparison.md 'CUSTOM-LOCKED'
 assert_not_contains docs/zh/comparison.md 'CUSTOM-LOCKED'
 pass "canonical policy distinguishes Request Modes, extensible Providers, user-defined Profiles, and Policy-only Host limits"

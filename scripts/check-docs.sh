@@ -428,6 +428,40 @@ require_literal README-zh.md '当前 Codex 只证明 `skill` binding 与 `CURREN
 require_literal docs/en/architecture.md 'Current Codex proves only `skill` bindings and `CURRENT` topology.'
 require_literal docs/zh/architecture.md '当前 Codex 只证明 `skill` binding 与 `CURRENT` topology。'
 
+cat >"$CHECK_TEMP/activation-policy-contract" <<'EOF'
+Native Host is the default. It is not an OAW Request Mode.
+Request Mode is evaluated only after explicit activation.
+Assurance Level is orthogonal to Request Mode.
+policy-cooperative
+core-backed
+coordinator-backed
+Activated `BOUNDED` is not a generic Skill router.
+The current `bounded_capability_defaults` interface does not define a matching predicate
+Policy-only execution supports `CURRENT`. It cannot declare `SUBAGENT` eligible
+Policy Workflow Plan
+Progress Tracker
+CAPABILITY_SELECTION_REQUIRED
+POLICY_ONLY_PROVIDER_UNVERIFIED
+POLICY_ONLY_PROFILE_INCOMPLETE
+POLICY_ONLY_TOPOLOGY_UNAVAILABLE
+POLICY_ONLY_GUARANTEE_UNAVAILABLE
+POLICY_ONLY_CONCURRENT_MUTATION
+POLICY_ONLY_EXECUTION_UNCERTAIN
+POLICY_ONLY_CONTEXT_UNCERTAIN
+EOF
+while IFS= read -r activation_contract; do
+  require_literal policy/ENGINEERING.md "$activation_contract"
+done <"$CHECK_TEMP/activation-policy-contract"
+
+cat >"$CHECK_TEMP/stale-activation-policy-contract" <<'EOF'
+Classify every new top-level engineering request as exactly one Request Mode:
+In policy-only use, the caller receives the same Core-produced Bundle
+Policy-only Hosts may coordinate the same ownership model with a local lock
+EOF
+while IFS= read -r stale_activation_contract; do
+  reject_literal policy/ENGINEERING.md "$stale_activation_contract"
+done <"$CHECK_TEMP/stale-activation-policy-contract"
+
 for troubleshooting_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
   for provider_surface_reason in \
     PROVIDER_BINDING_CONTENT_MISMATCH \
