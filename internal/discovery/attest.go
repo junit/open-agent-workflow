@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -106,7 +107,11 @@ func readRootedImmutableSourceManifest(rooted *os.Root, info fs.FileInfo) (immut
 	if err != nil || !sameImmutableManifestSnapshot(info, opened) || !opened.Mode().IsRegular() {
 		return immutableSourceRecord{}, true, errors.New("immutable-source manifest changed while opening")
 	}
-	decoder := json.NewDecoder(io.LimitReader(file, 64<<10+1))
+	raw, err := readImmutableManifestBytes(file)
+	if err != nil {
+		return immutableSourceRecord{}, true, err
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var record immutableSourceRecord
 	if err := decoder.Decode(&record); err != nil {
@@ -123,10 +128,29 @@ func readRootedImmutableSourceManifest(rooted *os.Root, info fs.FileInfo) (immut
 	current, inspectErr := rooted.Lstat(immutableSourceManifest)
 	if statErr != nil || inspectErr != nil || after.Size() > 64<<10 ||
 		!sameImmutableManifestSnapshot(opened, after) || !sameImmutableManifestSnapshot(info, current) ||
-		current.Mode()&os.ModeSymlink != 0 {
+		current.Mode()&os.ModeSymlink != 0 || !immutableManifestContentUnchanged(file, raw) {
 		return immutableSourceRecord{}, true, errors.New("immutable-source manifest changed while reading")
 	}
 	return record, true, nil
+}
+
+func readImmutableManifestBytes(file *os.File) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(file, 64<<10+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > 64<<10 {
+		return nil, errors.New("immutable-source manifest is too large")
+	}
+	return raw, nil
+}
+
+func immutableManifestContentUnchanged(file *os.File, expected []byte) bool {
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	current, err := readImmutableManifestBytes(file)
+	return err == nil && bytes.Equal(current, expected)
 }
 
 func sameImmutableManifestSnapshot(left, right fs.FileInfo) bool {

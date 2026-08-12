@@ -104,17 +104,25 @@ func TestRegistryWorkflowSnapshotV2EnforcesActiveDispatchState(t *testing.T) {
 		name           string
 		status         string
 		activeGrant    any
+		includeGrant   bool
 		dispatchDigest string
 		wantValid      bool
 	}{
-		{name: "prepared pair", status: "PREPARED", activeGrant: grant, dispatchDigest: digest, wantValid: true},
+		{name: "prepared pair", status: "PREPARED", activeGrant: grant, includeGrant: true, dispatchDigest: digest, wantValid: true},
 		{name: "prepared missing pair", status: "PREPARED"},
-		{name: "in flight missing dispatch", status: "IN_FLIGHT", activeGrant: grant},
-		{name: "ready active pair", status: "READY", activeGrant: grant, dispatchDigest: digest},
-		{name: "paused pair", status: "PAUSED", activeGrant: grant, dispatchDigest: digest, wantValid: true},
+		{name: "prepared null grant", status: "PREPARED", includeGrant: true, dispatchDigest: digest},
+		{name: "in flight missing dispatch", status: "IN_FLIGHT", activeGrant: grant, includeGrant: true},
+		{name: "ready explicit null", status: "READY", includeGrant: true, wantValid: true},
+		{name: "ready null with dispatch", status: "READY", includeGrant: true, dispatchDigest: digest},
+		{name: "ready active pair", status: "READY", activeGrant: grant, includeGrant: true, dispatchDigest: digest},
+		{name: "finished explicit null", status: "FINISHED", includeGrant: true, wantValid: true},
+		{name: "cancelled explicit null", status: "CANCELLED", includeGrant: true, wantValid: true},
+		{name: "paused pair", status: "PAUSED", activeGrant: grant, includeGrant: true, dispatchDigest: digest, wantValid: true},
 		{name: "paused inactive", status: "PAUSED", wantValid: true},
+		{name: "paused explicit null", status: "PAUSED", includeGrant: true, wantValid: true},
+		{name: "paused null with dispatch", status: "PAUSED", includeGrant: true, dispatchDigest: digest},
 		{name: "paused digest only", status: "PAUSED", dispatchDigest: digest},
-		{name: "paused grant only", status: "PAUSED", activeGrant: grant},
+		{name: "paused grant only", status: "PAUSED", activeGrant: grant, includeGrant: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			var snapshot map[string]any
@@ -122,7 +130,7 @@ func TestRegistryWorkflowSnapshotV2EnforcesActiveDispatchState(t *testing.T) {
 				t.Fatal(err)
 			}
 			snapshot["status"] = test.status
-			if test.activeGrant != nil {
+			if test.includeGrant {
 				snapshot["active_grant"] = test.activeGrant
 			}
 			if test.dispatchDigest != "" {

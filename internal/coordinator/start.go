@@ -44,11 +44,13 @@ func (engine *Engine) start(command Command) (Result, error) {
 		if classifyErr != nil {
 			return coordinatorError("WORKFLOW_CLASSIFICATION_FAILED", "Core classification failed", classifyErr)
 		}
+		decision = cloneClassificationDecision(decision)
 		if decision.RequestMode != classification.RequestModeWorkflow {
 			return coordinatorError("WORKFLOW_CLASSIFICATION_REQUIRED", fmt.Sprintf("START classification is %s; only WORKFLOW enters the Coordinator", decision.RequestMode), nil)
 		}
 		request := compilationRequestFromStart(engine.options, decision, *command.Start)
-		compiled, compileErr := engine.core.Compile(request)
+		compileRequest := cloneCompilationRequest(request)
+		compiled, compileErr := engine.core.Compile(compileRequest)
 		if compileErr != nil {
 			return coordinatorError("WORKFLOW_CORE_COMPILE_FAILED", "Core compilation failed", compileErr)
 		}
@@ -89,12 +91,27 @@ func (engine *Engine) start(command Command) (Result, error) {
 }
 
 func compilationRequestFromStart(options Options, decision classification.ClassificationDecision, input StartInput) core.CompilationRequest {
-	selection := input.Selection
+	selection := cloneSelection(input.Selection)
 	return core.CompilationRequest{
 		DeliverableID: input.DeliverableID, InputDigest: input.InputDigest, Generation: 1, Classification: decision,
 		Configuration: options.Configuration, ResolutionDigest: options.Resolutions.Digest(), Registry: options.Registry, Host: options.Host,
 		Selection: &selection,
 	}
+}
+
+func cloneCompilationRequest(request core.CompilationRequest) core.CompilationRequest {
+	cloned := request
+	cloned.Classification = cloneClassificationDecision(request.Classification)
+	selection := cloneSelection(*request.Selection)
+	cloned.Selection = &selection
+	return cloned
+}
+
+func cloneSelection(selection core.Selection) core.Selection {
+	selection.AddOns = append([]string{}, selection.AddOns...)
+	selection.Alternatives = append([]profile.AlternativeChoice{}, selection.Alternatives...)
+	selection.Overlays = append([]string{}, selection.Overlays...)
+	return selection
 }
 
 func startMessageDigest(input StartInput) (string, error) {
@@ -139,26 +156,37 @@ func verifyStartCompilation(request core.CompilationRequest, result core.Compila
 }
 
 func validateStartBundle(request core.CompilationRequest, bundle core.LifecycleBundle) error {
+	trustedHost := request.Host.Record()
 	if bundle.SchemaVersion != core.LifecycleBundleSchemaV4 || !validStableID("bundle-", bundle.ID) || bundle.DeliverableID != request.DeliverableID ||
 		bundle.InputDigest != request.InputDigest || bundle.Generation != request.Generation || bundle.ClassificationDigest != request.Classification.Digest() ||
-		bundle.HostID != request.Host.Record().HostID || bundle.HostSessionDigest != request.Host.Record().SessionDigest ||
-		bundle.ReporterIdentityDigest != request.Host.Record().ReporterIdentityDigest || bundle.EnvironmentReportDigest != request.Host.Record().EnvironmentDigest ||
-		bundle.ProviderInventoryDigest != request.Host.Record().InventoryDigest ||
+		bundle.HostID != trustedHost.HostID || bundle.HostSessionDigest != trustedHost.SessionDigest ||
+		bundle.ReporterIdentityDigest != trustedHost.ReporterIdentityDigest || bundle.HostManifestDigest != trustedHost.ManifestDigest ||
+		bundle.EnvironmentReportDigest != trustedHost.EnvironmentDigest || bundle.ProviderInventoryDigest != trustedHost.InventoryDigest ||
+		bundle.HostFeatureDigest != trustedHost.FeatureDigest || bundle.HostActionDigest != trustedHost.ActionDigest ||
 		bundle.Topology != request.Selection.Topology || bundle.ResolutionDigest != request.ResolutionDigest || bundle.RegistryDigest != request.Registry.Digest() {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle does not match trusted START inputs", nil)
 	}
 	if !sameCanonicalValue(bundle.Selection, *request.Selection) || !sameCanonicalValue(bundle.Configuration, request.Configuration.Record()) ||
 		!sameCanonicalValue(bundle.Classification, request.Classification) || bundle.Classification.Digest() != request.Classification.Digest() ||
-		!sameCanonicalValue(bundle.AddOns, request.Selection.AddOns) || bundle.HostEvidenceDigest != request.Host.Record().Digest {
+		!sameCanonicalValue(bundle.AddOns, request.Selection.AddOns) || bundle.HostEvidenceDigest != trustedHost.Digest {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle selection or trusted facts differ", nil)
+	}
+	recipeDigest, _, err := canonicaljson.Digest(bundle.Recipe)
+	if err != nil || recipeDigest != bundle.RecipeDigest {
+		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle Recipe digest mismatch", err)
 	}
 	if err := profile.ValidateExecutionGraphRecord(bundle.Graph); err != nil {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph is invalid", err)
 	}
-	if bundle.Graph.HostID != request.Host.Record().HostID || bundle.Graph.HostEvidenceDigest != request.Host.Record().Digest ||
+	graphSelection := profile.Selection{
+		Profile: request.Selection.Profile, RecipeID: request.Selection.RecipeID, RecipeDigest: request.Selection.RecipeDigest,
+		Topology: request.Selection.Topology, AddOns: request.Selection.AddOns, Alternatives: request.Selection.Alternatives,
+		Overlays: request.Selection.Overlays, Digest: request.Selection.GraphSelectionDigest,
+	}
+	if bundle.Graph.HostID != trustedHost.HostID || bundle.Graph.HostEvidenceDigest != trustedHost.Digest ||
 		bundle.Graph.RegistryDigest != request.Registry.Digest() || bundle.Graph.RecipeID != bundle.Recipe.ID ||
 		bundle.Graph.RecipeDigest != bundle.RecipeDigest || bundle.Graph.Selection.Digest != request.Selection.GraphSelectionDigest ||
-		bundle.Graph.EntrySlotID == "" || bundle.Graph.Topology != request.Selection.Topology {
+		!sameCanonicalValue(bundle.Graph.Selection, graphSelection) || bundle.Graph.EntrySlotID == "" || bundle.Graph.Topology != request.Selection.Topology {
 		return coordinatorError("WORKFLOW_CORE_RESULT_INVALID", "Core Bundle graph authority or topology is invalid", nil)
 	}
 	if !sameCanonicalValue(bundle.ProviderInstances, bundle.Graph.ProviderInstances) || !sameCanonicalValue(bundle.EnvironmentRequirements, bundle.Graph.EnvironmentRequirements) {

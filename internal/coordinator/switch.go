@@ -48,7 +48,8 @@ func (engine *Engine) switchWorkflow(command Command) (Result, error) {
 			return coordinatorError("WORKFLOW_STABLE_BOUNDARY_INVALID", "SWITCH requires the last committed stable boundary declared by the active Bundle", nil)
 		}
 		request := compilationRequestFromSwitch(engine.options, current.Snapshot, bundle, *command.Switch)
-		compiled, compileErr := engine.core.Compile(request)
+		compileRequest := cloneCompilationRequest(request)
+		compiled, compileErr := engine.core.Compile(compileRequest)
 		if compileErr != nil {
 			return coordinatorError("WORKFLOW_CORE_COMPILE_FAILED", "Core recompilation failed", compileErr)
 		}
@@ -98,7 +99,7 @@ func (engine *Engine) switchWorkflow(command Command) (Result, error) {
 }
 
 func compilationRequestFromSwitch(options Options, snapshot Snapshot, bundle core.LifecycleBundle, input SwitchInput) core.CompilationRequest {
-	selection := input.Selection
+	selection := cloneSelection(input.Selection)
 	return core.CompilationRequest{
 		DeliverableID: snapshot.DeliverableID, InputDigest: bundle.InputDigest, Generation: snapshot.ActiveGeneration + 1,
 		Classification: snapshot.Classification, Configuration: options.Configuration, ResolutionDigest: options.Resolutions.Digest(), Registry: options.Registry,

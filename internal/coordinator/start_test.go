@@ -121,21 +121,26 @@ func TestStartRejectsNonWorkflowWithoutWorkflowState(t *testing.T) {
 
 func TestStartRejectsMismatchedCoreBundleWithoutWorkflowState(t *testing.T) {
 	tests := []struct {
-		name          string
-		mutate        func(*core.LifecycleBundle)
-		corruptBundle bool
-		corruptResult bool
+		name              string
+		mutate            func(*core.LifecycleBundle)
+		mutateCompilation func(*core.CompilationRequest, *core.LifecycleBundle)
+		corruptBundle     bool
+		corruptResult     bool
 	}{
 		{name: "selection", mutate: func(value *core.LifecycleBundle) { value.Selection.Profile = "MATT-FULL" }},
 		{name: "host", mutate: func(value *core.LifecycleBundle) { value.HostID = "claude-code" }},
 		{name: "host session", mutate: func(value *core.LifecycleBundle) { value.HostSessionDigest = strings.Repeat("f", 64) }},
 		{name: "reporter identity", mutate: func(value *core.LifecycleBundle) { value.ReporterIdentityDigest = strings.Repeat("f", 64) }},
+		{name: "host manifest", mutate: func(value *core.LifecycleBundle) { value.HostManifestDigest = strings.Repeat("f", 64) }},
 		{name: "environment report", mutate: func(value *core.LifecycleBundle) { value.EnvironmentReportDigest = strings.Repeat("f", 64) }},
 		{name: "provider inventory", mutate: func(value *core.LifecycleBundle) { value.ProviderInventoryDigest = strings.Repeat("f", 64) }},
+		{name: "host feature", mutate: func(value *core.LifecycleBundle) { value.HostFeatureDigest = strings.Repeat("f", 64) }},
+		{name: "host action", mutate: func(value *core.LifecycleBundle) { value.HostActionDigest = strings.Repeat("f", 64) }},
 		{name: "topology", mutate: func(value *core.LifecycleBundle) { value.Topology = execution.TopologySubagent }},
 		{name: "deliverable", mutate: func(value *core.LifecycleBundle) { value.DeliverableID = "different" }},
 		{name: "input", mutate: func(value *core.LifecycleBundle) { value.InputDigest = strings.Repeat("f", 64) }},
 		{name: "generation", mutate: func(value *core.LifecycleBundle) { value.Generation = 2 }},
+		{name: "recipe content", mutate: func(value *core.LifecycleBundle) { value.Recipe.DisplayName = "Tampered coordinator test delivery" }},
 		{name: "graph entry", mutate: func(value *core.LifecycleBundle) { value.Graph.EntrySlotID = "missing" }},
 		{name: "graph host evidence", mutate: func(value *core.LifecycleBundle) { value.Graph.HostEvidenceDigest = strings.Repeat("f", 64) }},
 		{name: "graph registry", mutate: func(value *core.LifecycleBundle) { value.Graph.RegistryDigest = strings.Repeat("f", 64) }},
@@ -144,9 +149,24 @@ func TestStartRejectsMismatchedCoreBundleWithoutWorkflowState(t *testing.T) {
 			value.Graph.Selection.RecipeDigest = strings.Repeat("f", 64)
 			value.Graph.Selection.Digest = startTestDigest(value.Graph.Selection)
 		}},
-		{name: "graph selection", mutate: func(value *core.LifecycleBundle) {
+		{name: "graph selection semantic projection", mutateCompilation: func(request *core.CompilationRequest, value *core.LifecycleBundle) {
 			value.Graph.Selection.Profile = "MATT-FULL"
+			value.Graph.Selection.Digest = ""
 			value.Graph.Selection.Digest = startTestDigest(value.Graph.Selection)
+			request.Selection.GraphSelectionDigest = value.Graph.Selection.Digest
+			value.Selection.GraphSelectionDigest = value.Graph.Selection.Digest
+		}},
+		{name: "compiler rewrites trusted selection", mutateCompilation: func(request *core.CompilationRequest, value *core.LifecycleBundle) {
+			request.Selection.Profile = "MATT-FULL"
+			value.Graph.Selection.Profile = request.Selection.Profile
+			value.Graph.Selection.Digest = ""
+			value.Graph.Selection.Digest = startTestDigest(value.Graph.Selection)
+			request.Selection.GraphSelectionDigest = value.Graph.Selection.Digest
+			value.Selection = *request.Selection
+		}},
+		{name: "compiler rewrites trusted classification", mutateCompilation: func(request *core.CompilationRequest, value *core.LifecycleBundle) {
+			request.Classification.EscalationReasons[0] = "compiler-rewritten"
+			value.Classification = request.Classification
 		}},
 		{name: "Bundle digest", corruptBundle: true},
 		{name: "Compilation Result digest", corruptResult: true},
@@ -156,7 +176,7 @@ func TestStartRejectsMismatchedCoreBundleWithoutWorkflowState(t *testing.T) {
 			stateRoot := filepath.Join(t.TempDir(), "state")
 			command := startTestCommand(t, "start-mismatch-"+strings.ReplaceAll(test.name, " ", "-"))
 			compiler := &startTestCore{
-				t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(command.IdempotencyKey), mutateBundle: test.mutate,
+				t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(command.IdempotencyKey), mutateBundle: test.mutate, mutateCompilation: test.mutateCompilation,
 				corruptBundleDigest: test.corruptBundle, corruptResultDigest: test.corruptResult,
 			}
 			engine, err := NewEngine(startTestOptions(t, stateRoot, compiler))
@@ -174,6 +194,22 @@ func TestStartRejectsMismatchedCoreBundleWithoutWorkflowState(t *testing.T) {
 	}
 }
 
+func TestStartRejectsCompilerMutationOfRetainedClassificationDecision(t *testing.T) {
+	stateRoot := filepath.Join(t.TempDir(), "state")
+	command := startTestCommand(t, "start-retained-classification")
+	compiler := &startTestCore{
+		t: t, stateRoot: stateRoot, workflowID: deriveWorkflowID(command.IdempotencyKey), retainClassification: true,
+	}
+	engine, err := NewEngine(startTestOptions(t, stateRoot, compiler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := engine.Exchange(command); ErrorCode(err) != "WORKFLOW_CORE_RESULT_INVALID" {
+		t.Fatalf("Exchange(START) retained classification error = %v", err)
+	}
+	assertNoCommittedWorkflow(t, engine.journal, compiler.workflowID)
+}
+
 func TestCallerAuthoredBundleIsUnknownStartField(t *testing.T) {
 	raw := mustMarshalCommand(t, startTestCommand(t, "start-authored-bundle"))
 	forged := strings.Replace(string(raw), `"request_id":`, `"bundle":{},"request_id":`, 1)
@@ -183,29 +219,42 @@ func TestCallerAuthoredBundleIsUnknownStartField(t *testing.T) {
 }
 
 type startTestCore struct {
-	t                   *testing.T
-	stateRoot           string
-	workflowID          string
-	decision            classification.ClassificationDecision
-	classifyCalls       int
-	compileCalls        int
-	compileInsideLock   bool
-	mutateBundle        func(*core.LifecycleBundle)
-	corruptBundleDigest bool
-	corruptResultDigest bool
-	bundle              core.LifecycleBundle
+	t                    *testing.T
+	stateRoot            string
+	workflowID           string
+	decision             classification.ClassificationDecision
+	classifyCalls        int
+	compileCalls         int
+	compileInsideLock    bool
+	mutateBundle         func(*core.LifecycleBundle)
+	mutateCompilation    func(*core.CompilationRequest, *core.LifecycleBundle)
+	retainClassification bool
+	retainedDecision     *classification.ClassificationDecision
+	corruptBundleDigest  bool
+	corruptResultDigest  bool
+	bundle               core.LifecycleBundle
 }
 
 func (value *startTestCore) Classify(_ *classification.ClassificationProposal, _ classification.ClassificationRules) (classification.ClassificationDecision, error) {
 	value.classifyCalls++
+	var decision classification.ClassificationDecision
 	if value.decision.RequestMode != "" {
-		return value.decision, nil
+		decision = value.decision
+	} else {
+		decision = classificationDecision(value.t, classification.RequestModeWorkflow)
 	}
-	return classificationDecision(value.t, classification.RequestModeWorkflow), nil
+	if value.retainClassification {
+		value.retainedDecision = &decision
+	}
+	return decision, nil
 }
 
 func (value *startTestCore) Compile(request core.CompilationRequest) (core.CompilationResult, error) {
 	value.compileCalls++
+	if value.retainedDecision != nil {
+		value.retainedDecision.EscalationReasons[0] = "compiler-retained-rewrite"
+		request.Classification = *value.retainedDecision
+	}
 	lock := flock.New(filepath.Join(value.stateRoot, workflowRecordsDirectory, value.workflowID, "LOCK"))
 	locked, err := lock.TryLock()
 	if err != nil {
@@ -220,6 +269,11 @@ func (value *startTestCore) Compile(request core.CompilationRequest) (core.Compi
 	bundle := compiledStartTestBundle(request)
 	if value.mutateBundle != nil {
 		value.mutateBundle(&bundle)
+	}
+	if value.mutateCompilation != nil {
+		value.mutateCompilation(&request, &bundle)
+	}
+	if value.mutateBundle != nil || value.mutateCompilation != nil {
 		bundle.Graph.Digest = bundle.Graph.ContentDigest()
 		sealStartTestBundle(&bundle)
 	}
@@ -294,8 +348,9 @@ func compiledStartTestBundle(request core.CompilationRequest) core.LifecycleBund
 }
 
 func startTestGraphSelection() profile.Selection {
+	recipeDigest := startTestDigest(startTestRecipe())
 	value := profile.Selection{
-		Profile: "SP-FULL", RecipeID: "test/delivery", RecipeDigest: strings.Repeat("c", 64), Topology: execution.TopologyCurrent,
+		Profile: "SP-FULL", RecipeID: "test/delivery", RecipeDigest: recipeDigest, Topology: execution.TopologyCurrent,
 		AddOns: []string{}, Alternatives: []profile.AlternativeChoice{}, Overlays: []string{},
 	}
 	value.Digest = startTestDigest(value)

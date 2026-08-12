@@ -66,3 +66,36 @@ func TestReadRootedImmutableSourceManifestRejectsReplacementAfterInspection(t *t
 		t.Fatal("readRootedImmutableSourceManifest accepted a replacement file")
 	}
 }
+
+func TestImmutableManifestContentCheckDetectsInPlaceRewriteWithRestoredModTime(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, immutableSourceManifest)
+	manifest := []byte(`{"distribution_id":"distribution","revision":"` + strings.Repeat("a", 40) + `","tree_digest":"sha256:` + strings.Repeat("b", 64) + `"}`)
+	if err := os.WriteFile(manifestPath, manifest, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(manifestPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	beforeInfo, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed, err := readImmutableManifestBytes(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := append([]byte{}, manifest...)
+	rewritten[len(rewritten)-2] = 'c'
+	if err := os.WriteFile(manifestPath, rewritten, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(manifestPath, beforeInfo.ModTime(), beforeInfo.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if immutableManifestContentUnchanged(file, observed) {
+		t.Fatal("in-place manifest rewrite passed the content stability check")
+	}
+}

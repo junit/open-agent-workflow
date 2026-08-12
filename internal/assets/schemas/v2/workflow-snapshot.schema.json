@@ -10,7 +10,7 @@
   },
   "allOf": [
     {"if": {"properties": {"status": {"enum": ["PREPARED", "IN_FLIGHT"]}}}, "then": {"required": ["active_grant", "active_dispatch_digest"], "properties": {"active_grant": {"$ref": "https://open-agent-workflow.dev/schemas/v3/capability-grant.schema.json"}}}},
-    {"if": {"properties": {"status": {"enum": ["READY", "FINISHED", "CANCELLED"]}}}, "then": {"not": {"anyOf": [{"required": ["active_grant"]}, {"required": ["active_dispatch_digest"]}]}}},
+    {"if": {"properties": {"status": {"enum": ["READY", "FINISHED", "CANCELLED"]}}}, "then": {"not": {"anyOf": [{"required": ["active_dispatch_digest"]}, {"required": ["active_grant"], "properties": {"active_grant": {"$ref": "https://open-agent-workflow.dev/schemas/v3/capability-grant.schema.json"}}}]}}},
     {"if": {"required": ["active_grant"], "properties": {"active_grant": {"$ref": "https://open-agent-workflow.dev/schemas/v3/capability-grant.schema.json"}}}, "then": {"required": ["active_dispatch_digest"]}},
     {"if": {"required": ["active_dispatch_digest"]}, "then": {"required": ["active_grant"], "properties": {"active_grant": {"$ref": "https://open-agent-workflow.dev/schemas/v3/capability-grant.schema.json"}}}}
   ],
