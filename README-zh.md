@@ -134,7 +134,7 @@ CLI。
 
 安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。
 
-OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
+协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
 Workflow State；Install State 与 Workflow State 相互独立，不迁移也不隐式接管。
 
 Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、

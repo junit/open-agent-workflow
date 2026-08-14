@@ -150,7 +150,7 @@ Release archives contain precompiled binaries and perform no runtime executable 
 
 Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.
 
-OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
+The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
 
 The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 

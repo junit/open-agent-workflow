@@ -90,7 +90,7 @@ README.md|Public installation management is Go-authoritative.
 README.md|`install.sh` is an offline sibling-binary compatibility wrapper.
 README.md|Release archives contain precompiled binaries and perform no runtime executable download.
 README.md|Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.
-README.md|OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
+README.md|The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
 README.md|The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 README.md|Codex has a policy integration by default and a separate audited host-native Bridge
 README.md|Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.
@@ -98,7 +98,7 @@ README-zh.md|公开安装管理以 Go 为权威实现。
 README-zh.md|`install.sh` 是离线的同目录二进制兼容包装器。
 README-zh.md|发布归档包含预编译二进制，运行时不会下载可执行文件。
 README-zh.md|安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。
-README-zh.md|OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
+README-zh.md|协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
 README-zh.md|Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、
 README-zh.md|Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge
 README-zh.md|可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。

@@ -317,9 +317,9 @@ sandbox、approval 或 tool 行为。
 
 ## OAW Core、Coordinator 与 Agent Host
 
-OAW Core 是必需且无状态的。它拥有 classification、Host-scoped Provider resolution、
-eligibility、Profile compilation 和 Lifecycle Bundle construction。调用方绝不自行构造
-Bundle。
+协作式 Policy 路径不需要 OAW Core。对于机器支撑 assurance，OAW Core 是必需且无状态的。
+它拥有 classification、Host-scoped Provider resolution、eligibility、Profile compilation
+和 Lifecycle Bundle construction。调用方绝不自行构造 Bundle。
 
 Workflow Coordinator 是可选且只服务 Workflow 的。它为合作客户端记录 revision、
 idempotency、协作式 Resource Lease、Receipt、evidence、pause、cancel、switch 与

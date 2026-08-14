@@ -98,7 +98,7 @@ EOF
     '`install.sh` is an offline sibling-binary compatibility wrapper.' \
     'Release archives contain precompiled binaries and perform no runtime executable download.' \
     'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
-    'OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
+    'The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
     'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
     'Codex has a policy integration by default and a separate audited host-native Bridge' \
     'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.' \
@@ -112,7 +112,7 @@ EOF
     '`install.sh` 是离线的同目录二进制兼容包装器。' \
     '发布归档包含预编译二进制，运行时不会下载可执行文件。' \
     '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
-    'OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
+    '协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
     'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
     'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
     '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
@@ -793,7 +793,7 @@ for release_boundary in \
   '`install.sh` is an offline sibling-binary compatibility wrapper.' \
   'Release archives contain precompiled binaries and perform no runtime executable download.' \
   'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
-  'OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
+  'The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
   'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
   'Codex has a policy integration by default and a separate audited host-native Bridge' \
   'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.'; do
@@ -804,7 +804,7 @@ for release_boundary in \
   '`install.sh` 是离线的同目录二进制兼容包装器。' \
   '发布归档包含预编译二进制，运行时不会下载可执行文件。' \
   '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
-  'OAW Core 是必需且无状态的。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
+  '协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
   'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
   'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
   '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。'; do

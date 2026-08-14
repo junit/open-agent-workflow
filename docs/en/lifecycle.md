@@ -364,9 +364,10 @@ behavior.
 
 ## OAW Core, Coordinator, and Agent Host
 
-OAW Core is required and stateless. It owns classification, Host-scoped
-Provider resolution, eligibility, Profile compilation, and Lifecycle Bundle
-construction. Callers never author a Bundle.
+The cooperative Policy path does not require OAW Core. For machine-backed
+assurance, OAW Core is required and stateless. It owns classification,
+Host-scoped Provider resolution, eligibility, Profile compilation, and
+Lifecycle Bundle construction. Callers never author a Bundle.
 
 The Workflow Coordinator is optional and Workflow-only. It records revisions,
 idempotency, cooperative Resource Leases, Receipts, evidence, pause,
