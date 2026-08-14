@@ -62,6 +62,7 @@ make_checker_fixture() {
 
   mkdir -p "$fixture_root/scripts"
   cp "$REPOSITORY/scripts/check-docs.sh" "$fixture_root/scripts/check-docs.sh"
+  printf '%s\n' '0.1.0' >"$fixture_root/VERSION"
 
   while IFS='|' read -r english_file chinese_file; do
     [ -n "$english_file$chinese_file" ] || continue
@@ -101,6 +102,10 @@ EOF
     'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
     'Codex has a policy integration by default and a separate audited host-native Bridge' \
     'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.' \
+    '## No-Bridge Policy Workflow' \
+    'policy_selectable' \
+    'host_routable' \
+    'The source baseline is fixed at v0.1.0.' \
     >>"$fixture_root/README.md"
   printf '%s\n' \
     '公开安装管理以 Go 为权威实现。' \
@@ -111,6 +116,10 @@ EOF
     'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
     'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
     '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
+    '## 无 Bridge Policy Workflow' \
+    'policy_selectable' \
+    'host_routable' \
+    '源码基线固定为 v0.1.0。' \
     >>"$fixture_root/README-zh.md"
   mkdir -p "$fixture_root/policy"
   : >"$fixture_root/policy/ENGINEERING.md"
@@ -133,10 +142,25 @@ EOF
     >>"$fixture_root/docs/en/architecture.md"
   printf '%s\n' 'oaw/codex-host' \
     >>"$fixture_root/docs/zh/architecture.md"
+  printf '%s\n' \
+    '## Policy and Machine Profile Projections' \
+    'Machine attestation may increase assurance, but it cannot veto a Policy Offer.' \
+    >>"$fixture_root/docs/en/architecture.md"
+  printf '%s\n' \
+    '## Policy 与 Machine Profile Projection' \
+    'machine attestation 可以提高 assurance，但不能 veto' \
+    >>"$fixture_root/docs/zh/architecture.md"
   printf '%s\n' 'observe_current' \
     >>"$fixture_root/docs/en/lifecycle.md"
   printf '%s\n' 'observe_current' \
     >>"$fixture_root/docs/zh/lifecycle.md"
+  for document_path in docs/en/lifecycle.md docs/zh/lifecycle.md; do
+    printf '%s\n' policy_selectable host_routable incident_routes \
+      >>"$fixture_root/$document_path"
+  done
+  for document_path in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+    printf '%s\n' incident_routes >>"$fixture_root/$document_path"
+  done
   for document_path in \
     README.md README-zh.md \
     docs/en/lifecycle.md docs/zh/lifecycle.md \
@@ -394,6 +418,7 @@ EOF
     >"$fixture_root/internal/assets/providers/oaw-matt.json"
   : >"$fixture_root/CHANGELOG.md"
   printf '%s\n' \
+    '## [0.1.0] - 2026-08-14' \
     'OAW is now explicitly activated per deliverable' \
     'lazy Activation Router' \
     'policy-only Markdown lifecycle locks are not converted' \
@@ -423,9 +448,11 @@ for governance_file in \
   SECURITY-zh.md \
   CODE_OF_CONDUCT.md \
   CHANGELOG.md \
+  VERSION \
   scripts/check-docs.sh; do
   assert_file "$governance_file"
 done
+assert_contains VERSION "0.1.0"
 for readme_file in README.md README-zh.md; do
   assert_file "$readme_file"
 done
@@ -452,14 +479,18 @@ pass "bilingual contribution contracts define the delivery and adapter evidence 
 for contribution_contract in \
   'public Go `oaw` binary' \
   'precompiled sibling binary' \
-    'Install State and Workflow State' \
+  'Install State and Workflow State' \
+  'Policy Projection independent from machine authority packages' \
+  'Machine Projection' \
   'Available native and Docker smoke tests must pass'; do
   assert_contains CONTRIBUTING.md "$contribution_contract"
 done
 for contribution_contract in \
   '公开 Go `oaw` 二进制' \
   '预编译的同目录二进制' \
-    'Install State 与 Workflow State' \
+  'Install State 与 Workflow State' \
+  'Policy Projection 与机器权限 package 相互独立' \
+  'Machine Projection' \
   '可用的原生和 Docker smoke test 必须通过'; do
   assert_contains CONTRIBUTING-zh.md "$contribution_contract"
 done
@@ -527,8 +558,8 @@ fi
 pass "code of conduct records Contributor Covenant 2.1 and neutral enforcement"
 
 assert_contains CHANGELOG.md "## [Unreleased]"
-assert_contains CHANGELOG.md "### 0.1.0"
-assert_contains CHANGELOG.md "local candidate"
+assert_contains CHANGELOG.md "## [0.1.0] - 2026-08-14"
+assert_contains CHANGELOG.md "source baseline is fixed"
 assert_contains CHANGELOG.md "not published"
 assert_contains CHANGELOG.md "canonical policy"
 assert_contains CHANGELOG.md "forced"
@@ -541,18 +572,23 @@ assert_contains CHANGELOG.md "OAW Core"
 assert_contains CHANGELOG.md "optional Workflow Coordinator"
 assert_contains CHANGELOG.md '`CURRENT`/`SUBAGENT`'
 assert_contains CHANGELOG.md "Host session reports"
-assert_contains CHANGELOG.md "Provider descriptor v3"
-assert_contains CHANGELOG.md "Profile Recipe v2"
+assert_contains CHANGELOG.md "Provider Descriptor v4"
+assert_contains CHANGELOG.md "Profile Recipe v3"
+assert_contains CHANGELOG.md "Execution Graph v4"
+assert_contains CHANGELOG.md "Lifecycle Bundle v4"
 assert_contains CHANGELOG.md "user configuration v3"
-assert_contains CHANGELOG.md "Host integration v2"
-assert_contains CHANGELOG.md "Capability Grant v2"
-assert_contains CHANGELOG.md "Workflow State v1"
+assert_contains CHANGELOG.md "Host integration v3"
+assert_contains CHANGELOG.md "Capability Grant v3"
+assert_contains CHANGELOG.md "Workflow State v2"
+assert_contains CHANGELOG.md "policy_selectable"
+assert_contains CHANGELOG.md "host_routable"
+assert_contains CHANGELOG.md "Policy Offer"
 assert_contains CHANGELOG.md "oaw run --host codex"
 assert_contains CHANGELOG.md "oaw runtime exchange"
 assert_contains CHANGELOG.md "Codex Runner"
 assert_contains CHANGELOG.md "private HOME/Skill staging"
 assert_contains CHANGELOG.md "Core and Coordinator state is secret-free"
-pass "changelog describes the local unreleased 0.1.0 candidate"
+pass "changelog fixes the unpublished 0.1.0 source baseline"
 
 assert_executable scripts/check-docs.sh
 assert_contains scripts/check-docs.sh "README.md|README-zh.md"
@@ -595,10 +631,21 @@ printf '%s\n' \
   '[reference][target]' \
   '[target]: target.md "reference title"' \
   >"$DOCS_TEST_TEMP/repository/docs/en/link-fixture.md"
+git -C "$DOCS_TEST_TEMP/repository" init -q
+git -C "$DOCS_TEST_TEMP/repository" add -- .
 if ! checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
   fail "documentation checker rejects valid links with titles: $checker_output"
 fi
 pass "documentation checker accepts inline and reference links with titles"
+
+mkdir -p "$DOCS_TEST_TEMP/repository/.scratch/local-draft"
+printf '%s\n' '[missing reference][not-defined]' \
+  >"$DOCS_TEST_TEMP/repository/.scratch/local-draft/untracked.md"
+if ! checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  fail "documentation checker lets an untracked draft contaminate release checks: $checker_output"
+fi
+rm -f -- "$DOCS_TEST_TEMP/repository/.scratch/local-draft/untracked.md"
+pass "documentation checker ignores untracked local drafts"
 
 printf '%s\n' '[missing]: no-such.md' \
   >"$DOCS_TEST_TEMP/repository/docs/en/link-fixture.md"
@@ -789,6 +836,7 @@ for english_heading in \
   '## Capabilities' \
   '## Quick Start' \
   '## Explicit Activation' \
+  '## No-Bridge Policy Workflow' \
   '## Lifecycle Profiles' \
   '## Matt-Superpowers Hybrid' \
   '## Supported Targets' \
@@ -810,8 +858,10 @@ assert_contains README.md 'Rebuild `./oaw` after changing a source checkout'
 assert_contains README.md "Drift fails closed before mutation."
 assert_contains README.md '`--force` backs up every affected artifact before mutation.'
 assert_contains README.md "experience-based design inputs"
-assert_contains README.md "Machine-readable management status"
-assert_contains README.md "v0.1 management output is human-readable"
+assert_contains README.md "source baseline is fixed at v0.1.0"
+assert_contains README.md "policy_selectable"
+assert_contains README.md "host_routable"
+assert_contains README.md "Bridge is an optional"
 pass "English README covers the complete entrypoint and safety contract"
 
 for chinese_heading in \
@@ -820,6 +870,7 @@ for chinese_heading in \
   '## 核心能力' \
   '## 快速开始' \
   '## 显式激活' \
+  '## 无 Bridge Policy Workflow' \
   '## 生命周期配置' \
   '## Matt-Superpowers 混合配置' \
   '## 支持的目标' \
@@ -841,9 +892,10 @@ assert_contains README-zh.md 'checkout 后必须重新构建 `./oaw`'
 assert_contains README-zh.md "检测到 drift 时，会在变更前关闭失败。"
 assert_contains README-zh.md '`--force` 会在变更前先备份所有受影响构件。'
 assert_contains README-zh.md "基于经验的设计输入"
-assert_contains README-zh.md "machine-readable management status 保留为 post-v0.1 扩展"
-assert_contains README-zh.md "v0.1 management 只输出"
-assert_contains README-zh.md "human-readable 状态"
+assert_contains README-zh.md "固定为 v0.1.0"
+assert_contains README-zh.md "policy_selectable"
+assert_contains README-zh.md "host_routable"
+assert_contains README-zh.md "Bridge 是可选的机器保证 integration"
 pass "Chinese README covers the equivalent entrypoint and safety contract"
 
 for rationale_document in \

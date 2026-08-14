@@ -20,6 +20,10 @@ Open Agent Workflow（OAW）接受按 issue 划分的纵向改动，每个改动
 - 保持 Install State 与 Workflow State 相互独立。Management 变更不得导入现有
   policy-only task 或 Profile lock，安装 adapter 也不代表获得 Workflow coordination 或
   Host execution authority。
+- 保持 Policy Projection 与机器权限 package 相互独立。Policy route 只能包含 route name
+  与 invocation mode；Provider identity、integrity、Core、Coordinator 与 Bridge fact 必须
+  留在 Machine Projection。alias、responsibility、gate、incident 或 slot applicability
+  变化时，必须同步更新 cross-projection contract test。
 
 ## Adapter Evidence
 

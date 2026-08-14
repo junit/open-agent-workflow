@@ -37,6 +37,38 @@ Open Agent Workflow（OAW）分发一份 canonical 工程策略、编译无冲�
 启动工程生命周期。OAW Core 不保留 Workflow State。Workflow Coordinator 不执行工作。
 Agent Host 也无权改写 Bundle。
 
+## Policy 与 Machine Profile Projection
+
+OAW 保留一份 authority-neutral 生命周期语义，并把它投影到两个相互独立的实现：
+
+```text
+共享 Profile 语义
+  alias、responsibility、gate、macro credit、incident、switching
+        |
+        +-- Policy Projection
+        |     Host-visible 与 user-explicit route
+        |     neutral Host action 与 cooperative record
+        |
+        +-- Machine Projection
+              verified Provider Instance 与 Binding
+              Core compilation 与可选 coordination record
+```
+
+Policy Projection 由 Policy catalog、route inspector、lifecycle reducer、Engagement 与绑定
+物理项目的 persistence module 实现。其 route input 只包含 route name 与 invocation mode。
+它分别报告 `policy_selectable` 与 `host_routable`，根据 typed event 推导每个 next action，
+并且绝不导入 discovery、integrity、Registry、Core、Coordinator 或 Bridge 权限。
+
+Machine Projection 保留 Provider descriptor、source audit、完整 Binding-tree 验证、Core
+compilation 与可选 Coordinator state。machine attestation 可以提高 assurance，但不能 veto
+Policy Offer。因此 lockfile、distribution identity、installation path、revision、tree digest
+与 Bridge state 都不能决定一个原本可路由的 Policy Profile 是否可以被选择。
+
+四个内置 Profile 同时保留在两个 projection 中。所需 Codex route 存在时，`SP-FULL`、
+`MATT-FULL`、`ECC-FULL` 与 `MATT-SP-HYBRID` 都可以在没有 Bridge 的情况下遍历协作式
+`CURRENT` 生命周期。这只证明 route availability，不验证 Skill provenance、物理执行或
+effect containment。
+
 ## Canonical 存储位置
 
 OAW 遵循 XDG base-directory 约定，并保留明确默认值：

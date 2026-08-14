@@ -13,10 +13,13 @@ import (
 
 func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 	want := map[string]string{
+		"schemas/v4/execution-graph.schema.json":                 "https://open-agent-workflow.dev/schemas/v4/execution-graph.schema.json",
 		"schemas/v4/provider-descriptor.schema.json":             "https://open-agent-workflow.dev/schemas/v4/provider-descriptor.schema.json",
 		"schemas/v3/user-config.schema.json":                     "https://open-agent-workflow.dev/schemas/v3/user-config.schema.json",
 		"schemas/v3/profile-recipe.schema.json":                  "https://open-agent-workflow.dev/schemas/v3/profile-recipe.schema.json",
 		"schemas/v1/profile-alias-set.schema.json":               "https://open-agent-workflow.dev/schemas/v1/profile-alias-set.schema.json",
+		"schemas/v1/project-config.schema.json":                  "https://open-agent-workflow.dev/schemas/v1/project-config.schema.json",
+		"schemas/v1/classification-proposal.schema.json":         "https://open-agent-workflow.dev/schemas/v1/classification-proposal.schema.json",
 		"schemas/v3/host-manifest.schema.json":                   "https://open-agent-workflow.dev/schemas/v3/host-manifest.schema.json",
 		"schemas/v3/host-binding-inventory.schema.json":          "https://open-agent-workflow.dev/schemas/v3/host-binding-inventory.schema.json",
 		"schemas/v3/host-session.schema.json":                    "https://open-agent-workflow.dev/schemas/v3/host-session.schema.json",
@@ -26,6 +29,7 @@ func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 		"schemas/v3/host-invocation-receipt.schema.json":         "https://open-agent-workflow.dev/schemas/v3/host-invocation-receipt.schema.json",
 		"schemas/v1/user-authorization.schema.json":              "https://open-agent-workflow.dev/schemas/v1/user-authorization.schema.json",
 		"schemas/v1/explicit-invocation-attestation.schema.json": "https://open-agent-workflow.dev/schemas/v1/explicit-invocation-attestation.schema.json",
+		"schemas/v1/gate-attestation.schema.json":                "https://open-agent-workflow.dev/schemas/v1/gate-attestation.schema.json",
 		"schemas/v2/host-environment-report.schema.json":         "https://open-agent-workflow.dev/schemas/v2/host-environment-report.schema.json",
 		"schemas/v4/host-conformance-transcript.schema.json":     "https://open-agent-workflow.dev/schemas/v4/host-conformance-transcript.schema.json",
 		"schemas/v4/host-conformance-report.schema.json":         "https://open-agent-workflow.dev/schemas/v4/host-conformance-report.schema.json",
@@ -36,7 +40,27 @@ func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
 		"schemas/v2/workflow-revision.schema.json":               "https://open-agent-workflow.dev/schemas/v2/workflow-revision.schema.json",
 		"schemas/v1/workflow-head.schema.json":                   "https://open-agent-workflow.dev/schemas/v1/workflow-head.schema.json",
 	}
+	seen := make(map[string]bool, len(want))
+	if err := fs.WalkDir(FS(), "schemas", func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if _, ok := want[path]; !ok {
+			t.Errorf("unexpected embedded schema %s", path)
+		}
+		seen[path] = true
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	for path, id := range want {
+		if !seen[path] {
+			t.Errorf("active schema %s is not embedded", path)
+			continue
+		}
 		data, err := fs.ReadFile(FS(), path)
 		if err != nil {
 			t.Fatalf("read %s: %v", path, err)

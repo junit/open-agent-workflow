@@ -23,6 +23,11 @@ before implementation. Keep one change responsible for one observable outcome.
 - Keep Install State and Workflow State disjoint. Management changes must not
   import existing policy-only tasks or Profile locks, and adapter installation
   must not imply Workflow coordination or Host execution authority.
+- Keep the Policy Projection independent from machine authority packages.
+  Policy routes contain only a route name and invocation mode; Provider
+  identity, integrity, Core, Coordinator, and Bridge facts must remain on the
+  Machine Projection. Update the cross-projection contract tests whenever
+  aliases, responsibilities, gates, incidents, or slot applicability change.
 
 ## Adapter Evidence
 

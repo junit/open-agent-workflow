@@ -3,9 +3,10 @@
 [English](../en/adapters.md) | [README 中文](../../README-zh.md)
 
 本指南记录 Open Agent Workflow（OAW）如何把一份 canonical policy 投射到每个受支持的
-agent 工具。OAW 行为由本地 [lib/targets.sh](../../lib/targets.sh) 与
-[lib/render.sh](../../lib/render.sh) 中的 adapter registry 和 renderer 定义。Provider
-行为只依据下方列出的一手官方来源。
+agent 工具。OAW 行为由本地
+[internal/management/targets.go](../../internal/management/targets.go) 与
+[internal/management/render.go](../../internal/management/render.go) 中的 adapter registry
+和 renderer 定义。Provider 行为只依据下方列出的一手官方来源。
 
 所有官方来源 **Retrieved: 2026-07-30**。
 
@@ -88,8 +89,9 @@ Canonical OAW policy 安装在
 
 Managed-block adapter 保留 shared destination 中无关的内容，只替换带 marker 的 OAW
 block。Owned-file adapter 要求精确 destination 不存在或已由 OAW 拥有；OAW 不合并这些
-文件内部的内容。这些是 OAW 在 `lib/targets.sh` 与 `lib/render.sh` 中定义的 mechanical
-choice，不是 provider-level precedence rule。
+文件内部的内容。这些是 OAW 在 `internal/management/targets.go` 与
+`internal/management/render.go` 中定义的 mechanical choice，不是 provider-level
+precedence rule。
 
 每个 adapter 都渲染同一个惰性 **Activation Router**。当 Host 要求始终生效的 rule 时，它可以
 始终可见，但“可见”不等于“激活”：没有用户明确指令时，Router 保持原生 Host 行为，

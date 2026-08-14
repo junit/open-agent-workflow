@@ -84,16 +84,122 @@ At `core-backed` or `coordinator-backed`, the machine Startup Gate:
 6. has OAW Core compile and record the immutable Lifecycle Bundle.
 
 At `policy-cooperative`, the Cooperative Selection Gate shows Host-visible
-Profile candidates, states the unavailable machine guarantees, exposes only
-`CURRENT`, lists every bounded add-on, and waits for explicit candidate,
-topology, add-on, and limitation acceptance. It then creates a cooperative
-Policy Workflow Plan and Progress Tracker before lifecycle work. An unverified
-candidate is never called an eligible Profile, and static instruction context
-cannot prove `SUBAGENT` availability.
+Profile candidates and states the unavailable machine guarantees. It also
+states that execution remains in the current Host session and uses no add-on
+unless the user explicitly requested one with a route-level contract. It waits
+only for explicit Profile selection: these fixed execution facts and the
+already-declared limitations are not extra choices. It then creates a
+cooperative Policy Workflow Plan and Progress Tracker before lifecycle work.
+An unverified candidate is never called an eligible Profile, and static
+instruction context cannot prove `SUBAGENT` availability.
 
 Provider detection is diagnostic input. It never chooses a Capability, Profile,
 or topology. Missing or ambiguous required Capabilities stop selection rather
 than being silently omitted or replaced.
+
+### No-Bridge policy-cooperative CLI path
+
+The reference CLI provides a real Codex `CURRENT` path without installing the
+Bridge. It remains `policy-cooperative`: the CLI inspects files visible to the
+Host, persists a cooperative snapshot, and checks tracker transitions, while
+the current Agent Host invokes Skills and performs every effect.
+
+Start with a fresh Governance inspection:
+
+```bash
+oaw profiles
+```
+
+Each built-in Profile is reported as `policy_selectable` and independently as
+`host_routable`, with `missing` naming any required routes that are not
+callable. `policy_selectable` means that OAW defines the Profile semantics;
+`host_routable` means that every required route currently resolves to a
+Host-visible Skill, a user-explicit Skill, or a neutral Host action. Route
+inventory remains internal to the Policy module. Each public Profile also
+includes `incident_routes`, which reports conditional handlers as
+`routable-if-triggered` or `unavailable-if-triggered`. An unavailable
+conditional handler does not make the normal Profile incomplete.
+
+For Codex, cooperative discovery recognizes current plugin layouts including
+the ECC cache below `.codex/plugins/cache/ecc/ecc/<version>` and the curated
+Superpowers cache below
+`.codex/plugins/cache/openai-api-curated/superpowers/<version>`. Matt discovery
+uses regular `.agents/skills/<name>/SKILL.md` files. Human-command Matt Skills
+are `user-explicit` and yield `AwaitUserSkill`. Policy inspection does not read
+Matt lockfiles, source identity, revisions, tree hashes, Provider evidence, or
+Bridge state. Those checks remain available only on the machine-backed path.
+ECC uses public Codex Skill routes where their contracts fit the responsibility;
+it does not require a Claude Agent, Codex Role, or slash-command instruction.
+Because ECC's public `review-pr` command requires a PR, generic Policy review
+uses the typed neutral Host action `review.execute`. Machine-backed execution
+may still use an exact verified ECC reviewer Binding.
+
+When all required Host routes are present, `SP-FULL`, `MATT-FULL`,
+`ECC-FULL`, and `MATT-SP-HYBRID` can each be selected and carried through the
+policy-only `CURRENT` lifecycle without a Bridge. Availability is inspected,
+not promised merely from the Provider name or installation claim.
+
+The user then starts the project Engagement with one explicit Profile:
+
+```bash
+oaw use --profile MATT-SP-HYBRID --complexity complex --risk normal -- "Typora-like editor"
+```
+
+`use` atomically re-inspects the routes, validates the Profile, records the
+complexity and risk already reported by the Cooperative Assessment, and stores
+the first reducer state. It does not invent assessment defaults or invoke the
+machine classifier. The current session, default absence of an add-on, Policy
+limitations, project identity, and opaque references are internal facts rather
+than repeated confirmation fields. The project-level Policy CLI has no
+`--add-on` option or `NONE` sentinel; a future bounded add-on requires its own
+explicit route-level contract. Running `oaw use -- "deliverable"` without a
+Profile prints the candidates and stops for explicit Profile selection; the
+assessment flags are required only when a Profile is selected.
+
+After the Host completes the exact current work or gate, use the matching
+business command:
+
+```bash
+oaw complete         # current ordinary Skill or neutral Host action
+oaw review clean     # current review produced no findings
+oaw review findings  # current review requires remediation and re-review
+oaw approve          # current user gate
+oaw satisfy          # current Host gate
+oaw status
+```
+
+Each command is accepted only for its matching current work. Review-producing
+work requires an explicit `clean` or `findings` outcome; ordinary `complete`
+cannot silently claim a clean review. Findings return to implementation and
+force a fresh review. The reducer selects every next route, neutral action,
+gate, incident return, and stable switch. Completion occurs only when it
+returns `Done`. Incident, switch, stop, and uncertain execution remain typed
+actions:
+
+```bash
+oaw incident build-failure --reason "compiler failed"
+oaw switch SP-FULL
+oaw stop --reason "user stopped"
+oaw uncertain --reason "Host result unknown"
+```
+
+Policy Engagement files live under
+`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/policy-engagements`.
+The CLI derives an internal identity from the physical current project; users
+do not select a run ID or state root. Local locking and replacement support
+reload after a process restart, but they do not create Coordinator revision,
+idempotency, Lease, Receipt, or recovery guarantees.
+
+`use` stores an exact reducer snapshot and `status` renders a public view that
+omits the internal ID, route inventory, reducer snapshot, and opaque
+references. Every event re-inspects routes; material changes reject
+route-dependent completion and incident events with
+`ROUTE_INVENTORY_DRIFT`. After the routes are repaired, `oaw switch PROFILE`
+performs its own fresh inspection at a stable boundary; users never obtain or
+submit an Offer reference. `stop` and `uncertain` remain available so drift
+cannot prevent a terminal safety record. Lockfile, revision, digest, path, or
+Bridge changes that preserve the same route inventory do not affect the active
+Engagement.
 
 Policy-cooperative execution uses these stable stop reasons:
 
@@ -217,7 +323,7 @@ uncredited ownership fails with `MACRO_INTERNAL_CONFLICT`.
 | `implementation` | `implement` macro | inline `superpowers:executing-plans` | `tdd-workflow` or exact Claude `tdd-guide` alternative | inline SP `superpowers:executing-plans`; SDD paused |
 | `implementation-tdd` | `implement` credits `tdd` once | `superpowers:test-driven-development` | same selected implementation/TDD unit | Matt `tdd`; SP TDD paused |
 | `incident-recovery` | `diagnosing-bugs` for functional/hard/performance incidents; otherwise stop | `superpowers:systematic-debugging` typed route | only a verified typed route; Claude `build-error-resolver` may handle build/type/dependency | Matt `diagnosing-bugs`; build/type/dependency stops unless an ECC handler Add-on was selected |
-| `review-remediation` | `implement` credits `code-review`; remediation re-enters bounded `implement` and re-reviews | `superpowers:requesting-code-review` -> `superpowers:receiving-code-review` -> re-review | exact Codex `reviewer` Role or Claude `code-reviewer` Agent plus separate remediation | SP request/receive/re-review; Matt review and SDD review paused |
+| `review-remediation` | `implement` credits `code-review`; remediation re-enters bounded `implement` and re-reviews | `superpowers:requesting-code-review` -> `superpowers:receiving-code-review` -> re-review | Policy: typed Host `review.execute`, with findings returning to `tdd-workflow`; machine-backed: exact Codex `reviewer` Role or Claude `code-reviewer` Agent | SP request/receive/re-review; Matt review and SDD review paused |
 | `fresh-verification` | Host `verification.execute` | `superpowers:verification-before-completion` | `verification-loop`; E2E surfaces remain specialist-only | SP `superpowers:verification-before-completion` |
 | `closeout` | Host `closeout.execute` | `superpowers:finishing-a-development-branch` | Host action with `git-workflow` guidance | SP `superpowers:finishing-a-development-branch` |
 

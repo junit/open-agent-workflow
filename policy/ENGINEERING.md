@@ -212,11 +212,13 @@ For `policy-cooperative` `WORKFLOW`, perform these actions in order:
    Governance Inspection; do not invoke lifecycle work.
 4. Show complete, incomplete, and unavailable Profile candidates and the exact
    missing responsibilities for each incomplete candidate.
-5. Show only `CURRENT`.
-6. Show every proposed Bounded add-on and its named deliverable.
-7. Wait for explicit candidate, topology, add-on, and policy-only limitation
-   acceptance from the user.
-8. Create the Policy Workflow Plan and Progress Tracker before lifecycle work.
+5. State that Policy execution uses the current Host session and has no
+   Bounded add-on unless the user explicitly requested one with a route-level
+   contract.
+6. Wait only for explicit Profile selection. The current-session execution
+   fact, absence of an add-on, and already-declared Policy limitations are not
+   additional choices and must not be presented as confirmation fields.
+7. Create the Policy Workflow Plan and Progress Tracker before lifecycle work.
 
 Policy-only execution supports `CURRENT`. It cannot declare `SUBAGENT` eligible because static instruction context is not current-session delegation evidence.
 
@@ -226,6 +228,94 @@ It is distinct from problem discovery, design, planning, implementation,
 debugging, review, verification, and completion. Those lifecycle actions remain
 blocked until selection closes. If there is no complete candidate, stop with
 `POLICY_ONLY_PROFILE_INCOMPLETE`; do not wait forever or invent an owner.
+
+A Policy Profile is selectable when OAW defines its Recipe. It is Host-routable
+when every required responsibility projects to a Host-visible Skill, a
+user-explicit Skill, or a neutral Host action. These are separate facts; neither
+one verifies a Provider Instance, Skill content, invocation, or outcome.
+
+Conditional incident handlers are reported independently. Their absence does
+not make the normal Profile incomplete. If the matching incident actually
+occurs and its handler is unavailable, stop with the Policy reducer's typed
+incident result instead of inventing a recovery owner.
+
+Policy route inspection accepts only `{route name, invocation mode}`. It must
+not read Provider provenance, Binding identity, lock hashes, tree digests,
+Bridge state, or machine lifecycle records. Machine attestation can increase
+assurance through the machine path; it cannot veto a Policy Offer.
+
+The current built-in Policy Profiles use no add-on by default. A future bounded
+add-on must be explicitly requested and have its own route-level contract
+before it can be admitted; arbitrary labels are rejected.
+
+Route inspection is point-in-time Governance Inspection. Profile selection
+atomically inspects the current routes and starts the Engagement; opaque Offer
+and work references remain internal implementation details. Every typed event
+re-observes the current route inventory. A changed route inventory rejects
+route-dependent completion and incident events with
+`ROUTE_INVENTORY_DRIFT`; fresh route inspection may be used to switch at a
+stable boundary. Explicit `stop` and `uncertain` events
+remain available so drift cannot trap the run outside a terminal safety state.
+A stale internal selection stops with `OFFER_STALE`. Lockfile, revision,
+digest, path, or Bridge changes that preserve the same route inventory do not
+alter the offer.
+
+## Policy-Cooperative Command Surface
+
+The reference CLI operationalizes the no-Bridge cooperative Workflow path for
+the Codex Host. It does not turn the `policy` integration into a `host-native`
+integration. Its public Governance and tracking commands are:
+
+```text
+oaw profiles
+oaw use [--profile <candidate> --complexity ordinary|complex --risk normal|elevated|critical] -- <deliverable>
+oaw status
+oaw complete
+oaw review clean|findings
+oaw approve
+oaw satisfy
+oaw incident <incident-type> [--reason <text>]
+oaw switch <candidate>
+oaw stop [--reason <text>]
+oaw uncertain --reason <text>
+```
+
+`profiles` shows route-level Profile candidates and exact missing routes. `use`
+atomically re-inspects the Host and accepts only a Host-routable Profile. If no
+Profile was supplied, it reports the candidates and stops for explicit Profile
+selection. It creates a Policy Workflow Plan and Progress Tracker; it does not
+invoke a Skill. A selected `use` records the complexity and risk already stated
+by the Cooperative Assessment; it rejects missing assessment values rather than
+inventing defaults or calling the machine classifier.
+
+For the reference Codex inspection, current ECC cache installations are
+recognized below `.codex/plugins/cache/ecc/ecc/<version>`. Superpowers cache
+installations are recognized below
+`.codex/plugins/cache/openai-api-curated/superpowers/<version>`. Matt Skills are
+recognized as regular `.agents/skills/<name>/SKILL.md` files. Matt Skills whose
+contract requires a human command are `user-explicit` and produce
+`AwaitUserSkill`; their lockfile, source, revision, and tree hash are irrelevant
+to Policy routing. ECC uses public Codex Skill routes where their contracts
+match the responsibility and does not require a Claude Agent, Codex Role, or
+slash-command instruction. Its public `review-pr` command is PR-specific, so
+generic Policy review uses the typed neutral Host action `review.execute`;
+machine-backed execution may still select an exact verified ECC reviewer.
+
+The CLI derives the typed event and internal current reference from the active
+work. `complete`, `review clean|findings`, `approve`, and `satisfy` are accepted
+only for their matching ordinary work, review outcome, user gate, and Host gate.
+Review-producing work cannot be completed with an untyped `complete`.
+`review findings` returns to the declared implementation owner and forces a
+fresh review; only `review clean` advances the review pipeline. The reducer,
+not the caller, derives the next slot, action, incident return, stable switch,
+and terminal state. Completion occurs only when the reducer returns `Done`.
+Caller-selected identifiers, state roots, `--slot`, free-form
+`--next-action`, `resume`, and manual `close completed` are removed because they
+cannot map losslessly to this contract.
+Persisted reducer state is bound to the current physical project and Profile
+semantics and is validated by replaying its typed transition history. Derived
+completion, gate, stable-boundary, switch, and incident facts are never trusted
+without replay. Incompatible snapshots fail closed and require a new Engagement.
 
 ## OAW Core
 
@@ -336,7 +426,7 @@ shown; they are not extra outcome owners.
 | `implementation` | Matt `implement` macro | inline `superpowers:executing-plans` | `tdd-workflow`, or exact Claude Agent `tdd-guide` alternative | inline `superpowers:executing-plans`; SDD is paused |
 | `implementation-tdd` | Matt `implement` credits Matt `tdd` once | `superpowers:test-driven-development` | same selected implementation/TDD unit; no duplicate peer | Matt `tdd`; Superpowers TDD is paused |
 | `incident-recovery` | Matt `diagnosing-bugs` only for functional, hard-bug, or performance incidents; other types stop | `superpowers:systematic-debugging` for typed technical incidents | exact typed route only; Claude `build-error-resolver` may handle build/type/dependency when verified | Matt `diagnosing-bugs` for functional incidents; build/type/dependency stops unless an ECC handler was explicitly selected as an Add-on |
-| `review-remediation` | `implement` credits Matt `code-review`; remediation is a new bounded `implement` pass followed by fresh internal review | `superpowers:requesting-code-review` then `superpowers:receiving-code-review` and re-review | exact Codex Role `reviewer` or Claude Agent `code-reviewer`, plus a separately verified remediation procedure | Superpowers request/receive/re-review; Matt review and SDD internal review are paused |
+| `review-remediation` | `implement` credits Matt `code-review`; remediation is a new bounded `implement` pass followed by fresh internal review | `superpowers:requesting-code-review` then `superpowers:receiving-code-review` and re-review | Policy: typed Host `review.execute`, with findings returning to `tdd-workflow`; machine-backed: exact Codex Role `reviewer` or Claude Agent `code-reviewer` | Superpowers request/receive/re-review; Matt review and SDD internal review are paused |
 | `fresh-verification` | Host `verification.execute`; Matt has no broad verification Binding | `superpowers:verification-before-completion` | skill `verification-loop`; `e2e-runner` and `e2e-testing` remain specialist checks | `superpowers:verification-before-completion` |
 | `closeout` | Host `closeout.execute`; Matt has no completion Binding | `superpowers:finishing-a-development-branch` with user authority | Host action with `git-workflow` guidance; reviewer and delivery Hook do not own it | `superpowers:finishing-a-development-branch` with user authority |
 
@@ -468,17 +558,21 @@ selection_source: user-explicit
 topology: CURRENT
 responsibility_map: <ten-slot candidate mapping>
 accepted_limitations: <policy-only limitations>
+add_on: NONE | <selected bounded add-on id whose proposal names a deliverable>
 status: active | completed | stopped
 ```
 
 The Plan must not fabricate Bundle IDs, generations, digests, Capability
-Grants, Resource Leases, Host Receipts, or Coordinator revisions. A Progress
-Tracker is best effort, not authoritative, atomic, or guaranteed to survive
-context loss. It may track the selected candidate, current lifecycle slot,
-active deliverable, completed artifacts, known evidence, stop reason, and next
-cooperative action. Persistence may be claimed only after the Host actually
-writes and recovers the Tracker in the project's existing documentation
-layout.
+Grants, Resource Leases, Host Receipts, or Coordinator revisions. A local
+serialization schema may preserve this policy-only content, but it does not
+turn the content into a machine authority record. A Progress Tracker is best
+effort and non-authoritative. It may track the selected candidate, current
+lifecycle slot, active deliverable, completed artifacts, known evidence, stop
+reason, and next cooperative action. Persistence may be claimed only after the
+Host actually writes and reloads the Tracker from the project's existing
+documentation layout or a private Host-owned policy-run state root. File
+locking and atomic file replacement may protect that local serialization, but
+they are not Coordinator atomic revision, idempotency, or recovery enforcement.
 
 Policy-cooperative work fails closed on unsupported authority and uncertainty:
 

@@ -39,6 +39,15 @@ trap cleanup EXIT HUP INT TERM
 CHECK_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-docs.XXXXXX") ||
   fail "cannot create temporary directory"
 
+[ -f "$REPOSITORY/VERSION" ] || fail "VERSION is missing"
+FIXED_VERSION=$(sed -n '1{s/\r$//;p;}' "$REPOSITORY/VERSION")
+[ -n "$FIXED_VERSION" ] || fail "VERSION is empty"
+printf '%s\n' "$FIXED_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' ||
+  fail "VERSION is not a fixed semantic version: $FIXED_VERSION"
+require_literal CHANGELOG.md "## [$FIXED_VERSION]"
+require_literal README.md "source baseline is fixed at v$FIXED_VERSION"
+require_literal README-zh.md "固定为 v$FIXED_VERSION"
+
 PAIRED_DOCUMENTS='
 README.md|README-zh.md
 CONTRIBUTING.md|CONTRIBUTING-zh.md
@@ -541,6 +550,30 @@ while IFS='|' read -r activation_document activation_literal; do
   require_literal "$activation_document" "$activation_literal"
 done <"$CHECK_TEMP/activation-document-contract"
 
+cat >"$CHECK_TEMP/policy-projection-contract" <<'EOF'
+README.md|## No-Bridge Policy Workflow
+README.md|policy_selectable
+README.md|host_routable
+README-zh.md|## 无 Bridge Policy Workflow
+README-zh.md|policy_selectable
+README-zh.md|host_routable
+docs/en/architecture.md|## Policy and Machine Profile Projections
+docs/en/architecture.md|Machine attestation may increase assurance, but it cannot veto a Policy Offer.
+docs/zh/architecture.md|## Policy 与 Machine Profile Projection
+docs/zh/architecture.md|machine attestation 可以提高 assurance，但不能 veto
+docs/en/lifecycle.md|policy_selectable
+docs/en/lifecycle.md|host_routable
+docs/en/lifecycle.md|incident_routes
+docs/en/troubleshooting.md|incident_routes
+docs/zh/lifecycle.md|policy_selectable
+docs/zh/lifecycle.md|host_routable
+docs/zh/lifecycle.md|incident_routes
+docs/zh/troubleshooting.md|incident_routes
+EOF
+while IFS='|' read -r projection_document projection_literal; do
+  require_literal "$projection_document" "$projection_literal"
+done <"$CHECK_TEMP/policy-projection-contract"
+
 for activation_lifecycle_document in docs/en/lifecycle.md docs/zh/lifecycle.md; do
   for assurance_level in policy-cooperative core-backed coordinator-backed; do
     require_literal "$activation_lifecycle_document" "$assurance_level"
@@ -677,11 +710,15 @@ require_literal docs/superpowers/specs/2026-08-04-oaw-host-native-execution-topo
 require_literal docs/superpowers/specs/2026-08-05-oaw-core-coordinator-hard-cutover-design.md \
   'Approved for implementation'
 
-find "$REPOSITORY" -type f -name '*.md' \
-  ! -path "$REPOSITORY/.git/*" \
-  ! -path "$REPOSITORY/.serena/*" \
-  ! -path "$REPOSITORY/.worktrees/*" \
-  -print >"$CHECK_TEMP/markdown-files"
+git -C "$REPOSITORY" rev-parse --is-inside-work-tree >/dev/null 2>&1 ||
+  fail "documentation checks require a Git worktree"
+git -C "$REPOSITORY" ls-files -- '*.md' >"$CHECK_TEMP/tracked-markdown-files"
+: >"$CHECK_TEMP/markdown-files"
+while IFS= read -r tracked_markdown_file; do
+  [ -n "$tracked_markdown_file" ] || continue
+  printf '%s/%s\n' "$REPOSITORY" "$tracked_markdown_file" \
+    >>"$CHECK_TEMP/markdown-files"
+done <"$CHECK_TEMP/tracked-markdown-files"
 
 while IFS= read -r markdown_file; do
   # Parse destinations separately from optional titles. This covers inline and

@@ -134,6 +134,64 @@ Install State 与 Workflow State 相互独立，不会自动迁移。Adapter 安
 也不会创建 Workflow State。只有真实 `host-native` integration 可以与 OAW Core 或
 Workflow Coordinator 交换 session fact 与 Receipt。物理执行权限仍属于 Agent Host。
 
+## 无 Bridge 的 Policy CLI Candidate 诊断
+
+不要仅凭 `oaw providers inspect` 判断 policy-only 工作能否推进。这两个 inspection 回答
+不同问题：
+
+```bash
+oaw providers inspect --host codex --format text
+oaw profiles
+```
+
+`providers inspect` 使用机器支撑的 Provider resolution chain。在 policy-only Host 上，它
+可能正确报告 Candidate 和 `HOST_BINDING_EVIDENCE_REQUIRED`；这表示 installation 不是
+Verified Provider Instance。`profiles` 执行另一套 route-level Governance
+inspection。当每个必要 route 可调用时，它可以把同一 Profile 报告为 `host_routable`。
+两种输出相容，并不矛盾。
+
+这个区别也解释了曾经出现的非对称结果：`SP-FULL` 可见，而 Matt 与 ECC 不可见。
+Superpowers 已有 curated Codex cache 的 discovery probe。当前 plugin manager 安装的 ECC
+可能位于 `.codex/plugins/cache/ecc/ecc/<version>`，该路径必须被识别。Matt 的 Policy
+检查只认普通 `.agents/skills/<name>/SKILL.md` route，并把人工命令 Skill 标为
+`user-explicit`；它有意忽略 `.skill-lock.json`、source、revision、hash 和 Bridge 状态。
+ECC 只检查 contract 与责任匹配的公开 Codex Skill route；通用 review 使用 typed Host
+`review.execute`，不要求 Claude Agent、Codex Role 或 instruction。
+严格 identity/integrity 检查仍由 `providers inspect` 和 machine-backed 路径负责。
+
+直接检查公开 JSON 结果：
+
+```bash
+oaw profiles
+```
+
+每个 Profile object 包含 `name`、`policy_selectable`、`host_routable`、`missing` 与
+`incident_routes`。
+`policy_selectable` 表示 Profile 语义存在；`host_routable` 表示全部必要 route 当前可调用；
+`missing` 列出阻止路由的必要 route。`incident_routes` 把条件 handler 报告为
+`routable-if-triggered` 或 `unavailable-if-triggered`；后者不会使正常 Profile 变成
+incomplete。Route inventory、Offer ref 与 reducer state 仍是内部实现细节。当前项目级
+Policy CLI 没有 add-on 参数或 `NONE` 哨兵；machine-backed 路径的 add-on 仍属于另一份契约。
+
+| 症状或 reason | 诊断与恢复 |
+| --- | --- |
+| `PROFILE_SELECTION_REQUIRED` | 运行 `oaw profiles`，选择 `host_routable: true` 的 Profile，并将已报告的评估传给 `oaw use --profile PROFILE --complexity ordinary|complex --risk normal|elevated|critical -- "deliverable"`。 |
+| `POLICY_ASSESSMENT_REQUIRED` | 传入 Cooperative Assessment 已报告的 complexity 与 risk。Policy 模式不会虚构默认值或调用 machine classifier。 |
+| `PROFILE_INCOMPLETE` | 阅读每条 `missing` route。修复精确 Host-visible 或 user-explicit Skill route，重新运行 `oaw profiles`，再显式 restart 或 switch。 |
+| `PROFILE_UNKNOWN` | 请求的 alias 不在内置 catalog 中。使用输出展示的 alias。 |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | 无 Bridge surface 只支持显式 `CURRENT`；`SUBAGENT` 需要 current-session Host-native evidence。 |
+| `ROUTE_INVENTORY_DRIFT` | 启动后 callable route 发生变化。修复 route，运行 `oaw profiles` 确认当前路由；需要切换时，在 stable boundary 使用 `oaw switch PROFILE`。在此之前，依赖 route 的 completion 与 incident event 继续被阻断；显式 `stop` 与 `uncertain` 仍可记录 terminal safety state。单纯 lock/hash/Bridge 变化不算 drift。 |
+| `POLICY_ACTION_NOT_APPLICABLE` 或 `EVENT_OUT_OF_ORDER` | 运行 `oaw status`，再按 `next` 使用匹配的业务命令：`complete`、`review clean|findings`、`approve` 或 `satisfy`。内部 ref 不是用户输入，已消费 work 不可重试。 |
+| `POLICY_RUN_NOT_FOUND` | 在同一个物理项目运行 `oaw status`。不能从 conversation text 重建 progress。 |
+| `POLICY_ENGAGEMENT_ACTIVE` | 当前项目已有 active Engagement；用 `oaw status` 查看，或显式 stop。 |
+
+`use` 消费 fresh route observation 并保存 exact reducer snapshot。若出现 `OFFER_STALE`，
+它表示内部选择期间发生竞争，并不要求用户管理 Offer；重新运行 `oaw profiles`，再重试
+`oaw use` 或 `oaw switch`。`status` 只渲染 public view；每个 business event 在 reduce 前
+重新检查 route。Drift 会阻断依赖 route 的推进，但不会阻断显式 `stop` 或 `uncertain`
+写入终态。Local policy-run file 可以跨 CLI restart 存在，但不能证明中断的 Skill、process、
+Git、network 或 destructive work 已完成。
+
 ## Policy-Cooperative 停止原因
 
 这些停止只适用于已激活的 `policy-cooperative` Engagement，用于防止 instruction-only

@@ -34,7 +34,7 @@ var providerCompatibilityRules = [...]providerCompatibilityRule{
 		name:       "ecc",
 		providerID: "oaw/ecc",
 		probeIDs: []string{
-			"ecc-claude-marketplace", "ecc-claude-cache", "ecc-codex-direct", "ecc-codex-cache",
+			"ecc-claude-marketplace", "ecc-claude-cache", "ecc-codex-direct", "ecc-codex-cache", "ecc-codex-plugin-cache",
 		},
 	},
 }

@@ -56,21 +56,7 @@ LEGACY_AUTHORITY='oaw\.provider-descriptor/v3|oaw\.profile-recipe/v2|oaw\.provid
 if rg -n "$LEGACY_AUTHORITY" cmd internal \
   --glob '!**/*_test.go' \
   --glob '!**/testdata/**' \
-  --glob '!internal/assets/audits/**' \
-  --glob '!internal/assets/schemas/v1/dispatch-packet.schema.json' \
-  --glob '!internal/assets/schemas/v1/workflow-command.schema.json' \
-  --glob '!internal/assets/schemas/v1/workflow-result.schema.json' \
-  --glob '!internal/assets/schemas/v1/workflow-snapshot.schema.json' \
-  --glob '!internal/assets/schemas/v1/workflow-revision.schema.json' \
-  --glob '!internal/assets/schemas/v2/host-manifest.schema.json' \
-  --glob '!internal/assets/schemas/v2/host-session.schema.json' \
-  --glob '!internal/assets/schemas/v2/host-binding-inventory.schema.json' \
-  --glob '!internal/assets/schemas/v2/host-invocation-receipt.schema.json' \
-  --glob '!internal/assets/schemas/v2/host-conformance-transcript.schema.json' \
-  --glob '!internal/assets/schemas/v2/host-conformance-report.schema.json' \
-  --glob '!internal/assets/schemas/v2/capability-grant.schema.json' \
-  --glob '!internal/assets/schemas/v3/host-conformance-transcript.schema.json' \
-  --glob '!internal/assets/schemas/v3/host-conformance-report.schema.json'; then
+  --glob '!internal/assets/audits/**'; then
   fail 'production authority surface contains a superseded schema identifier'
 fi
 

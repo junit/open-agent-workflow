@@ -41,6 +41,44 @@ Bridge installation do not begin an engineering lifecycle. OAW Core does not
 retain Workflow State. The Workflow Coordinator does not execute work. The
 Agent Host does not gain authority to rewrite a Bundle.
 
+## Policy and Machine Profile Projections
+
+OAW keeps one authority-neutral lifecycle meaning and projects it onto two
+independent implementations:
+
+```text
+Shared Profile semantics
+  aliases, responsibilities, gates, macro credit, incidents, switching
+        |
+        +-- Policy Projection
+        |     Host-visible and user-explicit routes
+        |     neutral Host actions and cooperative records
+        |
+        +-- Machine Projection
+              verified Provider Instances and Bindings
+              Core compilation and optional coordination records
+```
+
+The Policy Projection is implemented by the Policy catalog, route inspector,
+lifecycle reducer, Engagement, and project-bound persistence modules. Its
+route input contains only the route name and invocation mode. It reports
+`policy_selectable` separately from `host_routable`, derives every next action
+from typed events, and never imports discovery, integrity, Registry, Core,
+Coordinator, or Bridge authority.
+
+The Machine Projection retains Provider descriptors, source audits, complete
+Binding-tree verification, Core compilation, and optional Coordinator state.
+Machine attestation may increase assurance, but it cannot veto a Policy Offer.
+Lockfiles, distribution identity, installation paths, revisions, tree digests,
+and Bridge state therefore never decide whether an otherwise routable Policy
+Profile can be selected.
+
+All four built-in Profiles remain in both projections. With the required Codex
+routes present, `SP-FULL`, `MATT-FULL`, `ECC-FULL`, and `MATT-SP-HYBRID` can
+traverse the cooperative `CURRENT` lifecycle without Bridge. This proves route
+availability only; it does not verify Skill provenance, physical execution, or
+effect containment.
+
 ## Canonical Storage
 
 OAW follows the XDG base-directory convention while retaining explicit

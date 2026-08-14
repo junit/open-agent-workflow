@@ -39,13 +39,15 @@ canonical policy and renders thin target-native entrypoints around it.
 
 ## Capabilities
 
-- Classifies a top-level engineering request as `DIRECT`, `BOUNDED`, or
-  `WORKFLOW` before a family-specific lifecycle starts.
-- Presents every eligible built-in and user-defined lifecycle Profile for
-  Workflow Mode, eligible `CURRENT` or native `SUBAGENT` execution, and waits
-  for the user's explicit choice.
-- Uses OAW Core to compile the selected Lifecycle Bundle and locks it across
-  follow-ups, context compaction, tickets, and delegated agents.
+- After explicit activation, assesses a top-level engineering request as
+  `DIRECT`, `BOUNDED`, or `WORKFLOW` before a family-specific lifecycle starts.
+- In `policy-cooperative` Workflow Mode, reports Host-visible Profile
+  candidates and waits for an explicit selection of one `CURRENT` path. In a
+  machine-backed session, OAW Core separately computes eligible Profiles and
+  topologies.
+- Uses OAW Core only on the machine-backed path to compile the selected
+  Lifecycle Bundle and lock it across follow-ups, context compaction, tickets,
+  and delegated agents.
 - Optionally records Workflow revisions, cooperative Resource Leases, Receipts,
   and evidence references in the Workflow Coordinator.
 - Supports full-family profiles, a predefined Matt-Superpowers hybrid, bounded
@@ -192,6 +194,40 @@ and one named deliverable; it is not normal Host Skill routing. Activated
 Machine-backed selection may compile a Lifecycle Bundle; policy-cooperative
 selection uses an explicit Profile candidate, `CURRENT`, a Policy Workflow
 Plan, and a Progress Tracker without claiming machine guarantees.
+
+## No-Bridge Policy Workflow
+
+The reference Codex Policy CLI provides a complete cooperative `CURRENT` path
+without installing Bridge:
+
+```bash
+oaw profiles
+oaw use --profile MATT-SP-HYBRID \
+  --complexity ordinary --risk normal -- "deliverable"
+oaw status
+```
+
+`profiles` reports `policy_selectable`, `host_routable`, exact `missing`
+routes, and conditional incident availability. `use` requires the cooperative
+complexity and risk assessment already stated by the active Host; it creates a
+Policy Workflow Plan and Progress Tracker, then the reducer derives every next
+Skill, Host action, gate, review outcome, incident return, switch boundary, and
+terminal state. Callers do not supply slots, work references, or free-form next
+actions.
+
+Codex route inspection recognizes Matt Skills below `.agents/skills`, ECC
+Skills below `.codex/plugins/cache/ecc/ecc/<version>`, and curated Superpowers
+Skills below `.codex/plugins/cache/openai-api-curated/superpowers/<version>`.
+When those routes are present, `SP-FULL`, `MATT-FULL`, `ECC-FULL`, and
+`MATT-SP-HYBRID` are all selectable and routable without Bridge. A missing
+conditional incident handler is reported separately and stops only if that
+incident actually occurs.
+
+This path remains `policy-cooperative`. It does not claim a verified Provider
+Instance, Lifecycle Bundle, Capability Grant, Resource Lease, Host Receipt,
+atomic revision, idempotency, or enforced recovery. Bridge is an optional
+machine-assurance integration, not a prerequisite for ordinary Policy
+execution.
 
 ## Lifecycle Profiles
 
@@ -366,9 +402,9 @@ agent tools remain governed by their own licenses.
 
 ## Project Status
 
-This repository is an unreleased, local-only v0.1 candidate. Cross-platform
+The source baseline is fixed at v0.1.0 as of 2026-08-14. Cross-platform
 archives can be built locally and release readiness follows the available
-native/Docker verification matrix. The project does not claim a published remote repository, package,
-release, domain, or globally reserved name. Machine-readable management status
-is reserved for a post-v0.1 extension; v0.1 management output is human-readable
-only. Remote publication requires separate owner approval.
+native/Docker verification matrix. This repository state is not a published
+remote release and this change does not create a tag, package, domain, or
+globally reserved name. Remote publication and tag creation require separate
+owner approval.

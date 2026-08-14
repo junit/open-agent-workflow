@@ -69,8 +69,9 @@ and evidence rules used to validate a Classification Proposal.
 _Avoid_: Profile recipe, classifier prompt
 
 **Engineering Run**:
-One runtime-managed execution of a Deliverable, including its immutable
-decisions, state revisions, grants, events, and evidence.
+One machine-backed execution of a Deliverable, including its immutable
+decisions and, when Coordinator-backed, state revisions, Grants, events, and
+evidence.
 _Avoid_: Session, task
 
 **Successor Run**:
@@ -81,8 +82,9 @@ _Avoid_: Mode mutation, resumed run
 **Executor**:
 A host-native agent context with a distinct OAW authority identity that acts
 under a Capability Grant. Logical Grant separation is bookkeeping, not physical
-context isolation. Runtime-managed Workflow execution requires a distinct Host
-execution context verified through the trusted Host integration record.
+context isolation. Machine-backed Workflow execution requires a distinct Host
+execution context verified through the trusted Host integration record when
+the selected topology requires one.
 _Avoid_: Provider, lifecycle owner
 
 ## Providers and Capabilities
@@ -300,44 +302,47 @@ The optional execution layer that manages Engineering Runs, Provider
 resolution, Capability admission, control transitions, and authoritative state.
 _Avoid_: Sandbox, provider executor
 
-**Policy-only Mode**:
-A Host integration mode that supplies OAW instructions without claiming runtime
-admission, isolation, or transition enforcement.
-_Avoid_: Runtime-managed mode
+**Policy Control Surface**:
+A Host integration surface that distributes instructions. After explicit OAW
+activation it may support `policy-cooperative` work and `CURRENT`, but it cannot
+claim Core or Coordinator authority.
+_Avoid_: Policy-only mode, instruction-only integration level
 
-**Runtime-managed Mode**:
-A Host integration mode that drives execution through the Runtime Protocol and
-honors emitted Capability Grants and control decisions.
-_Avoid_: Policy-only mode
+**Host-native Control Surface**:
+A Host integration surface that reports current session facts, invokes OAW Core
+or the Coordinator, executes Host-native dispatch, and returns normalized
+Receipts without transferring physical authority to OAW.
+_Avoid_: Legacy integration-level names
 
 **Host**:
 An agent environment, such as Codex or Claude Code, that loads instructions and
 may expose native skills, agents, tools, or runtime integration points.
 _Avoid_: Provider, target
 
-**Integration Level**:
-A Host Adapter's declared OAW participation level: `instruction-only`,
-`runner-managed`, or `native-managed`. It states available guarantees rather
-than general Host quality.
-_Avoid_: Support status, request mode
+**Assurance Level**:
+The current Engagement's claim level: `policy-cooperative`, `core-backed`, or
+`coordinator-backed`. It is orthogonal to Request Mode and states only the
+guarantees supported by current Host-native evidence.
+_Avoid_: Integration level, request mode, Provider quality
 
 **Host Manifest**:
-A versioned declaration of a Host Adapter's supported Runtime Protocols,
-binding kinds, Executor isolation, invocation, deduplication, cancellation, and
-observation features. Runtime admits it through a built-in or user-trusted Host
-integration record and pins its digest; a per-run Host frame may only narrow
-the admitted features.
+A versioned declaration of a Host Integration Adapter's control surface,
+supported topologies, Binding kinds, delegation, invocation, cancellation, and
+observation features. Machine-backed admission uses a built-in or user-trusted
+Host integration record and pins its digest; a per-run Host frame may only
+narrow the admitted features.
 _Avoid_: Provider descriptor, host configuration
 
-**Runtime Protocol**:
-The host-neutral transition interface shared by the reference runner and every
-runtime-capable Host Adapter.
-_Avoid_: CLI output, provider protocol
+**Host-native Integration Interface**:
+The Host-owned interface for reporting current session facts, requesting Core
+or Coordinator decisions, executing Dispatch Packets, and returning normalized
+Receipts.
+_Avoid_: Legacy runtime transport, CLI output, Provider protocol
 
-**Host Adapter**:
-A translation between the Runtime Protocol and one Host's native interaction,
-Capability invocation, and Executor mechanisms.
-_Avoid_: Instruction adapter, provider binding
+**Host Integration Adapter**:
+A translation between the Host-native Integration Interface and one Host's
+native interaction, Capability invocation, and delegation mechanisms.
+_Avoid_: Instruction adapter, Provider Binding
 
 **Instruction Adapter**:
 A translation that makes the canonical OAW policy visible through one Host's

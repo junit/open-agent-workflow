@@ -30,12 +30,13 @@ policy，并围绕它渲染轻量的 target-native 入口。
 
 ## 核心能力
 
-- 在 family-specific 生命周期启动前，将顶层工程请求分类为 `DIRECT`、`BOUNDED` 或
-  `WORKFLOW`。
-- 在 Workflow Mode 中展示所有可用的内置与用户自定义 Profile、`CURRENT` 与可用的
-  `SUBAGENT` 拓扑，并等待用户显式选择。
-- 由 OAW Core 编译选定 Lifecycle Bundle，并让它跨后续请求、上下文压缩、ticket 和
-  委派 agent 保持锁定。
+- 显式激活后，在 family-specific 生命周期启动前，将顶层工程请求评估为 `DIRECT`、
+  `BOUNDED` 或 `WORKFLOW`。
+- 在 `policy-cooperative` Workflow Mode 中报告 Host-visible Profile candidate，并等待
+  用户显式选择一条 `CURRENT` 路径；机器支撑 session 则由 OAW Core 独立计算 eligible
+  Profile 与 topology。
+- 只在机器支撑路径中由 OAW Core 编译选定 Lifecycle Bundle，并让它跨后续请求、
+  上下文压缩、ticket 和委派 agent 保持锁定。
 - 可选地由 Workflow Coordinator 记录 Workflow revision、协作式 Resource Lease、
   Receipt 和 evidence reference。
 - 支持完整 family profile、预定义 Matt-Superpowers hybrid、有限 specialist add-on，
@@ -175,6 +176,34 @@ Assurance Level 与 Request Mode 相互独立。仅有指令分发能力的 Host
 Host Skill routing；`WORKFLOW` 运行选择 gate。没有超时自动选择，也没有静默默认项。
 机器支撑的选择可以编译 Lifecycle Bundle；`policy-cooperative` 使用显式
 Profile candidate、`CURRENT`、协作式 Policy Workflow Plan 和 Progress Tracker，不冒充机器保证。
+
+## 无 Bridge Policy Workflow
+
+参考 Codex Policy CLI 无需安装 Bridge 即可提供完整的协作式 `CURRENT` 路径：
+
+```bash
+oaw profiles
+oaw use --profile MATT-SP-HYBRID \
+  --complexity ordinary --risk normal -- "deliverable"
+oaw status
+```
+
+`profiles` 报告 `policy_selectable`、`host_routable`、精确 `missing` route 与条件式
+incident 可用性。`use` 要求 active Host 已经给出的 cooperative complexity 与 risk
+assessment；它建立 Policy Workflow Plan 和 Progress Tracker，随后由 reducer 推导每个
+next Skill、Host action、gate、review outcome、incident return、switch boundary 与 terminal
+state。caller 不提供 slot、work reference 或自由文本 next action。
+
+Codex route inspection 会识别 `.agents/skills` 下的 Matt Skills、
+`.codex/plugins/cache/ecc/ecc/<version>` 下的 ECC Skills，以及
+`.codex/plugins/cache/openai-api-curated/superpowers/<version>` 下的 curated
+Superpowers Skills。当这些 route 存在时，`SP-FULL`、`MATT-FULL`、`ECC-FULL` 与
+`MATT-SP-HYBRID` 都可以在不安装 Bridge 的情况下被选择和路由。缺失的条件式 incident
+handler 会单独报告，并且只在该 incident 实际发生时停止。
+
+这条路径仍是 `policy-cooperative`。它不声称拥有 verified Provider Instance、Lifecycle
+Bundle、Capability Grant、Resource Lease、Host Receipt、atomic revision、idempotency 或
+enforced recovery。Bridge 是可选的机器保证 integration，不是日常 Policy 执行的前置条件。
 
 ## 生命周期配置
 
@@ -330,7 +359,7 @@ OAW 使用 [Apache License 2.0](LICENSE)。Workflow provider 和 agent 工具仍
 
 ## 项目状态
 
-此仓库是尚未发布、仅限本地的 v0.1 candidate。可以在本地构建跨平台归档，release
-readiness 按当前可用的原生/Docker 验证矩阵判定。它不声称已有公开远程仓库、package、release、domain 或全局保留名称。
-machine-readable management status 保留为 post-v0.1 扩展；v0.1 management 只输出
-human-readable 状态。任何远程发布都需要所有者另行批准。
+源码基线已于 2026-08-14 固定为 v0.1.0。可以在本地构建跨平台归档，release readiness
+按当前可用的原生/Docker 验证矩阵判定。当前仓库状态不是已发布的远程 release，本次
+变更也不会创建 tag、package、domain 或全局保留名称。任何远程发布与 tag 创建都需要
+所有者另行批准。

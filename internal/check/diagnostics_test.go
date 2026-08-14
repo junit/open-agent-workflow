@@ -93,6 +93,18 @@ func TestExecuteKeepsECCCompatibilityIndicatorNarrow(t *testing.T) {
 	assertLine(t, result.Lines, "provider ecc: detected")
 }
 
+func TestExecuteRecognizesCurrentECCCodexCache(t *testing.T) {
+	root := t.TempDir()
+	environment := testEnvironment(t, root)
+	writeFixtureFile(t, filepath.Join(environment.Home, ".codex", "plugins", "cache", "ecc", "ecc", "2.2.0", ".codex-plugin", "plugin.json"), "plugin")
+
+	result, err := check.Execute(testCatalog(t), environment, check.Request{Targets: "codex"})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	assertLine(t, result.Lines, "provider ecc: detected")
+}
+
 func TestExecuteIgnoresHiddenSuperpowersVersionDirectories(t *testing.T) {
 	root := t.TempDir()
 	environment := testEnvironment(t, root)

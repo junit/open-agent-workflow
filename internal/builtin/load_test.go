@@ -190,6 +190,27 @@ func TestSuperpowersDistributionDiscoveryAndAlternativesAreExact(t *testing.T) {
 	}
 }
 
+func TestECCDiscoveryIncludesLegacyAndCurrentCodexCaches(t *testing.T) {
+	provider := requireProvider(t, loadCatalog(t), "oaw/ecc")
+	wantPrefixes := map[string]string{
+		"ecc-codex-cache":        ".codex/plugins/cache/everything-claude-code/ecc",
+		"ecc-codex-plugin-cache": ".codex/plugins/cache/ecc/ecc",
+	}
+	for _, probe := range provider.Discovery {
+		want, found := wantPrefixes[probe.ID]
+		if !found {
+			continue
+		}
+		if probe.Kind != "one-level-version-path-exists" || probe.Prefix != want || probe.EvidencePath != ".codex-plugin/plugin.json" {
+			t.Errorf("ECC probe %s = %#v", probe.ID, probe)
+		}
+		delete(wantPrefixes, probe.ID)
+	}
+	if len(wantPrefixes) != 0 {
+		t.Fatalf("ECC discovery missing Codex cache probes: %v", wantPrefixes)
+	}
+}
+
 func TestSuperpowersCapabilitiesReferenceEveryDistributionAlternative(t *testing.T) {
 	provider := requireProvider(t, loadCatalog(t), "oaw/superpowers")
 	wantStems := map[string]string{

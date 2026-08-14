@@ -8,9 +8,13 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 trap cleanup_sandbox EXIT HUP INT TERM
 
+file_checksum() {
+  cksum <"$1"
+}
+
 file_fingerprint() {
-  local fingerprint_file=$1
-  local fingerprint_stat=
+  fingerprint_file=$1
+  fingerprint_stat=
 
   if fingerprint_stat=$(stat -f '%d:%i:%m:%z' "$fingerprint_file" 2>/dev/null); then
     :
@@ -21,7 +25,7 @@ file_fingerprint() {
 }
 
 artifact_snapshot() {
-  local artifact_path=$1
+  artifact_path=$1
 
   if [ -e "$artifact_path" ]; then
     printf 'present:%s\n' "$(file_fingerprint "$artifact_path")"
@@ -31,38 +35,111 @@ artifact_snapshot() {
 }
 
 assert_artifact_snapshot() {
-  local artifact_path=$1
-  local expected_snapshot=$2
-  local description=$3
+  artifact_path=$1
+  expected_snapshot=$2
+  description=$3
 
   [ "$(artifact_snapshot "$artifact_path")" = "$expected_snapshot" ] ||
     fail "$description changed $artifact_path"
 }
 
 setup_sandbox
-OAW_OUTSIDE=$OAW_SANDBOX/outside-state
-mkdir -p "$OAW_OUTSIDE"
-printf 'outside state sentinel\n' >"$OAW_OUTSIDE/sentinel"
-OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
-ln -s "$OAW_OUTSIDE" "$OAW_STATE/open-agent-workflow"
-OAW_OUTSIDE_STATE=$OAW_OUTSIDE/installations/user.state
+
+run_oaw check --target claude
+assert_status 0 "empty management check"
+assert_contains "installed claude: not-installed" "empty management check reports status"
+assert_read_only_roots
+
+run_oaw install --target claude,codex
+assert_status 0 "multi-target user install"
+
 OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
-OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
+OAW_STATE_FILE=$OAW_STATE/open-agent-workflow/installations/user.state
+OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
+OAW_CODEX=$OAW_HOME/.codex/AGENTS.md
 
-run_oaw install --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "symlinked state directory allowed an outside write"
-assert_contains "$OAW_STATE/open-agent-workflow" \
-  "symlinked state diagnostic identifies the unsafe component"
-[ ! -e "$OAW_OUTSIDE_STATE" ] || fail "symlinked state directory created an outside state"
-assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
-  "symlinked state install"
-[ ! -e "$OAW_POLICY" ] || fail "symlinked state install created policy"
-[ ! -e "$OAW_USER_TARGET" ] || fail "symlinked state install created a user target"
+for artifact in "$OAW_POLICY" "$OAW_STATE_FILE" "$OAW_CLAUDE" "$OAW_CODEX"; do
+  [ -f "$artifact" ] || fail "multi-target install omitted $artifact"
+done
 
-pass "XDG state components cannot redirect writes through symlinks"
+run_oaw check --target claude,codex
+assert_status 0 "clean multi-target check"
+assert_contains "installed claude: clean" "Claude installation is clean"
+assert_contains "installed codex: clean" "Codex installation is clean"
+
+printf '%s\n' \
+  '<!-- BEGIN OPEN AGENT WORKFLOW -->' \
+  'local Codex drift' \
+  '<!-- END OPEN AGENT WORKFLOW -->' \
+  >"$OAW_CODEX"
+
+OAW_POLICY_BEFORE=$(file_checksum "$OAW_POLICY")
+OAW_STATE_BEFORE=$(file_checksum "$OAW_STATE_FILE")
+OAW_CLAUDE_BEFORE=$(file_checksum "$OAW_CLAUDE")
+OAW_CODEX_BEFORE=$(file_checksum "$OAW_CODEX")
+
+run_oaw update --target claude,codex
+[ "$OAW_STATUS" -ne 0 ] || fail "multi-target update accepted Codex drift"
+assert_contains "$OAW_CODEX" "drift rejection identifies the Codex target"
+[ "$(file_checksum "$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
+  fail "drift rejection changed canonical policy"
+[ "$(file_checksum "$OAW_STATE_FILE")" = "$OAW_STATE_BEFORE" ] ||
+  fail "drift rejection changed installation state"
+[ "$(file_checksum "$OAW_CLAUDE")" = "$OAW_CLAUDE_BEFORE" ] ||
+  fail "drift rejection changed an earlier clean target"
+[ "$(file_checksum "$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
+  fail "drift rejection overwrote the drifted target"
+
+run_oaw update --target codex --force
+assert_status 0 "forced Codex recovery"
+assert_contains "oaw: backup:" "forced recovery reports its backup"
+grep -F 'Open Agent Workflow is opt-in.' "$OAW_CODEX" >/dev/null ||
+  fail "forced recovery did not restore the Codex managed block"
+OAW_BACKUP_MANIFEST=$(find "$OAW_STATE/open-agent-workflow/backups" \
+  -type f -name manifest.tsv -print -quit)
+[ -n "$OAW_BACKUP_MANIFEST" ] || fail "forced recovery omitted its backup manifest"
+grep -F "$OAW_CODEX" "$OAW_BACKUP_MANIFEST" >/dev/null ||
+  fail "backup manifest omitted the recovered Codex target"
+
+run_oaw uninstall --target claude
+assert_status 0 "partial user uninstall"
+[ ! -e "$OAW_CLAUDE" ] || fail "partial uninstall retained the Claude target"
+[ -f "$OAW_CODEX" ] || fail "partial uninstall removed the remaining Codex target"
+[ -f "$OAW_POLICY" ] || fail "partial uninstall removed the shared policy"
+[ -f "$OAW_STATE_FILE" ] || fail "partial uninstall removed live installation state"
+
+run_oaw uninstall --target codex
+assert_status 0 "final user uninstall"
+[ ! -e "$OAW_CODEX" ] || fail "final uninstall retained the Codex target"
+[ ! -e "$OAW_POLICY" ] || fail "final uninstall retained the canonical policy"
+[ ! -e "$OAW_STATE_FILE" ] || fail "final uninstall retained installation state"
+
+pass "Go management CLI preserves atomic drift, backup, and partial-uninstall behavior"
 
 cleanup_sandbox
 setup_sandbox
+
+OAW_OUTSIDE=$OAW_SANDBOX/outside-state
+mkdir -p "$OAW_OUTSIDE"
+printf 'outside sentinel\n' >"$OAW_OUTSIDE/sentinel"
+ln -s "$OAW_OUTSIDE" "$OAW_STATE/open-agent-workflow"
+
+run_oaw install --target claude
+[ "$OAW_STATUS" -ne 0 ] || fail "symlinked state root redirected an install"
+[ "$(find "$OAW_OUTSIDE" -mindepth 1 -maxdepth 1 -print | wc -l | tr -d ' ')" -eq 1 ] ||
+  fail "symlinked state root created an outside artifact"
+grep -F 'outside sentinel' "$OAW_OUTSIDE/sentinel" >/dev/null ||
+  fail "symlinked state root changed the outside sentinel"
+[ ! -e "$OAW_CONFIG/open-agent-workflow/ENGINEERING.md" ] ||
+  fail "rejected symlinked state install created canonical policy"
+[ ! -e "$OAW_HOME/.claude/CLAUDE.md" ] ||
+  fail "rejected symlinked state install created a target"
+
+pass "Go management CLI rejects state-root symlink containment escapes"
+
+cleanup_sandbox
+setup_sandbox
+
 OAW_PROJECT="$OAW_SANDBOX/project with swapped final target"
 OAW_OUTSIDE=$OAW_SANDBOX/outside-final-target
 mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE"
@@ -107,6 +184,7 @@ pass "installed final targets cannot be replaced by content-matching symlinks"
 
 cleanup_sandbox
 setup_sandbox
+
 OAW_PROJECT="$OAW_SANDBOX/project with swapped parent"
 OAW_OUTSIDE=$OAW_SANDBOX/outside-parent
 mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE/rules"
@@ -153,70 +231,9 @@ assert_artifact_snapshot "$OAW_POLICY" "$OAW_POLICY_BEFORE" \
 
 pass "installed target parents cannot be replaced by content-matching symlinks"
 
-run_oaw_with_mkdir_race() {
-  OAW_OUTPUT_FILE=$OAW_SANDBOX/output
-  set +e
-  HOME="$OAW_HOME" \
-    XDG_CONFIG_HOME="$OAW_CONFIG" \
-    XDG_STATE_HOME="$OAW_STATE" \
-    OAW_RACE_PROJECT="$OAW_PROJECT_PHYSICAL" \
-    OAW_RACE_OUTSIDE="$OAW_OUTSIDE" \
-    OAW_REAL_MKDIR="$OAW_REAL_MKDIR" \
-    PATH="$OAW_PATH" \
-    bash "$OAW_LEGACY_INSTALLER" install --project "$OAW_PROJECT" --target cursor \
-    >"$OAW_OUTPUT_FILE" 2>&1
-  OAW_STATUS=$?
-  set -e
-  OAW_OUTPUT=$(cat "$OAW_OUTPUT_FILE")
-}
-
 cleanup_sandbox
 setup_sandbox
-OAW_PROJECT="$OAW_SANDBOX/project with apply race"
-OAW_OUTSIDE=$OAW_SANDBOX/outside-apply-race
-OAW_FAKE_BIN=$OAW_SANDBOX/fake-bin
-mkdir -p "$OAW_PROJECT" "$OAW_OUTSIDE" "$OAW_FAKE_BIN"
-printf 'apply race sentinel\n' >"$OAW_OUTSIDE/sentinel"
-OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
-OAW_REAL_MKDIR=$(command -v mkdir)
-{
-  printf '%s\n' '#!/usr/bin/env bash'
-  printf '%s\n' 'case " $* " in'
-  printf '%s\n' '  *"$OAW_RACE_PROJECT/.cursor/rules"*|*" ./rules "*)'
-  printf '%s\n' '    if [ ! -L "$OAW_RACE_PROJECT/.cursor" ]; then'
-  printf '%s\n' '      if [ -d "$OAW_RACE_PROJECT/.cursor" ]; then'
-  printf '%s\n' '        mv "$OAW_RACE_PROJECT/.cursor" "$OAW_RACE_PROJECT/.cursor-original"'
-  printf '%s\n' '      fi'
-  printf '%s\n' '      ln -s "$OAW_RACE_OUTSIDE" "$OAW_RACE_PROJECT/.cursor"'
-  printf '%s\n' '    fi'
-  printf '%s\n' '    ;;'
-  printf '%s\n' 'esac'
-  printf '%s\n' 'exec "$OAW_REAL_MKDIR" "$@"'
-} >"$OAW_FAKE_BIN/mkdir"
-chmod 755 "$OAW_FAKE_BIN/mkdir"
-OAW_PATH=$OAW_FAKE_BIN:$PATH
-OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/rules/open-agent-workflow.mdc
-OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
-OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
 
-run_oaw_with_mkdir_race
-[ "$OAW_STATUS" -ne 0 ] ||
-  fail "apply-time parent swap redirected a target write (output: $OAW_OUTPUT; outside: $(artifact_snapshot "$OAW_OUTSIDE_TARGET"))"
-assert_contains "$OAW_PROJECT_PHYSICAL/.cursor" \
-  "apply-time race diagnostic identifies the swapped component"
-[ ! -e "$OAW_OUTSIDE_TARGET" ] || fail "apply-time parent swap created an outside target"
-[ ! -e "$OAW_OUTSIDE/rules" ] || fail "apply-time parent swap created an outside directory"
-assert_artifact_snapshot "$OAW_OUTSIDE/sentinel" "$OAW_OUTSIDE_SENTINEL_BEFORE" \
-  "apply-time parent swap"
-[ ! -e "$OAW_POLICY" ] || fail "apply-time parent swap created canonical policy"
-[ ! -e "$OAW_PROJECT_STATE" ] || fail "apply-time parent swap created installation state"
-
-pass "apply revalidation blocks a parent symlink introduced after preparation"
-
-cleanup_sandbox
-setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with symlinked candidate state"
 mkdir -p "$OAW_PROJECT"
 run_oaw install --target codex

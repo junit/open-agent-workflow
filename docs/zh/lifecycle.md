@@ -74,13 +74,99 @@ Workflow Mode 适用于未解决需求或 root cause、domain 与 architecture d
 6. 由 OAW Core 编译并记录 immutable Lifecycle Bundle。
 
 在 `policy-cooperative` 下，Cooperative Selection Gate 展示 Host-visible Profile candidate，
-声明不可用的机器保证，只展示 `CURRENT`，列出所有 bounded add-on，并等待用户显式
-接受 candidate、topology、add-on 和限制。然后在 lifecycle 工作前建立协作式 Policy Workflow
-Plan 与 Progress Tracker。未验证 candidate 不得称为 eligible Profile；静态指令上下文也不能
-证明 `SUBAGENT` 可用。
+声明不可用的机器保证，并说明执行留在当前 Host session；除非用户明确请求且存在
+route-level contract，否则不使用 add-on。Gate 只等待显式 Profile 选择；这些固定执行事实和
+已声明限制不是额外选择项。随后在 lifecycle 工作前建立协作式 Policy Workflow Plan 与
+Progress Tracker。未验证 candidate 不得称为 eligible Profile；静态指令上下文也不能证明
+`SUBAGENT` 可用。
 
 Provider detection 只是诊断输入，绝不选择 Capability、Profile 或 topology。所需
 Capability 缺失或有歧义时停止选择，绝不静默省略或替换。
+
+### 无 Bridge 的 policy-cooperative CLI 路径
+
+参考 CLI 为 Codex 提供了一条真实可运行的无 Bridge `CURRENT` 路径。它始终属于
+`policy-cooperative`：CLI 检查 Host 可见文件、持久化协作快照并校验 tracker transition；
+当前 Agent Host 负责调用 Skill 和执行所有实际 effect。
+
+先做一次 fresh Governance inspection：
+
+```bash
+oaw profiles
+```
+
+每个内置 Profile 会分别报告 `policy_selectable` 和 `host_routable`，并通过 `missing`
+列出当前不可调用的必要 route。`policy_selectable` 表示 OAW 定义了该 Profile 的语义；
+`host_routable` 表示所有必要 route 当前都能投射为 Host-visible Skill、user-explicit
+Skill 或 neutral Host action。Route inventory 留在 Policy module 内部。每个公开 Profile
+还包含 `incident_routes`，把条件 handler 报告为 `routable-if-triggered` 或
+`unavailable-if-triggered`；条件 handler 不可用不会使正常 Profile 变成 incomplete。
+
+对于 Codex，协作发现会识别当前 plugin layout，包括
+`.codex/plugins/cache/ecc/ecc/<version>` 下的 ECC cache，以及
+`.codex/plugins/cache/openai-api-curated/superpowers/<version>` 下的 curated
+Superpowers cache。Matt 使用普通的 `.agents/skills/<name>/SKILL.md`；需要人工命令的 Matt
+Skill 标为 `user-explicit` 并返回 `AwaitUserSkill`。Policy inspection 不读取 Matt lockfile、
+source、revision、tree hash、Provider evidence 或 Bridge 状态。这些严格校验仍保留在
+machine-backed 路径。ECC 只在 Skill contract 与责任匹配时使用公开 Codex Skill route，
+不要求 Claude Agent、Codex Role 或 slash-command instruction。由于 ECC 的公开
+`review-pr` 命令要求已有 PR，通用 Policy review 使用带 typed outcome 的 neutral Host
+action `review.execute`；machine-backed 路径仍可使用精确验证的 ECC reviewer Binding。
+
+当全部必要 Host route 都存在时，`SP-FULL`、`MATT-FULL`、`ECC-FULL` 与
+`MATT-SP-HYBRID` 都可以在不安装 Bridge 的情况下被选择，并沿 policy-only `CURRENT`
+lifecycle 推进。可用性来自实际 inspection，不能仅凭 Provider 名称或“已安装”声明保证。
+
+随后由用户为当前项目显式选择 Profile 并启动 Engagement：
+
+```bash
+oaw use --profile MATT-SP-HYBRID --complexity complex --risk normal -- "Typora-like editor"
+```
+
+`use` 会原子地重新检查 route、校验 Profile、记录 Cooperative Assessment 已报告的 complexity
+与 risk，并保存第一个 reducer state；它不会虚构默认评估或调用 machine classifier。当前 session、
+默认无 add-on、Policy 限制、项目身份和 opaque ref 都是内部事实，不再要求用户重复确认。
+项目级 Policy CLI 没有 `--add-on` 参数或 `NONE` 哨兵；未来的 bounded add-on 必须先有
+独立、显式的 route-level contract。执行 `oaw use -- "deliverable"` 但不提供 Profile 时，
+只展示候选并等待显式选择；只有选定 Profile 时才要求传入 assessment 参数。
+
+Host 完成当前精确 work 或 gate 后，使用匹配的业务命令：
+
+```bash
+oaw complete         # 当前普通 Skill 或 neutral Host action
+oaw review clean     # 当前 review 没有 finding
+oaw review findings  # 当前 review 需要 remediation 与 re-review
+oaw approve          # 当前 user gate
+oaw satisfy          # 当前 Host gate
+oaw status
+```
+
+每个命令只在当前 work 类型匹配时接受。产生 review 结果的 work 必须显式记录 `clean` 或
+`findings`；普通 `complete` 不能悄悄冒充 clean review。Reducer 派生全部 next route、neutral
+action、gate、incident return 和 stable switch。Findings 会返回 implementation 并强制
+fresh review。只有 reducer 返回 `Done` 才完成。Incident、switch、显式停止和执行结果不确定
+仍是不同 typed action：
+
+```bash
+oaw incident build-failure --reason "compiler failed"
+oaw switch SP-FULL
+oaw stop --reason "user stopped"
+oaw uncertain --reason "Host result unknown"
+```
+
+Policy Engagement file 位于
+`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/policy-engagements`。CLI 根据当前
+项目的物理路径派生内部 identity；用户不选择 run ID 或 state root。本地 lock 与 replace
+支持 process 重启后重新读取，但不会创建 Coordinator revision、idempotency、Lease、
+Receipt 或 recovery guarantee。
+
+`use` 保存 exact reducer snapshot；`status` 只显示 public view，不输出内部 ID、route
+inventory、reducer snapshot 或 opaque ref。每个 event 都重新检查 route；实质变化会让依赖
+route 的 completion 与 incident event 返回 `ROUTE_INVENTORY_DRIFT`。修复 route 后，
+`oaw switch PROFILE` 会在 stable boundary 自行执行 fresh inspection；用户不会取得或提交
+Offer ref。`stop` 和 `uncertain` 始终可用，避免 drift 阻止 run 写入 terminal safety state。
+如果 route inventory 未变，lockfile、revision、digest、path 或 Bridge 变化不会影响 active
+Engagement。
 
 Policy-cooperative 执行使用以下稳定 stop reason：
 
@@ -196,7 +282,7 @@ credited 的所有权以 `MACRO_INTERNAL_CONFLICT` 失败。
 | `implementation` | `implement` macro | inline `superpowers:executing-plans` | `tdd-workflow` 或精确 Claude `tdd-guide` alternative | inline SP `superpowers:executing-plans`；SDD paused |
 | `implementation-tdd` | `implement` 只 credit `tdd` 一次 | `superpowers:test-driven-development` | 与 implementation 相同的所选 implementation/TDD unit | Matt `tdd`；SP TDD paused |
 | `incident-recovery` | `diagnosing-bugs` 仅处理 functional/hard/performance incident；其他类型 stop | `superpowers:systematic-debugging` typed route | 只有已验证 typed route；Claude `build-error-resolver` 可处理 build/type/dependency | Matt `diagnosing-bugs`；build/type/dependency 在未选择 ECC handler Add-on 时 stop |
-| `review-remediation` | `implement` credit `code-review`；remediation 重新进入有界 `implement` 并 re-review | `superpowers:requesting-code-review` -> `superpowers:receiving-code-review` -> re-review | 精确 Codex `reviewer` Role 或 Claude `code-reviewer` Agent，另配 remediation procedure | SP request/receive/re-review；Matt review 与 SDD review paused |
+| `review-remediation` | `implement` credit `code-review`；remediation 重新进入有界 `implement` 并 re-review | `superpowers:requesting-code-review` -> `superpowers:receiving-code-review` -> re-review | Policy：typed Host `review.execute`，findings 返回 `tdd-workflow`；machine-backed：精确 Codex `reviewer` Role 或 Claude `code-reviewer` Agent | SP request/receive/re-review；Matt review 与 SDD review paused |
 | `fresh-verification` | Host `verification.execute` | `superpowers:verification-before-completion` | `verification-loop`；E2E surface 仅为 specialist | SP `superpowers:verification-before-completion` |
 | `closeout` | Host `closeout.execute` | `superpowers:finishing-a-development-branch` | Host action 加 `git-workflow` guidance | SP `superpowers:finishing-a-development-branch` |
 

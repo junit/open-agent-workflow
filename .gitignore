@@ -8,6 +8,7 @@ Thumbs.db
 .vscode/
 .worktrees/
 /dist/
+/oaw
 
 # Test-owned temporary output
 tests/.tmp/

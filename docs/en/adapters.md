@@ -4,9 +4,10 @@
 
 This guide documents how Open Agent Workflow (OAW) projects its one canonical
 policy into each supported agent tool. OAW behavior is defined by the local
-adapter registry and renderers in [lib/targets.sh](../../lib/targets.sh) and
-[lib/render.sh](../../lib/render.sh). Provider behavior is documented only from
-the official sources listed below.
+adapter registry and renderers in
+[internal/management/targets.go](../../internal/management/targets.go) and
+[internal/management/render.go](../../internal/management/render.go). Provider
+behavior is documented only from the official sources listed below.
 
 Official sources **Retrieved: 2026-07-30**.
 
@@ -101,8 +102,10 @@ User-scope state is stored under
 Managed-block adapters preserve unrelated content in a shared destination and
 replace only the marked OAW block. Owned-file adapters require their exact
 destination to be absent or already OAW-owned; OAW does not merge inside those
-files. Those are OAW mechanical choices from [lib/targets.sh](../../lib/targets.sh)
-and [lib/render.sh](../../lib/render.sh), not provider-level precedence rules.
+files. Those are OAW mechanical choices from
+[internal/management/targets.go](../../internal/management/targets.go) and
+[internal/management/render.go](../../internal/management/render.go), not
+provider-level precedence rules.
 Every adapter renders the same lazy **Activation Router** body. It is always
 visible where a Host requires an always-applied rule, but that visibility is not
 activation: without an explicit user instruction, the Router preserves Native

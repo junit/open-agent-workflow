@@ -32,6 +32,8 @@ func RunWithContext(ctx context.Context, args []string, stdin io.Reader, stdout 
 	}
 	if len(args) != 0 {
 		switch args[0] {
+		case "profiles", "use", "status", "complete", "review", "approve", "satisfy", "incident", "switch", "stop", "uncertain":
+			return runPolicySimple(args, stdout, stderr)
 		case "bridge":
 			return runBridge(ctx, args[1:], stdin, stdout, stderr)
 		case "workflow":
@@ -41,6 +43,8 @@ func RunWithContext(ctx context.Context, args []string, stdin io.Reader, stdout 
 			return 64
 		case "providers":
 			return runProviders(args[1:], stdout, stderr)
+		case "policy":
+			return runPolicy(args[1:], stdout, stderr)
 		case "check":
 			return runCheck(args[1:], stdout, stderr)
 		case "catalog":
@@ -140,7 +144,7 @@ func parse(args []string) (command, error) {
 }
 
 func usage() string {
-	return "usage: oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw providers inspect --host host [--project-root path] [--format text|json]\n       oaw workflow exchange [--state-root path] [--project-root path]\n"
+	return "usage: oaw profiles\n       oaw use --profile PROFILE --complexity ordinary|complex --risk normal|elevated|critical -- intent\n       oaw status\n       oaw complete\n       oaw review clean|findings\n       oaw approve\n       oaw satisfy\n       oaw incident TYPE [--reason text]\n       oaw switch PROFILE\n       oaw stop [--reason text]\n       oaw uncertain --reason text\n       oaw catalog list providers|recipes|aliases [--format text|json]\n       oaw catalog validate [--format text|json]\n       oaw providers inspect --host host [--project-root path] [--format text|json]\n       oaw workflow exchange [--state-root path] [--project-root path]\n"
 }
 
 func rootUsage() string {

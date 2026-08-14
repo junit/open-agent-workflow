@@ -130,6 +130,48 @@ func TestProvidersInspectSupportsPolicyOnlyHost(t *testing.T) {
 	}
 }
 
+func TestProvidersInspectFindsCurrentECCCodexCacheWithoutBridge(t *testing.T) {
+	userHome := t.TempDir()
+	configBase := t.TempDir()
+	stateBase := t.TempDir()
+	projectRoot := t.TempDir()
+	t.Setenv("HOME", userHome)
+	t.Setenv("XDG_CONFIG_HOME", configBase)
+	t.Setenv("XDG_STATE_HOME", stateBase)
+	t.Chdir(projectRoot)
+	if err := os.MkdirAll(filepath.Join(configBase, "open-agent-workflow"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	indicator := filepath.Join(userHome, ".codex", "plugins", "cache", "ecc", "ecc", "2.2.0", ".codex-plugin", "plugin.json")
+	if err := os.MkdirAll(filepath.Dir(indicator), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(indicator, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	if status := RunWithInput([]string{"providers", "inspect", "--host=codex", "--format=json"}, strings.NewReader(""), &stdout, &stderr); status != 0 || stderr.Len() != 0 {
+		t.Fatalf("inspect status=%d stderr=%q", status, stderr.String())
+	}
+	var output providerInspectionV3Document
+	if err := json.Unmarshal(stdout.Bytes(), &output); err != nil {
+		t.Fatalf("JSON output = %q: %v", stdout.String(), err)
+	}
+	provider := inspectionProviderByID(t, output.CurrentHost.Providers, "oaw/ecc")
+	if provider.State != registry.ProviderCandidate || provider.Reason != "HOST_BINDING_EVIDENCE_REQUIRED" || provider.Instance != nil || len(provider.Candidates) != 1 {
+		t.Fatalf("ECC Provider = %#v", provider)
+	}
+	candidate := provider.Candidates[0]
+	wantLocation, err := filepath.EvalSymlinks(filepath.Dir(filepath.Dir(indicator)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.HostID != "codex" || candidate.Version != "" || candidate.ProviderPin != nil || candidate.Location != wantLocation {
+		t.Fatalf("ECC Candidate = %#v", candidate)
+	}
+}
+
 func TestProvidersInspectTextAndJSONAreDeterministic(t *testing.T) {
 	newProviderInspectionFixture(t, false)
 	args := []string{"providers", "inspect", "--host", "codex", "--format", "text"}

@@ -7,8 +7,6 @@ OAW_REPOSITORY=$(CDPATH='' cd -P -- "$TEST_DIR/.." && pwd)
 OAW_INSTALLER=${OAW_INSTALLER:-"$OAW_REPOSITORY/install.sh"}
 OAW_BASE_INSTALLER=$OAW_INSTALLER
 export OAW_BASE_INSTALLER
-OAW_LEGACY_INSTALLER=$OAW_REPOSITORY/tests/legacy-management.sh
-export OAW_LEGACY_INSTALLER
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -58,7 +56,10 @@ assert_empty_dir() {
 }
 
 setup_sandbox() {
-  setup_sandbox_at "$(mktemp -d "${TMPDIR:-/tmp}/oaw-test.XXXXXX")"
+  local sandbox
+  sandbox=$(mktemp -d "${TMPDIR:-/tmp}/oaw-test.XXXXXX")
+  sandbox=$(CDPATH='' cd -P -- "$sandbox" && pwd -P)
+  setup_sandbox_at "$sandbox"
 }
 
 setup_sandbox_at() {
