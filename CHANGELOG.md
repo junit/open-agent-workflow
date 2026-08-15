@@ -14,6 +14,10 @@ All notable changes to Open Agent Workflow will be documented in this file.
 
 #### Changed
 
+- The default `oaw` executable is now the static product surface: installation
+  management plus advisory `profile list`, `profile show`, and `profile check`.
+  Profile selection and Skill use happen through natural language without a
+  topology, Add-on sentinel, Complexity, Risk, or limitation form.
 - Codex Bridge is now an optional Assurance integration. The default `oaw`
   executable, installer, Policy integrations, Core, and Coordinator neither
   install nor depend on it.
@@ -23,6 +27,9 @@ All notable changes to Open Agent Workflow will be documented in this file.
 
 #### Removed
 
+- Provider/catalog inspection, Policy lifecycle transitions, Workflow exchange,
+  Bridge routing, status, and machine-run commands from the default `oaw`
+  executable. Removed commands are absent rather than compatibility-wrapped.
 - The legacy Bridge Core/Coordinator proxy operations, evidence handles,
   lifecycle Bundles, Receipts, Leases, delegation observations, and default
   `oaw/codex-host` host-native integration.

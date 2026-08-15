@@ -371,11 +371,11 @@ func TestPublicRunRoutesManagementAndPreservesPublicCommands(t *testing.T) {
 	}
 
 	var stdout, stderr bytes.Buffer
-	if status := Run([]string{"catalog", "validate"}, &stdout, &stderr); status != 0 {
-		t.Fatalf("catalog validate status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	if status := Run([]string{"profile", "list"}, &stdout, &stderr); status != 0 {
+		t.Fatalf("profile list status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "catalog valid") || stderr.Len() != 0 {
-		t.Fatalf("catalog validate stdout=%q stderr=%q", stdout.String(), stderr.String())
+	if !strings.Contains(stdout.String(), "built-in:SP-FULL") || stderr.Len() != 0 {
+		t.Fatalf("profile list stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 
 	stdout.Reset()

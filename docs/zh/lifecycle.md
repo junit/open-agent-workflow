@@ -83,103 +83,39 @@ Progress Tracker。未验证 candidate 不得称为 eligible Profile；静态指
 Provider detection 只是诊断输入，绝不选择 Capability、Profile 或 topology。所需
 Capability 缺失或有歧义时停止选择，绝不静默省略或替换。
 
-### 无 Bridge 的 policy-cooperative CLI 路径
+### 无 Bridge 的静态 Policy 路径
 
-参考 CLI 为 Codex 提供了一条真实可运行的无 Bridge `CURRENT` 路径。它始终属于
-`policy-cooperative`：CLI 检查 Host 可见文件、持久化协作快照并校验 tracker transition；
-当前 Agent Host 负责调用 Skill 和执行所有实际 effect。
+默认 `oaw` 二进制没有 workflow transition、route admission、Provider catalog 或
+Policy-run 命令。通过自然语言激活 OAW，并在同一个请求中指定 Profile，例如：
+“使用 OAW 和 MATT-SP-HYBRID 完成交付。”未指定 Profile 时，Agent 会陈述合理选择并
+继续；只有方法确实存在重大歧义时才提问。
 
-先做一次 fresh Governance inspection：
+Profile 选择不要求 topology、Add-on 哨兵、Complexity、Risk、Policy 限制、Provider
+证据，也不需要逐个确认 Skill。`profile list`、`profile show` 与 `profile check` 是只读
+Markdown inspection 命令，不选择或执行 Profile。旧的 `policy_selectable`、
+`host_routable` 与 `incident_routes` observation 只是 advisory 信息，不能阻塞 model-led
+Skill resolution。
 
-```bash
-oaw profiles
-```
+Codex 先使用原生 Skill index，再按照 Codex Adapter 记录的位置延迟读取当前需要的指令。
+当 index 或可选 Bridge 没有报告某个可读 Skill 时，该 Skill 仍然可用。模型通过正常会话
+与规划状态维护进度；可选 Markdown Progress Note 只是连续性辅助，不是 authority 或 gate。
 
-每个内置 Profile 会分别报告 `policy_selectable` 和 `host_routable`，并通过 `missing`
-列出当前不可调用的必要 route。`policy_selectable` 表示 OAW 定义了该 Profile 的语义；
-`host_routable` 表示所有必要 route 当前都能投射为 Host-visible Skill、user-explicit
-Skill 或 neutral Host action。Route inventory 留在 Policy module 内部。每个公开 Profile
-还包含 `incident_routes`，把条件 handler 报告为 `routable-if-triggered` 或
-`unavailable-if-triggered`；条件 handler 不可用不会使正常 Profile 变成 incomplete。
+Machine Assurance 与 Bridge 可以增加精确证据，但缺失或失败只会移除这些机器 claim，
+不会移除 Profile 选择、Skill 使用、复核、fresh verification 或 closeout。
 
-对于 Codex，协作发现会识别当前 plugin layout，包括
-`.codex/plugins/cache/ecc/ecc/<version>` 下的 ECC cache，以及
-`.codex/plugins/cache/openai-api-curated/superpowers/<version>` 下的 curated
-Superpowers cache。Matt 使用普通的 `.agents/skills/<name>/SKILL.md`；需要人工命令的 Matt
-Skill 标为 `user-explicit` 并返回 `AwaitUserSkill`。Policy inspection 不读取 Matt lockfile、
-source、revision、tree hash、Provider evidence 或 Bridge 状态。这些严格校验仍保留在
-machine-backed 路径。ECC 只在 Skill contract 与责任匹配时使用公开 Codex Skill route，
-不要求 Claude Agent、Codex Role 或 slash-command instruction。由于 ECC 的公开
-`review-pr` 命令要求已有 PR，通用 Policy review 使用带 typed outcome 的 neutral Host
-action `review.execute`；machine-backed 路径仍可使用精确验证的 ECC reviewer Binding。
-
-当全部必要 Host route 都存在时，`SP-FULL`、`MATT-FULL`、`ECC-FULL` 与
-`MATT-SP-HYBRID` 都可以在不安装 Bridge 的情况下被选择，并沿 policy-only `CURRENT`
-lifecycle 推进。可用性来自实际 inspection，不能仅凭 Provider 名称或“已安装”声明保证。
-
-随后由用户为当前项目显式选择 Profile 并启动 Engagement：
-
-```bash
-oaw use --profile MATT-SP-HYBRID --complexity complex --risk normal -- "Typora-like editor"
-```
-
-`use` 会原子地重新检查 route、校验 Profile、记录 Cooperative Assessment 已报告的 complexity
-与 risk，并保存第一个 reducer state；它不会虚构默认评估或调用 machine classifier。当前 session、
-默认无 add-on、Policy 限制、项目身份和 opaque ref 都是内部事实，不再要求用户重复确认。
-项目级 Policy CLI 没有 `--add-on` 参数或 `NONE` 哨兵；未来的 bounded add-on 必须先有
-独立、显式的 route-level contract。执行 `oaw use -- "deliverable"` 但不提供 Profile 时，
-只展示候选并等待显式选择；只有选定 Profile 时才要求传入 assessment 参数。
-
-Host 完成当前精确 work 或 gate 后，使用匹配的业务命令：
-
-```bash
-oaw complete         # 当前普通 Skill 或 neutral Host action
-oaw review clean     # 当前 review 没有 finding
-oaw review findings  # 当前 review 需要 remediation 与 re-review
-oaw approve          # 当前 user gate
-oaw satisfy          # 当前 Host gate
-oaw status
-```
-
-每个命令只在当前 work 类型匹配时接受。产生 review 结果的 work 必须显式记录 `clean` 或
-`findings`；普通 `complete` 不能悄悄冒充 clean review。Reducer 派生全部 next route、neutral
-action、gate、incident return 和 stable switch。Findings 会返回 implementation 并强制
-fresh review。只有 reducer 返回 `Done` 才完成。Incident、switch、显式停止和执行结果不确定
-仍是不同 typed action：
-
-```bash
-oaw incident build-failure --reason "compiler failed"
-oaw switch SP-FULL
-oaw stop --reason "user stopped"
-oaw uncertain --reason "Host result unknown"
-```
-
-Policy Engagement file 位于
-`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/policy-engagements`。CLI 根据当前
-项目的物理路径派生内部 identity；用户不选择 run ID 或 state root。本地 lock 与 replace
-支持 process 重启后重新读取，但不会创建 Coordinator revision、idempotency、Lease、
-Receipt 或 recovery guarantee。
-
-`use` 保存 exact reducer snapshot；`status` 只显示 public view，不输出内部 ID、route
-inventory、reducer snapshot 或 opaque ref。每个 event 都重新检查 route；实质变化会让依赖
-route 的 completion 与 incident event 返回 `ROUTE_INVENTORY_DRIFT`。修复 route 后，
-`oaw switch PROFILE` 会在 stable boundary 自行执行 fresh inspection；用户不会取得或提交
-Offer ref。`stop` 和 `uncertain` 始终可用，避免 drift 阻止 run 写入 terminal safety state。
-如果 route inventory 未变，lockfile、revision、digest、path 或 Bridge 变化不会影响 active
-Engagement。
-
-Policy-cooperative 执行使用以下稳定 stop reason：
+旧 cooperative integration 仍可能报告以下停止原因。它们不是默认 CLI 命令，也不是静态
+Profile 准入 gate：
 
 | Reason | 恢复方式 |
 | --- | --- |
-| `CAPABILITY_SELECTION_REQUIRED` | 由用户显式选择 Bounded candidate。 |
-| `POLICY_ONLY_PROVIDER_UNVERIFIED` | 使用机器支撑 integration，或去除 verified Provider 要求。 |
-| `POLICY_ONLY_PROFILE_INCOMPLETE` | 为每个必需职责提供 visible owner，或选择另一个 complete candidate。 |
-| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | 选择 `CURRENT` 或退出 OAW。 |
-| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | 去除 Grant、Lease、Receipt、idempotency、atomic revision 或 recovery 要求，或使用机器支撑 assurance。 |
-| `POLICY_ONLY_CONCURRENT_MUTATION` | 停止或串行化重叠的 project/Git 变更。 |
-| `POLICY_ONLY_EXECUTION_UNCERTAIN` | 先对不确定的外部或破坏性 effect 做对账，不得盲目重试。 |
-| `POLICY_ONLY_CONTEXT_UNCERTAIN` | 重新确认选择和进度，不得重建 authority。 |
+| `CAPABILITY_SELECTION_REQUIRED` | 澄清需要的 specialist Skill。 |
+| `POLICY_ONLY_PROVIDER_UNVERIFIED` | 去掉机器 identity claim，或使用可选 Machine Assurance。 |
+| `POLICY_ONLY_PROFILE_INCOMPLETE` | 诊断实际不可读或不可调用的 Skill；scanner 输出本身不足以判断。 |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | 使用 Host 原生能力继续，或解释真实 Host 限制。 |
+| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | 去掉机器保证要求，或使用拥有该保证的 component。 |
+| `POLICY_ONLY_CONCURRENT_MUTATION` | 通过 Host 或仓库工作流串行化真实重叠的物理工作。 |
+| `POLICY_ONLY_EXECUTION_UNCERTAIN` | 重试前先核对不确定的外部或破坏性 effect。 |
+| `POLICY_ONLY_CONTEXT_UNCERTAIN` | 重新确认继续所需的重要决策或先前结果。 |
 
 ## Provider 与 Capability 模型
 
@@ -211,12 +147,10 @@ Profile 可以只准入它的 build repair 或 security review。Full-family eli
 
 ### 检查 Provider 解析
 
-`oaw catalog list providers` 展示声明的 Provider descriptor。使用以下命令检查所选 Host
-的动态 discovery：
-
-```bash
-oaw providers inspect --host codex --format text
-```
+默认 `oaw` 二进制刻意不提供 Provider catalog 或动态 resolution 命令。它的 Profile
+inspection 命令只读取 Markdown identity 与结构。model-led Policy 执行从 Host 原生
+surface 和可读指令解析 Skill；精确 Provider 与 Binding claim 属于独立构建的 Machine
+Assurance component。
 
 当前 Host Provider 有歧义时，会列出全部 Candidate 和精确 pin：
 

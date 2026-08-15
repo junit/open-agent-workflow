@@ -97,122 +97,44 @@ Provider detection is diagnostic input. It never chooses a Capability, Profile,
 or topology. Missing or ambiguous required Capabilities stop selection rather
 than being silently omitted or replaced.
 
-### No-Bridge policy-cooperative CLI path
+### No-Bridge static Policy path
 
-The reference CLI provides a real Codex `CURRENT` path without installing the
-Bridge. It remains `policy-cooperative`: the CLI inspects files visible to the
-Host, persists a cooperative snapshot, and checks tracker transitions, while
-the current Agent Host invokes Skills and performs every effect.
+The default `oaw` binary has no workflow transition, route admission, Provider
+catalog, or Policy-run command. Activate OAW in natural language and name the
+Profile in the same request, for example: `Use OAW with MATT-SP-HYBRID for this
+deliverable.` When no Profile is named, the Agent states a reasonable choice and
+proceeds unless materially different methods create genuine ambiguity.
 
-Start with a fresh Governance inspection:
+Profile selection does not ask for topology, an Add-on sentinel, Complexity,
+Risk, Policy limitations, Provider evidence, or a second confirmation for each
+Skill. `profile list`, `profile show`, and `profile check` are read-only
+Markdown inspection commands; they do not select or run a Profile. Older
+`policy_selectable`, `host_routable`, and `incident_routes` observations are
+advisory and cannot block model-led Skill resolution.
 
-```bash
-oaw profiles
-```
+Codex first uses its native Skill index, then lazily reads the relevant
+instructions from the locations documented by the Codex Adapter. A readable
+Skill remains usable when an index or optional Bridge does not report it. The
+model owns progress through its normal conversation and planning state; an
+optional Markdown Progress Note is continuity help, not authority or a gate.
 
-Each built-in Profile is reported as `policy_selectable` and independently as
-`host_routable`, with `missing` naming any required routes that are not
-callable. `policy_selectable` means that OAW defines the Profile semantics;
-`host_routable` means that every required route currently resolves to a
-Host-visible Skill, a user-explicit Skill, or a neutral Host action. Route
-inventory remains internal to the Policy module. Each public Profile also
-includes `incident_routes`, which reports conditional handlers as
-`routable-if-triggered` or `unavailable-if-triggered`. An unavailable
-conditional handler does not make the normal Profile incomplete.
+Machine Assurance and Bridge can add exact evidence, but their absence or
+failure removes only those machine claims. It does not remove Profile
+selection, Skill use, review, fresh verification, or closeout.
 
-For Codex, cooperative discovery recognizes current plugin layouts including
-the ECC cache below `.codex/plugins/cache/ecc/ecc/<version>` and the curated
-Superpowers cache below
-`.codex/plugins/cache/openai-api-curated/superpowers/<version>`. Matt discovery
-uses regular `.agents/skills/<name>/SKILL.md` files. Human-command Matt Skills
-are `user-explicit` and yield `AwaitUserSkill`. Policy inspection does not read
-Matt lockfiles, source identity, revisions, tree hashes, Provider evidence, or
-Bridge state. Those checks remain available only on the machine-backed path.
-ECC uses public Codex Skill routes where their contracts fit the responsibility;
-it does not require a Claude Agent, Codex Role, or slash-command instruction.
-Because ECC's public `review-pr` command requires a PR, generic Policy review
-uses the typed neutral Host action `review.execute`. Machine-backed execution
-may still use an exact verified ECC reviewer Binding.
-
-When all required Host routes are present, `SP-FULL`, `MATT-FULL`,
-`ECC-FULL`, and `MATT-SP-HYBRID` can each be selected and carried through the
-policy-only `CURRENT` lifecycle without a Bridge. Availability is inspected,
-not promised merely from the Provider name or installation claim.
-
-The user then starts the project Engagement with one explicit Profile:
-
-```bash
-oaw use --profile MATT-SP-HYBRID --complexity complex --risk normal -- "Typora-like editor"
-```
-
-`use` atomically re-inspects the routes, validates the Profile, records the
-complexity and risk already reported by the Cooperative Assessment, and stores
-the first reducer state. It does not invent assessment defaults or invoke the
-machine classifier. The current session, default absence of an add-on, Policy
-limitations, project identity, and opaque references are internal facts rather
-than repeated confirmation fields. The project-level Policy CLI has no
-`--add-on` option or `NONE` sentinel; a future bounded add-on requires its own
-explicit route-level contract. Running `oaw use -- "deliverable"` without a
-Profile prints the candidates and stops for explicit Profile selection; the
-assessment flags are required only when a Profile is selected.
-
-After the Host completes the exact current work or gate, use the matching
-business command:
-
-```bash
-oaw complete         # current ordinary Skill or neutral Host action
-oaw review clean     # current review produced no findings
-oaw review findings  # current review requires remediation and re-review
-oaw approve          # current user gate
-oaw satisfy          # current Host gate
-oaw status
-```
-
-Each command is accepted only for its matching current work. Review-producing
-work requires an explicit `clean` or `findings` outcome; ordinary `complete`
-cannot silently claim a clean review. Findings return to implementation and
-force a fresh review. The reducer selects every next route, neutral action,
-gate, incident return, and stable switch. Completion occurs only when it
-returns `Done`. Incident, switch, stop, and uncertain execution remain typed
-actions:
-
-```bash
-oaw incident build-failure --reason "compiler failed"
-oaw switch SP-FULL
-oaw stop --reason "user stopped"
-oaw uncertain --reason "Host result unknown"
-```
-
-Policy Engagement files live under
-`${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/policy-engagements`.
-The CLI derives an internal identity from the physical current project; users
-do not select a run ID or state root. Local locking and replacement support
-reload after a process restart, but they do not create Coordinator revision,
-idempotency, Lease, Receipt, or recovery guarantees.
-
-`use` stores an exact reducer snapshot and `status` renders a public view that
-omits the internal ID, route inventory, reducer snapshot, and opaque
-references. Every event re-inspects routes; material changes reject
-route-dependent completion and incident events with
-`ROUTE_INVENTORY_DRIFT`. After the routes are repaired, `oaw switch PROFILE`
-performs its own fresh inspection at a stable boundary; users never obtain or
-submit an Offer reference. `stop` and `uncertain` remain available so drift
-cannot prevent a terminal safety record. Lockfile, revision, digest, path, or
-Bridge changes that preserve the same route inventory do not affect the active
-Engagement.
-
-Policy-cooperative execution uses these stable stop reasons:
+Older cooperative integrations may still report the following stop reasons.
+They are not default CLI commands or static Profile admission gates:
 
 | Reason | Recovery |
 | --- | --- |
-| `CAPABILITY_SELECTION_REQUIRED` | Select the Bounded candidate explicitly. |
-| `POLICY_ONLY_PROVIDER_UNVERIFIED` | Use a machine-backed integration or remove the verified-Provider requirement. |
-| `POLICY_ONLY_PROFILE_INCOMPLETE` | Supply a visible owner for every required responsibility or choose another complete candidate. |
-| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | Select `CURRENT` or exit OAW. |
-| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | Remove the Grant, Lease, Receipt, idempotency, atomic revision, or recovery requirement, or use machine-backed assurance. |
-| `POLICY_ONLY_CONCURRENT_MUTATION` | Stop or serialize overlapping project or Git mutation. |
-| `POLICY_ONLY_EXECUTION_UNCERTAIN` | Reconcile an uncertain external or destructive effect; do not retry blindly. |
-| `POLICY_ONLY_CONTEXT_UNCERTAIN` | Reconfirm selection and progress instead of reconstructing authority. |
+| `CAPABILITY_SELECTION_REQUIRED` | Clarify the intended specialist Skill. |
+| `POLICY_ONLY_PROVIDER_UNVERIFIED` | Drop the machine identity claim or use optional Machine Assurance. |
+| `POLICY_ONLY_PROFILE_INCOMPLETE` | Diagnose the actual unreadable or uninvokable Skill; scanner output alone is insufficient. |
+| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | Continue with Host-native abilities or explain the actual Host limitation. |
+| `POLICY_ONLY_GUARANTEE_UNAVAILABLE` | Remove the machine guarantee requirement or use the component that owns it. |
+| `POLICY_ONLY_CONCURRENT_MUTATION` | Serialize genuinely overlapping physical work through the Host or repository workflow. |
+| `POLICY_ONLY_EXECUTION_UNCERTAIN` | Reconcile an uncertain external or destructive effect before retrying. |
+| `POLICY_ONLY_CONTEXT_UNCERTAIN` | Reconfirm the material decision or prior result needed to continue. |
 
 ## Provider and Capability Model
 
@@ -249,12 +171,11 @@ coverage, using the same rule for built-in and user-registered Providers.
 
 ### Inspecting Provider Resolution
 
-`oaw catalog list providers` shows declared Provider descriptors. Inspect
-dynamic discovery for a selected Host with:
-
-```bash
-oaw providers inspect --host codex --format text
-```
+The default `oaw` binary intentionally exposes no Provider catalog or dynamic
+resolution command. Its Profile inspection commands read Markdown identity and
+structure only. Model-led Policy execution resolves Skills from Host-native
+surfaces and readable instructions, while exact Provider and Binding claims
+belong to the separately built Machine Assurance component.
 
 An ambiguous current-Host Provider lists every Candidate and an exact pin:
 

@@ -102,13 +102,12 @@ Provider Family
   -> Verified Provider Instance
 ```
 
-Run `oaw providers inspect --host codex --format text` with the same
-`--project-root`, if the Workflow used one. Codex and Claude Code are independent
-Hosts even when they reference shared files. The current section contains only
-the selected Host's Candidates and observations. A `policy` Host may show
-Candidates, but a Candidate alone is not a Verified Provider Instance. The foreign section is
-diagnostic-only and never supplies a pin or authority. Descriptor bindings and
-installation hints are declarations, not Host Binding Evidence.
+The default `oaw` binary does not expose Provider inspection. When optional
+Machine Assurance is in scope, use its separately built tools and the same
+physical project root. Codex and Claude Code are independent Hosts even when
+they reference shared files. A Candidate alone is not a Verified Provider
+Instance, foreign observations remain diagnostic-only, and descriptor bindings
+or installation hints are declarations rather than Host Binding Evidence.
 
 Interpret the stable reasons as follows:
 
@@ -147,74 +146,39 @@ management commands do not create Workflow State. Only a real `host-native`
 integration can exchange session facts and Receipts with OAW Core or the
 Workflow Coordinator. The Agent Host still owns physical execution authority.
 
-## Policy CLI Candidate Diagnostics Without a Bridge
+## Static Policy Skill Diagnosis Without a Bridge
 
-Do not use `oaw providers inspect` alone to decide whether policy-only work can
-proceed. The two inspections answer different questions:
+The default CLI has no Provider inspection, route-admission, or Policy-run
+commands. Use `profile list`, `profile show`, or `profile check` only when you
+need to inspect Markdown Profile identity or structure. These commands do not
+decide whether the model can use a Skill.
 
-```bash
-oaw providers inspect --host codex --format text
-oaw profiles
-```
+When `SP-FULL` appears usable but Matt or ECC does not, diagnose the actual
+Skill rather than a route inventory:
 
-`providers inspect` applies the machine-backed Provider resolution chain. On a
-policy-only Host it may correctly report a Candidate plus
-`HOST_BINDING_EVIDENCE_REQUIRED`; that means the installation is not a Verified
-Provider Instance. `profiles` performs the separate route-level
-Governance inspection. It may report the same Profile as `host_routable` when
-every required route is callable. These outputs are compatible, not
-contradictory.
+1. Check the Host's current native Skill index or invocation surface.
+2. Ask the Agent to read the exact Skill lazily from the locations documented
+   by the Host Adapter. Codex locations include `.agents/skills`, the ECC cache
+   below `.codex/plugins/cache/ecc/ecc/<version>`, and the curated Superpowers
+   cache.
+3. Confirm that the Skill instructions match the Responsibility named by the
+   selected Profile.
+4. If the declared Skill is genuinely unreadable and not invokable, use a
+   Profile-declared alternative, an equivalent method-preserving Skill, or the
+   Policy Default. Confirm any material change to TDD, review, verification,
+   security, or Responsibility ownership.
 
-This distinction also explains an asymmetric result in which `SP-FULL`
-appeared but Matt and ECC did not. Superpowers already had a discovery probe
-for the curated Codex cache. ECC installed through the current plugin manager
-may live at `.codex/plugins/cache/ecc/ecc/<version>`, which must be a recognized
-candidate path. Matt's Codex installation is not a plugin cache: Policy checks
-regular `.agents/skills/<name>/SKILL.md` routes and marks human-command Skills
-as `user-explicit`. It intentionally ignores `.skill-lock.json`, source,
-revision, hashes, and Bridge state. ECC checks public Codex Skill routes whose
-contracts match the responsibility and uses typed Host `review.execute` for
-generic review; it
-does not require Claude Agent, Codex Role, or instruction surfaces. Strict
-identity and integrity checks remain on `providers inspect` and the
-machine-backed path.
+An absent index entry, stale `policy_selectable`, `host_routable`, `missing`, or
+`incident_routes` observation, Provider revision, lockfile, digest, or Bridge
+failure cannot make a readable Skill unavailable. A Skill is unavailable only
+when the Agent cannot read its rules and the Host cannot invoke it.
 
-Inspect the public JSON result directly:
-
-```bash
-oaw profiles
-```
-
-Each Profile object contains `name`, `policy_selectable`, `host_routable`,
-`missing`, and `incident_routes`. `policy_selectable` means that the Profile
-semantics exist; `host_routable` means every required route is currently
-callable. `missing` names the required routes that prevent routing.
-`incident_routes` reports conditional handlers as `routable-if-triggered` or
-`unavailable-if-triggered`; the latter does not make the normal Profile
-incomplete. Route inventory, Offer references, and reducer state remain
-internal. The current project-level Policy CLI has no add-on argument or `NONE`
-sentinel; add-ons on the machine-backed path remain a separate contract.
-
-| Symptom or reason | Diagnosis and recovery |
-| --- | --- |
-| `PROFILE_SELECTION_REQUIRED` | Run `oaw profiles`, choose a Profile with `host_routable: true`, and pass it with the reported assessment to `oaw use --profile PROFILE --complexity ordinary|complex --risk normal|elevated|critical -- "deliverable"`. |
-| `POLICY_ASSESSMENT_REQUIRED` | Pass the complexity and risk already reported by the Cooperative Assessment. OAW does not invent defaults or call the machine classifier in Policy mode. |
-| `PROFILE_INCOMPLETE` | Read every `missing` route. Repair the exact Host-visible or user-explicit Skill route, run `oaw profiles` again, and explicitly restart or switch. |
-| `PROFILE_UNKNOWN` | The requested alias is absent from the built-in catalog. Use one of the displayed aliases. |
-| `POLICY_ONLY_TOPOLOGY_UNAVAILABLE` | The no-Bridge surface supports only explicit `CURRENT`; `SUBAGENT` requires current-session Host-native evidence. |
-| `ROUTE_INVENTORY_DRIFT` | A callable route changed after start. Repair it, run `oaw profiles` to verify the current routes, then use `oaw switch PROFILE` at a stable boundary when a switch is needed. Route-dependent completion and incident events remain blocked until then. Explicit `stop` and `uncertain` still record terminal safety state. Lock/hash/Bridge changes alone do not count. |
-| `POLICY_ACTION_NOT_APPLICABLE` or `EVENT_OUT_OF_ORDER` | Run `oaw status`, then use the business command matching `next`: `complete`, `review clean|findings`, `approve`, or `satisfy`. Internal references are not user inputs and consumed work cannot be retried. |
-| `POLICY_RUN_NOT_FOUND` | Run `oaw status` from the same physical project. Do not reconstruct progress from conversation text. |
-| `POLICY_ENGAGEMENT_ACTIVE` | The current project already has an active Engagement; inspect it with `oaw status` or stop it explicitly. |
-
-`use` consumes a fresh route observation and stores an exact reducer snapshot.
-Any `OFFER_STALE` failure is an internal selection race rather than a request
-for a user-managed Offer: run `oaw profiles` again and retry `oaw use` or
-`oaw switch`. `status` renders a public view, and every business event
-re-inspects routes before reduction. Drift blocks route-dependent progress but
-not explicit `stop` or `uncertain` terminal recording. A local policy-run file
-can survive a CLI restart; it cannot prove that interrupted Skill, process,
-Git, network, or destructive work completed.
+Select or switch Profiles in natural language. Do not provide topology,
+Add-on sentinel, Complexity, Risk, limitation, route, or progress-state fields.
+Progress belongs to normal conversation and planning state; an optional
+Markdown Progress Note may aid continuity but cannot block work. If a material
+decision or prior result is uncertain, state the known facts and ask the
+narrow question needed to continue.
 
 ## Policy-Cooperative Stops
 

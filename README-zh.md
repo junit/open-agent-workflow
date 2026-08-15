@@ -2,12 +2,12 @@
 
 [English](README.md)
 
-Open Agent Workflow（OAW）负责协调多个 agent 工具中独立安装的 workflow provider。它为一个工程交付物指定一个明确的生命周期所有者，或一份无冲突的阶段
-映射，然后把同一套治理策略安装到受支持 coding agent 的指令入口中。
+Open Agent Workflow（OAW）是面向 agent 工具的规则驱动工程工作流。它安装一份
+portable Policy Set，由 Markdown Profile 把独立安装的 Skill 组合成清晰的工程方法。
 
-OAW 是 provider-neutral 的策略分发与生命周期协调系统。OAW Core 编译生命周期契约，
-可选 Workflow Coordinator 持久化 Workflow State，外部 Agent Host 执行所有 effect。
-它不重新分发 workflow family，也不取代 agent 工具自身的配置。
+Policy、选定的 Profile、可读或可调用的 Skill，以及 Agent Host 的原生能力共同构成
+完整的正常产品。安装后不需要 OAW runtime、Bridge、route scanner、reducer 或 state
+database。可选机器组件可以增加精确证据，但不能改变或否决规则驱动路径。
 
 ## 为什么需要 OAW
 
@@ -30,22 +30,20 @@ policy，并围绕它渲染轻量的 target-native 入口。
 
 ## 核心能力
 
-- 显式激活后，在 family-specific 生命周期启动前，将顶层工程请求评估为 `DIRECT`、
-  `BOUNDED` 或 `WORKFLOW`。
-- 在 `policy-cooperative` Workflow Mode 中报告 Host-visible Profile candidate，并等待
-  用户显式选择一条 `CURRENT` 路径；机器支撑 session 则由 OAW Core 独立计算 eligible
-  Profile 与 topology。
-- 只在机器支撑路径中由 OAW Core 编译选定 Lifecycle Bundle，并让它跨后续请求、
-  上下文压缩、ticket 和委派 agent 保持锁定。
-- 可选地由 Workflow Coordinator 记录 Workflow revision、协作式 Resource Lease、
-  Receipt 和 evidence reference。
-- 支持完整 family profile、预定义 Matt-Superpowers hybrid、有限 specialist add-on，
-  以及用户自定义的无冲突阶段映射。
-- 独立检测 Superpowers、Matt Pocock skills 和 Everything Claude Code（ECC），检测
-  本身不会替用户选择。
+- 显式请求 OAW 治理某个交付物时才激活。
+- 通过自然语言选择内置或 Custom Markdown Profile，并使用 Host 原生调用或可读规则
+  执行其中的 Skill。
+- 支持 Superpowers、Matt Pocock Skills、Everything Claude Code（ECC）、预定义的
+  Matt-Superpowers hybrid，以及用户自定义的 Skill 组合。
+- 使用 model-led Skill resolution；advisory index 只能帮助发现，不能让可读的 Skill
+  或 Profile 变得不可用。
+- 通过定性复杂度和风险调整规划、复核、批准与验证，不把它们变成 CLI 字段或启动 gate。
+- 使用 Host 原生会话和规划状态记录进度；长任务可选用 Markdown Progress Note。
 - 为九个 agent 工具安装用户级或项目级适配器。
 - 提供幂等的 `check`、`install`、`update` 和 `uninstall` 生命周期，包含目标
   选择、dry run、drift 检查和可恢复的 force。
+- 提供只读的 `profile list`、`profile show` 和 `profile check`，用于 advisory Markdown
+  Profile inspection。
 - 保留无关用户内容，只删除 OAW 所有的构件。
 
 ## Host-scoped Provider 权限
@@ -83,9 +81,9 @@ evidence_digest = "<sha256>"
 
 稳定的 Host-scope 诊断原因包括 `HOST_BINDING_EVIDENCE_REQUIRED`、
 `PROVIDER_BINDING_UNAVAILABLE`、`PROVIDER_FOREIGN_HOST_ONLY`、
-`PROVIDER_PIN_INCOMPATIBLE` 与 `HOST_PROVIDER_SCOPE_MISMATCH`。使用
-`oaw providers inspect --host <host> --format json` 查看物理证据；workflow denial
-保持不包含路径。
+`PROVIDER_PIN_INCOMPATIBLE` 与 `HOST_PROVIDER_SCOPE_MISMATCH`。精确物理证据属于独立
+构建的 Machine Assurance component。默认 `oaw` CLI 不提供 Provider inspection，也不
+使用机器证据决定 Profile 是否可执行。
 
 ## 快速开始
 
@@ -199,31 +197,24 @@ Profile candidate、`CURRENT`、协作式 Policy Workflow Plan 和 Progress Trac
 
 ## 无 Bridge Policy Workflow
 
-参考 Codex Policy CLI 无需安装 Bridge 即可提供完整的协作式 `CURRENT` 路径：
+安装后，在同一个请求中激活 OAW 并选择 Profile：
 
-```bash
-oaw profiles
-oaw use --profile MATT-SP-HYBRID \
-  --complexity ordinary --risk normal -- "deliverable"
-oaw status
+```text
+使用 OAW 和 MATT-SP-HYBRID 完成交付。
 ```
 
-`profiles` 报告 `policy_selectable`、`host_routable`、精确 `missing` route 与条件式
-incident 可用性。`use` 要求 active Host 已经给出的 cooperative complexity 与 risk
-assessment；它建立 Policy Workflow Plan 和 Progress Tracker，随后由 reducer 推导每个
-next Skill、Host action、gate、review outcome、incident return、switch boundary 与 terminal
-state。caller 不提供 slot、work reference 或自由文本 next action。
+如果用户没有指定 Profile，Agent 会陈述合理选择并继续，只有方法确实存在重大歧义时
+才提问。选择不需要 topology、Add-on 哨兵、Complexity 或 Risk 字段、限制确认、Provider
+证明，也不需要为每个声明的 Skill 再次确认。`policy_selectable` 与 `host_routable` 等
+术语可能出现在旧诊断记录中，但它们不是静态 Policy 产品的准入 gate。
 
-Codex route inspection 会识别 `.agents/skills` 下的 Matt Skills、
-`.codex/plugins/cache/ecc/ecc/<version>` 下的 ECC Skills，以及
-`.codex/plugins/cache/openai-api-curated/superpowers/<version>` 下的 curated
-Superpowers Skills。当这些 route 存在时，`SP-FULL`、`MATT-FULL`、`ECC-FULL` 与
-`MATT-SP-HYBRID` 都可以在不安装 Bridge 的情况下被选择和路由。缺失的条件式 incident
-handler 会单独报告，并且只在该 incident 实际发生时停止。
+Codex 优先使用原生 Skill index；当 index 不完整时，只延迟读取当前职责需要的 Skill
+指令。因此，只要规则可读或可调用，`SP-FULL`、`MATT-FULL`、`ECC-FULL` 与
+`MATT-SP-HYBRID` 都能在不安装 Bridge 的情况下使用。进度由模型通过正常会话和规划维护；
+Markdown Progress Note 是可选的，不能阻塞工作。
 
-这条路径仍是 `policy-cooperative`。它不声称拥有 verified Provider Instance、Lifecycle
-Bundle、Capability Grant、Resource Lease、Host Receipt、atomic revision、idempotency 或
-enforced recovery。Bridge 是可选的机器保证 integration，不是日常 Policy 执行的前置条件。
+Bridge 与 Machine Assurance 是可选的证据组件。缺失或失败只会移除机器 claim，不会移除
+Profile 选择、Skill 使用、复核、验证或完成能力。
 
 ## 生命周期配置
 
@@ -338,12 +329,11 @@ self-update、远程主分支获取、包管理器更新或 provider 更新。�
 vendor、patch、更新、删除、许可或静默替换 provider 内容。Agent 工具本身也需要单独
 安装。
 
-`oaw catalog list providers` 只列出声明的 descriptor。要在不修改配置的情况下检查已安装
-的 Provider candidate 与 Host 验证结果，请运行
-`oaw providers inspect --host codex --format text`。歧义结果会列出全部 candidate 以及精确
-的 location-and-version `[[provider_pins]]` 片段；OAW 不会选择 candidate，也不会写入 pin。
-写入 pin 后必须启动新的 Workflow，使其捕获新的 Configuration Snapshot。恢复步骤见[生命周期指南](docs/zh/lifecycle.md)
-和[故障排查指南](docs/zh/troubleshooting.md)。
+默认 CLI 刻意不提供 Provider catalog 或 resolution 命令。`profile list`、`profile show` 和
+`profile check` 只检查 Markdown Profile 的身份与结构。Agent 根据 Host 原生 surface 和
+可读指令判断 Skill availability。精确 Provider 与 Host Binding claim 属于独立构建的
+`oaw-assurance` component，不控制正常 Policy 执行。详见[生命周期指南](docs/zh/lifecycle.md)
+与[故障排查指南](docs/zh/troubleshooting.md)。
 
 ## 文档
 
@@ -363,8 +353,9 @@ vendor、patch、更新、删除、许可或静默替换 provider 内容。Agent
 | 安全模型 | [English](docs/en/security.md) | [中文](docs/zh/security.md) |
 | 故障排除 | [English](docs/en/troubleshooting.md) | [中文](docs/zh/troubleshooting.md) |
 
-规范性工作流位于 [policy/ENGINEERING.md](policy/ENGINEERING.md)。详细指南只解释该策略和
-实现，不会取代它。
+portable 入口是 [policy/POLICY.md](policy/POLICY.md)，自然语言操作定义在
+[policy/cooperative-protocol.md](policy/cooperative-protocol.md)。详细指南解释该 Policy
+Set 与实现，但不取代它。
 
 ## 贡献
 

@@ -580,6 +580,9 @@ assert_contains scripts/check-docs.sh "docs/en/extending-adapters.md|docs/zh/ext
 assert_contains scripts/check-docs.sh "docs/en/machine-assurance.md|docs/zh/machine-assurance.md"
 assert_contains scripts/check-docs.sh "docs/en/codex-bridge.md|docs/zh/codex-bridge.md"
 assert_contains scripts/check-docs.sh "for command in check install update uninstall"
+assert_contains scripts/check-docs.sh "default-cli-documents"
+assert_contains scripts/check-docs.sh "removed-default-cli"
+assert_contains scripts/check-docs.sh "removed default CLI command"
 assert_contains scripts/check-docs.sh "experience-based"
 assert_contains scripts/check-docs.sh "基于经验"
 assert_contains scripts/check-docs.sh "Public installation management is Go-authoritative."
@@ -622,6 +625,20 @@ if ! checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>
   fail "documentation checker rejects valid links with titles: $checker_output"
 fi
 pass "documentation checker accepts inline and reference links with titles"
+
+REMOVED_CLI_FIXTURE="$DOCS_TEST_TEMP/repository/README.md"
+REMOVED_CLI_FIXTURE_BACKUP="$DOCS_TEST_TEMP/README.md.before-removed-cli"
+cp "$REMOVED_CLI_FIXTURE" "$REMOVED_CLI_FIXTURE_BACKUP"
+printf '%s\n' 'oaw status' >>"$REMOVED_CLI_FIXTURE"
+if checker_output=$(bash "$DOCS_TEST_TEMP/repository/scripts/check-docs.sh" 2>&1); then
+  fail "documentation checker accepts a removed default CLI command"
+fi
+case "$checker_output" in
+  *'removed default CLI command: README.md:'*'oaw status'*) ;;
+  *) fail "documentation checker gives no removed-command diagnostic: $checker_output" ;;
+esac
+cp "$REMOVED_CLI_FIXTURE_BACKUP" "$REMOVED_CLI_FIXTURE"
+pass "documentation checker rejects removed default CLI commands"
 
 mkdir -p "$DOCS_TEST_TEMP/repository/.scratch/local-draft"
 printf '%s\n' '[missing reference][not-defined]' \
@@ -815,6 +832,18 @@ for current_document in \
 done
 pass "current user-facing documents reject stale pre-cutover authority claims"
 
+for default_cli_document in \
+  README.md README-zh.md \
+  docs/en/lifecycle.md docs/zh/lifecycle.md \
+  docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  for removed_command in \
+    profiles use status complete review approve satisfy incident switch stop \
+    uncertain catalog providers workflow policy bridge runtime run; do
+    assert_not_contains "$default_cli_document" "oaw $removed_command"
+  done
+done
+pass "current user guides advertise only the static default CLI"
+
 for english_heading in \
   '## Why OAW' \
   '## Problems It Solves' \
@@ -835,8 +864,8 @@ for english_heading in \
   assert_contains README.md "$english_heading"
 done
 assert_contains README.md "[简体中文](README-zh.md)"
-assert_contains README.md "arbitrates independently installed workflow providers across agent tools"
-assert_contains README.md "There is no timeout or silent default."
+assert_contains README.md "rule-driven engineering workflow"
+assert_contains README.md "No OAW runtime"
 assert_contains README.md "OAW does not install Superpowers, Matt Pocock skills, or ECC."
 assert_contains README.md "Updates use the Policy, Version, registry, and rendering behavior embedded"
 assert_contains README.md 'Rebuild `./oaw` after changing a source checkout'
@@ -846,7 +875,7 @@ assert_contains README.md "experience-based design inputs"
 assert_contains README.md "source baseline is fixed at v0.1.0"
 assert_contains README.md "policy_selectable"
 assert_contains README.md "host_routable"
-assert_contains README.md "Bridge is an optional"
+assert_contains README.md "Bridge and Machine Assurance are optional evidence components."
 pass "English README covers the complete entrypoint and safety contract"
 
 for chinese_heading in \
@@ -869,8 +898,8 @@ for chinese_heading in \
   assert_contains README-zh.md "$chinese_heading"
 done
 assert_contains README-zh.md "[English](README.md)"
-assert_contains README-zh.md "协调多个 agent 工具中独立安装的 workflow provider"
-assert_contains README-zh.md "没有超时自动选择，也没有静默默认项。"
+assert_contains README-zh.md "规则驱动工程工作流"
+assert_contains README-zh.md "安装后不需要 OAW runtime"
 assert_contains README-zh.md "OAW 不安装 Superpowers、Matt Pocock skills 或 ECC。"
 assert_contains README-zh.md "更新使用运行中 binary 嵌入的 Policy、Version、registry 与 rendering behavior。"
 assert_contains README-zh.md 'checkout 后必须重新构建 `./oaw`'
@@ -880,7 +909,7 @@ assert_contains README-zh.md "基于经验的设计输入"
 assert_contains README-zh.md "固定为 v0.1.0"
 assert_contains README-zh.md "policy_selectable"
 assert_contains README-zh.md "host_routable"
-assert_contains README-zh.md "Bridge 是可选的机器保证 integration"
+assert_contains README-zh.md "Bridge 与 Machine Assurance 是可选的证据组件。"
 pass "Chinese README covers the equivalent entrypoint and safety contract"
 
 for rationale_document in \

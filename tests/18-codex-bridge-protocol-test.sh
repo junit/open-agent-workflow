@@ -65,10 +65,12 @@ run_bridge_hook() {
 
 set +e
 HOME="$OAW_HOME" XDG_CONFIG_HOME="$OAW_CONFIG" XDG_STATE_HOME="$OAW_STATE" \
-  "$BRIDGE_RELEASE/oaw" catalog validate >"$OAW_SANDBOX/catalog.stdout" 2>"$OAW_SANDBOX/catalog.stderr"
-catalog_status=$?
+  "$BRIDGE_RELEASE/oaw" profile check built-in:SP-FULL >"$OAW_SANDBOX/profile.stdout" 2>"$OAW_SANDBOX/profile.stderr"
+profile_status=$?
 set -e
-[ "$catalog_status" -eq 0 ] || fail 'default oaw catalog validation depends on Bridge state'
+[ "$profile_status" -eq 0 ] || fail 'default oaw Profile inspection depends on Bridge state'
+grep -F 'result: metadata-valid' "$OAW_SANDBOX/profile.stdout" >/dev/null ||
+  fail 'default oaw Profile inspection omitted its advisory result'
 assert_read_only_roots
 
 cat >"$OAW_SANDBOX/observe-profile.json" <<EOF

@@ -21,6 +21,14 @@ func TestDefaultOAWHasNoOptionalAssuranceOrBridgeDependency(t *testing.T) {
 		modulePath + "internal/assurancecli",
 		modulePath + "internal/bridgecli",
 		modulePath + "internal/codexbridge",
+		modulePath + "internal/classification",
+		modulePath + "internal/coordinator",
+		modulePath + "internal/core",
+		modulePath + "internal/policyengagement",
+		modulePath + "internal/policyflow",
+		modulePath + "internal/policyrun",
+		modulePath + "internal/policyroute",
+		modulePath + "internal/profile",
 	} {
 		if dependencies[forbidden] {
 			t.Errorf("default oaw imports optional component %q", forbidden)

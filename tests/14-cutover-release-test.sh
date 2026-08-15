@@ -44,9 +44,12 @@ assert_entrypoint_help() {
     fail "$entrypoint help exited $ENTRYPOINT_STATUS: $(cat "$output_prefix.stderr")"
   grep -F 'Usage: ./install.sh <command> [options]' "$output_prefix.stdout" >/dev/null ||
     fail "$entrypoint help omitted compatibility usage"
-  grep -F 'oaw workflow exchange' "$output_prefix.stdout" >/dev/null ||
-    fail "$entrypoint help omitted Workflow Coordinator exchange"
-  for retired_text in 'oaw run' 'oaw runtime' '--host codex' '--sandbox' 'execution-root' 'private HOME'; do
+  grep -F 'oaw profile list' "$output_prefix.stdout" >/dev/null ||
+    fail "$entrypoint help omitted advisory Profile inspection"
+  for retired_text in \
+    'oaw profiles' 'oaw use' 'oaw status' 'oaw workflow' 'oaw providers' \
+    'oaw policy' 'oaw catalog' 'oaw bridge' 'oaw run' 'oaw runtime' \
+    '--host codex' '--sandbox' 'execution-root' 'private HOME'; do
     if grep -F -- "$retired_text" "$output_prefix.stdout" >/dev/null; then
       fail "$entrypoint help exposed retired execution surface: $retired_text"
     fi
@@ -219,9 +222,9 @@ run_release_contract() {
   [ -x "$current_root/$current_binary" ] || fail "current-platform binary is not executable"
   [ -x "$current_root/install.sh" ] || fail "current-platform wrapper is not executable"
   "$current_root/$current_binary" --help >"$CUTOVER_TEMP/current-help"
-  "$current_root/$current_binary" catalog validate >"$CUTOVER_TEMP/current-catalog"
-  grep -F 'catalog valid' "$CUTOVER_TEMP/current-catalog" >/dev/null ||
-    fail "current-platform catalog validation failed"
+  "$current_root/$current_binary" profile check built-in:SP-FULL >"$CUTOVER_TEMP/current-profile"
+  grep -F 'result: metadata-valid' "$CUTOVER_TEMP/current-profile" >/dev/null ||
+    fail "current-platform Profile inspection failed"
   bash "$current_root/install.sh" --help >"$CUTOVER_TEMP/current-wrapper-help"
   cmp -s "$CUTOVER_TEMP/current-help" "$CUTOVER_TEMP/current-wrapper-help" ||
     fail "released wrapper help differs from released binary help"
@@ -268,17 +271,17 @@ run_release_contract() {
 
 run_docker_contract() {
   linux_smoke=$REPOSITORY/scripts/smoke-linux.sh
-  for retired_authority in 'oaw.workflow-command/v1' 'oaw.host-session/v2'; do
+  for retired_authority in \
+    'oaw.workflow-command/' 'oaw.host-session/' 'workflow exchange' \
+    'providers inspect' 'catalog validate'; do
     if grep -F "$retired_authority" "$linux_smoke" >/dev/null; then
       fail "Linux smoke contains retired authority: $retired_authority"
     fi
   done
-  for current_authority in 'oaw.workflow-command/v2' 'oaw.host-session/v3'; do
-    grep -F "$current_authority" "$linux_smoke" >/dev/null ||
-      fail "Linux smoke omits current authority: $current_authority"
-  done
-  grep -F 'workflow exchange' "$linux_smoke" >/dev/null ||
-    fail "Linux smoke does not exercise CURRENT Workflow exchange"
+  grep -F 'profile check built-in:SP-FULL' "$linux_smoke" >/dev/null ||
+    fail "Linux smoke does not exercise static Profile inspection"
+  grep -F "unknown command" "$linux_smoke" >/dev/null ||
+    fail "Linux smoke does not verify removed command roots"
   grep -F 'model-executed' "$linux_smoke" >/dev/null ||
     fail "Linux smoke has no model process PATH trap"
   grep -F 'Runner asset' "$linux_smoke" >/dev/null ||

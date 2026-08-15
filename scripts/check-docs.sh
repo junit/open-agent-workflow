@@ -81,6 +81,50 @@ for command in check install update uninstall; do
   done
 done
 
+cat >"$CHECK_TEMP/default-cli-documents" <<'EOF'
+README.md
+README-zh.md
+docs/en/lifecycle.md
+docs/zh/lifecycle.md
+docs/en/troubleshooting.md
+docs/zh/troubleshooting.md
+EOF
+cat >"$CHECK_TEMP/removed-default-cli" <<'EOF'
+profiles
+use
+status
+complete
+review
+approve
+satisfy
+incident
+switch
+stop
+uncertain
+catalog
+providers
+workflow
+policy
+bridge
+runtime
+run
+EOF
+while IFS= read -r default_cli_document; do
+  [ -n "$default_cli_document" ] || continue
+  while IFS= read -r removed_command; do
+    [ -n "$removed_command" ] || continue
+    if grep -nE "oaw ${removed_command}([^[:alnum:]_-]|$)" \
+      "$REPOSITORY/$default_cli_document" \
+      >"$CHECK_TEMP/removed-default-cli-matches"; then
+      while IFS=: read -r line_number _; do
+        printf 'docs: error: removed default CLI command: %s:%s:oaw %s\n' \
+          "$default_cli_document" "$line_number" "$removed_command" >&2
+      done <"$CHECK_TEMP/removed-default-cli-matches"
+      exit 1
+    fi
+  done <"$CHECK_TEMP/removed-default-cli"
+done <"$CHECK_TEMP/default-cli-documents"
+
 grep -F "experience-based" "$REPOSITORY/docs/en/comparison.md" >/dev/null ||
   fail "English comparison omits its experience-based caveat"
 grep -F "基于经验" "$REPOSITORY/docs/zh/comparison.md" >/dev/null ||

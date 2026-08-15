@@ -2,16 +2,15 @@
 
 [简体中文](README-zh.md)
 
-Open Agent Workflow (OAW) arbitrates independently installed workflow providers across agent tools. It gives one engineering deliverable one explicit
-lifecycle owner or one conflict-free stage map, then installs the same
-governance policy into the instruction surfaces used by supported coding
-agents.
+Open Agent Workflow (OAW) is a rule-driven engineering workflow for agent
+tools. It installs one portable Policy Set whose Markdown Profiles compose
+independently installed Skills into a clear engineering method.
 
-OAW is a provider-neutral policy distribution and lifecycle coordination
-system. OAW Core compiles lifecycle contracts, the optional Workflow
-Coordinator persists Workflow State, and the external Agent Host performs
-every effect. OAW does not redistribute workflow families or replace the
-native configuration of an agent tool.
+The Policy, selected Profile, readable or invokable Skills, and the Agent
+Host's native abilities form the complete normal product. No OAW runtime,
+Bridge, route scanner, reducer, or state database is required after
+installation. Optional machine components may add exact evidence without
+changing or vetoing the rule-driven path.
 
 ## Why OAW
 
@@ -39,24 +38,22 @@ canonical policy and renders thin target-native entrypoints around it.
 
 ## Capabilities
 
-- After explicit activation, assesses a top-level engineering request as
-  `DIRECT`, `BOUNDED`, or `WORKFLOW` before a family-specific lifecycle starts.
-- In `policy-cooperative` Workflow Mode, reports Host-visible Profile
-  candidates and waits for an explicit selection of one `CURRENT` path. In a
-  machine-backed session, OAW Core separately computes eligible Profiles and
-  topologies.
-- Uses OAW Core only on the machine-backed path to compile the selected
-  Lifecycle Bundle and lock it across follow-ups, context compaction, tickets,
-  and delegated agents.
-- Optionally records Workflow revisions, cooperative Resource Leases, Receipts,
-  and evidence references in the Workflow Coordinator.
-- Supports full-family profiles, a predefined Matt-Superpowers hybrid, bounded
-  specialist add-ons, and user-defined conflict-free stage maps.
-- Detects Superpowers, Matt Pocock skills, and Everything Claude Code (ECC)
-  independently without selecting among them.
+- Activates only when the user explicitly asks OAW to govern a deliverable.
+- Selects built-in or Custom Markdown Profiles through natural language and
+  follows their Skills through the Host's normal invocation or readable rules.
+- Supports Superpowers, Matt Pocock Skills, Everything Claude Code (ECC), a
+  predefined Matt-Superpowers hybrid, and user-defined Skill combinations.
+- Uses model-led Skill resolution: an advisory index may help discovery but
+  cannot make an otherwise readable Skill or Profile unavailable.
+- Scales planning, review, approval, and verification from qualitative task
+  complexity and risk without turning them into CLI fields or startup gates.
+- Keeps progress in the Host's normal conversation and planning state, with an
+  optional Markdown Progress Note for long-running work.
 - Installs user- or project-scoped adapters for nine agent tools.
 - Provides idempotent `check`, `install`, `update`, and `uninstall` lifecycles
   with target selection, dry runs, drift checks, and recoverable force.
+- Provides read-only `profile list`, `profile show`, and `profile check`
+  commands for advisory Markdown Profile inspection.
 - Preserves unrelated user content and removes only OAW-owned artifacts.
 
 ## Host-Scoped Provider Authority
@@ -97,9 +94,10 @@ evidence_digest = "<sha256>"
 
 Stable Host-scope diagnostics include `HOST_BINDING_EVIDENCE_REQUIRED`,
 `PROVIDER_BINDING_UNAVAILABLE`, `PROVIDER_FOREIGN_HOST_ONLY`,
-`PROVIDER_PIN_INCOMPATIBLE`, and `HOST_PROVIDER_SCOPE_MISMATCH`. Use
-`oaw providers inspect --host <host> --format json` for physical evidence;
-workflow denials remain path-free.
+`PROVIDER_PIN_INCOMPATIBLE`, and `HOST_PROVIDER_SCOPE_MISMATCH`. Exact physical
+evidence belongs to the separately built Machine Assurance component. The
+default `oaw` CLI does not expose Provider inspection or use machine evidence
+to decide whether a Profile can be followed.
 
 ## Quick Start
 
@@ -217,37 +215,29 @@ Plan, and a Progress Tracker without claiming machine guarantees.
 
 ## No-Bridge Policy Workflow
 
-The reference Codex Policy CLI provides a complete cooperative `CURRENT` path
-without installing Bridge:
+After installation, activate OAW and select a Profile in the same request:
 
-```bash
-oaw profiles
-oaw use --profile MATT-SP-HYBRID \
-  --complexity ordinary --risk normal -- "deliverable"
-oaw status
+```text
+Use OAW with MATT-SP-HYBRID to deliver the editor.
 ```
 
-`profiles` reports `policy_selectable`, `host_routable`, exact `missing`
-routes, and conditional incident availability. `use` requires the cooperative
-complexity and risk assessment already stated by the active Host; it creates a
-Policy Workflow Plan and Progress Tracker, then the reducer derives every next
-Skill, Host action, gate, review outcome, incident return, switch boundary, and
-terminal state. Callers do not supply slots, work references, or free-form next
-actions.
+If no Profile is named, the Agent states a reasonable choice and proceeds
+unless materially different methods create genuine ambiguity. Selection does
+not require a topology choice, Add-on sentinel, Complexity or Risk field,
+limitation acknowledgement, Provider proof, or a second confirmation for each
+declared Skill. Terms such as `policy_selectable` and `host_routable` may appear
+in older diagnostic records, but they are not admission gates for the static
+Policy product.
 
-Codex route inspection recognizes Matt Skills below `.agents/skills`, ECC
-Skills below `.codex/plugins/cache/ecc/ecc/<version>`, and curated Superpowers
-Skills below `.codex/plugins/cache/openai-api-curated/superpowers/<version>`.
-When those routes are present, `SP-FULL`, `MATT-FULL`, `ECC-FULL`, and
-`MATT-SP-HYBRID` are all selectable and routable without Bridge. A missing
-conditional incident handler is reported separately and stops only if that
-incident actually occurs.
+Codex uses its native Skill index first and lazily reads relevant Skill
+instructions when the index is incomplete. This keeps `SP-FULL`, `MATT-FULL`,
+`ECC-FULL`, and `MATT-SP-HYBRID` usable without Bridge whenever their rules can
+be read or invoked. The model owns progress through normal conversation and
+planning; a Markdown Progress Note is optional and can never block work.
 
-This path remains `policy-cooperative`. It does not claim a verified Provider
-Instance, Lifecycle Bundle, Capability Grant, Resource Lease, Host Receipt,
-atomic revision, idempotency, or enforced recovery. Bridge is an optional
-machine-assurance integration, not a prerequisite for ordinary Policy
-execution.
+Bridge and Machine Assurance are optional evidence components. Their absence
+or failure removes only their machine claim, not Profile selection, Skill use,
+review, verification, or completion.
 
 ## Lifecycle Profiles
 
@@ -377,13 +367,13 @@ when its required indicators are incomplete. It does not download, vendor,
 patch, update, remove, license, or silently substitute provider content. Agent
 tools themselves are also installed separately.
 
-`oaw catalog list providers` lists declared descriptors. To inspect installed
-Provider candidates and Host verification without changing configuration, run
-`oaw providers inspect --host codex --format text`. An ambiguous result lists
-every candidate and an exact location-and-version `[[provider_pins]]` fragment;
-OAW never selects or writes that pin. After adding a pin, start a new Workflow so it
-captures the new Configuration Snapshot. See the [lifecycle guide](docs/en/lifecycle.md)
-and [troubleshooting guide](docs/en/troubleshooting.md) for the recovery sequence.
+The default CLI intentionally has no Provider catalog or resolution command.
+Use `profile list`, `profile show`, and `profile check` only to inspect Markdown
+Profile identity and structure. The Agent determines Skill availability from
+the Host's native surfaces and readable instructions. Exact Provider and Host
+Binding claims belong to the separately built `oaw-assurance` component and do
+not control normal Policy execution. See the [lifecycle guide](docs/en/lifecycle.md)
+and [troubleshooting guide](docs/en/troubleshooting.md) for details.
 
 ## Documentation
 
@@ -404,9 +394,10 @@ guides are being completed as part of the local v0.1 documentation ticket:
 | Security model | [English](docs/en/security.md) | [中文](docs/zh/security.md) |
 | Troubleshooting | [English](docs/en/troubleshooting.md) | [中文](docs/zh/troubleshooting.md) |
 
-The normative workflow is [policy/ENGINEERING.md](policy/ENGINEERING.md). The
-detailed guides explain that policy and the implementation; they do not replace
-it.
+The portable entry is [policy/POLICY.md](policy/POLICY.md), with natural-language
+operation in [policy/cooperative-protocol.md](policy/cooperative-protocol.md).
+The detailed guides explain that Policy Set and the implementation; they do not
+replace it.
 
 ## Contributing
 

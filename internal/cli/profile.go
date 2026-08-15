@@ -259,7 +259,7 @@ func inventoryContainsProfileID(inventory profileinspect.Inventory, id string) b
 func profileUsage() string {
 	return "Usage: oaw profile <command> [argument]\n\n" +
 		"Commands:\n" +
-		"  profile list             List built-in, project, and user Profiles\n" +
-		"  profile show <id>        Show one Profile; use source:id when required\n" +
-		"  profile check <id|path>  Check Profile metadata and advisory body diagnostics\n"
+		"  oaw profile list             List built-in, project, and user Profiles\n" +
+		"  oaw profile show <id>        Show one Profile; use source:id when required\n" +
+		"  oaw profile check <id|path>  Check Profile metadata and advisory body diagnostics\n"
 }

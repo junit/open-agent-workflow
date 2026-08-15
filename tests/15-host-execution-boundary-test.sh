@@ -89,8 +89,8 @@ scan_cli_help() {
     return
   fi
 
-  if ! grep -F -- 'oaw workflow exchange' "$help_output" >/dev/null; then
-    fail_match 'CLI help omits Workflow Coordinator exchange' "$(cat "$help_output")"
+  if ! grep -F -- 'oaw profile list' "$help_output" >/dev/null; then
+    fail_match 'CLI help omits advisory Profile inspection' "$(cat "$help_output")"
   fi
 
   for forbidden_text in \
@@ -105,6 +105,14 @@ scan_cli_help() {
     'disable hooks' \
     'isolated-executor' \
     'native-invocation' \
+    'oaw profiles' \
+    'oaw use' \
+    'oaw status' \
+    'oaw workflow' \
+    'oaw providers' \
+    'oaw policy' \
+    'oaw catalog' \
+    'oaw bridge' \
     'oaw run' \
     'oaw runtime' \
     '--host codex' \
@@ -120,18 +128,12 @@ scan_cli_help() {
 assert_removed_commands_are_inert() {
   state_root=$BOUNDARY_TEMP/removed-state
   mkdir -p "$state_root"
-  for command_name in run runtime; do
+  for command_name in \
+    profiles use status complete review approve satisfy incident switch stop uncertain \
+    workflow providers policy catalog bridge runtime run; do
     set +e
-    case "$command_name" in
-      run)
-        HOME="$BOUNDARY_TEMP/removed-home" XDG_STATE_HOME="$state_root" \
-          "$BOUNDARY_BINARY" run --host codex >/dev/null 2>&1
-        ;;
-      runtime)
-        HOME="$BOUNDARY_TEMP/removed-home" XDG_STATE_HOME="$state_root" \
-          "$BOUNDARY_BINARY" runtime exchange >/dev/null 2>&1
-        ;;
-    esac
+    HOME="$BOUNDARY_TEMP/removed-home" XDG_STATE_HOME="$state_root" \
+      "$BOUNDARY_BINARY" "$command_name" >/dev/null 2>&1
     status=$?
     set -e
     if [ "$status" -ne 64 ]; then
@@ -177,29 +179,19 @@ assert_public_commands_do_not_launch_models() {
   run_trapped_command 0 install --target codex --dry-run
   run_trapped_command 66 update --target codex --dry-run
   run_trapped_command 0 uninstall --target codex --dry-run
-  run_trapped_command 0 catalog validate
-  run_trapped_command 0 catalog list providers
-  run_trapped_command 0 catalog list recipes
-  run_trapped_command 0 catalog list aliases
-  run_trapped_command 0 providers inspect --host codex
+  run_trapped_command 0 profile list
+  run_trapped_command 0 profile show built-in:SP-FULL
+  run_trapped_command 0 profile check built-in:SP-FULL
+  run_trapped_command 64 profiles
+  run_trapped_command 64 use
+  run_trapped_command 64 status
+  run_trapped_command 64 workflow
+  run_trapped_command 64 providers
+  run_trapped_command 64 policy
+  run_trapped_command 64 catalog
+  run_trapped_command 64 bridge
   run_trapped_command 64 run --host codex
   run_trapped_command 64 runtime exchange
-
-  set +e
-  workflow_output=$BOUNDARY_TEMP/trapped-workflow-output
-  printf '%s' '{"schema_version":"oaw.workflow-command/v1","kind":"INSPECT","message_id":"","idempotency_key":"","workflow_id":"workflow-missing","expected_revision":0}' |
-    HOME="$BOUNDARY_TEMP/trap-home" \
-      XDG_CONFIG_HOME="$BOUNDARY_TEMP/trap-config" \
-      XDG_STATE_HOME="$BOUNDARY_TEMP/trap-state" \
-      PATH="$BOUNDARY_TEMP/trap-bin:$PATH" \
-      OAW_MODEL_SENTINEL="$BOUNDARY_TEMP/model-executed" \
-      "$BOUNDARY_BINARY" workflow exchange --state-root "$BOUNDARY_TEMP/trap-state/workflows" \
-      >"$workflow_output" 2>&1
-  status=$?
-  set -e
-  if [ "$status" -ne 65 ]; then
-    fail_match "trapped workflow exchange exited $status instead of 65" "$(cat "$workflow_output")"
-  fi
 
   if [ -e "$BOUNDARY_TEMP/model-executed" ]; then
     fail_match 'a public OAW command executed a model CLI' "$(cat "$BOUNDARY_TEMP/model-executed")"

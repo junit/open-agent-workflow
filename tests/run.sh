@@ -30,12 +30,11 @@ for test_script in \
   05-policy-coordination-test.sh \
   06-security-test.sh \
   07-containment-test.sh \
-  08-policy-workflow-test.sh \
+  08-static-product-test.sh \
   09-profile-inspection-test.sh \
   10-docs-test.sh \
   14-cutover-release-test.sh \
   15-host-execution-boundary-test.sh \
-  16-core-coordinator-conformance-test.sh \
   17-codex-bridge-management-test.sh \
   18-codex-bridge-protocol-test.sh \
   19-provider-source-audit-test.sh; do
