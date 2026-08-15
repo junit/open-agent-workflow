@@ -22,7 +22,6 @@ func TestEmbeddedAssetsContainOnlyProviderBindingEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{
-		"audits/provider-sources-v5.json",
 		"providers/oaw-ecc.json",
 		"providers/oaw-matt.json",
 		"providers/oaw-superpowers.json",
@@ -30,7 +29,7 @@ func TestEmbeddedAssetsContainOnlyProviderBindingEvidence(t *testing.T) {
 	if !slices.Equal(paths, want) {
 		t.Fatalf("embedded assets = %q, want %q", paths, want)
 	}
-	for _, path := range paths[1:] {
+	for _, path := range paths {
 		raw, err := fs.ReadFile(FS(), path)
 		if err != nil {
 			t.Fatal(err)

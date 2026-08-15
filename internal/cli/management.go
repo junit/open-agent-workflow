@@ -68,9 +68,7 @@ func executeManagement(
 	var managementErr error
 	switch parsed.operation {
 	case "install", "update":
-		source, err := management.NewSourceWithPolicySet(
-			oaw.Version(), oaw.CanonicalPolicy(), oaw.CanonicalPolicySet(),
-		)
+		source, err := management.NewSource(oaw.Version(), oaw.CanonicalPolicySet())
 		if err != nil {
 			return management.Result{}, err
 		}

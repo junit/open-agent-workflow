@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	oaw "github.com/wifibaby4u/open-agent-workflow"
 )
 
 type prepareFixture struct {
@@ -30,11 +32,23 @@ func newPrepareFixture(t *testing.T) prepareFixture {
 			t.Fatal(err)
 		}
 	}
-	source, err := NewSource("0.1.0", []byte("canonical policy\n"))
+	source := policySetSource(t, "0.1.0", "")
+	return prepareFixture{root: root, environment: environment, source: source}
+}
+
+func policySetSource(t *testing.T, version, policySuffix string) Source {
+	t.Helper()
+	files := oaw.CanonicalPolicySet()
+	for index := range files {
+		if files[index].Path == "POLICY.md" {
+			files[index].Content = append(files[index].Content, []byte(policySuffix)...)
+		}
+	}
+	source, err := NewSource(version, files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return prepareFixture{root: root, environment: environment, source: source}
+	return source
 }
 
 func prepareWithoutWrites(t *testing.T, root string, source Source, environment Environment, request InstallRequest) (PreparedInstall, error) {
@@ -99,7 +113,9 @@ func materializePreparedFixture(t *testing.T, prepared PreparedInstall) {
 			t.Fatal(err)
 		}
 	}
-	for _, action := range append(append([]installAction(nil), prepared.targetActions...), prepared.policyAction) {
+	actions := append([]installAction{prepared.policyAction}, prepared.policySetActions...)
+	actions = append(actions, prepared.targetActions...)
+	for _, action := range actions {
 		writePrepareFile(t, action.destination, action.data, action.mode)
 	}
 	for _, action := range prepared.stateActions {

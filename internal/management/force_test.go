@@ -121,7 +121,7 @@ func TestPrepareUpdateForceManualRecoveryUsesManagedPolicySetCoordinates(t *test
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			fixture := newPrepareFixture(t)
-			source := managedPolicySetSource(t, "0.1.0", "")
+			source := policySetSource(t, "0.1.0", "")
 			project := ""
 			if tt.projectScoped {
 				project = filepath.Join(fixture.root, "project")
@@ -202,7 +202,7 @@ func TestPrepareUpdateForceHandlesProjectPolicySetOwnership(t *testing.T) {
 		if err := os.Mkdir(project, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		source := managedPolicySetSource(t, "0.1.0", "")
+		source := policySetSource(t, "0.1.0", "")
 		installed, err := PrepareInstall(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"})
 		if err != nil {
 			t.Fatal(err)
@@ -239,7 +239,7 @@ func TestPrepareUpdateForceHandlesProjectPolicySetOwnership(t *testing.T) {
 		if err := os.Mkdir(project, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		source := managedPolicySetSource(t, "0.1.0", "")
+		source := policySetSource(t, "0.1.0", "")
 		if _, err := Install(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"}); err != nil {
 			t.Fatal(err)
 		}
@@ -271,45 +271,16 @@ func TestPrepareUninstallForceBacksUpFinalArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{installed.policyAction.destination, target, installed.stateActions[0].destination}
+	want := []string{installed.policyAction.destination, target}
+	for _, action := range installed.policySetActions {
+		want = append(want, action.destination)
+	}
+	want = append(want, installed.stateActions[0].destination)
 	if got := backupCandidateOriginals(prepared.plan.backup.candidates); !reflect.DeepEqual(got, want) {
 		t.Fatalf("uninstall candidates = %v, want %v", got, want)
 	}
 	if prepared.plan.backup.operation != "uninstall" || prepared.plan.targetActions[0].effect != mutationRemove {
 		t.Fatalf("plan = %#v", prepared.plan)
-	}
-}
-
-func TestPrepareUpdateForcePolicyDriftCoordinatesAllLiveStates(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	userInstall := materializeInstallRequest(t, fixture, InstallRequest{Targets: "codex"})
-	project := filepath.Join(fixture.root, "project")
-	if err := os.Mkdir(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	projectInstall := materializeInstallRequest(t, fixture, InstallRequest{Project: project, Targets: "cursor"})
-	if err := os.WriteFile(userInstall.policyAction.destination, []byte("shared policy drift\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := prepareUpdateWithoutWrites(t, fixture.root, fixture.source, fixture.environment, UpdateRequest{Targets: "codex", Force: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := []string{userInstall.policyAction.destination, userInstall.stateActions[0].destination, projectInstall.stateActions[0].destination}
-	if got := backupCandidateOriginals(prepared.plan.backup.candidates); !reflect.DeepEqual(got, want) {
-		t.Fatalf("coordinated candidates = %v, want %v", got, want)
-	}
-	if len(prepared.plan.stateActions) != 2 {
-		t.Fatalf("state actions = %#v", prepared.plan.stateActions)
-	}
-	for _, action := range prepared.plan.stateActions {
-		state, err := parseInstallationState(action.data)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if state.backupPath != prepared.plan.backup.path {
-			t.Fatalf("state %s backup = %q", action.label, state.backupPath)
-		}
 	}
 }
 
@@ -539,7 +510,7 @@ func TestPrepareMutationForceRejectsProjectPolicyAndDirectoryBindings(t *testing
 		fixture := newPrepareFixture(t)
 		installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
 		state := parsePreparedState(t, installed.stateActions[0])
-		state.policyPath = filepath.Join(fixture.environment.ConfigHome, "other", "ENGINEERING.md")
+		state.policyPath = filepath.Join(fixture.environment.ConfigHome, "other", "POLICY.md")
 		rendered, err := serializeInstallState(state)
 		if err != nil {
 			t.Fatal(err)

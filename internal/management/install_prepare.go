@@ -55,12 +55,6 @@ type PreparedInstall struct {
 	predicted          Result
 }
 
-type policyStateReference struct {
-	index int
-	path  string
-	state installationState
-}
-
 func PrepareInstall(source Source, environment Environment, request InstallRequest) (PreparedInstall, error) {
 	source, err := validateSource(source)
 	if err != nil {
@@ -73,12 +67,6 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	coords, err := initializeCoordinates(environment, resolved)
 	if err != nil {
 		return PreparedInstall{}, err
-	}
-	if len(source.policySet) != 0 {
-		coords, err = initializePolicySetCoordinates(environment, resolved)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
 	}
 	policyContent, err := sourcePolicyContent(source, coords)
 	if err != nil {
@@ -93,7 +81,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	if err != nil {
 		return PreparedInstall{}, installError(err)
 	}
-	if coords.managedPolicySet && !stateExists {
+	if !stateExists {
 		if err := requireUnclaimedPolicySetDirectory(coords); err != nil {
 			return PreparedInstall{}, err
 		}
@@ -105,7 +93,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		if !bytes.Equal(policyContent, policyView.data) || checksumBytes(policyContent) != existingState.policyChecksum || source.version != existingState.version {
 			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
 		}
-		if coords.managedPolicySet && !managedPolicySetMatchesSource(existingState, source, coords, resolved) {
+		if !policySetMatchesSource(existingState, source, coords, resolved) {
 			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
 		}
 	}
@@ -228,20 +216,13 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	if err != nil {
 		return PreparedInstall{}, err
 	}
-	var references []policyStateReference
-	if !coords.managedPolicySet {
-		references, err = collectPolicyStateReferences(coords, coords.stateFile, policyView)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-	}
 	policyAction, policySetActions, err := prepareInstallPolicyActions(source, coords, resolved)
 	if err != nil {
 		return PreparedInstall{}, err
 	}
 	directoryActions := append(cloneInstallActions(targetActions), cloneInstallAction(policyAction))
 	directoryActions = append(directoryActions, cloneInstallActions(policySetActions)...)
-	finalDirectories, plannedDirectories, err := prepareInstallDirectories(coords, resolved, existingDirectories, references, directoryActions, finalRecords)
+	finalDirectories, plannedDirectories, err := prepareInstallDirectories(coords, resolved, existingDirectories, directoryActions, finalRecords)
 	if err != nil {
 		return PreparedInstall{}, err
 	}
@@ -261,23 +242,6 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		return PreparedInstall{}, err
 	}
 	stateActions := []installAction{currentStateAction}
-	for _, reference := range references {
-		updated := cloneInstallationStateValue(reference.state)
-		updated.version = source.version
-		updated.policyChecksum = checksumBytes(policyContent)
-		rendered, err := serializeInstallState(updated)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-		action, err := newStateInstallAction(fmt.Sprintf("state-reference-%d", reference.index), rendered, reference.path, environment.StateHome)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-		stateActions, err = addInstallAction(stateActions, action)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-	}
 
 	prepared := PreparedInstall{
 		source: source, environment: environment, request: request, resolved: cloneResolvedRequest(resolved), coordinates: coords,
@@ -339,9 +303,6 @@ func requireUserPolicySetDirectoryContainsOnlyCustomProfiles(coords coordinates,
 }
 
 func sourcePolicyContent(source Source, coords coordinates) ([]byte, error) {
-	if !coords.managedPolicySet || len(source.policySet) == 0 {
-		return bytes.Clone(source.policy), nil
-	}
 	for _, file := range source.policySet {
 		if file.Path == "POLICY.md" {
 			return policySetFileContent(coords, file), nil
@@ -359,18 +320,6 @@ func policySetFileContent(coords coordinates, file oaw.PolicyFile) []byte {
 }
 
 func prepareInstallPolicyActions(source Source, coords coordinates, resolved resolvedRequest) (installAction, []installAction, error) {
-	if !coords.managedPolicySet {
-		current, err := inspectInstallPath(coords.policyPath)
-		if err != nil {
-			return installAction{}, nil, err
-		}
-		action, err := newInstallAction(
-			"policy", source.policy, coords.policyPath, 0o600, coords.environment.ConfigHome,
-			"open-agent-workflow/ENGINEERING.md", current,
-		)
-		return action, nil, err
-	}
-
 	var primary installAction
 	extras := make([]installAction, 0, len(source.policySet)-1)
 	for _, file := range source.policySet {
@@ -414,7 +363,7 @@ func policyFileRecordsFromInstallActions(primary installAction, extras []install
 	return records
 }
 
-func managedPolicySetMatchesSource(state installationState, source Source, coords coordinates, resolved resolvedRequest) bool {
+func policySetMatchesSource(state installationState, source Source, coords coordinates, resolved resolvedRequest) bool {
 	if len(source.policySet) == 0 || len(state.policyFiles) != len(source.policySet) {
 		return false
 	}
@@ -455,7 +404,7 @@ func validateCurrentInstallState(state installationState, coords coordinates, re
 	if checksumBytes(policy.data) != state.policyChecksum {
 		return compatibilityError("managed policy has drifted")
 	}
-	if err := validateManagedPolicySetFiles(state, coords); err != nil {
+	if err := validatePolicySetFiles(state, coords); err != nil {
 		return err
 	}
 	if err := validateLiveTargetRecords(state.targets, coords, state.scope, state.project); err != nil {
@@ -508,123 +457,16 @@ func validateLiveTargetRecord(record targetRecord, coords coordinates, recordSco
 	return nil
 }
 
-func collectPolicyStateReferences(coords coordinates, excluded string, policy installPathSnapshot) ([]policyStateReference, error) {
-	return collectPolicyStateReferencesWithValidation(coords, excluded, policy, "", true)
-}
-
-func collectPolicyStateReferencesWithBaseline(coords coordinates, excluded string, policy installPathSnapshot, baseline string) ([]policyStateReference, error) {
-	return collectPolicyStateReferencesWithValidation(coords, excluded, policy, baseline, true)
-}
-
-func collectPolicyStateReferencesForRetention(coords coordinates, excluded string, policy installPathSnapshot) ([]policyStateReference, error) {
-	return collectPolicyStateReferencesWithValidation(coords, excluded, policy, "", false)
-}
-
-func collectPolicyStateReferencesWithValidation(coords coordinates, excluded string, policy installPathSnapshot, baseline string, requireCurrentChecksum bool) ([]policyStateReference, error) {
-	locations := []struct {
-		directory string
-		pattern   string
-	}{
-		{directory: coords.installations, pattern: coords.installations + string(filepath.Separator) + "*.state"},
-		{directory: coords.projects, pattern: coords.projects + string(filepath.Separator) + "*.state"},
-	}
-	result := make([]policyStateReference, 0)
-	index := 0
-	for _, location := range locations {
-		paths, err := filepath.Glob(location.pattern)
-		if err != nil {
-			return nil, compatibilityError("invalid installation state pattern")
-		}
-		for _, discovered := range paths {
-			// Glob cleans repeated path separators. Rebuild from the validated
-			// lexical root so state actions retain the caller's allowed root.
-			path := location.directory + string(filepath.Separator) + filepath.Base(discovered)
-			if path == excluded {
-				continue
-			}
-			index++
-			if err := validateStateActionPath(coords.environment.StateHome, path); err != nil {
-				return nil, err
-			}
-			state, exists, err := readInstallationState(path)
-			if err != nil {
-				return nil, installError(err)
-			}
-			if !exists {
-				return nil, compatibilityError("installation state is not a regular file: " + path)
-			}
-			if state.policyPath != coords.policyPath {
-				continue
-			}
-			if err := validatePolicyStateReference(path, state, coords, policy, baseline, requireCurrentChecksum); err != nil {
-				return nil, err
-			}
-			result = append(result, policyStateReference{index: index, path: path, state: cloneInstallationStateValue(state)})
-		}
-	}
-	return result, nil
-}
-
-func validatePolicyStateReference(path string, state installationState, coords coordinates, policy installPathSnapshot, baseline string, requireCurrentChecksum bool) error {
-	var expected string
-	switch state.scope {
-	case "user":
-		expected = coords.installations + string(filepath.Separator) + "user.state"
-	case "project":
-		identity := strings.Replace(checksumBytes([]byte(state.project)), ":", "-", 1)
-		expected = coords.projects + string(filepath.Separator) + identity + ".state"
-	default:
-		return compatibilityError("installed scope does not match")
-	}
-	if path != expected {
-		if state.scope == "user" {
-			return compatibilityError("installed user state path does not match")
-		}
-		return compatibilityError("installed project root does not match")
-	}
-	if err := validateLiveTargetRecords(state.targets, coords, state.scope, state.project); err != nil {
-		return err
-	}
-	if err := validateOwnedDirectories(state, coords); err != nil {
-		return compatibilityError(err.Error())
-	}
-	if !requireCurrentChecksum {
-		return nil
-	}
-	installedChecksum := ""
-	if policy.kind == installPathRegular {
-		installedChecksum = checksumBytes(policy.data)
-	}
-	if baseline != "" {
-		installedChecksum = baseline
-	}
-	if installedChecksum == "" || installedChecksum != state.policyChecksum {
-		return compatibilityError("managed policy has drifted")
-	}
-	return nil
-}
-
 func prepareInstallDirectories(
 	coords coordinates,
 	resolved resolvedRequest,
 	existing []string,
-	references []policyStateReference,
 	actions []installAction,
 	records []targetRecord,
 ) ([]string, []string, error) {
 	directories := append([]string(nil), existing...)
 	planned := make([]string, 0)
-	for _, reference := range references {
-		for _, directory := range reference.state.directories {
-			if installNamespaceDirectory(coords, directory) {
-				directories = appendUniqueString(directories, directory)
-			}
-		}
-	}
-	namespaces := []string{coords.configDir, coords.stateDir, coords.installations}
-	if coords.managedPolicySet {
-		namespaces = []string{coords.policyDir, coords.stateDir, coords.installations}
-	}
+	namespaces := []string{coords.policyDir, coords.stateDir, coords.installations}
 	if resolved.scope == "project" {
 		namespaces = append(namespaces, coords.projects)
 	}
@@ -863,14 +705,9 @@ func managedInstallStatus(current installPathSnapshot) (string, string) {
 
 func predictInstallResult(prepared PreparedInstall) Result {
 	actions := make([]installAction, 0, len(prepared.targetActions)+1+len(prepared.policySetActions)+len(prepared.stateActions))
-	if prepared.coordinates.managedPolicySet {
-		actions = append(actions, prepared.policyAction)
-		actions = append(actions, prepared.policySetActions...)
-		actions = append(actions, prepared.targetActions...)
-	} else {
-		actions = append(actions, prepared.targetActions...)
-		actions = append(actions, prepared.policyAction)
-	}
+	actions = append(actions, prepared.policyAction)
+	actions = append(actions, prepared.policySetActions...)
+	actions = append(actions, prepared.targetActions...)
 	actions = append(actions, prepared.stateActions...)
 	lines := make([]string, 0, len(actions))
 	for _, action := range actions {
@@ -921,13 +758,13 @@ func installPathIsMissing(path string) (bool, error) {
 }
 
 func installNamespaceDirectory(coords coordinates, path string) bool {
-	if coords.managedPolicySet && isManagedPolicySetDirectory(coords, coords.currentProject, path) {
+	if isPolicySetDirectory(coords, coords.currentProject, path) {
 		return true
 	}
 	return path == coords.configDir || path == coords.stateDir || path == coords.installations || path == coords.projects
 }
 
-func isManagedPolicySetDirectory(coords coordinates, projectRoot, candidate string) bool {
+func isPolicySetDirectory(coords coordinates, projectRoot, candidate string) bool {
 	root := projectRoot
 	if coords.currentScope == "user" {
 		root = coords.environment.ConfigHome

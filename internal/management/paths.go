@@ -13,7 +13,6 @@ type coordinates struct {
 	policyDir         string
 	policyReference   string
 	customProfilesDir string
-	managedPolicySet  bool
 	stateDir          string
 	installations     string
 	projects          string
@@ -24,7 +23,7 @@ type coordinates struct {
 	environment       Environment
 }
 
-func initializeCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
+func initializeBaseCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
 	for _, root := range []struct {
 		label string
 		value string
@@ -41,10 +40,6 @@ func initializeCoordinates(environment Environment, resolved resolvedRequest) (c
 		}
 	}
 	configDir, err := validatedDestinationPath(environment.ConfigHome, "open-agent-workflow")
-	if err != nil {
-		return coordinates{}, err
-	}
-	policyPath, err := validatedDestinationPath(environment.ConfigHome, "open-agent-workflow/ENGINEERING.md")
 	if err != nil {
 		return coordinates{}, err
 	}
@@ -71,15 +66,15 @@ func initializeCoordinates(environment Environment, resolved resolvedRequest) (c
 		return coordinates{}, err
 	}
 	return coordinates{
-		configDir: configDir, policyPath: policyPath, stateDir: stateDir,
+		configDir: configDir, stateDir: stateDir,
 		installations: installations, projects: projects, backupRoot: backupRoot, stateFile: stateFile,
 		currentScope: resolved.scope, currentProject: resolved.projectRoot,
 		environment: environment,
 	}, nil
 }
 
-func initializePolicySetCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
-	coords, err := initializeCoordinates(environment, resolved)
+func initializeCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
+	coords, err := initializeBaseCoordinates(environment, resolved)
 	if err != nil {
 		return coordinates{}, err
 	}
@@ -117,7 +112,6 @@ func initializePolicySetCoordinates(environment Environment, resolved resolvedRe
 	default:
 		return coordinates{}, compatibilityError("unknown Policy Set scope: " + resolved.scope)
 	}
-	coords.managedPolicySet = true
 	return coords, nil
 }
 
@@ -141,10 +135,7 @@ func policySetDestination(coords coordinates, resolved resolvedRequest, sourcePa
 }
 
 func policyRouterReference(coords coordinates) string {
-	if coords.policyReference != "" {
-		return coords.policyReference
-	}
-	return coords.policyPath
+	return coords.policyReference
 }
 
 func validatedDestinationPath(root, suffix string) (string, error) {

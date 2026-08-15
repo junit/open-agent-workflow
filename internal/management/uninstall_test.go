@@ -30,7 +30,7 @@ func TestProjectUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
 	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
 	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
 	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
-	source := managedPolicySetSource(t, "0.1.0", "")
+	source := policySetSource(t, "0.1.0", "")
 	if _, err := Install(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"}); err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func TestUserUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
 	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
 	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
 	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
-	source := managedPolicySetSource(t, "0.1.0", "")
+	source := policySetSource(t, "0.1.0", "")
 	if _, err := Install(source, fixture.environment, InstallRequest{Targets: "codex"}); err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func TestUserUninstallRejectsStateClaimsOnCustomProfileContent(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			fixture := newPrepareFixture(t)
-			source := managedPolicySetSource(t, "0.1.0", "")
+			source := policySetSource(t, "0.1.0", "")
 			installed, err := PrepareInstall(source, fixture.environment, InstallRequest{Targets: "codex"})
 			if err != nil {
 				t.Fatal(err)
@@ -254,51 +254,6 @@ func TestPrepareUninstallSharedDestinationUsesLastReference(t *testing.T) {
 	}
 	if len(final.plan.targetActions) != 1 || final.plan.targetActions[0].effect != mutationRemove {
 		t.Fatalf("final shared action = %#v", final.plan.targetActions)
-	}
-}
-
-func TestPrepareUninstallRetainsCrossScopePolicy(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	materializeInstallRequest(t, fixture, InstallRequest{Targets: "codex"})
-	project := filepath.Join(fixture.root, "project")
-	if err := os.Mkdir(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	materializeInstallRequest(t, fixture, InstallRequest{Project: project, Targets: "cursor"})
-
-	prepared, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Targets: "codex"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.plan.policyAction.effect != mutationRetain || prepared.plan.stateActions[0].effect != mutationRemove {
-		t.Fatalf("actions policy=%#v state=%#v", prepared.plan.policyAction, prepared.plan.stateActions)
-	}
-}
-
-func TestPrepareUninstallRetainsPolicyForOlderValidCrossScopeReference(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	user := materializeInstallRequest(t, fixture, InstallRequest{Targets: "codex"})
-	project := filepath.Join(fixture.root, "project")
-	if err := os.Mkdir(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	materializeInstallRequest(t, fixture, InstallRequest{Project: project, Targets: "cursor"})
-
-	older := parsePreparedState(t, user.stateActions[0])
-	older.version = "0.0.9"
-	older.policyChecksum = checksumBytes([]byte("older canonical policy\n"))
-	olderBytes, err := serializeInstallState(older)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writePrepareFile(t, user.stateActions[0].destination, olderBytes, 0o600)
-
-	prepared, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Project: project, Targets: "cursor"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if prepared.plan.policyAction.effect != mutationRetain || prepared.plan.stateActions[0].effect != mutationRemove {
-		t.Fatalf("actions policy=%#v state=%#v", prepared.plan.policyAction, prepared.plan.stateActions)
 	}
 }
 

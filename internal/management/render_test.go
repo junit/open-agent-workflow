@@ -7,7 +7,7 @@ import (
 )
 
 func TestRenderTargetMatchesBashBytes(t *testing.T) {
-	policyPath := "/config path/`policy`/ENGINEERING.md"
+	policyPath := "/config path/`policy`/POLICY.md"
 	prefix := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. "
 	suffix := " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
 	userRouter := prefix + "On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `" + policyPath + "` as the User Policy Set." + suffix
@@ -47,7 +47,7 @@ func TestRenderTargetMatchesBashBytes(t *testing.T) {
 }
 
 func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
-	policyPath := "/config/ENGINEERING.md"
+	policyPath := "/config/POLICY.md"
 	targets := []struct {
 		scope scope
 		id    targetID
@@ -107,11 +107,11 @@ func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
 }
 
 func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
-	got, err := renderManagedBlock("codex", "user", "/config/ENGINEERING.md")
+	got, err := renderManagedBlock("codex", "user", "/config/POLICY.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `/config/ENGINEERING.md` as the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `/config/POLICY.md` as the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
 	want := "<!-- BEGIN OPEN AGENT WORKFLOW -->\n" +
 		router +
 		"<!-- END OPEN AGENT WORKFLOW -->\n"
@@ -164,7 +164,7 @@ func TestRenderManagedFileRejectsInvalidMarkers(t *testing.T) {
 }
 
 func TestRenderTargetRejectsUnsupportedPair(t *testing.T) {
-	if _, err := renderTarget("cursor", "user", "/config/ENGINEERING.md"); err == nil {
+	if _, err := renderTarget("cursor", "user", "/config/POLICY.md"); err == nil {
 		t.Fatal("renderTarget() accepted user cursor")
 	}
 }

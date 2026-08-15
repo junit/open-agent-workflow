@@ -11,12 +11,7 @@ import (
 
 func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 	fixture := newPrepareFixture(t)
-	policy := []byte("canonical policy\n")
-	source, err := NewSource("0.1.0", policy)
-	if err != nil {
-		t.Fatal(err)
-	}
-	policy[0] = 'X'
+	source := policySetSource(t, "0.1.0", "")
 
 	prepared, err := prepareWithoutWrites(t, fixture.root, source, fixture.environment, InstallRequest{
 		Targets: "codex,claude,codex",
@@ -31,8 +26,8 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 	if got := actionLabels(prepared.targetActions); !reflect.DeepEqual(got, []string{"claude", "codex"}) {
 		t.Fatalf("target action labels = %#v", got)
 	}
-	if !bytes.Equal(prepared.policyAction.data, []byte("canonical policy\n")) {
-		t.Fatalf("policy action = %q", prepared.policyAction.data)
+	if len(prepared.policyAction.data) == 0 {
+		t.Fatal("policy action is empty")
 	}
 
 	state := parsePreparedState(t, prepared.stateActions[0])
@@ -48,6 +43,9 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 		filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations"),
 		filepath.Join(fixture.environment.Home, ".claude"),
 		filepath.Join(fixture.environment.Home, ".codex"),
+		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters"),
+		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles"),
+		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin"),
 	}
 	if !reflect.DeepEqual(state.directories, wantDirectories) {
 		t.Fatalf("owned directories = %#v, want %#v", state.directories, wantDirectories)
@@ -56,9 +54,15 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 		t.Fatalf("planned directories = %#v, want %#v", prepared.plannedDirectories, wantDirectories)
 	}
 	wantLines := []string{
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "POLICY.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "codex-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "cooperative-protocol.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "ECC-FULL.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "MATT-FULL.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "MATT-SP-HYBRID.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "SP-FULL.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.Home, ".claude", "CLAUDE.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.Home, ".codex", "AGENTS.md"),
-		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "ENGINEERING.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "user.state"),
 	}
 	if !reflect.DeepEqual(prepared.predicted.Lines, wantLines) {
@@ -167,7 +171,7 @@ func TestProjectInstallRejectsUntrackedPolicySetContentWithoutWrites(t *testing.
 	before := snapshotPrepareTree(t, fixture.root)
 
 	_, err := Install(
-		managedPolicySetSource(t, "0.1.0", ""), fixture.environment,
+		policySetSource(t, "0.1.0", ""), fixture.environment,
 		InstallRequest{Project: project, Targets: "codex"},
 	)
 	if err == nil {
@@ -197,9 +201,12 @@ func TestPrepareInstallRepeatedAdditiveAndForcePreserveState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := repeated.predicted.Lines; !reflect.DeepEqual(got, []string{
-		"oaw: unchanged: claude", "oaw: unchanged: policy", "oaw: unchanged: state",
-	}) {
+	wantRepeated := []string{"oaw: unchanged: policy"}
+	for _, action := range repeated.policySetActions {
+		wantRepeated = append(wantRepeated, "oaw: unchanged: "+action.label)
+	}
+	wantRepeated = append(wantRepeated, "oaw: unchanged: claude", "oaw: unchanged: state")
+	if got := repeated.predicted.Lines; !reflect.DeepEqual(got, wantRepeated) {
 		t.Fatalf("repeated predictions = %#v", got)
 	}
 	if got := parsePreparedState(t, repeated.stateActions[0]).backupPath; got != state.backupPath {
@@ -229,174 +236,6 @@ func TestPrepareInstallRepeatedAdditiveAndForcePreserveState(t *testing.T) {
 	if !reflect.DeepEqual(semanticPreparedSnapshot(withoutForce), semanticPreparedSnapshot(withForce)) {
 		t.Fatal("--force changed a clean install plan")
 	}
-}
-
-func TestPrepareInstallCoordinatesCrossScopeStateAndBackupReferences(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	user, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	materializePreparedFixture(t, user)
-	userState := parsePreparedState(t, user.stateActions[0])
-	userState.backupPath = filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "backups", "existing")
-	userStateBytes, err := serializeInstallState(userState)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writePrepareFile(t, user.stateActions[0].destination, userStateBytes, 0o600)
-
-	project := filepath.Join(fixture.root, "project")
-	if err := os.Mkdir(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Project: project, Targets: "cursor"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := actionLabels(prepared.stateActions); !reflect.DeepEqual(got, []string{"state", "state-reference-1"}) {
-		t.Fatalf("state actions = %#v", got)
-	}
-	reference := parsePreparedState(t, prepared.stateActions[1])
-	if reference.backupPath != userState.backupPath {
-		t.Fatalf("reference backup = %q, want %q", reference.backupPath, userState.backupPath)
-	}
-	if prepared.stateActions[1].destination != user.stateActions[0].destination {
-		t.Fatalf("reference destination = %q", prepared.stateActions[1].destination)
-	}
-	projectState := parsePreparedState(t, prepared.stateActions[0])
-	for _, namespace := range []string{
-		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow"),
-		filepath.Join(fixture.environment.StateHome, "open-agent-workflow"),
-		filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations"),
-	} {
-		if !containsString(projectState.directories, namespace) {
-			t.Fatalf("project state did not inherit namespace %q: %#v", namespace, projectState.directories)
-		}
-	}
-}
-
-func TestPrepareInstallCoordinatesUserStateFromProjectReference(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	project := filepath.Join(fixture.root, "project reference")
-	if err := os.Mkdir(project, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	projectInstall, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Project: project, Targets: "cursor"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	materializePreparedFixture(t, projectInstall)
-
-	userInstall, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := actionLabels(userInstall.stateActions); !reflect.DeepEqual(got, []string{"state", "state-reference-1"}) {
-		t.Fatalf("state actions = %#v", got)
-	}
-	reference := parsePreparedState(t, userInstall.stateActions[1])
-	if reference.scope != "project" || reference.project == "" || reference.targets[0].id != "cursor" {
-		t.Fatalf("project reference = %#v", reference)
-	}
-}
-
-func TestPrepareInstallFiltersForeignPolicyStateAndRejectsMisboundLiveState(t *testing.T) {
-	t.Run("foreign policy is parsed then ignored", func(t *testing.T) {
-		fixture := newPrepareFixture(t)
-		foreignProject := filepath.Join(fixture.root, "foreign project")
-		if err := os.Mkdir(foreignProject, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		physical, err := filepath.EvalSymlinks(foreignProject)
-		if err != nil {
-			t.Fatal(err)
-		}
-		identity := strings.Replace(checksumBytes([]byte(physical)), ":", "-", 1)
-		foreignState := installationState{
-			version: "9.9.9", scope: "project", project: physical,
-			policyPath: filepath.Join(fixture.environment.ConfigHome, "foreign", "ENGINEERING.md"), policyChecksum: "1:1",
-			targets: []targetRecord{{
-				id: "cursor", path: filepath.Join(physical, ".cursor", "rules", "open-agent-workflow.mdc"),
-				mode: "owned-file", checksum: "2:2", origin: "created-file",
-			}},
-		}
-		data, err := serializeInstallState(foreignState)
-		if err != nil {
-			t.Fatal(err)
-		}
-		path := filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "projects", identity+".state")
-		writePrepareFile(t, path, data, 0o600)
-		prepared, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if len(prepared.stateActions) != 1 {
-			t.Fatalf("foreign state created actions: %#v", actionLabels(prepared.stateActions))
-		}
-	})
-
-	t.Run("misbound user state is rejected", func(t *testing.T) {
-		fixture := newPrepareFixture(t)
-		user, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		materializePreparedFixture(t, user)
-		misbound := filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "misbound.state")
-		writePrepareFile(t, misbound, user.stateActions[0].data, 0o600)
-		project := filepath.Join(fixture.root, "project")
-		if err := os.Mkdir(project, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		_, err = prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Project: project, Targets: "cursor"})
-		if err == nil || !strings.Contains(err.Error(), "installed user state path does not match") {
-			t.Fatalf("PrepareInstall() error = %v", err)
-		}
-	})
-
-	t.Run("misbound project state is rejected", func(t *testing.T) {
-		fixture := newPrepareFixture(t)
-		project := filepath.Join(fixture.root, "project")
-		if err := os.Mkdir(project, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		projectInstall, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Project: project, Targets: "cursor"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		materializePreparedFixture(t, projectInstall)
-		misbound := filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "projects", "misbound.state")
-		writePrepareFile(t, misbound, projectInstall.stateActions[0].data, 0o600)
-		_, err = prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-		if err == nil || !strings.Contains(err.Error(), "installed project root does not match") {
-			t.Fatalf("PrepareInstall() error = %v", err)
-		}
-	})
-
-	t.Run("reference policy checksum drift is rejected", func(t *testing.T) {
-		fixture := newPrepareFixture(t)
-		user, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-		if err != nil {
-			t.Fatal(err)
-		}
-		materializePreparedFixture(t, user)
-		state := parsePreparedState(t, user.stateActions[0])
-		state.policyChecksum = "1:1"
-		data, err := serializeInstallState(state)
-		if err != nil {
-			t.Fatal(err)
-		}
-		writePrepareFile(t, user.stateActions[0].destination, data, 0o600)
-		project := filepath.Join(fixture.root, "project")
-		if err := os.Mkdir(project, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		_, err = prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Project: project, Targets: "cursor"})
-		if err == nil || !strings.Contains(err.Error(), "managed policy has drifted") {
-			t.Fatalf("PrepareInstall() error = %v", err)
-		}
-	})
 }
 
 func TestPrepareInstallAddsASecondSharedProjectTarget(t *testing.T) {
@@ -521,7 +360,7 @@ func TestPrepareInstallRejectsInvalidDriftedAndCheckoutMismatchedState(t *testin
 			t.Fatal(err)
 		}
 		materializePreparedFixture(t, fresh)
-		newSource, err := NewSource("0.2.0", []byte("canonical policy\n"))
+		newSource := policySetSource(t, "0.2.0", "")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -642,10 +481,10 @@ func TestPrepareInstallRejectsInvalidDriftedAndCheckoutMismatchedState(t *testin
 }
 
 func TestNewSourceAndPrepareInstallRejectUnsafeInputs(t *testing.T) {
-	if _, err := NewSource("", []byte("policy\n")); err == nil {
+	if _, err := NewSource("", nil); err == nil {
 		t.Fatal("NewSource() accepted an empty version")
 	}
-	if _, err := NewSource("bad\nversion", []byte("policy\n")); err == nil {
+	if _, err := NewSource("bad\nversion", nil); err == nil {
 		t.Fatal("NewSource() accepted an unsafe version")
 	}
 	if _, err := NewSource("0.1.0", nil); err == nil {

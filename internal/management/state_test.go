@@ -21,7 +21,8 @@ func TestParseInstallationStateAcceptsCanonicalUserAndSharedProjectRecords(t *te
 		"version\t0.1.0",
 		"scope\tproject",
 		"project\t/project",
-		"policy\t/config/open-agent-workflow/ENGINEERING.md\t1:1",
+		"policy\t/config/open-agent-workflow/POLICY.md\t1:1",
+		"policy-file\t/config/open-agent-workflow/POLICY.md\t1:1",
 		"target\tcodex\t/project/AGENTS.md\tmanaged-block\t2:2\texisting-file",
 		"target\topencode\t/project/AGENTS.md\tmanaged-block\t2:2\texisting-file",
 	}, "\n") + "\n"
@@ -93,7 +94,7 @@ func TestParseInstallationStateRejectsMalformedRecords(t *testing.T) {
 		{name: "project missing root", raw: strings.Replace(base, "scope\tuser", "scope\tproject", 1)},
 		{name: "unknown record", raw: base + "mystery\tvalue\n"},
 		{name: "too many fields", raw: strings.Replace(base, "version\t0.1.0", "version\t0.1.0\textra", 1)},
-		{name: "relative policy", raw: strings.Replace(base, "/config/open-agent-workflow/ENGINEERING.md", "config/ENGINEERING.md", 1)},
+		{name: "relative policy", raw: strings.Replace(base, "/config/open-agent-workflow/POLICY.md", "config/POLICY.md", 1)},
 		{name: "invalid checksum", raw: strings.Replace(base, "1:1", "sha256:bad", 1)},
 		{name: "unknown target", raw: strings.Replace(base, "target\tclaude", "target\tvscode", 1)},
 		{name: "extension user target", raw: strings.Replace(base, "target\tclaude", "target\tcursor", 1)},
@@ -104,7 +105,8 @@ func TestParseInstallationStateRejectsMalformedRecords(t *testing.T) {
 		{name: "registry order", raw: strings.Replace(base, "target\tclaude", "target\tcodex", 1) + "target\tclaude\t/home/.claude/CLAUDE.md\tmanaged-block\t2:2\texisting-file\n"},
 		{name: "conflicting shared destination", raw: strings.Join([]string{
 			"format\t1", "version\t0.1.0", "scope\tproject", "project\t/project",
-			"policy\t/config/open-agent-workflow/ENGINEERING.md\t1:1",
+			"policy\t/config/open-agent-workflow/POLICY.md\t1:1",
+			"policy-file\t/config/open-agent-workflow/POLICY.md\t1:1",
 			"target\tcodex\t/project/AGENTS.md\tmanaged-block\t2:2\texisting-file",
 			"target\topencode\t/project/AGENTS.md\tmanaged-block\t3:3\texisting-file",
 		}, "\n") + "\n"},
@@ -149,7 +151,8 @@ func canonicalUserState() string {
 		"format\t1",
 		"version\t0.1.0",
 		"scope\tuser",
-		"policy\t/config/open-agent-workflow/ENGINEERING.md\t1:1",
+		"policy\t/config/open-agent-workflow/POLICY.md\t1:1",
+		"policy-file\t/config/open-agent-workflow/POLICY.md\t1:1",
 		"target\tclaude\t/home/.claude/CLAUDE.md\tmanaged-block\t2:2\texisting-file",
 	}, "\n") + "\n"
 }

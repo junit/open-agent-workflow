@@ -12,8 +12,9 @@ func TestSerializeInstallStateMatchesBashOrderAndRoundTrips(t *testing.T) {
 		version:        "0.1.0",
 		scope:          "project",
 		project:        "/project path",
-		policyPath:     "/config/open-agent-workflow/ENGINEERING.md",
+		policyPath:     "/config/open-agent-workflow/POLICY.md",
 		policyChecksum: "101:202",
+		policyFiles:    []policyFileRecord{{path: "/config/open-agent-workflow/POLICY.md", checksum: "101:202"}},
 		backupPath:     "/state/open-agent-workflow/backups/prior",
 		directories:    []string{"/project path/.codex", "/state/open-agent-workflow"},
 		targets: []targetRecord{
@@ -27,7 +28,8 @@ func TestSerializeInstallStateMatchesBashOrderAndRoundTrips(t *testing.T) {
 		"version\t0.1.0",
 		"scope\tproject",
 		"project\t/project path",
-		"policy\t/config/open-agent-workflow/ENGINEERING.md\t101:202",
+		"policy\t/config/open-agent-workflow/POLICY.md\t101:202",
+		"policy-file\t/config/open-agent-workflow/POLICY.md\t101:202",
 		"backup\t/state/open-agent-workflow/backups/prior",
 		"directory\t/project path/.codex",
 		"directory\t/state/open-agent-workflow",
@@ -56,8 +58,9 @@ func TestSerializeInstallStateRejectsInvalidValues(t *testing.T) {
 	valid := installationState{
 		version:        "0.1.0",
 		scope:          "user",
-		policyPath:     "/config/open-agent-workflow/ENGINEERING.md",
+		policyPath:     "/config/open-agent-workflow/POLICY.md",
 		policyChecksum: "1:1",
+		policyFiles:    []policyFileRecord{{path: "/config/open-agent-workflow/POLICY.md", checksum: "1:1"}},
 		directories:    []string{"/home/.claude"},
 		targets: []targetRecord{
 			{id: "claude", path: "/home/.claude/CLAUDE.md", mode: "managed-block", checksum: "2:2", origin: "existing-file"},
@@ -111,6 +114,7 @@ func TestSerializeInstallStateRejectsInvalidValues(t *testing.T) {
 
 func cloneInstallationState(value installationState) installationState {
 	value.directories = append([]string(nil), value.directories...)
+	value.policyFiles = append([]policyFileRecord(nil), value.policyFiles...)
 	value.targets = append([]targetRecord(nil), value.targets...)
 	return value
 }

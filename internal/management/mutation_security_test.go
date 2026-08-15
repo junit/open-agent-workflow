@@ -39,10 +39,7 @@ func TestMutationSecurityRejectsLexicalPathAliases(t *testing.T) {
 	t.Run("mutation actions", func(t *testing.T) {
 		fixture := newPrepareFixture(t)
 		materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
-		updated, err := NewSource("0.2.0", []byte("updated policy\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
 		prepared, err := PrepareUpdate(updated, fixture.environment, UpdateRequest{Targets: "claude"})
 		if err != nil {
 			t.Fatal(err)
@@ -443,10 +440,7 @@ func TestMutationSecurityRejectsIdenticalPathSwapsBeforeWrites(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			fixture := newPrepareFixture(t)
 			materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
-			updated, err := NewSource("0.2.0", []byte("updated policy\n"))
-			if err != nil {
-				t.Fatal(err)
-			}
+			updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
 			prepared, err := PrepareUpdate(updated, fixture.environment, UpdateRequest{Targets: "claude"})
 			if err != nil {
 				t.Fatal(err)
@@ -467,10 +461,7 @@ func TestMutationSecurityRechecksIdentityAtEachEffect(t *testing.T) {
 	t.Run("file effect", func(t *testing.T) {
 		fixture := newPrepareFixture(t)
 		materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
-		updated, err := NewSource("0.2.0", []byte("updated policy\n"))
-		if err != nil {
-			t.Fatal(err)
-		}
+		updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
 		prepared, err := PrepareUpdate(updated, fixture.environment, UpdateRequest{Targets: "claude"})
 		if err != nil {
 			t.Fatal(err)

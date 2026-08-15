@@ -84,13 +84,6 @@ func prepareMutationInputs(environment Environment, request mutationRequest) (mu
 	if err != nil {
 		return mutationPreparation{}, installError(err)
 	}
-	policySetCoords, policySetErr := initializePolicySetCoordinates(environment, resolved)
-	if policySetErr != nil {
-		return mutationPreparation{}, policySetErr
-	}
-	if !exists || state.policyPath == policySetCoords.policyPath {
-		coords = policySetCoords
-	}
 	policy, err := inspectInstallPath(coords.policyPath)
 	if err != nil {
 		return mutationPreparation{}, err
@@ -147,7 +140,7 @@ func validateCleanMutationState(state installationState, coords coordinates, res
 	if checksumBytes(policy.data) != state.policyChecksum {
 		return compatibilityError("managed policy has drifted")
 	}
-	if err := validateManagedPolicySetFiles(state, coords); err != nil {
+	if err := validatePolicySetFiles(state, coords); err != nil {
 		return err
 	}
 	if err := validateLiveTargetRecords(state.targets, coords, state.scope, state.project); err != nil {

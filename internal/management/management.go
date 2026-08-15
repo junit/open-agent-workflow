@@ -24,30 +24,22 @@ type CheckRequest struct {
 
 type Source struct {
 	version   string
-	policy    []byte
 	policySet []oaw.PolicyFile
 }
 
-func NewSource(version string, policy []byte) (Source, error) {
+func NewSource(version string, files []oaw.PolicyFile) (Source, error) {
 	if version == "" || !safeStateField(version) {
 		return Source{}, &Error{Status: 70, Message: "VERSION is invalid"}
-	}
-	if len(policy) == 0 || len(policy) > maximumInstallArtifactBytes {
-		return Source{}, &Error{Status: 70, Message: "canonical policy source is invalid"}
-	}
-	return Source{version: version, policy: bytes.Clone(policy)}, nil
-}
-
-func NewSourceWithPolicySet(version string, policy []byte, files []oaw.PolicyFile) (Source, error) {
-	source, err := NewSource(version, policy)
-	if err != nil {
-		return Source{}, err
 	}
 	if err := oaw.ValidatePolicySet(files); err != nil {
 		return Source{}, &Error{Status: 70, Message: "canonical Policy Set source is invalid: " + err.Error()}
 	}
-	source.policySet = clonePolicySet(files)
-	return source, nil
+	for _, file := range files {
+		if len(file.Content) > maximumInstallArtifactBytes {
+			return Source{}, &Error{Status: 70, Message: "canonical Policy Set file is too large: " + file.Path}
+		}
+	}
+	return Source{version: version, policySet: clonePolicySet(files)}, nil
 }
 
 func clonePolicySet(files []oaw.PolicyFile) []oaw.PolicyFile {
@@ -60,16 +52,12 @@ func clonePolicySet(files []oaw.PolicyFile) []oaw.PolicyFile {
 
 func cloneSource(source Source) Source {
 	return Source{
-		version: source.version, policy: bytes.Clone(source.policy),
-		policySet: clonePolicySet(source.policySet),
+		version: source.version, policySet: clonePolicySet(source.policySet),
 	}
 }
 
 func validateSource(source Source) (Source, error) {
-	if len(source.policySet) == 0 {
-		return NewSource(source.version, source.policy)
-	}
-	return NewSourceWithPolicySet(source.version, source.policy, source.policySet)
+	return NewSource(source.version, source.policySet)
 }
 
 type InstallRequest struct {

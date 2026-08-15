@@ -28,8 +28,6 @@ All notable changes to Open Agent Workflow will be documented in this file.
   Profile and matches them against a minimal Provider Descriptor v5 identity
   catalog. Provider discovery and Codex observation carry no Profile,
   lifecycle, classification, Capability, topology, or progress semantics.
-- Provider source audits use `oaw.provider-source-audit/v2`; the audit binds
-  exact Provider distributions and Bindings without a Profile matrix digest.
 - Codex Binding identity now matches the Profile and Host surfaces exactly:
   ECC Skills use `ecc:<skill>` references and Matt Skills resolve beneath
   `.agents/skills/<skill>`.
@@ -50,6 +48,9 @@ All notable changes to Open Agent Workflow will be documented in this file.
   classification, USER-DEFINED machine configuration, Capability compilation,
   execution graphs, Core, Coordinator, Registry, Host workflow records, and
   their pre-release schemas and compatibility surfaces.
+- Provider source-audit manifests, generators, fixtures, and the standalone
+  audit command. Provider JSON identity catalogs remain available to optional
+  Assurance and Bridge paths.
 
 ## [0.1.0] - 2026-08-14
 

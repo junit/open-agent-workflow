@@ -9,7 +9,6 @@ import (
 
 type forcePreparation struct {
 	backupRequired bool
-	policyBaseline string
 	repaired       map[string]installPathSnapshot
 	manual         *manualRecovery
 }
@@ -36,18 +35,15 @@ func prepareMutationForce(
 		return forcePreparation{}, err
 	}
 	result := forcePreparation{repaired: make(map[string]installPathSnapshot)}
-	if coords.managedPolicySet {
-		changed, err := managedPolicySetNeedsBackup(state, coords)
-		if err != nil {
-			return forcePreparation{}, err
-		}
-		result.backupRequired = changed
+	changed, err := policySetNeedsBackup(state, coords)
+	if err != nil {
+		return forcePreparation{}, err
 	}
+	result.backupRequired = changed
 	if checksumBytes(policy.data) != state.policyChecksum {
 		result.backupRequired = true
-		result.policyBaseline = state.policyChecksum
 	}
-	result, err := prepareForcedTargetRecords(result, state, coords, resolved)
+	result, err = prepareForcedTargetRecords(result, state, coords, resolved)
 	if err != nil {
 		return forcePreparation{}, err
 	}
@@ -60,14 +56,14 @@ func prepareMutationForce(
 	return result, nil
 }
 
-func managedPolicySetNeedsBackup(state installationState, coords coordinates) (bool, error) {
+func policySetNeedsBackup(state installationState, coords coordinates) (bool, error) {
 	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
 		return false, compatibilityError(err.Error())
 	}
 	if len(state.policyFiles) == 0 {
 		return false, compatibilityError("managed Policy Set state is missing")
 	}
-	if err := validateManagedPolicySetTree(state, coords); err != nil {
+	if err := validatePolicySetTree(state, coords); err != nil {
 		return false, err
 	}
 	changed := false
@@ -330,7 +326,7 @@ func prepareManualRecoveryBackup(
 	}
 	if policy.kind == installPathRegular {
 		policyRoot := environment.ConfigHome
-		if coords.managedPolicySet && resolved.scope == "project" {
+		if resolved.scope == "project" {
 			policyRoot = resolved.projectRoot
 		}
 		policySuffix, suffixErr := stateActionRelativeSuffix(policyRoot, coords.policyPath)

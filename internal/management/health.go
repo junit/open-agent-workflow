@@ -24,17 +24,8 @@ func installationLines(environment Environment, resolved resolvedRequest) (insta
 	}
 	health := installationHealth{stateStatus: "not-installed", coords: coords}
 	state, exists, stateErr := readInstallationState(coords.stateFile)
-	policySetCoords, policySetErr := initializePolicySetCoordinates(environment, resolved)
-	if policySetErr != nil {
-		return installationResult{}, policySetErr
-	}
-	if exists && stateErr == nil && state.policyPath == policySetCoords.policyPath {
-		coords = policySetCoords
-		health.coords = coords
-	} else if !exists {
-		coords = policySetCoords
-		health.coords = coords
-		if _, err := os.Stat(policySetCoords.policyPath); err == nil {
+	if !exists {
+		if _, err := os.Stat(coords.policyPath); err == nil {
 			health.stateStatus = "valid"
 			health.policyClean = false
 		}
@@ -44,12 +35,7 @@ func installationLines(environment Environment, resolved resolvedRequest) (insta
 		if stateErr == nil && validateOwnedDirectories(state, coords) == nil && state.policyPath == coords.policyPath && state.scope == resolved.scope && ((resolved.scope == "user" && state.project == "") || (resolved.scope == "project" && state.project == resolved.projectRoot)) {
 			health.stateStatus = "valid"
 			health.state = state
-			if coords.managedPolicySet {
-				health.policyClean = validateManagedPolicySetFiles(state, coords) == nil
-			} else if info, err := os.Stat(state.policyPath); err == nil && info.Mode().IsRegular() {
-				actual, checksumErr := checksumFile(state.policyPath)
-				health.policyClean = checksumErr == nil && actual == state.policyChecksum
-			}
+			health.policyClean = validatePolicySetFiles(state, coords) == nil
 		}
 	}
 	lines := make([]string, 0, len(resolved.targets))

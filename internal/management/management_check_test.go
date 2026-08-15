@@ -194,7 +194,7 @@ func TestProjectCheckDetectsPolicySetHealthWithoutOwningCustomProfiles(t *testin
 			if err := os.Mkdir(project, 0o755); err != nil {
 				t.Fatal(err)
 			}
-			source := managedPolicySetSource(t, "0.1.0", "")
+			source := policySetSource(t, "0.1.0", "")
 			request := InstallRequest{Project: project, Targets: "codex"}
 			if _, err := Install(source, fixture.environment, request); err != nil {
 				t.Fatal(err)
@@ -254,7 +254,7 @@ func TestUserCheckDetectsPolicySetHealthWithoutOwningCustomProfiles(t *testing.T
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			fixture := newPrepareFixture(t)
-			source := managedPolicySetSource(t, "0.1.0", "")
+			source := policySetSource(t, "0.1.0", "")
 			if _, err := Install(source, fixture.environment, InstallRequest{Targets: "codex"}); err != nil {
 				t.Fatal(err)
 			}

@@ -1,7 +1,6 @@
 package management
 
 import (
-	"fmt"
 	"path/filepath"
 )
 
@@ -60,22 +59,12 @@ func prepareUpdatePlan(
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	var references []policyStateReference
-	if !preparation.coordinates.managedPolicySet {
-		references, err = collectPolicyStateReferencesWithBaseline(
-			preparation.coordinates, preparation.coordinates.stateFile,
-			preparation.policy, force.policyBaseline,
-		)
-		if err != nil {
-			return mutationPlan{}, err
-		}
-	}
 	policyAction, policySetActions, policyFiles, policyChecksum, err := prepareUpdatePolicyActions(source, preparation)
 	if err != nil {
 		return mutationPlan{}, err
 	}
 	stateActions, err := prepareUpdateStateActions(
-		source, environment, preparation, force, policyChecksum, policyFiles, records, references,
+		source, environment, preparation, force, policyChecksum, policyFiles, records,
 	)
 	if err != nil {
 		return mutationPlan{}, err
@@ -103,17 +92,6 @@ func prepareUpdatePolicyActions(
 	source Source,
 	preparation mutationPreparation,
 ) (mutationAction, []mutationAction, []policyFileRecord, string, error) {
-	if !preparation.coordinates.managedPolicySet {
-		action, err := newMutationAction(
-			mutationReplace, "policy", source.policy, preparation.coordinates.policyPath, 0o600,
-			preparation.coordinates.environment.ConfigHome, "open-agent-workflow/ENGINEERING.md", preparation.policy,
-		)
-		return action, nil, nil, checksumBytes(source.policy), err
-	}
-	if len(source.policySet) == 0 {
-		return mutationAction{}, nil, nil, "", compatibilityError("managed Policy Set source is missing")
-	}
-
 	currentByPath := make(map[string]policyFileRecord, len(preparation.state.policyFiles))
 	for _, record := range preparation.state.policyFiles {
 		currentByPath[filepath.Clean(record.path)] = record
@@ -269,7 +247,6 @@ func prepareUpdateStateActions(
 	policyChecksum string,
 	policyFiles []policyFileRecord,
 	records []targetRecord,
-	references []policyStateReference,
 ) ([]mutationAction, error) {
 	current := cloneInstallationStateValue(preparation.state)
 	current.targets = cloneTargetRecords(records)
@@ -280,22 +257,7 @@ func prepareUpdateStateActions(
 	if err != nil {
 		return nil, err
 	}
-	actions := []mutationAction{action}
-	for _, reference := range references {
-		action, err := newUpdatedStateMutationAction(
-			fmt.Sprintf("state-reference-%d", reference.index), reference.state,
-			source.version, policyChecksum, policyFiles, preparation.backupPath,
-			force.backupRequired, reference.path, environment.StateHome,
-		)
-		if err != nil {
-			return nil, err
-		}
-		actions, err = addMutationAction(actions, action)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return actions, nil
+	return []mutationAction{action}, nil
 }
 
 func newUpdatedStateMutationAction(

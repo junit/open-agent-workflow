@@ -189,7 +189,7 @@ func FuzzMutationRollbackOrder(f *testing.F) {
 }
 
 func FuzzMutationPathSuffix(f *testing.F) {
-	f.Add("open-agent-workflow/ENGINEERING.md")
+	f.Add("open-agent-workflow/POLICY.md")
 	f.Add("../escape")
 	root := f.TempDir()
 	f.Fuzz(func(t *testing.T, suffix string) {

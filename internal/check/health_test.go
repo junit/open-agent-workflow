@@ -108,15 +108,15 @@ func TestExecuteReportsCleanProjectOwnedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	policyPath := filepath.Join(environment.ConfigHome, "open-agent-workflow", "ENGINEERING.md")
+	policyPath := filepath.Join(physicalProject, ".oaw", "policy", "POLICY.md")
 	targetPath := filepath.Join(physicalProject, ".cursor", "rules", "open-agent-workflow.mdc")
 	writeFixtureFile(t, policyPath, "canonical policy\n")
 	writeFixtureFile(t, targetPath, "owned adapter\n")
 	identity := strings.Replace(systemChecksumText(t, physicalProject), ":", "-", 1)
 	statePath := filepath.Join(environment.StateHome, "open-agent-workflow", "installations", "projects", identity+".state")
 	state := fmt.Sprintf(
-		"format\t1\nversion\t0.1.0\nscope\tproject\nproject\t%s\npolicy\t%s\t%s\ntarget\tcursor\t%s\towned-file\t%s\texisting-file\n",
-		physicalProject, policyPath, systemChecksum(t, policyPath), targetPath, systemChecksum(t, targetPath),
+		"format\t1\nversion\t0.1.0\nscope\tproject\nproject\t%s\npolicy\t%s\t%s\npolicy-file\t%s\t%s\ntarget\tcursor\t%s\towned-file\t%s\texisting-file\n",
+		physicalProject, policyPath, systemChecksum(t, policyPath), policyPath, systemChecksum(t, policyPath), targetPath, systemChecksum(t, targetPath),
 	)
 	writeFixtureFile(t, statePath, state)
 	result, err := check.Execute(testCatalog(t), environment, check.Request{Project: project, Targets: "cursor"})
@@ -154,7 +154,7 @@ type userManagedFixture struct {
 
 func installUserManagedFixture(t *testing.T, environment check.Environment, targetID string) userManagedFixture {
 	t.Helper()
-	policyPath := filepath.Join(environment.ConfigHome, "open-agent-workflow", "ENGINEERING.md")
+	policyPath := filepath.Join(environment.ConfigHome, "open-agent-workflow", "POLICY.md")
 	writeFixtureFile(t, policyPath, "canonical policy\n")
 	var targetPath string
 	switch targetID {
@@ -171,8 +171,8 @@ func installUserManagedFixture(t *testing.T, environment check.Environment, targ
 	writeFixtureFile(t, blockPath, block)
 	statePath := filepath.Join(environment.StateHome, "open-agent-workflow", "installations", "user.state")
 	state := fmt.Sprintf(
-		"format\t1\nversion\t0.1.0\nscope\tuser\npolicy\t%s\t%s\ntarget\t%s\t%s\tmanaged-block\t%s\texisting-file\n",
-		policyPath, systemChecksum(t, policyPath), targetID, targetPath, systemChecksum(t, blockPath),
+		"format\t1\nversion\t0.1.0\nscope\tuser\npolicy\t%s\t%s\npolicy-file\t%s\t%s\ntarget\t%s\t%s\tmanaged-block\t%s\texisting-file\n",
+		policyPath, systemChecksum(t, policyPath), policyPath, systemChecksum(t, policyPath), targetID, targetPath, systemChecksum(t, blockPath),
 	)
 	writeFixtureFile(t, statePath, state)
 	if err := os.Chmod(statePath, 0o600); err != nil {

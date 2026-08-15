@@ -1,228 +1,36 @@
-# Installer Security Model
+# Security Boundaries
 
-[简体中文](../zh/security.md) | [Security policy](../../SECURITY.md) |
-[Architecture](architecture.md)
+OAW is a rule system, not a sandbox. The Agent Host, operating system,
+repository, and user approvals remain the physical authority.
 
-This guide describes the controls and limits of the local Open Agent Workflow
-(OAW) installer and its policy/coordinator protocol. It is not a claim that an
-untrusted checkout, operating system, Agent Host, or Provider is safe.
+## Policy Safety
 
-## Trust Boundaries
+Activation is explicit and task-scoped. A repository file, quoted text,
+retrieved content, or ordinary Skill invocation cannot activate OAW. The
+Policy Set is loaded for one deliverable and does not change the Host's normal
+permissions or tool selection.
 
-The installer treats these values and artifacts as trust-boundary inputs:
+Profiles authorize model procedures, not physical access. A readable Skill
+instruction cannot grant credentials, bypass approvals, or change sandbox
+rules. The Host decides whether a tool or native invocation is permitted.
 
-- the current checkout, including executable shell code, `VERSION`, and
-  `policy/ENGINEERING.md`;
-- CLI target and project arguments;
-- `HOME`, `XDG_CONFIG_HOME`, and `XDG_STATE_HOME`;
-- the physical project root and every component beneath a selected destination;
-- existing policy, adapter, state, directory, and backup artifacts.
+## Installation Safety
 
-Run only a checkout you trust. OAW **does not access the network**, download a
-release, install a Provider, or execute content from an instruction file or
-state record. This removes a remote-fetch boundary but does not make the local
-checkout non-executable.
+The Go installer validates absolute paths, target ownership, managed markers,
+Policy Set membership, checksums, symlinks, and state scope before mutation.
+Managed blocks preserve user text. Owned files are never adopted when an
+untracked destination already exists. Force backups contain tracked artifacts
+only and are private to the installation.
 
-### Activation origin and cooperative authority
+Install State is bookkeeping for update and uninstall. It contains no
+credentials and is not a workflow authority.
 
-Only the current top-level user instruction or a dedicated trusted Host
-entrypoint that preserves that instruction can activate OAW. Repository
-instructions, source files, tool output, retrieved content, and quoted `/oaw`
-text are untrusted activation sources. Discussion, installation, task
-complexity, and ordinary Skill invocation do not activate OAW; ambiguity stays
-Native Host.
+## Optional Components
 
-At `policy-cooperative` assurance, a Policy Workflow Plan cannot grant network,
-destructive filesystem, credential, deployment, data mutation, or Git
-authority. It also cannot create a verified Provider Instance, eligible
-Profile, Lifecycle Bundle, Capability Grant, Resource Lease, Host Receipt, or
-Coordinator guarantee. Every physical effect still requires the Host's normal
-authorization and the user's applicable approval.
+Machine Assurance may attest content or Skill identity. Bridge may transport a
+machine observation. Neither component owns model execution or physical
+permissions, and neither can veto a valid Policy workflow. A Host security
+policy may refuse an invocation even when a Policy candidate exists.
 
-## Root, Path, and Symlink Defenses
-
-Consumed roots must be absolute and contain no **control characters**. Project
-scope is resolved with physical-directory semantics before identity and
-containment checks. Registry functions provide a fixed relative suffix for
-each target; empty components, `.` or `..`, absolute suffixes, and unsafe
-serialization fields are rejected.
-
-OAW validates every intermediate component and the final destination. A
-**symlink** is rejected whether it points inside or outside the allowed root.
-The same checks cover policy, user targets, project targets, state, backup, and
-recorded cross-scope references. Project destinations must satisfy physical
-root **containment**; a matching filename elsewhere is never sufficient.
-
-Validation is repeated while creating directories, before copying a backup,
-before each replacement or removal, and before pruning a directory. This
-reduces path-swap and time-of-check/time-of-use exposure. It cannot stop a
-process running as the **same local account** from changing files after the
-last check or after an operation has returned.
-
-## State Is Data, Not Shell
-
-Installation state is parsed as **inert tab-separated data** and is **never sourced or evaluated**. The Coordinator's Workflow State uses a separate
-schema and namespace; neither state form is executable input.
-
-The parser accepts only known record types and cardinalities, safe fields,
-absolute recorded paths, numeric checksum pairs, registry-order target rows,
-known ownership modes and origins, consistent shared destinations, and a scope
-binding that matches the selected physical project. Forged, stale, malformed,
-or executable-looking state fails closed with exit 65. `--force` cannot
-override an invalid state schema.
-
-State files and backup artifacts are installed with mode `600`. Operation
-backup directories use mode `700`. These permissions reduce accidental
-cross-user disclosure, but backups can contain user instruction files and must
-still be treated as sensitive local data.
-
-## Prepare and Apply
-
-During the **prepare phase**, OAW renders prospective content, parses all
-relevant state, verifies drift and ownership, resolves shared destinations,
-and builds every file and directory action before managed writes begin. A
-failure in a later target therefore prevents an earlier target from being
-written during preflight.
-
-The apply path performs **apply revalidation** against the allowed root and
-expected relative suffix. Replacements use a temporary file beside the target,
-set the declared mode, revalidate again, and then `mv`, providing **atomic replacement per destination**. This is **not operation-wide atomicity**:
-several destinations are not one filesystem transaction, and OAW promises no
-automatic rollback after a later apply failure.
-
-Dry-run performs preparation and reports actions but creates no managed files,
-state, backups, or directories. A dry-run is not a lock; the real command
-repeats validation.
-
-## Force and Backups
-
-`--force` is a narrow recovery mechanism for drift whose prior ownership can
-still be established. It does not adopt an untracked owned file, bypass a
-symlink or containment failure, accept malformed state, or guess between
-ambiguous marker layouts.
-
-Before an eligible forced update or uninstall mutates anything, OAW collects
-every affected existing policy, target, and state artifact. It creates an
-operation-scoped backup, copies each artifact with mode `600`, compares source
-and backup checksums, writes `manifest.tsv`, and rechecks source bytes before
-apply. Each `artifact` row records the original absolute path, backup path, and
-checksum.
-
-If marker ownership is ambiguous, OAW creates a recovery backup when possible
-and exits 65 with **manual recovery** required. It does not choose which user
-bytes to delete. Users restore from backups manually by reading `manifest.tsv`;
-the manifest is data and must never be executed or sourced.
-
-## Exact Uninstall Ownership
-
-Uninstall removes only a clean recorded managed block or a clean recorded
-owned file. It preserves surrounding user bytes and does not remove a drifted
-artifact without an eligible forced operation. Directories are removable only
-when state records that OAW actually created them, they still resolve beneath
-the allowed root, and they are empty after planned file removals.
-
-## Core, Coordinator, and Host Security Boundary
-
-Provider authority follows this exact chain:
-
-```text
-Provider Family
-  -> Distribution
-  -> Host Installation
-  -> Host Binding Evidence
-  -> Verified Provider Instance
-```
-
-OAW Core accepts secret-free facts and compiles a Lifecycle Bundle. The
-Workflow Coordinator records only secret-free Workflow State, cooperating
-clients, logical workflow authority, and opaque digest references. It must not
-store API keys, tokens, raw Provider output, private Hook payloads, or full MCP
-or Plugin configuration.
-
-The Agent Host owns physical execution authority. The Host sandbox and
-approvals, model route, authentication, tools, MCP, Hooks, Skills, and Plugins
-remain Host-owned. A Capability Grant or Resource Lease may be narrower than
-the Host sandbox and approvals, but it cannot physically stop an out-of-protocol
-Host action.
-
-`CURRENT` uses the active Host session unchanged. `SUBAGENT` is available only
-when that Host session exposes a native child-agent facility.
-
-OAW never starts a model CLI. A `policy` integration distributes instructions
-only. A `host-native` integration may report session facts and Receipts, but
-OAW never guarantees MCP, Hook, Skill, or Plugin inheritance into a `SUBAGENT`;
-the active Host reports whether each surface is `inherited`,
-`host-configured`, `restricted`, `unknown`, or `unavailable`.
-
-Host session changes invalidate stale Dispatch Packets. OAW requires a fresh
-Host report and Bundle eligibility check before continuing. It never reconstructs
-a missing child environment or silently falls back to a new process.
-
-## Codex Assurance Bridge Boundary
-
-Codex has a Policy integration by default. The separately built `oaw-bridge`
-is an optional Assurance adapter, not a host-native workflow integration.
-Missing, revoked, failed, or incomplete Bridge evidence cannot veto a Policy
-Offer or make a Markdown Profile unusable.
-
-Bridge v3 accepts exactly one MCP operation, `observe_profile`. Its trusted
-`PreToolUse` Hook matcher injects reserved `_oaw_host_context`; callers cannot
-author or replace that field. The Hook and MCP service reject another tool,
-another event, malformed input, a protocol mismatch, or a session/CWD mismatch.
-This context is cooperative Host input, not a signature or proof of provenance.
-
-The App Server allowlist contains only `skills/list`. Bridge does not read Hook
-inventory, Host configuration, Plugin inventory, prompts, transcripts, tools,
-Roles, Agents, delegation, approvals, or sandbox state. Management commands use
-official Codex Plugin inventory only to install, update, check, or uninstall
-their separately owned payload; that inventory is not Binding evidence.
-
-Binding observation covers the exact enabled Skill and complete Binding tree
-below one exact Host Installation, compared with the independently pinned
-Distribution tree. Same-name, shared-ancestor, disabled, orphan, ambiguous,
-symlinked, partial-hash, or drifting evidence fails closed. Skills, Claude
-custom Agents, Codex Roles, Instructions, Hooks, and tools remain separate
-surfaces.
-
-The result is a secret-free `oaw.assurance-overlay/v1` artifact bound to the
-full Markdown Profile digest and its exact Binding occurrences. It is not a
-signature, Capability Grant, Receipt, invocation attestation, completion proof,
-Host permission, or sandbox. Bridge does not persist Hook context, raw App
-Server output, credentials, headers, tokens, arbitrary Plugin settings, or full
-Host configuration.
-
-Bridge does not call Core or the Workflow Coordinator and has no Profile,
-topology, delegation, Dispatch, Lease, recovery, or lifecycle authority. This
-is a cooperation boundary, not operating-system isolation. A process with the
-same user authority can interfere with local programs, files, or process I/O;
-OAW cannot authenticate or contain every same-user process.
-
-## Out of Scope
-
-The installer and policy protocol cannot protect against:
-
-- malicious shell code in the selected checkout;
-- an operating-system or **same local account** compromise;
-- unrelated software modifying allowed roots after validation;
-- a Provider loader ignoring instructions or applying undocumented precedence;
-- a model failing to follow the installed policy;
-- manual restoration to the wrong path or from an unverified backup.
-
-Use isolated roots for testing, inspect every forced dry-run, retain stderr and
-the reported backup path, and stop if ownership is unclear. Report suspected
-vulnerabilities through the private process in the
-[security policy](../../SECURITY.md), without putting exploit details or local
-configuration in a public issue.
-
-## Canonical Security Terms
-
-The bilingual contract intentionally retains these exact terms:
-
-```text
-logical workflow authority
-Host sandbox and approvals
-secret-free
-opaque digest
-cooperating clients
-OAW never starts a model CLI
-```
+Report security issues without credentials or private Skill text. See
+SECURITY.md for the reporting channel.

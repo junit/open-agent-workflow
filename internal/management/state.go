@@ -180,6 +180,9 @@ func parseInstallationState(data []byte) (installationState, error) {
 }
 
 func validatePolicyFileRecords(records []policyFileRecord) error {
+	if len(records) == 0 {
+		return fmt.Errorf("Policy Set file state is empty")
+	}
 	seen := make(map[string]struct{}, len(records))
 	for _, record := range records {
 		if record.path == "" || !safeStateField(record.path) || !filepath.IsAbs(record.path) || !validChecksum(record.checksum) {
@@ -194,14 +197,11 @@ func validatePolicyFileRecords(records []policyFileRecord) error {
 	return nil
 }
 
-func validateManagedPolicySetFiles(state installationState, coords coordinates) error {
-	if !coords.managedPolicySet {
-		return nil
-	}
+func validatePolicySetFiles(state installationState, coords coordinates) error {
 	if len(state.policyFiles) == 0 {
 		return compatibilityError("managed Policy Set state is missing")
 	}
-	if err := validateManagedPolicySetTree(state, coords); err != nil {
+	if err := validatePolicySetTree(state, coords); err != nil {
 		return err
 	}
 	mainFound := false
@@ -232,7 +232,7 @@ func validateManagedPolicySetFiles(state installationState, coords coordinates) 
 	return nil
 }
 
-func validateManagedPolicySetTree(state installationState, coords coordinates) error {
+func validatePolicySetTree(state installationState, coords coordinates) error {
 	expected := map[string]bool{filepath.Clean(coords.policyDir): true}
 	for _, record := range state.policyFiles {
 		current := filepath.Clean(record.path)
@@ -320,7 +320,7 @@ func validateTargetRecords(state installationState) error {
 
 func validateOwnedDirectories(state installationState, coords coordinates) error {
 	for _, directory := range state.directories {
-		if coords.managedPolicySet && isManagedPolicySetDirectory(coords, state.project, directory) {
+		if isPolicySetDirectory(coords, state.project, directory) {
 			continue
 		}
 		if directory == coords.configDir || directory == coords.stateDir || directory == coords.installations || directory == coords.projects {

@@ -17,10 +17,7 @@ func TestApplyUpdateAndUninstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	installed := materializeInstallRequest(t, fixture, InstallRequest{Project: project, Targets: "cursor"})
-	updated, err := NewSource("0.2.0", []byte("updated policy\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
 	preparedUpdate, err := PrepareUpdate(updated, fixture.environment, UpdateRequest{Project: project, Targets: "cursor"})
 	if err != nil {
 		t.Fatal(err)
@@ -29,11 +26,11 @@ func TestApplyUpdateAndUninstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Lines) != 3 || !strings.HasPrefix(result.Lines[0], "oaw: unchanged: cursor") || !strings.HasPrefix(result.Lines[1], "oaw: update: ") || !strings.HasPrefix(result.Lines[2], "oaw: update: ") {
+	if len(result.Lines) != len(updated.policySet)+2 || !strings.HasPrefix(result.Lines[0], "oaw: unchanged: cursor") || !strings.HasPrefix(result.Lines[1], "oaw: update: ") {
 		t.Fatalf("update result = %v", result.Lines)
 	}
 	policy, err := os.ReadFile(installed.policyAction.destination)
-	if err != nil || !bytes.Equal(policy, []byte("updated policy\n")) {
+	if err != nil || !bytes.Equal(policy, policySetFileContent(preparedUpdate.plan.coordinates, updated.policySet[0])) {
 		t.Fatalf("policy = %q, %v", policy, err)
 	}
 	state, exists, err := readInstallationState(installed.stateActions[0].destination)
@@ -52,7 +49,11 @@ func TestApplyUpdateAndUninstall(t *testing.T) {
 	if len(result.Lines) == 0 || !strings.HasPrefix(result.Lines[0], "oaw: remove: ") {
 		t.Fatalf("uninstall result = %v", result.Lines)
 	}
-	for _, path := range []string{installed.targetActions[0].destination, installed.policyAction.destination, installed.stateActions[0].destination} {
+	paths := []string{installed.targetActions[0].destination, installed.policyAction.destination, installed.stateActions[0].destination}
+	for _, action := range installed.policySetActions {
+		paths = append(paths, action.destination)
+	}
+	for _, path := range paths {
 		if _, err := os.Lstat(path); !os.IsNotExist(err) {
 			t.Fatalf("removed path %s exists: %v", path, err)
 		}
@@ -62,10 +63,7 @@ func TestApplyUpdateAndUninstall(t *testing.T) {
 func TestApplyMutationDryRunIsWriteFree(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
-	updated, err := NewSource("0.2.0", []byte("updated policy\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
 	prepared, err := PrepareUpdate(updated, fixture.environment, UpdateRequest{Targets: "claude", DryRun: true})
 	if err != nil {
 		t.Fatal(err)
@@ -138,10 +136,7 @@ func TestApplyManualRecoveryOnlyCreatesBackup(t *testing.T) {
 func TestApplyMutationRejectsStalePlanBeforeWrites(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
-	updated, err := NewSource("0.2.0", []byte("updated policy\n"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
 	prepared, err := PrepareUpdate(updated, fixture.environment, UpdateRequest{Targets: "claude"})
 	if err != nil {
 		t.Fatal(err)

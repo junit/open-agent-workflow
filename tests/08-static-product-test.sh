@@ -24,15 +24,24 @@ done
 for retired_asset in \
   cmd/oaw-dogfood internal/assets/generate internal/assets/host-integrations.json \
   internal/assets/profile-aliases.json internal/assets/profile-matrix.json \
-  internal/assets/recipes internal/assets/schemas/v1/classification-proposal.schema.json \
-  internal/assets/schemas/v1/profile-alias-set.schema.json \
-  internal/assets/schemas/v1/project-config.schema.json \
-  internal/assets/schemas/v3/profile-recipe.schema.json \
-  internal/assets/schemas/v3/user-config.schema.json \
-  internal/assets/schemas/v4/provider-descriptor.schema.json; do
+  internal/assets/recipes internal/assets/schemas internal/assets/audits \
+  internal/provideraudit cmd/oaw-provider-audit \
+  scripts/check-core-coordinator-coverage.sh scripts/dogfood-current.sh \
+  scripts/smoke-host-native.sh scripts/audit-provider-sources.sh \
+  tests/19-provider-source-audit-test.sh policy/ENGINEERING.md; do
   [ ! -e "$OAW_REPOSITORY/$retired_asset" ] ||
     fail "retired duplicate workflow asset remains: $retired_asset"
 done
+
+if go list -deps ./cmd/oaw | grep -E '/(assurance|codexbridge|coordinator)(/|$)' >/dev/null; then
+  fail "default oaw binary depends on an optional machine component"
+fi
+
+if rg -n 'ENGINEERING\.md|state-reference-|Profile Recipe|USER-DEFINED|oaw workflow|oaw run|oaw runtime' \
+  "$OAW_REPOSITORY/cmd" "$OAW_REPOSITORY/internal" "$OAW_REPOSITORY/policy" \
+  --glob '!**/*_test.go' >/dev/null; then
+  fail "active product source contains retired compatibility terminology"
+fi
 
 PROGRESS_NOTE="$OAW_PROJECT/.scratch/progress.md"
 mkdir -p "$(dirname -- "$PROGRESS_NOTE")"

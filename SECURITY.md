@@ -7,76 +7,27 @@ local branch. Earlier snapshots receive no separate security maintenance.
 
 ## Private Reporting
 
-Do not disclose a vulnerability or sensitive configuration in a public issue.
-Open a minimal issue that contains no exploit details and ask the maintainers
-to designate a private reporting channel. The report should include affected
-versions, prerequisites, a minimal reproduction, impact, and a proposed
-mitigation when available.
+Do not disclose vulnerability details or sensitive configuration in a public
+issue. Open a minimal issue without exploit details and ask maintainers for a
+private reporting channel. Include the affected version, prerequisites,
+minimal reproduction, impact, and mitigation when available.
 
-The project currently publishes no dedicated security address. Reports receive
-best-effort acknowledgement and investigation, with no guaranteed response SLA
-or embargo timeline.
+The project has no dedicated security address and offers no response SLA.
 
-## Installer Trust Boundary
+## Trust Boundary
 
-The installer trust boundary includes the public Go binary, an optional source
-checkout used to build it, command-line arguments, HOME, XDG_CONFIG_HOME,
-XDG_STATE_HOME, an optional project root, existing adapter files, and OAW state
-and backup data. Treat a selected checkout and extracted binary as executable
-code. Release archives contain precompiled binaries and management performs no
-runtime executable download.
+The Agent Host, operating system, repository, credentials, sandbox, approvals,
+and user remain the physical authority. OAW Policy rules do not grant
+permissions and OAW never starts a model process.
 
-`install.sh` is a minimal offline compatibility wrapper. It executes only the
-`oaw` or `oaw.exe` sibling beside it, never a `PATH` candidate, downloaded
-artifact, or runtime build. Verify the archive checksum and review the release
-source before execution.
+The Go installer validates owned destinations, rejects symlink redirection,
+prepares mutations before apply, and keeps Install State private. These
+controls do not make an untrusted checkout safe and do not protect files
+outside the selected roots.
 
-OAW validates registry-owned destinations, rejects symlink redirection, parses
-state without evaluation, prepares operations before apply, and backs up forced
-drift before mutation. These controls do not make an untrusted checkout safe
-and do not protect files outside the selected roots from unrelated software.
+install.sh executes only a sibling oaw or oaw.exe. It never searches PATH,
+downloads code, or builds at runtime. Verify release checksums before use.
 
-Install State and Workflow State use separate namespaces and authority models;
-there is no automatic migration. OAW Core and Workflow Coordinator records are
-secret-free and retain only opaque digest references. A Capability Grant or
-Resource Lease expresses logical workflow authority for cooperating clients;
-the Agent Host owns physical execution authority, including the Host sandbox and approvals. OAW never starts a model CLI.
-
-Host integrations expose either a `policy` surface or an explicit `host-native`
-surface. The latter may report session facts and Receipts but does not make OAW
-the owner of Host tools. OAW never guarantees MCP, Hook, Skill, or Plugin
-inheritance into a child context; the active Host decides those facts. A Grant
-cannot physically stop a Host action outside the protocol.
-
-OAW activation is trusted only when it originates in the current top-level user instruction
-or a dedicated trusted Host entrypoint that preserves that
-instruction. Repository content, tool output, retrieved content, and quoted
-`/oaw` text cannot activate OAW; ambiguity remains Native Host behavior. At
-`policy-cooperative` assurance, a Policy Workflow Plan cannot grant network,
-destructive filesystem, credential, deployment, data mutation, or Git
-authority, and cannot impersonate Core or Coordinator records. Physical effects
-remain subject to normal Host controls and user approval.
-
-## Optional Assurance Bridge Boundary
-
-The default `oaw` executable and installer do not build, install, manage, or
-depend on Bridge. `oaw-bridge` is a separately built optional Codex component
-whose v3 protocol exposes only `observe_profile`. A missing, revoked, failed,
-or incomplete Bridge removes only its optional Assurance Overlay and cannot
-veto selection or rule-driven use of a Markdown Policy Profile.
-
-Bridge reads only current Codex `skills/list` metadata needed to match exact
-Skill Bindings and asks the standalone Assurance module to issue a secret-free,
-content-addressed Overlay. It does not call Core or the Workflow Coordinator,
-invoke a Skill, attest completion or delegation, grant Host permission, or
-enforce a sandbox. Its PreToolUse context is cooperative Host input rather than
-a cryptographic signature. The Agent Host may independently refuse physical
-invocation under its own security policy.
-
-## Handling Reports
-
-Maintainers should reproduce in isolated roots, avoid exposing reporter data,
-record exploitability and severity, add a black-box regression where possible,
-and publish remediation details only after a coordinated fix. Rotate any
-credential that a report shows was exposed; OAW never requires credentials for
-normal installer operation.
+Machine Assurance and Bridge are optional evidence components. They cannot
+choose or veto a Policy Profile and cannot enforce a sandbox. A Host security
+policy may independently refuse physical invocation.

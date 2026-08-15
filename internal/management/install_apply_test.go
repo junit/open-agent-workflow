@@ -22,15 +22,20 @@ func TestApplyInstallCreatesTargetsPolicyStateModesAndOwnership(t *testing.T) {
 		t.Fatalf("ApplyInstall() result=%#v error=%v", result, err)
 	}
 	wantLines := []string{
-		"oaw: update: " + prepared.targetActions[0].destination,
 		"oaw: create: " + prepared.policyAction.destination,
-		"oaw: create: " + prepared.stateActions[0].destination,
 	}
+	for _, action := range prepared.policySetActions {
+		wantLines = append(wantLines, "oaw: create: "+action.destination)
+	}
+	wantLines = append(wantLines,
+		"oaw: update: "+prepared.targetActions[0].destination,
+		"oaw: create: "+prepared.stateActions[0].destination,
+	)
 	if !reflect.DeepEqual(result.Lines, wantLines) {
 		t.Fatalf("result lines = %#v, want %#v", result.Lines, wantLines)
 	}
 	assertAppliedAction(t, prepared.targetActions[0], 0o644)
-	assertAppliedAction(t, prepared.policyAction, 0o600)
+	assertAppliedAction(t, prepared.policyAction, 0o644)
 	assertAppliedAction(t, prepared.stateActions[0], 0o600)
 	if !bytes.HasPrefix(prepared.targetActions[0].data, []byte("user content\n")) {
 		t.Fatalf("target did not preserve existing bytes: %q", prepared.targetActions[0].data)
@@ -47,7 +52,7 @@ func TestApplyInstallCreatesTargetsPolicyStateModesAndOwnership(t *testing.T) {
 func TestApplyInstallIsIdempotentWithoutMtimeChanges(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	first, err := Install(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-	if err != nil || len(first.Lines) != 3 {
+	if err != nil || len(first.Lines) != len(fixture.source.policySet)+2 {
 		t.Fatalf("Install() result=%#v error=%v", first, err)
 	}
 	prepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
@@ -59,9 +64,13 @@ func TestApplyInstallIsIdempotentWithoutMtimeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := result.Lines; !reflect.DeepEqual(got, []string{
-		"oaw: unchanged: claude", "oaw: unchanged: policy", "oaw: unchanged: state",
-	}) {
+	want := make([]string, 0, len(fixture.source.policySet)+2)
+	want = append(want, "oaw: unchanged: policy")
+	for _, action := range prepared.policySetActions {
+		want = append(want, "oaw: unchanged: "+action.label)
+	}
+	want = append(want, "oaw: unchanged: claude", "oaw: unchanged: state")
+	if got := result.Lines; !reflect.DeepEqual(got, want) {
 		t.Fatalf("idempotent lines = %#v", got)
 	}
 	after := actionMetadata(t, append(append([]installAction(nil), prepared.targetActions...), prepared.policyAction, prepared.stateActions[0])...)
@@ -82,9 +91,17 @@ func TestApplyInstallIsIdempotentWithRedundantStateRootSeparator(t *testing.T) {
 	if err != nil {
 		t.Fatalf("repeated Install() error = %v", err)
 	}
-	if got := result.Lines; !reflect.DeepEqual(got, []string{
-		"oaw: unchanged: claude", "oaw: unchanged: policy", "oaw: unchanged: state",
-	}) {
+	prepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := make([]string, 0, len(fixture.source.policySet)+2)
+	want = append(want, "oaw: unchanged: policy")
+	for _, action := range prepared.policySetActions {
+		want = append(want, "oaw: unchanged: "+action.label)
+	}
+	want = append(want, "oaw: unchanged: claude", "oaw: unchanged: state")
+	if got := result.Lines; !reflect.DeepEqual(got, want) {
 		t.Fatalf("repeated Install() lines = %#v", got)
 	}
 }
@@ -173,103 +190,6 @@ func TestApplyInstallRejectsStateChangeAfterPreparation(t *testing.T) {
 	}
 	if after := snapshotPrepareTree(t, fixture.root); !reflect.DeepEqual(before, after) {
 		t.Fatal("state-change rejection mutated the tree")
-	}
-}
-
-func TestApplyInstallCoordinatesSharedProjectAndCrossScopeState(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	fixture.environment.StateHome = filepath.Dir(fixture.environment.StateHome) +
-		string(filepath.Separator) + string(filepath.Separator) + filepath.Base(fixture.environment.StateHome)
-	if _, err := Install(fixture.source, fixture.environment, InstallRequest{Targets: "claude"}); err != nil {
-		t.Fatal(err)
-	}
-	userPrepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	userState := parsePreparedState(t, userPrepared.stateActions[0])
-	userState.backupPath = filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "backups", "existing")
-	userStateBytes, err := serializeInstallState(userState)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writePrepareFile(t, userPrepared.stateActions[0].destination, userStateBytes, 0o600)
-
-	project := filepath.Join(fixture.root, "shared project")
-	if err := os.MkdirAll(filepath.Join(project, ".cursor"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	sibling := filepath.Join(project, ".cursor", "sibling.txt")
-	writePrepareFile(t, sibling, []byte("sentinel\n"), 0o644)
-	prepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Project: project, Targets: "codex,opencode,cursor"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := ApplyInstall(prepared)
-	if err != nil {
-		t.Fatalf("ApplyInstall() result=%#v error=%v", result, err)
-	}
-	want := []string{
-		"oaw: create: " + prepared.targetActions[0].destination,
-		"oaw: create: " + prepared.targetActions[1].destination,
-		"oaw: unchanged: policy",
-		"oaw: create: " + prepared.stateActions[0].destination,
-		"oaw: unchanged: state-reference-1",
-	}
-	if !reflect.DeepEqual(result.Lines, want) {
-		t.Fatalf("cross-scope lines = %#v, want %#v", result.Lines, want)
-	}
-	if data, err := os.ReadFile(sibling); err != nil || string(data) != "sentinel\n" {
-		t.Fatalf("sibling data=%q error=%v", data, err)
-	}
-	projectState := parsePreparedState(t, prepared.stateActions[0])
-	if got := targetRecordIDs(projectState.targets); !reflect.DeepEqual(got, []string{"codex", "opencode", "cursor"}) {
-		t.Fatalf("project state targets = %#v", got)
-	}
-	if containsString(projectState.directories, filepath.Join(prepared.resolved.projectRoot, ".cursor")) {
-		t.Fatalf("project state claimed pre-existing .cursor: %#v", projectState.directories)
-	}
-	updatedUserBytes, err := os.ReadFile(userPrepared.stateActions[0].destination)
-	if err != nil {
-		t.Fatal(err)
-	}
-	updatedUser, err := parseInstallationState(updatedUserBytes)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if updatedUser.backupPath != userState.backupPath {
-		t.Fatalf("backup reference = %q, want %q", updatedUser.backupPath, userState.backupPath)
-	}
-	if _, err := os.Lstat(prepared.coordinates.backupRoot); !os.IsNotExist(err) {
-		t.Fatalf("cross-scope install created backup root: %v", err)
-	}
-}
-
-func TestApplyInstallReportsCompletedBashOrderActionsBeforeWriteFailure(t *testing.T) {
-	fixture := newPrepareFixture(t)
-	policyDestination := filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "ENGINEERING.md")
-	if err := os.MkdirAll(policyDestination, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	prepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := ApplyInstall(prepared)
-	if err == nil {
-		t.Fatalf("ApplyInstall() result=%#v", result)
-	}
-	if got := result.Lines; !reflect.DeepEqual(got, []string{"oaw: create: " + prepared.targetActions[0].destination}) {
-		t.Fatalf("partial result = %#v", got)
-	}
-	if _, statErr := os.Stat(prepared.targetActions[0].destination); statErr != nil {
-		t.Fatalf("completed target is missing: %v", statErr)
-	}
-	if info, statErr := os.Lstat(prepared.policyAction.destination); statErr != nil || !info.IsDir() {
-		t.Fatalf("failed policy action changed destination: info=%v error=%v", info, statErr)
-	}
-	if _, statErr := os.Lstat(prepared.stateActions[0].destination); !os.IsNotExist(statErr) {
-		t.Fatalf("state was written after failure: %v", statErr)
 	}
 }
 
