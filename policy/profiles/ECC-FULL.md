@@ -19,7 +19,7 @@ semantics rather than Provider or installation metadata.
 | --- | --- |
 | Problem framing | `ecc:intent-driven-development` |
 | Specification | `ecc:product-capability` |
-| Delivery planning | `ecc:blueprint` |
+| Delivery planning | Policy Default for ordinary or single-delivery scope; `ecc:blueprint` only for complex multi-session work within its declared trigger |
 | Workspace preparation | Host native, with `ecc:git-workflow` guidance when useful |
 | Implementation and TDD | `ecc:tdd-workflow` |
 | Review and remediation | Host-native review; findings return to `ecc:tdd-workflow` |
@@ -30,6 +30,8 @@ semantics rather than Provider or installation metadata.
 
 - Skill availability is determined by readable or invokable semantics, not by
   Provider identity, cache location, revision, or route admission.
+- Delivery planning stays proportional to the task; do not invoke
+  `ecc:blueprint` outside the trigger declared by that Skill.
 - A specialist contract, E2E, security, or review Skill is an Add-on unless
   this Profile assigns it a Responsibility.
 - Unexpected build, dependency, or type failures require an exact applicable
