@@ -11,6 +11,7 @@ checksum 后直接调用二进制：
 ./oaw install
 ./oaw update
 ./oaw uninstall
+./oaw profile list
 ```
 
 从源码 checkout 使用时，先构建嵌入预期 policy 与 version 的二进制：
@@ -51,6 +52,10 @@ Host-native integration 文件。它们不会对当前对话分类、为 OAW Eng
 ./oaw <check|install|update|uninstall> [options]
 ./install.sh <check|install|update|uninstall> [options]
 
+./oaw profile list
+./oaw profile show <id|source:id>
+./oaw profile check <id|source:id|path>
+
 --target <ids>       逗号分隔的 target ID
 --target=<ids>        等价的 inline 形式
 --project <path>     对一个物理 project root 操作
@@ -77,6 +82,24 @@ Profile 位于 `profiles/builtin/`，用户拥有的 Custom Profile 保留在 `p
 Activation Router 在 `.oaw/policy/POLICY.md` 存在时整套选择 Project Policy Set，否则选择
 User Policy Set；两者的 core 文件绝不合并。Project 与 user Custom Profile 保持可发现，
 并带有明确 source identity。
+
+### 建议性 Profile 检查
+
+`profile list`、`profile show` 与 `profile check` 是只读诊断，不位于 Agent authority path。
+List 会组合当前二进制嵌入的 Built-in Profile、`<project>/.oaw/profiles/*.md` 中的直接
+Markdown Project Custom Profile，以及
+`${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/*.md` 中的直接 User
+Custom Profile。它不会把受管 user `profiles/builtin/` 再读取为第二个 Built-in source。
+
+Project 与 user Custom Profile 出现同 ID 时仍是两个独立条目；未限定的 `show` 或 `check`
+存在歧义时，使用 `project:<id>` 或 `user:<id>`。同一 scope 的重复 ID、必需 frontmatter
+`id` 或 `name` 缺失、非 regular file，以及占用保留 Built-in ID 的 Custom Profile 都是
+结构诊断。`profile list` 仍会完成以展示全部诊断；对受影响 Profile 执行 check 时以 65 退出。
+
+只有 `id` 与 `name` 是必需项。Partial Custom Profile 的 metadata 仍然有效，省略的
+Responsibility 由 Policy Default 覆盖。未知、重复或空的 Responsibility 行只是 warning，
+不会改变 check 的退出状态。CLI 明确不检查 Skill availability、不选择或切换 Profile、
+不创建 workflow state，也不判断模型能否理解并使用该 Markdown Profile。
 
 `check` 是只读操作，会拒绝 `--dry-run` 与 `--force`。三个 mutation command 接受
 `--dry-run`。`--force` 可以在 `update` 或 `uninstall` 时恢复符合条件、已有记录的 drift；

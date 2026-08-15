@@ -32,6 +32,8 @@ func RunWithContext(ctx context.Context, args []string, stdin io.Reader, stdout 
 	}
 	if len(args) != 0 {
 		switch args[0] {
+		case "profile":
+			return runProfile(args[1:], stdout, stderr)
 		case "profiles", "use", "status", "complete", "review", "approve", "satisfy", "incident", "switch", "stop", "uncertain":
 			return runPolicySimple(args, stdout, stderr)
 		case "bridge":
@@ -148,5 +150,5 @@ func usage() string {
 }
 
 func rootUsage() string {
-	return installerUsage() + "\n" + bridgeUsage() + "\n" + usage()
+	return installerUsage() + "\n" + profileUsage() + "\n" + bridgeUsage() + "\n" + usage()
 }

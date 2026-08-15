@@ -116,6 +116,7 @@ evidence_digest = "<sha256>"
 ```bash
 go build -o ./oaw ./cmd/oaw
 ./oaw check
+./oaw profile list
 ```
 
 `check` 只报告 provider 检测、目标就绪情况和安装健康状态，不做变更。直接运行
@@ -123,6 +124,22 @@ go build -o ./oaw ./cmd/oaw
 并默认使用全部九个 target。可以使用 `--target claude,codex`（或其他逗号分隔的
 ID 集合）缩小命令范围。运行 `./oaw --help` 或 `./install.sh --help` 可查看 management
 CLI。
+
+Profile 检查是可选且只读的：
+
+```bash
+./oaw profile list
+./oaw profile show MATT-FULL
+./oaw profile show project:team-delivery
+./oaw profile check .oaw/profiles/team-delivery.md
+```
+
+`profile list` 会报告当前二进制嵌入的 Built-in，以及当前 project 与 user config root 中的
+直接 Markdown Custom Profile。Project/user 出现同 ID 时保留为两个条目，`show` 与 `check`
+必须使用 `project:<id>` 或 `user:<id>`。同一 scope 的重复 ID、缺少必需 `id`/`name`
+metadata，以及占用保留 Built-in ID 的 Custom Profile 都会被明确报告。Partial Profile
+仍然有效；body 与 Responsibility 诊断只是 warning。这些命令不检查 Skill availability、
+不选择 Profile、不创建 workflow state，也不判断模型能否使用某个 Profile。
 
 ### Core、Coordination 与 Host 边界
 

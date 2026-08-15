@@ -12,6 +12,7 @@ binary directly:
 ./oaw install
 ./oaw update
 ./oaw uninstall
+./oaw profile list
 ```
 
 From a source checkout, build the binary whose embedded policy and version you
@@ -62,6 +63,10 @@ the deliverable under the current Policy.
 ./oaw <check|install|update|uninstall> [options]
 ./install.sh <check|install|update|uninstall> [options]
 
+./oaw profile list
+./oaw profile show <id|source:id>
+./oaw profile check <id|source:id|path>
+
 --target <ids>       comma-separated target IDs
 --target=<ids>        equivalent inline form
 --project <path>     operate on one physical project root
@@ -92,6 +97,30 @@ The Activation Router selects a Project Policy Set as a whole when
 `.oaw/policy/POLICY.md` exists; otherwise it selects the User Policy Set. It
 never merges their core files. Project and user Custom Profiles remain
 discoverable with explicit source identity.
+
+### Advisory Profile inspection
+
+`profile list`, `profile show`, and `profile check` are read-only diagnostics;
+they are not in the Agent's authority path. The list combines the Built-in
+Profiles embedded in the current binary with direct Markdown Custom Profiles
+from `<project>/.oaw/profiles/*.md` and
+`${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/*.md`. It does
+not read the managed user `profiles/builtin/` directory as a second Built-in
+source.
+
+Project and user Custom Profiles with the same ID remain separate. Use
+`project:<id>` or `user:<id>` when an unqualified `show` or `check` would be
+ambiguous. Duplicate IDs in one scope, malformed required `id` or `name`
+frontmatter, non-regular files, and Custom Profiles that claim a reserved
+Built-in ID are structural diagnostics. `profile list` still completes so all
+diagnostics are visible; checking the affected Profile exits 65.
+
+Only `id` and `name` are required. A partial Custom Profile is metadata-valid,
+and Policy Defaults cover omitted Responsibilities. Unknown, duplicate, or
+empty Responsibility rows are warnings and do not change the check exit status.
+The CLI deliberately does not inspect Skill availability, select or switch a
+Profile, create workflow state, or decide whether the model can understand and
+use the Markdown Profile.
 
 `check` is read-only and rejects `--dry-run` and `--force`. The three mutation
 commands accept `--dry-run`. `--force` can recover eligible recorded drift on

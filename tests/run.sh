@@ -31,6 +31,7 @@ for test_script in \
   06-security-test.sh \
   07-containment-test.sh \
   08-policy-workflow-test.sh \
+  09-profile-inspection-test.sh \
   10-docs-test.sh \
   14-cutover-release-test.sh \
   15-host-execution-boundary-test.sh \

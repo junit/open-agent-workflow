@@ -89,6 +89,39 @@ func TestBuiltInProfilesUseTheCustomProfileContract(t *testing.T) {
 	}
 }
 
+func TestInspectPolicyProfileKeepsResponsibilityDiagnosticsAdvisory(t *testing.T) {
+	content := []byte("---\nid: team-delivery\nname: Team Delivery\n---\n\n## Responsibilities\n\n| Responsibility | Skill or action |\n| --- | --- |\n| Implementation and TDD | `tdd` |\n| Unknown responsibility | `other` |\n| Implementation and TDD | `duplicate` |\n| Fresh verification | |\n")
+	profile, warnings, err := InspectPolicyProfile("team-delivery.md", content)
+	if err != nil {
+		t.Fatalf("InspectPolicyProfile() error = %v", err)
+	}
+	if profile.ID != "team-delivery" || profile.Name != "Team Delivery" {
+		t.Fatalf("profile = %#v", profile)
+	}
+	if got := profile.Responsibilities[ImplementationAndTDD]; got != "`tdd`" {
+		t.Fatalf("Implementation and TDD = %q", got)
+	}
+	if len(warnings) != 3 {
+		t.Fatalf("warnings = %q", warnings)
+	}
+	if _, err := ParsePolicyProfile("team-delivery.md", content); err == nil {
+		t.Fatal("strict ParsePolicyProfile accepted advisory table diagnostics")
+	}
+}
+
+func TestInspectPolicyProfileRejectsMalformedRequiredMetadata(t *testing.T) {
+	for _, content := range [][]byte{
+		[]byte("# no frontmatter\n"),
+		[]byte("---\nname: Missing ID\n---\n"),
+		[]byte("---\nid: missing-name\n---\n"),
+		[]byte("---\nid: bad-id\nname: \"Bad\\nName\"\n---\n"),
+	} {
+		if _, _, err := InspectPolicyProfile("invalid.md", content); err == nil {
+			t.Fatalf("InspectPolicyProfile accepted %q", content)
+		}
+	}
+}
+
 func TestBuiltInProfilesPreserveTheirDeclaredMethodOwnership(t *testing.T) {
 	wantAssignments := map[string]map[Responsibility][]string{
 		"SP-FULL": {

@@ -131,6 +131,7 @@ From a source checkout, build the binary before using either entrypoint:
 ```bash
 go build -o ./oaw ./cmd/oaw
 ./oaw check
+./oaw profile list
 ```
 
 `check` reports provider detection, target readiness, and installation health
@@ -139,6 +140,25 @@ without mutation. A plain `install` uses user scope and the four core targets.
 Use `--target claude,codex` (or another comma-separated set of IDs) to narrow a
 command. Run `./oaw --help` or `./install.sh --help` for the management CLI
 surface.
+
+Profile inspection is optional and read-only:
+
+```bash
+./oaw profile list
+./oaw profile show MATT-FULL
+./oaw profile show project:team-delivery
+./oaw profile check .oaw/profiles/team-delivery.md
+```
+
+`profile list` reports the built-ins embedded in the current binary plus direct
+Markdown Custom Profiles from the current project and user config roots. A
+project/user ID conflict remains two entries and requires `project:<id>` or
+`user:<id>` for `show` and `check`. Duplicate IDs inside one scope, malformed
+required `id`/`name` metadata, and Custom Profiles that claim a reserved
+built-in ID are reported explicitly. Partial Profiles remain valid; body and
+Responsibility diagnostics are warnings. These commands do not inspect Skill
+availability, choose a Profile, create workflow state, or decide whether the
+model can use a Profile.
 
 ### Core, Coordination, and Host Boundaries
 

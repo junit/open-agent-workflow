@@ -1316,6 +1316,30 @@ for management_contract in \
   'Stable Boundary'; do
   assert_contains docs/zh/installer.md "$management_contract"
 done
+for profile_contract in \
+  './oaw profile list' \
+  './oaw profile show <id|source:id>' \
+  './oaw profile check <id|source:id|path>' \
+  'Project and user Custom Profiles with the same ID remain separate' \
+  'Only `id` and `name` are required' \
+  'warnings and do not change the check exit status' \
+  'does not inspect Skill availability' \
+  'create workflow state' \
+  'decide whether the model can understand'; do
+  assert_contains docs/en/installer.md "$profile_contract"
+done
+for profile_contract in \
+  './oaw profile list' \
+  './oaw profile show <id|source:id>' \
+  './oaw profile check <id|source:id|path>' \
+  'Project 与 user Custom Profile 出现同 ID 时仍是两个独立条目' \
+  '只有 `id` 与 `name` 是必需项' \
+  '只是 warning' \
+  '不检查 Skill availability' \
+  '不创建 workflow state' \
+  '不判断模型能否理解并使用'; do
+  assert_contains docs/zh/installer.md "$profile_contract"
+done
 pass "installer documents cover public Go management, wrapper, source/release, state, rollback, commands, and exits"
 
 DOCS_RUNTIME_HOME=$DOCS_TEST_TEMP/runtime/home

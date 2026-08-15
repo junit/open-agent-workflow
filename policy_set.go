@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -72,26 +73,44 @@ func PolicyResponsibilities() []Responsibility {
 // ParsePolicyProfile reads the minimal Profile metadata and Responsibility table.
 // Partial Profiles are valid; Policy defaults cover omitted Responsibilities.
 func ParsePolicyProfile(profilePath string, content []byte) (PolicyProfile, error) {
+	profile, warnings, err := InspectPolicyProfile(profilePath, content)
+	if err != nil {
+		return PolicyProfile{}, err
+	}
+	if len(warnings) != 0 {
+		return PolicyProfile{}, fmt.Errorf("Profile %q: %s", profilePath, warnings[0])
+	}
+	return profile, nil
+}
+
+// InspectPolicyProfile reads required identity metadata while keeping body
+// diagnostics advisory. The Markdown body remains the normative Profile.
+func InspectPolicyProfile(profilePath string, content []byte) (PolicyProfile, []string, error) {
 	metadata, body, err := splitProfileDocument(content)
 	if err != nil {
-		return PolicyProfile{}, fmt.Errorf("Profile %q: %w", profilePath, err)
+		return PolicyProfile{}, nil, fmt.Errorf("Profile %q: %w", profilePath, err)
 	}
-	if strings.TrimSpace(metadata.ID) == "" {
-		return PolicyProfile{}, fmt.Errorf("Profile %q: missing required frontmatter field id", profilePath)
+	metadata.ID = strings.TrimSpace(metadata.ID)
+	metadata.Name = strings.TrimSpace(metadata.Name)
+	if metadata.ID == "" {
+		return PolicyProfile{}, nil, fmt.Errorf("Profile %q: missing required frontmatter field id", profilePath)
 	}
-	if strings.TrimSpace(metadata.Name) == "" {
-		return PolicyProfile{}, fmt.Errorf("Profile %q: missing required frontmatter field name", profilePath)
+	if metadata.Name == "" {
+		return PolicyProfile{}, nil, fmt.Errorf("Profile %q: missing required frontmatter field name", profilePath)
+	}
+	if strings.IndexFunc(metadata.ID, unicode.IsControl) >= 0 {
+		return PolicyProfile{}, nil, fmt.Errorf("Profile %q: frontmatter field id contains control characters", profilePath)
+	}
+	if strings.IndexFunc(metadata.Name, unicode.IsControl) >= 0 {
+		return PolicyProfile{}, nil, fmt.Errorf("Profile %q: frontmatter field name contains control characters", profilePath)
 	}
 
-	responsibilities, err := parseResponsibilities(body)
-	if err != nil {
-		return PolicyProfile{}, fmt.Errorf("Profile %q: %w", profilePath, err)
-	}
+	responsibilities, warnings := inspectResponsibilities(body)
 	return PolicyProfile{
-		ID:               strings.TrimSpace(metadata.ID),
-		Name:             strings.TrimSpace(metadata.Name),
+		ID:               metadata.ID,
+		Name:             metadata.Name,
 		Responsibilities: responsibilities,
-	}, nil
+	}, warnings, nil
 }
 
 // ValidatePolicySet checks the static product invariants without treating Skill
@@ -212,7 +231,16 @@ func splitProfileDocument(content []byte) (profileMetadata, string, error) {
 }
 
 func parseResponsibilities(body string) (map[Responsibility]string, error) {
+	result, warnings := inspectResponsibilities(body)
+	if len(warnings) != 0 {
+		return nil, fmt.Errorf("%s", warnings[0])
+	}
+	return result, nil
+}
+
+func inspectResponsibilities(body string) (map[Responsibility]string, []string) {
 	result := make(map[Responsibility]string)
+	var warnings []string
 	inSection := false
 	for _, rawLine := range strings.Split(body, "\n") {
 		line := strings.TrimSpace(rawLine)
@@ -236,18 +264,21 @@ func parseResponsibilities(body string) (map[Responsibility]string, error) {
 		}
 		responsibility, ok := canonicalResponsibility(label)
 		if !ok {
-			return nil, fmt.Errorf("unknown Responsibility %q", label)
+			warnings = append(warnings, fmt.Sprintf("unknown Responsibility %q", label))
+			continue
 		}
 		if _, duplicate := result[responsibility]; duplicate {
-			return nil, fmt.Errorf("duplicate Responsibility %q", responsibility)
+			warnings = append(warnings, fmt.Sprintf("duplicate Responsibility %q", responsibility))
+			continue
 		}
 		action := strings.TrimSpace(cells[1])
 		if action == "" {
-			return nil, fmt.Errorf("Responsibility %q has no Skill or action", responsibility)
+			warnings = append(warnings, fmt.Sprintf("Responsibility %q has no Skill or action", responsibility))
+			continue
 		}
 		result[responsibility] = action
 	}
-	return result, nil
+	return result, warnings
 }
 
 func canonicalResponsibility(value string) (Responsibility, bool) {
