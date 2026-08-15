@@ -1,0 +1,19 @@
+Fixture Host Skill index intentionally exposes only:
+ecc:intent-driven-development
+superpowers:writing-plans
+ecc:tdd-workflow
+
+The declared `ecc:security-review` entry is intentionally omitted. The model
+resolved its readable rules at:
+/Users/wifibaby4u/.codex/plugins/cache/ecc/ecc/2.2.0/skills/security-review/SKILL.md
+
+The omitted index entry triggered a reported native-route-to-readable-rule
+fallback. It did not change Review and remediation ownership.
+
+Intentionally absent from this evidence:
+Provider identity
+Provider revision
+cache-path admission
+route contract
+Binding digest
+Machine Assurance
