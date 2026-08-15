@@ -1,0 +1,26 @@
+Host-visible semantic entries used for MATT-SP-HYBRID:
+grill-with-docs
+domain-modeling
+to-spec
+to-tickets
+tdd
+superpowers:writing-plans
+superpowers:using-git-worktrees
+superpowers:executing-plans
+superpowers:requesting-code-review
+superpowers:receiving-code-review
+superpowers:verification-before-completion
+superpowers:finishing-a-development-branch
+
+Not used as ownership:
+superpowers:test-driven-development
+code-review
+implement
+
+Intentionally absent from this evidence:
+Provider identity
+Provider revision
+cache-path admission
+route contract
+Binding digest
+Machine Assurance
