@@ -195,6 +195,26 @@ func TestBuiltInProfilesPreserveTheirDeclaredMethodOwnership(t *testing.T) {
 	}
 }
 
+func TestECCFullUsesBlueprintOnlyWithinItsDeclaredTrigger(t *testing.T) {
+	for _, file := range CanonicalPolicySet() {
+		if file.Path != "profiles/ECC-FULL.md" {
+			continue
+		}
+		profile, err := ParsePolicyProfile(file.Path, file.Content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		assignment := profile.Responsibilities[DeliveryPlanning]
+		for _, fragment := range []string{"Policy Default", "ordinary or single-delivery", "ecc:blueprint", "complex multi-session"} {
+			if !strings.Contains(assignment, fragment) {
+				t.Errorf("ECC-FULL Delivery planning = %q, want it to contain %q", assignment, fragment)
+			}
+		}
+		return
+	}
+	t.Fatal("ECC-FULL Profile is missing")
+}
+
 func TestValidatePolicySetRejectsDuplicateProfileIdentity(t *testing.T) {
 	files := CanonicalPolicySet()
 	for _, file := range files {
