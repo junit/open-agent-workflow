@@ -3,6 +3,8 @@ package management
 import (
 	"bytes"
 	"fmt"
+	"path/filepath"
+	"strings"
 )
 
 type forcePreparation struct {
@@ -34,6 +36,13 @@ func prepareMutationForce(
 		return forcePreparation{}, err
 	}
 	result := forcePreparation{repaired: make(map[string]installPathSnapshot)}
+	if coords.projectPolicySet {
+		changed, err := projectPolicySetNeedsBackup(state, coords)
+		if err != nil {
+			return forcePreparation{}, err
+		}
+		result.backupRequired = changed
+	}
 	if checksumBytes(policy.data) != state.policyChecksum {
 		result.backupRequired = true
 		result.policyBaseline = state.policyChecksum
@@ -49,6 +58,36 @@ func prepareMutationForce(
 		return forcePreparation{}, compatibilityError(err.Error())
 	}
 	return result, nil
+}
+
+func projectPolicySetNeedsBackup(state installationState, coords coordinates) (bool, error) {
+	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
+		return false, compatibilityError(err.Error())
+	}
+	if len(state.policyFiles) == 0 {
+		return false, compatibilityError("managed Policy Set state is missing")
+	}
+	if err := validateProjectPolicySetTree(state, coords); err != nil {
+		return false, err
+	}
+	changed := false
+	for _, record := range state.policyFiles {
+		relative, err := filepath.Rel(coords.policyDir, record.path)
+		if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return false, compatibilityError("managed Policy Set file escapes its directory")
+		}
+		current, err := inspectInstallPath(record.path)
+		if err != nil {
+			return false, err
+		}
+		if current.kind != installPathRegular {
+			return false, compatibilityError("managed Policy Set file has no recoverable content: " + record.path)
+		}
+		if checksumBytes(current.data) != record.checksum {
+			changed = true
+		}
+	}
+	return changed, nil
 }
 
 func validateForcedMutationState(
@@ -144,7 +183,7 @@ func verifyForcedTargetRecord(record targetRecord, coords coordinates, state ins
 		if status == "present" {
 			return current, repaired, false, actual != record.checksum, nil
 		}
-		expectedBlock, renderErr := renderManagedBlock(targetID(record.id), scope(state.scope), state.policyPath)
+		expectedBlock, renderErr := renderManagedBlock(targetID(record.id), scope(state.scope), policyRouterReference(coords))
 		if renderErr != nil {
 			return current, repaired, false, false, renderErr
 		}

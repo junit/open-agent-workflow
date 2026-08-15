@@ -8,16 +8,19 @@ import (
 )
 
 type coordinates struct {
-	configDir      string
-	policyPath     string
-	stateDir       string
-	installations  string
-	projects       string
-	backupRoot     string
-	stateFile      string
-	currentScope   string
-	currentProject string
-	environment    Environment
+	configDir        string
+	policyPath       string
+	policyDir        string
+	policyReference  string
+	projectPolicySet bool
+	stateDir         string
+	installations    string
+	projects         string
+	backupRoot       string
+	stateFile        string
+	currentScope     string
+	currentProject   string
+	environment      Environment
 }
 
 func initializeCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
@@ -72,6 +75,36 @@ func initializeCoordinates(environment Environment, resolved resolvedRequest) (c
 		currentScope: resolved.scope, currentProject: resolved.projectRoot,
 		environment: environment,
 	}, nil
+}
+
+func initializeProjectPolicySetCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
+	coords, err := initializeCoordinates(environment, resolved)
+	if err != nil {
+		return coordinates{}, err
+	}
+	if resolved.scope != "project" {
+		return coordinates{}, compatibilityError("project Policy Set requires project scope")
+	}
+	policyDir, err := validatedDestinationPath(resolved.projectRoot, ".oaw/policy")
+	if err != nil {
+		return coordinates{}, err
+	}
+	policyPath, err := validatedDestinationPath(resolved.projectRoot, ".oaw/policy/POLICY.md")
+	if err != nil {
+		return coordinates{}, err
+	}
+	coords.policyDir = policyDir
+	coords.policyPath = policyPath
+	coords.policyReference = ".oaw/policy/POLICY.md"
+	coords.projectPolicySet = true
+	return coords, nil
+}
+
+func policyRouterReference(coords coordinates) string {
+	if coords.policyReference != "" {
+		return coords.policyReference
+	}
+	return coords.policyPath
 }
 
 func validatedDestinationPath(root, suffix string) (string, error) {

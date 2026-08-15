@@ -21,9 +21,15 @@ func ApplyInstall(prepared PreparedInstall) (Result, error) {
 		return Result{}, err
 	}
 	created := make(map[string]struct{}, len(planned))
-	actions := make([]installAction, 0, len(revalidated.targetActions)+1+len(revalidated.stateActions))
-	actions = append(actions, revalidated.targetActions...)
-	actions = append(actions, revalidated.policyAction)
+	actions := make([]installAction, 0, len(revalidated.targetActions)+1+len(revalidated.policySetActions)+len(revalidated.stateActions))
+	if revalidated.coordinates.projectPolicySet {
+		actions = append(actions, revalidated.policyAction)
+		actions = append(actions, revalidated.policySetActions...)
+		actions = append(actions, revalidated.targetActions...)
+	} else {
+		actions = append(actions, revalidated.targetActions...)
+		actions = append(actions, revalidated.policyAction)
+	}
 	actions = append(actions, revalidated.stateActions...)
 	result := Result{Lines: make([]string, 0, len(actions))}
 	for _, action := range actions {

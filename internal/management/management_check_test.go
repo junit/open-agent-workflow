@@ -151,6 +151,70 @@ func TestCheckManagementDomainExercisesDiagnosticsAndHealth(t *testing.T) {
 	})
 }
 
+func TestProjectCheckDetectsPolicySetHealthWithoutOwningCustomProfiles(t *testing.T) {
+	catalog, err := builtin.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutations := map[string]func(*testing.T, string){
+		"missing": func(t *testing.T, path string) {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"drifted": func(t *testing.T, path string) {
+			writePrepareFile(t, path, []byte("drifted\n"), 0o644)
+		},
+		"replaced": func(t *testing.T, path string) {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Mkdir(path, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"hostile symlink": func(t *testing.T, path string) {
+			if err := os.Remove(path); err != nil {
+				t.Fatal(err)
+			}
+			outside := filepath.Join(t.TempDir(), "outside.md")
+			writePrepareFile(t, outside, []byte("outside\n"), 0o644)
+			if err := os.Symlink(outside, path); err != nil {
+				t.Fatal(err)
+			}
+		},
+		"unexpected file": func(t *testing.T, path string) {
+			writePrepareFile(t, filepath.Join(filepath.Dir(path), "injected.md"), []byte("injected\n"), 0o644)
+		},
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			fixture := newPrepareFixture(t)
+			project := filepath.Join(fixture.root, "project")
+			if err := os.Mkdir(project, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			source := projectPolicySetSource(t, "0.1.0", "")
+			request := InstallRequest{Project: project, Targets: "codex"}
+			if _, err := Install(source, fixture.environment, request); err != nil {
+				t.Fatal(err)
+			}
+			customProfile := filepath.Join(project, ".oaw", "profiles", "changed.md")
+			writePrepareFile(t, customProfile, []byte("user-owned\n"), 0o644)
+			result, err := Check(catalog, fixture.environment, CheckRequest{Project: project, Targets: "codex"})
+			if err != nil || !resultContainsLine(result, "installed codex: clean") {
+				t.Fatalf("clean Check() result=%#v error=%v", result, err)
+			}
+
+			mutate(t, filepath.Join(project, ".oaw", "policy", "cooperative-protocol.md"))
+			result, err = Check(catalog, fixture.environment, CheckRequest{Project: project, Targets: "codex"})
+			if err != nil || !resultContainsLine(result, "installed codex: drift") {
+				t.Fatalf("drift Check() result=%#v error=%v", result, err)
+			}
+		})
+	}
+}
+
 func TestCheckManagementDomainRejectsInvalidRequestsAndPreservesPartialResult(t *testing.T) {
 	catalog, err := builtin.Load()
 	if err != nil {

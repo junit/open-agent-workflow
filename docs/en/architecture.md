@@ -11,8 +11,9 @@ Providers remain independently installed and versioned.
 
 The product has four modules with separate authority:
 
-1. **Distribution** installs `policy/ENGINEERING.md` plus a lazy target-native
-   Activation Router and manages checksummed Install State and backups.
+1. **Distribution** installs the user Policy or the complete project-scoped
+   Canonical Policy Set plus a lazy target-native Activation Router, and manages
+   checksummed Install State and backups.
 2. **OAW Core** is stateless. After explicit activation and current Host-native
    evidence, it classifies requests, resolves verified Provider Instances,
    compiles Profile Recipes, and creates immutable Lifecycle Bundles.
@@ -86,7 +87,9 @@ defaults:
 
 | Artifact | Canonical path |
 | --- | --- |
-| Installed policy | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md` |
+| User installed Policy | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md` |
+| Project Policy Set | `<project>/.oaw/policy/` |
+| Project Custom Profiles (user-owned) | `<project>/.oaw/profiles/` |
 | User installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
 | Project installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state` |
 | Operation backups | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups` |
@@ -287,7 +290,8 @@ the shell. It is not Workflow State and cannot grant workflow authority.
 | `version` | one | Installed OAW version. |
 | `scope` | one | `user` or `project`. |
 | `project` | project only | Physical project root. |
-| `policy` | one | Installed policy path and checksum metadata. |
+| `policy` | one | Primary installed Policy path and checksum metadata. |
+| `policy-file` | zero or more | Each project Policy Set file path and checksum metadata. |
 | `backup` | optional | Backup manifest associated with the last relevant operation. |
 | `directory` | zero or more | Directory created and therefore potentially removable by OAW. |
 | `target` | one or more | Target ID, absolute path, ownership mode, checksum, and origin. |

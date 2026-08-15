@@ -10,8 +10,8 @@ Open Agent Workflow（OAW）分发一份 canonical 工程策略、编译无冲�
 
 产品包含四个权限相互分离的模块：
 
-1. **Distribution** 安装 `policy/ENGINEERING.md` 和惰性 target-native Activation Router，
-   并管理带 checksum 的 Install State 与 backup。
+1. **Distribution** 安装 user Policy 或完整的 project-scoped Canonical Policy Set，
+   同时安装惰性 target-native Activation Router，并管理带 checksum 的 Install State 与 backup。
 2. **OAW Core** 是无状态的。只有在显式激活且存在当前 Host-native evidence 后，
    它才分类请求、解析 verified Provider Instance、编译 Profile Recipe，并创建
    immutable Lifecycle Bundle。
@@ -75,7 +75,9 @@ OAW 遵循 XDG base-directory 约定，并保留明确默认值：
 
 | 构件 | Canonical 路径 |
 | --- | --- |
-| 已安装 policy | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md` |
+| User 已安装 Policy | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md` |
+| Project Policy Set | `<project>/.oaw/policy/` |
+| Project Custom Profile（用户拥有） | `<project>/.oaw/profiles/` |
 | User 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
 | Project 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state` |
 | 操作 backup | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups` |
@@ -248,7 +250,8 @@ Workflow State，也不能授予 workflow 权限。
 | `version` | 一个 | 已安装 OAW version。 |
 | `scope` | 一个 | `user` 或 `project`。 |
 | `project` | 仅 project | 物理 project root。 |
-| `policy` | 一个 | 已安装 policy 路径与 checksum metadata。 |
+| `policy` | 一个 | 已安装主 Policy 的路径与 checksum metadata。 |
+| `policy-file` | 零个或多个 | 每个 project Policy Set 文件的路径与 checksum metadata。 |
 | `backup` | 可选 | 与最近相关操作关联的 backup manifest。 |
 | `directory` | 零个或多个 | 由 OAW 创建、因此可能由它删除的目录。 |
 | `target` | 一个或多个 | Target ID、绝对路径、ownership mode、checksum 与 origin。 |

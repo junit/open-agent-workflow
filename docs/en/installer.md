@@ -79,6 +79,13 @@ Without `--project`, the command uses user scope. With `--project`, OAW resolves
 the path to a physical root and uses isolated project state named
 `<crc>-<bytes>.state`. A project target must remain contained by that root.
 
+Project scope installs the complete Canonical Policy Set under
+`<project>/.oaw/policy/` and writes a project-relative Activation Router to the
+selected Host target. Project Custom Profiles live under
+`<project>/.oaw/profiles/`; they are user-owned and are never managed by these
+commands. User scope continues to use the user Policy location until the
+user-scoped Policy Set cutover.
+
 `check` is read-only and rejects `--dry-run` and `--force`. The three mutation
 commands accept `--dry-run`. `--force` can recover eligible recorded drift on
 `update` or `uninstall`; it never adopts an untracked file as OAW-owned.
@@ -124,6 +131,11 @@ conflicting managed ownership is refused, including with `--force`.
 A normal `install` creates no operation backup, including when `--force` is
 present. Extending or coordinating valid Install State preserves any existing valid `backup` reference, while a rejected install changes neither state nor the backup tree.
 
+For project scope, an existing non-empty `.oaw/policy/` is treated as
+untracked ownership and installation is refused. This prevents install from
+overwriting a project's existing rules; use the recorded `update` path for a
+managed Policy Set.
+
 ### `update`
 
 `update` requires an existing valid installation record. The binary embeds the
@@ -139,7 +151,9 @@ add and `uninstall` to remove targets.
 
 With valid installation state, `uninstall` **removes only clean OAW ownership**:
 a clean managed block is removed from its host file and a clean OAW-owned file
-is deleted. It prunes **only OAW-created empty directories** recorded in state.
+is deleted. In project scope, it also removes the clean managed files and
+directories under `.oaw/policy/`, while preserving `.oaw/profiles/`. It prunes
+**only OAW-created empty directories** recorded in state.
 It does not delete surrounding user content, non-empty directories, provider
 installations, or files whose ownership has drifted. An `uninstall` without
 state is a successful no-op after confirming that selected managed-block
@@ -170,10 +184,11 @@ and concurrent filesystem changes can make that invocation fail.
 ## State and Backups
 
 User and project installations never share a state file. Different physical
-project roots also receive different state files. The installed policy is
-stored under the XDG config root, while state and operation backups are stored
-under the XDG state root; see the [architecture guide](architecture.md) for
-exact paths and the record schema.
+project roots also receive different state files. Project Policy Set files are
+stored under `<project>/.oaw/policy/`; user Policy files remain under the XDG
+config root until the user-scope cutover. State and operation backups are
+stored under the XDG state root; see the [architecture guide](architecture.md)
+for exact paths and the record schema.
 
 Install State and Workflow State are disjoint; no automatic migration occurs.
 Management commands do not create Workflow State, a Policy Workflow Plan, or a
@@ -197,8 +212,10 @@ oaw install --target codex
 oaw bridge install codex
 ```
 
-The first command installs only the policy adapter and `ENGINEERING.md`. It
-does not install an executable Plugin or claim current-session Host evidence.
+The first command installs the Policy Set and policy adapter for the selected
+scope. In project scope the files are self-contained under `.oaw/policy/`; in
+user scope the current user Policy location is used. It does not install an
+executable Plugin or claim current-session Host evidence.
 The second command is an explicit opt-in transaction for the audited Codex Host
 Bridge. Neither command activates OAW for a request. Its management surface is:
 

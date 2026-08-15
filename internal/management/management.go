@@ -23,8 +23,9 @@ type CheckRequest struct {
 }
 
 type Source struct {
-	version string
-	policy  []byte
+	version   string
+	policy    []byte
+	policySet []oaw.PolicyFile
 }
 
 func NewSource(version string, policy []byte) (Source, error) {
@@ -35,6 +36,40 @@ func NewSource(version string, policy []byte) (Source, error) {
 		return Source{}, &Error{Status: 70, Message: "canonical policy source is invalid"}
 	}
 	return Source{version: version, policy: bytes.Clone(policy)}, nil
+}
+
+func NewSourceWithPolicySet(version string, policy []byte, files []oaw.PolicyFile) (Source, error) {
+	source, err := NewSource(version, policy)
+	if err != nil {
+		return Source{}, err
+	}
+	if err := oaw.ValidatePolicySet(files); err != nil {
+		return Source{}, &Error{Status: 70, Message: "canonical Policy Set source is invalid: " + err.Error()}
+	}
+	source.policySet = clonePolicySet(files)
+	return source, nil
+}
+
+func clonePolicySet(files []oaw.PolicyFile) []oaw.PolicyFile {
+	result := make([]oaw.PolicyFile, len(files))
+	for index, file := range files {
+		result[index] = oaw.PolicyFile{Path: file.Path, Content: bytes.Clone(file.Content)}
+	}
+	return result
+}
+
+func cloneSource(source Source) Source {
+	return Source{
+		version: source.version, policy: bytes.Clone(source.policy),
+		policySet: clonePolicySet(source.policySet),
+	}
+}
+
+func validateSource(source Source) (Source, error) {
+	if len(source.policySet) == 0 {
+		return NewSource(source.version, source.policy)
+	}
+	return NewSourceWithPolicySet(source.version, source.policy, source.policySet)
 }
 
 type InstallRequest struct {

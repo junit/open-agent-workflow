@@ -19,6 +19,38 @@ func prepareUninstallWithoutWrites(t *testing.T, root string, environment Enviro
 	return prepared, err
 }
 
+func TestProjectUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	project := filepath.Join(fixture.root, "project")
+	customProfile := filepath.Join(project, ".oaw", "profiles", "team-delivery.md")
+	agents := filepath.Join(project, "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(customProfile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
+	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
+	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
+	source := projectPolicySetSource(t, "0.1.0", "")
+	if _, err := Install(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Uninstall(fixture.environment, UninstallRequest{Project: project, Targets: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(project, ".oaw", "policy")); !os.IsNotExist(err) {
+		t.Fatalf("uninstall retained managed Policy Set directory: %v", err)
+	}
+	gotCustom, err := os.ReadFile(customProfile)
+	if err != nil || string(gotCustom) != customContent {
+		t.Fatalf("uninstall changed Custom Profile: content=%q error=%v", gotCustom, err)
+	}
+	gotAgents, err := os.ReadFile(agents)
+	if err != nil || string(gotAgents) != "user instructions\n" {
+		t.Fatalf("uninstall changed surrounding Host instructions: content=%q error=%v", gotAgents, err)
+	}
+}
+
 func TestPrepareUninstallMissingStateIsIdempotent(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	prepared, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Targets: "claude,codex", DryRun: true})

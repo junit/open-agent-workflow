@@ -129,8 +129,10 @@ func mutationApplicationStages(plan mutationPlan) []mutationApplicationStage {
 		{phase: mutationPhaseTargetDirectory, directories: true},
 	}
 	if plan.policyAction.effect != 0 {
+		policyActions := []mutationAction{plan.policyAction}
+		policyActions = append(policyActions, plan.policySetActions...)
 		stages = append(stages, mutationApplicationStage{
-			phase: mutationPhasePolicy, actions: []mutationAction{plan.policyAction},
+			phase: mutationPhasePolicy, actions: policyActions,
 		})
 	}
 	return append(stages,
@@ -264,11 +266,12 @@ func validateMutationPlan(plan mutationPlan) error {
 }
 
 func validatePreparedMutationActions(plan mutationPlan) error {
-	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
+	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.policySetActions)+len(plan.stateActions))
 	actions = append(actions, plan.targetActions...)
 	if plan.policyAction.effect != 0 {
 		actions = append(actions, plan.policyAction)
 	}
+	actions = append(actions, plan.policySetActions...)
 	actions = append(actions, plan.stateActions...)
 	seen := make(map[string]struct{}, len(actions))
 	for _, action := range actions {

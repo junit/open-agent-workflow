@@ -1,5 +1,10 @@
 package management
 
+import (
+	"path/filepath"
+	"strings"
+)
+
 func PrepareUninstall(environment Environment, request UninstallRequest) (PreparedUninstall, error) {
 	mutationRequest := mutationRequest{
 		project: request.Project, targets: request.Targets,
@@ -79,13 +84,14 @@ func prepareUninstallPlan(
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	policyAction, err := prepareUninstallPolicyAction(preparation, remaining)
+	policyAction, policySetActions, err := prepareUninstallPolicyActions(preparation, remaining)
 	if err != nil {
 		return mutationPlan{}, err
 	}
+	backupTargets := append(cloneMutationActions(targetActions), cloneMutationActions(policySetActions)...)
 	backup, err := buildMutationBackupPlan(
 		force.backupRequired, "uninstall", preparation.resolved.scope, preparation.backupPath,
-		policyAction, targetActions, stateActions,
+		policyAction, backupTargets, stateActions,
 	)
 	if err != nil {
 		return mutationPlan{}, err
@@ -94,7 +100,8 @@ func prepareUninstallPlan(
 		operation: mutationUninstall, environment: environment, request: request,
 		resolved: cloneResolvedRequest(preparation.resolved), coordinates: preparation.coordinates,
 		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
-		stateActions: cloneMutationActions(stateActions), directoryActions: cloneDirectoryActions(directoryActions),
+		policySetActions: cloneMutationActions(policySetActions),
+		stateActions:     cloneMutationActions(stateActions), directoryActions: cloneDirectoryActions(directoryActions),
 		leadingLines: uninstallLeadingLines(preparation.state.targets, preparation.resolved.targets),
 		backup:       cloneBackupPlan(backup),
 	}
@@ -195,27 +202,63 @@ func prepareUninstallStateActions(
 	return []mutationAction{action}, nil
 }
 
-func prepareUninstallPolicyAction(
+func prepareUninstallPolicyActions(
 	preparation mutationPreparation,
 	remaining []targetRecord,
-) (mutationAction, error) {
+) (mutationAction, []mutationAction, error) {
 	effect := mutationRetain
 	if len(remaining) == 0 {
 		references, err := collectPolicyStateReferencesForRetention(
 			preparation.coordinates, preparation.coordinates.stateFile, preparation.policy,
 		)
 		if err != nil {
-			return mutationAction{}, err
+			return mutationAction{}, nil, err
 		}
 		if len(references) == 0 {
 			effect = mutationRemove
 		}
 	}
-	return newMutationAction(
-		effect, "policy", nil, preparation.coordinates.policyPath, 0,
-		preparation.coordinates.environment.ConfigHome,
-		"open-agent-workflow/ENGINEERING.md", preparation.policy,
-	)
+	if !preparation.coordinates.projectPolicySet {
+		action, err := newMutationAction(
+			effect, "policy", nil, preparation.coordinates.policyPath, 0,
+			preparation.coordinates.environment.ConfigHome,
+			"open-agent-workflow/ENGINEERING.md", preparation.policy,
+		)
+		return action, nil, err
+	}
+
+	var primary mutationAction
+	extras := make([]mutationAction, 0, len(preparation.state.policyFiles)-1)
+	for _, record := range preparation.state.policyFiles {
+		relative, err := stateActionRelativeSuffix(preparation.resolved.projectRoot, record.path)
+		if err != nil {
+			return mutationAction{}, nil, err
+		}
+		current, err := inspectInstallPath(record.path)
+		if err != nil {
+			return mutationAction{}, nil, err
+		}
+		label := "policy/" + filepath.ToSlash(strings.TrimPrefix(record.path, preparation.coordinates.policyDir+string(filepath.Separator)))
+		if record.path == preparation.coordinates.policyPath {
+			label = "policy"
+		}
+		action, err := newMutationAction(
+			effect, label, nil, record.path, 0,
+			preparation.resolved.projectRoot, relative, current,
+		)
+		if err != nil {
+			return mutationAction{}, nil, err
+		}
+		if record.path == preparation.coordinates.policyPath {
+			primary = action
+		} else {
+			extras = append(extras, action)
+		}
+	}
+	if primary.destination == "" {
+		return mutationAction{}, nil, compatibilityError("managed Policy Set is missing POLICY.md state")
+	}
+	return primary, extras, nil
 }
 
 func uninstallLeadingLines(records []targetRecord, selected []string) []string {
@@ -303,6 +346,9 @@ func directoryMatchesTargetRecords(directory string, records []targetRecord, sta
 }
 
 func ownedDirectoryMutationRoot(directory string, state installationState, coords coordinates) (string, error) {
+	if coords.projectPolicySet && isProjectPolicySetDirectory(coords, state.project, directory) {
+		return state.project, nil
+	}
 	if directory == coords.configDir {
 		return coords.environment.ConfigHome, nil
 	}

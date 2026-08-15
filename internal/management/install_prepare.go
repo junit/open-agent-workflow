@@ -47,6 +47,7 @@ type PreparedInstall struct {
 	coordinates        coordinates
 	targetActions      []installAction
 	policyAction       installAction
+	policySetActions   []installAction
 	stateActions       []installAction
 	plannedDirectories []string
 	predicted          Result
@@ -59,7 +60,7 @@ type policyStateReference struct {
 }
 
 func PrepareInstall(source Source, environment Environment, request InstallRequest) (PreparedInstall, error) {
-	source, err := NewSource(source.version, source.policy)
+	source, err := validateSource(source)
 	if err != nil {
 		return PreparedInstall{}, err
 	}
@@ -68,6 +69,16 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		return PreparedInstall{}, err
 	}
 	coords, err := initializeCoordinates(environment, resolved)
+	if err != nil {
+		return PreparedInstall{}, err
+	}
+	if resolved.scope == "project" && len(source.policySet) != 0 {
+		coords, err = initializeProjectPolicySetCoordinates(environment, resolved)
+		if err != nil {
+			return PreparedInstall{}, err
+		}
+	}
+	policyContent, err := sourcePolicyContent(source, resolved)
 	if err != nil {
 		return PreparedInstall{}, err
 	}
@@ -80,11 +91,19 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	if err != nil {
 		return PreparedInstall{}, installError(err)
 	}
+	if coords.projectPolicySet && !stateExists {
+		if err := requireUnclaimedProjectPolicySetDirectory(coords); err != nil {
+			return PreparedInstall{}, err
+		}
+	}
 	if stateExists {
 		if err := validateCurrentInstallState(existingState, coords, resolved, policyView); err != nil {
 			return PreparedInstall{}, err
 		}
-		if !bytes.Equal(source.policy, policyView.data) || checksumBytes(source.policy) != existingState.policyChecksum || source.version != existingState.version {
+		if !bytes.Equal(policyContent, policyView.data) || checksumBytes(policyContent) != existingState.policyChecksum || source.version != existingState.version {
+			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
+		}
+		if coords.projectPolicySet && !projectPolicySetMatchesSource(existingState, source, resolved) {
 			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
 		}
 	}
@@ -166,7 +185,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		var renderedChecksum string
 		switch candidate.Ownership {
 		case "managed-block":
-			block, err := renderManagedBlock(targetID(id), scope(resolved.scope), coords.policyPath)
+			block, err := renderManagedBlock(targetID(id), scope(resolved.scope), policyRouterReference(coords))
 			if err != nil {
 				return PreparedInstall{}, err
 			}
@@ -176,7 +195,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 			}
 			renderedChecksum = checksumBytes(block)
 		case "owned-file":
-			rendered, err = renderTarget(targetID(id), scope(resolved.scope), coords.policyPath)
+			rendered, err = renderTarget(targetID(id), scope(resolved.scope), policyRouterReference(coords))
 			if err != nil {
 				return PreparedInstall{}, err
 			}
@@ -211,15 +230,22 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	if err != nil {
 		return PreparedInstall{}, err
 	}
-	finalDirectories, plannedDirectories, err := prepareInstallDirectories(coords, resolved, existingDirectories, references, targetActions, finalRecords)
+	policyAction, policySetActions, err := prepareInstallPolicyActions(source, coords, resolved)
+	if err != nil {
+		return PreparedInstall{}, err
+	}
+	directoryActions := append(cloneInstallActions(targetActions), cloneInstallAction(policyAction))
+	directoryActions = append(directoryActions, cloneInstallActions(policySetActions)...)
+	finalDirectories, plannedDirectories, err := prepareInstallDirectories(coords, resolved, existingDirectories, references, directoryActions, finalRecords)
 	if err != nil {
 		return PreparedInstall{}, err
 	}
 
 	currentState := installationState{
 		version: source.version, scope: resolved.scope, project: resolved.projectRoot,
-		policyPath: coords.policyPath, policyChecksum: checksumBytes(source.policy),
-		backupPath: backupPath, directories: finalDirectories, targets: finalRecords,
+		policyPath: coords.policyPath, policyChecksum: checksumBytes(policyContent),
+		policyFiles: policyFileRecordsFromInstallActions(policyAction, policySetActions),
+		backupPath:  backupPath, directories: finalDirectories, targets: finalRecords,
 	}
 	stateBytes, err := serializeInstallState(currentState)
 	if err != nil {
@@ -233,7 +259,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	for _, reference := range references {
 		updated := cloneInstallationStateValue(reference.state)
 		updated.version = source.version
-		updated.policyChecksum = checksumBytes(source.policy)
+		updated.policyChecksum = checksumBytes(policyContent)
 		rendered, err := serializeInstallState(updated)
 		if err != nil {
 			return PreparedInstall{}, err
@@ -248,20 +274,125 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		}
 	}
 
-	policyAction, err := newInstallAction(
-		"policy", source.policy, coords.policyPath, 0o600, environment.ConfigHome,
-		"open-agent-workflow/ENGINEERING.md", policyView,
-	)
-	if err != nil {
-		return PreparedInstall{}, err
-	}
 	prepared := PreparedInstall{
 		source: source, environment: environment, request: request, resolved: cloneResolvedRequest(resolved), coordinates: coords,
 		targetActions: cloneInstallActions(targetActions), policyAction: cloneInstallAction(policyAction),
-		stateActions: cloneInstallActions(stateActions), plannedDirectories: append([]string(nil), plannedDirectories...),
+		policySetActions: cloneInstallActions(policySetActions),
+		stateActions:     cloneInstallActions(stateActions), plannedDirectories: append([]string(nil), plannedDirectories...),
 	}
 	prepared.predicted = predictInstallResult(prepared)
 	return prepared, nil
+}
+
+func requireUnclaimedProjectPolicySetDirectory(coords coordinates) error {
+	current, err := inspectInstallPath(coords.policyDir)
+	if err != nil {
+		return err
+	}
+	switch current.kind {
+	case installPathMissing:
+		return nil
+	case installPathDirectory:
+		entries, err := os.ReadDir(coords.policyDir)
+		if err != nil {
+			return compatibilityError("project Policy Set directory could not be inspected")
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+	}
+	return compatibilityError("untracked managed Policy Set content exists: " + coords.policyDir)
+}
+
+func sourcePolicyContent(source Source, resolved resolvedRequest) ([]byte, error) {
+	if resolved.scope != "project" || len(source.policySet) == 0 {
+		return bytes.Clone(source.policy), nil
+	}
+	for _, file := range source.policySet {
+		if file.Path == "POLICY.md" {
+			return bytes.Clone(file.Content), nil
+		}
+	}
+	return nil, compatibilityError("project Policy Set is missing POLICY.md")
+}
+
+func prepareInstallPolicyActions(source Source, coords coordinates, resolved resolvedRequest) (installAction, []installAction, error) {
+	if !coords.projectPolicySet {
+		current, err := inspectInstallPath(coords.policyPath)
+		if err != nil {
+			return installAction{}, nil, err
+		}
+		action, err := newInstallAction(
+			"policy", source.policy, coords.policyPath, 0o600, coords.environment.ConfigHome,
+			"open-agent-workflow/ENGINEERING.md", current,
+		)
+		return action, nil, err
+	}
+
+	var primary installAction
+	extras := make([]installAction, 0, len(source.policySet)-1)
+	for _, file := range source.policySet {
+		suffix := filepath.ToSlash(filepath.Join(".oaw", "policy", filepath.FromSlash(file.Path)))
+		destination, err := validatedDestinationPath(resolved.projectRoot, suffix)
+		if err != nil {
+			return installAction{}, nil, err
+		}
+		current, err := inspectInstallPath(destination)
+		if err != nil {
+			return installAction{}, nil, err
+		}
+		label := "policy/" + file.Path
+		if file.Path == "POLICY.md" {
+			label = "policy"
+		}
+		action, err := newInstallAction(label, file.Content, destination, 0o644, resolved.projectRoot, suffix, current)
+		if err != nil {
+			return installAction{}, nil, err
+		}
+		if file.Path == "POLICY.md" {
+			primary = action
+		} else {
+			extras = append(extras, action)
+		}
+	}
+	if primary.destination == "" {
+		return installAction{}, nil, compatibilityError("project Policy Set is missing POLICY.md")
+	}
+	return primary, extras, nil
+}
+
+func policyFileRecordsFromInstallActions(primary installAction, extras []installAction) []policyFileRecord {
+	if len(extras) == 0 {
+		return nil
+	}
+	actions := append([]installAction{primary}, extras...)
+	records := make([]policyFileRecord, 0, len(actions))
+	for _, action := range actions {
+		records = append(records, policyFileRecord{path: action.destination, checksum: checksumBytes(action.data)})
+	}
+	return records
+}
+
+func projectPolicySetMatchesSource(state installationState, source Source, resolved resolvedRequest) bool {
+	if len(source.policySet) == 0 || len(state.policyFiles) != len(source.policySet) {
+		return false
+	}
+	want := make(map[string]string, len(source.policySet))
+	for _, file := range source.policySet {
+		suffix := filepath.ToSlash(filepath.Join(".oaw", "policy", filepath.FromSlash(file.Path)))
+		destination, err := validatedDestinationPath(resolved.projectRoot, suffix)
+		if err != nil {
+			return false
+		}
+		want[filepath.Clean(destination)] = checksumBytes(file.Content)
+	}
+	for _, record := range state.policyFiles {
+		if want[filepath.Clean(record.path)] != record.checksum {
+			return false
+		}
+		delete(want, filepath.Clean(record.path))
+	}
+	return len(want) == 0
 }
 
 func validateCurrentInstallState(state installationState, coords coordinates, resolved resolvedRequest, policy installPathSnapshot) error {
@@ -283,6 +414,9 @@ func validateCurrentInstallState(state installationState, coords coordinates, re
 	}
 	if checksumBytes(policy.data) != state.policyChecksum {
 		return compatibilityError("managed policy has drifted")
+	}
+	if err := validateProjectPolicySetFiles(state, coords); err != nil {
+		return err
 	}
 	if err := validateLiveTargetRecords(state.targets, coords, state.scope, state.project); err != nil {
 		return err
@@ -448,6 +582,9 @@ func prepareInstallDirectories(
 		}
 	}
 	namespaces := []string{coords.configDir, coords.stateDir, coords.installations}
+	if coords.projectPolicySet {
+		namespaces = []string{coords.policyDir, coords.stateDir, coords.installations}
+	}
 	if resolved.scope == "project" {
 		namespaces = append(namespaces, coords.projects)
 	}
@@ -685,9 +822,15 @@ func managedInstallStatus(current installPathSnapshot) (string, string) {
 }
 
 func predictInstallResult(prepared PreparedInstall) Result {
-	actions := make([]installAction, 0, len(prepared.targetActions)+1+len(prepared.stateActions))
-	actions = append(actions, prepared.targetActions...)
-	actions = append(actions, prepared.policyAction)
+	actions := make([]installAction, 0, len(prepared.targetActions)+1+len(prepared.policySetActions)+len(prepared.stateActions))
+	if prepared.coordinates.projectPolicySet {
+		actions = append(actions, prepared.policyAction)
+		actions = append(actions, prepared.policySetActions...)
+		actions = append(actions, prepared.targetActions...)
+	} else {
+		actions = append(actions, prepared.targetActions...)
+		actions = append(actions, prepared.policyAction)
+	}
 	actions = append(actions, prepared.stateActions...)
 	lines := make([]string, 0, len(actions))
 	for _, action := range actions {
@@ -738,7 +881,16 @@ func installPathIsMissing(path string) (bool, error) {
 }
 
 func installNamespaceDirectory(coords coordinates, path string) bool {
+	if coords.projectPolicySet && isProjectPolicySetDirectory(coords, coords.currentProject, path) {
+		return true
+	}
 	return path == coords.configDir || path == coords.stateDir || path == coords.installations || path == coords.projects
+}
+
+func isProjectPolicySetDirectory(coords coordinates, projectRoot, candidate string) bool {
+	return projectRoot != "" && containedStrictly(projectRoot, candidate) &&
+		(candidate == coords.policyDir || containedStrictly(candidate, coords.policyDir) ||
+			containedStrictly(coords.policyDir, candidate))
 }
 
 func destinationReferenced(records []targetRecord, destination string) bool {

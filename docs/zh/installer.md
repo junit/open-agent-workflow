@@ -67,6 +67,11 @@ Host-native integration 文件。它们不会对当前对话分类、为 OAW Eng
 并使用名为 `<crc>-<bytes>.state` 的隔离 project state。Project target 必须始终包含在该
 root 内。
 
+Project scope 会把完整 Canonical Policy Set 安装到 `<project>/.oaw/policy/`，并向选定的
+Host target 写入 project-relative Activation Router。Project Custom Profile 位于
+`<project>/.oaw/profiles/`，属于用户 ownership，不会被这些命令管理。User scope 会继续使用
+当前 user Policy location，直到 user-scoped Policy Set cutover 完成。
+
 `check` 是只读操作，会拒绝 `--dry-run` 与 `--force`。三个 mutation command 接受
 `--dry-run`。`--force` 可以在 `update` 或 `uninstall` 时恢复符合条件、已有记录的 drift；
 它绝不会把 untracked file 接管为 OAW ownership。
@@ -109,6 +114,9 @@ content 或冲突的 managed ownership 即使使用 `--force` 也会被拒绝。
 普通 `install` 不创建 operation backup，即使提供 `--force` 也是如此。
 扩展或协调有效 Install State 时会保留已有且有效的 `backup` 引用；被拒绝的 install 不会改变 state 或 backup tree。
 
+在 project scope 中，如果 `.oaw/policy/` 已存在且非空，会被视为 untracked ownership，
+install 会拒绝覆盖。对已有且已记录的 Policy Set，应使用 `update` 路径。
+
 ### `update`
 
 `update` 要求现有且有效的安装记录。二进制嵌入从 **current checkout** 构建的 policy、
@@ -122,7 +130,8 @@ target 会以 65 退出。请用 `install` 添加、用 `uninstall` 删除。
 
 存在有效安装 state 时，`uninstall` **只删除干净的 OAW ownership**：从 host file 删除
 干净的 managed block，并删除干净的 OAW-owned file。它**只清理 OAW 创建的空目录**，
-且这些目录必须记录在 state 中。它不会删除周围用户内容、非空目录、provider installation，
+且这些目录必须记录在 state 中。Project scope 还会删除 `.oaw/policy/` 下干净的受管文件与目录，
+但会保留 `.oaw/profiles/`。它不会删除周围用户内容、非空目录、provider installation，
 也不会删除 ownership 已 drift 的文件。没有 state 的 `uninstall` 会先确认选定
 managed-block destination 不含 untracked OAW marker，然后作为成功 no-op 返回。
 
@@ -147,8 +156,9 @@ Dry run 不是 reservation。之后的真实调用会重新验证；并发文件
 ## State 与 Backup
 
 User 与 project installation 绝不共用 state file。不同物理 project root 也分别获得不同的
-state file。已安装 policy 位于 XDG config root，state 与 operation backup 位于 XDG state
-root；精确路径与 record schema 见[架构指南](architecture.md)。
+state file。Project Policy Set 位于 `<project>/.oaw/policy/`；user Policy 在 user-scope
+cutover 前仍位于 XDG config root。State 与 operation backup 位于 XDG state root；精确路径
+与 record schema 见[架构指南](architecture.md)。
 
 Install State 与 Workflow State 相互独立，不会自动迁移。Management command 不会创建
 Workflow State、协作式 Policy Workflow Plan 或 Progress Tracker，也不会导入现有 policy-only task 或 Profile lock。
@@ -169,7 +179,8 @@ oaw install --target codex
 oaw bridge install codex
 ```
 
-第一条命令只安装 policy adapter 与 `ENGINEERING.md`，不安装 executable Plugin，
+第一条命令按选定 scope 安装 Policy Set 与 policy adapter。Project scope 的文件自包含于
+`.oaw/policy/`，user scope 使用当前 user Policy location；它不安装 executable Plugin，
 也不声明 current-session Host evidence。第二条命令是经过审计的 Codex Host Bridge
 的显式 opt-in transaction。两者都不会为任何请求激活 OAW。它的 management surface 是：
 

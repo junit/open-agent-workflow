@@ -3,6 +3,7 @@ package management
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -21,12 +22,18 @@ type targetRecord struct {
 	origin   string
 }
 
+type policyFileRecord struct {
+	path     string
+	checksum string
+}
+
 type installationState struct {
 	version        string
 	scope          string
 	project        string
 	policyPath     string
 	policyChecksum string
+	policyFiles    []policyFileRecord
 	backupPath     string
 	directories    []string
 	targets        []targetRecord
@@ -118,6 +125,11 @@ func parseInstallationState(data []byte) (installationState, error) {
 				return installationState{}, fmt.Errorf("invalid policy state")
 			}
 			state.policyPath, state.policyChecksum = fields[1], fields[2]
+		case "policy-file":
+			if len(fields) != 3 || fields[1] == "" || !safeStateField(fields[1]) || !validChecksum(fields[2]) {
+				return installationState{}, fmt.Errorf("invalid Policy Set file state")
+			}
+			state.policyFiles = append(state.policyFiles, policyFileRecord{path: fields[1], checksum: fields[2]})
 		case "backup":
 			if len(fields) != 2 || fields[1] == "" || !safeStateField(fields[1]) {
 				return installationState{}, fmt.Errorf("invalid backup state")
@@ -154,6 +166,9 @@ func parseInstallationState(data []byte) (installationState, error) {
 	if err := validateTargetRecords(state); err != nil {
 		return installationState{}, err
 	}
+	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
+		return installationState{}, err
+	}
 	seenDirectories := make(map[string]bool)
 	for _, directory := range state.directories {
 		if !filepath.IsAbs(directory) || seenDirectories[directory] {
@@ -162,6 +177,87 @@ func parseInstallationState(data []byte) (installationState, error) {
 		seenDirectories[directory] = true
 	}
 	return state, nil
+}
+
+func validatePolicyFileRecords(records []policyFileRecord) error {
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if record.path == "" || !safeStateField(record.path) || !filepath.IsAbs(record.path) || !validChecksum(record.checksum) {
+			return fmt.Errorf("invalid Policy Set file state")
+		}
+		key := filepath.Clean(record.path)
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("duplicate Policy Set file state")
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+func validateProjectPolicySetFiles(state installationState, coords coordinates) error {
+	if !coords.projectPolicySet {
+		return nil
+	}
+	if len(state.policyFiles) == 0 {
+		return compatibilityError("managed Policy Set state is missing")
+	}
+	if err := validateProjectPolicySetTree(state, coords); err != nil {
+		return err
+	}
+	mainFound := false
+	for _, record := range state.policyFiles {
+		relative, err := filepath.Rel(coords.policyDir, record.path)
+		if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) ||
+			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			return compatibilityError("managed Policy Set file escapes its directory")
+		}
+		rebuilt, err := validatedDestinationPath(coords.policyDir, filepath.ToSlash(relative))
+		if err != nil || rebuilt != record.path {
+			return compatibilityError("managed Policy Set file path is invalid")
+		}
+		current, err := inspectInstallPath(record.path)
+		if err != nil || current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
+			return compatibilityError("managed Policy Set file has drifted: " + record.path)
+		}
+		if record.path == state.policyPath {
+			mainFound = record.checksum == state.policyChecksum
+		}
+	}
+	if !mainFound {
+		return compatibilityError("managed Policy Set main file state is invalid")
+	}
+	return nil
+}
+
+func validateProjectPolicySetTree(state installationState, coords coordinates) error {
+	expected := map[string]bool{filepath.Clean(coords.policyDir): true}
+	for _, record := range state.policyFiles {
+		current := filepath.Clean(record.path)
+		expected[current] = false
+		for parent := filepath.Dir(current); containedStrictly(coords.policyDir, parent); parent = filepath.Dir(parent) {
+			expected[parent] = true
+		}
+	}
+	err := filepath.WalkDir(coords.policyDir, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		wantDirectory, exists := expected[filepath.Clean(path)]
+		if !exists || wantDirectory != entry.IsDir() {
+			return fmt.Errorf("unexpected managed Policy Set entry: %s", path)
+		}
+		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 {
+			info, err := entry.Info()
+			if err != nil || !info.Mode().IsRegular() {
+				return fmt.Errorf("invalid managed Policy Set entry: %s", path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return compatibilityError("managed Policy Set tree has drifted: " + err.Error())
+	}
+	return nil
 }
 
 func validateTargetRecords(state installationState) error {
@@ -211,6 +307,11 @@ func validateTargetRecords(state installationState) error {
 
 func validateOwnedDirectories(state installationState, coords coordinates) error {
 	for _, directory := range state.directories {
+		if coords.projectPolicySet && containedStrictly(state.project, directory) &&
+			(directory == coords.policyDir || containedStrictly(directory, coords.policyDir) ||
+				containedStrictly(coords.policyDir, directory)) {
+			continue
+		}
 		if directory == coords.configDir || directory == coords.stateDir || directory == coords.installations || directory == coords.projects {
 			root := coords.environment.StateHome
 			if directory == coords.configDir {

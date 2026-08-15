@@ -7,7 +7,66 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	oaw "github.com/wifibaby4u/open-agent-workflow"
 )
+
+func projectPolicySetSource(t *testing.T, version, policySuffix string) Source {
+	t.Helper()
+	files := oaw.CanonicalPolicySet()
+	for index := range files {
+		if files[index].Path == "POLICY.md" {
+			files[index].Content = append(files[index].Content, []byte(policySuffix)...)
+		}
+	}
+	source, err := NewSourceWithPolicySet(version, []byte("legacy user policy\n"), files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return source
+}
+
+func TestProjectUpdateChangesOnlyManagedPolicySetContent(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	project := filepath.Join(fixture.root, "project")
+	customProfile := filepath.Join(project, ".oaw", "profiles", "team-delivery.md")
+	agents := filepath.Join(project, "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(customProfile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
+	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
+	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
+
+	installed := projectPolicySetSource(t, "0.1.0", "\nold revision\n")
+	request := InstallRequest{Project: project, Targets: "codex"}
+	if _, err := Install(installed, fixture.environment, request); err != nil {
+		t.Fatal(err)
+	}
+	updated := projectPolicySetSource(t, "0.2.0", "\nnew revision\n")
+	if _, err := Update(updated, fixture.environment, UpdateRequest{Project: project, Targets: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, file := range updated.policySet {
+		path := filepath.Join(project, ".oaw", "policy", filepath.FromSlash(file.Path))
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read updated Policy Set file %q: %v", file.Path, err)
+		}
+		if !bytes.Equal(got, file.Content) {
+			t.Errorf("updated Policy Set file %q differs from source", file.Path)
+		}
+	}
+	gotCustom, err := os.ReadFile(customProfile)
+	if err != nil || string(gotCustom) != customContent {
+		t.Fatalf("update changed Custom Profile: content=%q error=%v", gotCustom, err)
+	}
+	gotAgents, err := os.ReadFile(agents)
+	if err != nil || !bytes.HasPrefix(gotAgents, []byte("user instructions\n")) {
+		t.Fatalf("update changed surrounding Host instructions: content=%q error=%v", gotAgents, err)
+	}
+}
 
 func prepareUpdateWithoutWrites(t *testing.T, root string, source Source, environment Environment, request UpdateRequest) (PreparedUpdate, error) {
 	t.Helper()

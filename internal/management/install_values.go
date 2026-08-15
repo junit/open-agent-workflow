@@ -8,6 +8,7 @@ func cloneTargetRecords(records []targetRecord) []targetRecord {
 
 func cloneInstallationStateValue(state installationState) installationState {
 	state.directories = append([]string(nil), state.directories...)
+	state.policyFiles = append([]policyFileRecord(nil), state.policyFiles...)
 	state.targets = cloneTargetRecords(state.targets)
 	return state
 }

@@ -8,6 +8,8 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 
 trap cleanup_sandbox EXIT HUP INT TERM
 
+OAW_PROJECT_POLICY_REFERENCE=.oaw/policy/POLICY.md
+
 render_expected_activation_router() {
   printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
 }
@@ -68,7 +70,7 @@ assert_status 0 "fresh project Cursor install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_CURSOR=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_CURSOR=$OAW_SANDBOX/expected-cursor.mdc
@@ -80,10 +82,10 @@ printf '%s\n' \
   'alwaysApply: true' \
   '---' \
   '' \
-  "$(render_expected_activation_router "$OAW_POLICY")" \
+  "$(render_expected_activation_router "$OAW_PROJECT_POLICY_REFERENCE")" \
   >"$OAW_EXPECTED_CURSOR"
 cmp -s "$OAW_EXPECTED_CURSOR" "$OAW_CURSOR" || fail "Cursor adapter bytes are invalid"
-assert_lazy_router_file "$OAW_CURSOR" "$OAW_POLICY" "Cursor adapter"
+assert_lazy_router_file "$OAW_CURSOR" "$OAW_PROJECT_POLICY_REFERENCE" "Cursor adapter"
 grep -F "$(printf 'target\tcursor\t%s\towned-file' "$OAW_CURSOR")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Cursor ownership"
 [ "$(cksum <"$OAW_PROJECT/.cursor/rules/personal.mdc")" = "$OAW_CURSOR_SIBLING_BEFORE" ] ||
@@ -149,7 +151,7 @@ assert_status 0 "fresh project Windsurf install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_WINDSURF=$OAW_PROJECT_PHYSICAL/.devin/rules/open-agent-workflow.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_WINDSURF=$OAW_SANDBOX/expected-windsurf.md
@@ -159,10 +161,10 @@ printf '%s\n' \
   'trigger: always_on' \
   '---' \
   '' \
-  "$(render_expected_activation_router "$OAW_POLICY")" \
+  "$(render_expected_activation_router "$OAW_PROJECT_POLICY_REFERENCE")" \
   >"$OAW_EXPECTED_WINDSURF"
 cmp -s "$OAW_EXPECTED_WINDSURF" "$OAW_WINDSURF" || fail "Windsurf adapter bytes are invalid"
-assert_lazy_router_file "$OAW_WINDSURF" "$OAW_POLICY" "Windsurf adapter"
+assert_lazy_router_file "$OAW_WINDSURF" "$OAW_PROJECT_POLICY_REFERENCE" "Windsurf adapter"
 grep -F "$(printf 'target\twindsurf\t%s\towned-file' "$OAW_WINDSURF")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Windsurf ownership"
 [ "$(cksum <"$OAW_PROJECT/.devin/rules/personal.md")" = "$OAW_WINDSURF_SIBLING_BEFORE" ] ||
@@ -192,14 +194,14 @@ assert_status 0 "fresh project Cline install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_CLINE=$OAW_PROJECT_PHYSICAL/.clinerules/open-agent-workflow.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_CLINE=$OAW_SANDBOX/expected-cline.md
 
-render_expected_activation_router "$OAW_POLICY" >"$OAW_EXPECTED_CLINE"
+render_expected_activation_router "$OAW_PROJECT_POLICY_REFERENCE" >"$OAW_EXPECTED_CLINE"
 cmp -s "$OAW_EXPECTED_CLINE" "$OAW_CLINE" || fail "Cline adapter bytes are invalid"
-assert_lazy_router_file "$OAW_CLINE" "$OAW_POLICY" "Cline adapter"
+assert_lazy_router_file "$OAW_CLINE" "$OAW_PROJECT_POLICY_REFERENCE" "Cline adapter"
 grep -F "$(printf 'target\tcline\t%s\towned-file' "$OAW_CLINE")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Cline ownership"
 [ "$(cksum <"$OAW_PROJECT/.clinerules/personal.md")" = "$OAW_CLINE_SIBLING_BEFORE" ] ||
@@ -229,14 +231,14 @@ assert_status 0 "fresh project Roo install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_ROO=$OAW_PROJECT_PHYSICAL/.roo/rules/open-agent-workflow.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_ROO=$OAW_SANDBOX/expected-roo.md
 
-render_expected_activation_router "$OAW_POLICY" >"$OAW_EXPECTED_ROO"
+render_expected_activation_router "$OAW_PROJECT_POLICY_REFERENCE" >"$OAW_EXPECTED_ROO"
 cmp -s "$OAW_EXPECTED_ROO" "$OAW_ROO" || fail "Roo adapter bytes are invalid"
-assert_lazy_router_file "$OAW_ROO" "$OAW_POLICY" "Roo adapter"
+assert_lazy_router_file "$OAW_ROO" "$OAW_PROJECT_POLICY_REFERENCE" "Roo adapter"
 grep -F "$(printf 'target\troo\t%s\towned-file' "$OAW_ROO")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Roo ownership"
 [ "$(cksum <"$OAW_PROJECT/.roo/rules/personal.md")" = "$OAW_ROO_SIBLING_BEFORE" ] ||
@@ -268,7 +270,7 @@ assert_status 0 "fresh project Copilot install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_COPILOT=$OAW_PROJECT_PHYSICAL/.github/instructions/open-agent-workflow.instructions.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_COPILOT=$OAW_SANDBOX/expected-copilot.instructions.md
@@ -278,10 +280,10 @@ printf '%s\n' \
   'applyTo: "**"' \
   '---' \
   '' \
-  "$(render_expected_activation_router "$OAW_POLICY")" \
+  "$(render_expected_activation_router "$OAW_PROJECT_POLICY_REFERENCE")" \
   >"$OAW_EXPECTED_COPILOT"
 cmp -s "$OAW_EXPECTED_COPILOT" "$OAW_COPILOT" || fail "Copilot adapter bytes are invalid"
-assert_lazy_router_file "$OAW_COPILOT" "$OAW_POLICY" "Copilot adapter"
+assert_lazy_router_file "$OAW_COPILOT" "$OAW_PROJECT_POLICY_REFERENCE" "Copilot adapter"
 grep -F "$(printf 'target\tcopilot\t%s\towned-file' "$OAW_COPILOT")" \
   "$OAW_PROJECT_STATE" >/dev/null || fail "project state does not record Copilot ownership"
 [ "$(cksum <"$OAW_PROJECT/.github/instructions/personal.instructions.md")" = \
@@ -321,16 +323,16 @@ assert_status 0 "fresh project Claude install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_CLAUDE=$OAW_PROJECT_PHYSICAL/.claude/CLAUDE.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 
 [ -f "$OAW_POLICY" ] || fail "project install did not create the canonical policy"
 [ -f "$OAW_PROJECT_STATE" ] || fail "project install did not create identity-scoped state"
-if grep -F "@$OAW_POLICY" "$OAW_PROJECT_CLAUDE" >/dev/null; then
+if grep -F "@$OAW_PROJECT_POLICY_REFERENCE" "$OAW_PROJECT_CLAUDE" >/dev/null; then
   fail "project Claude entrypoint incorrectly imports the canonical policy"
 fi
-assert_lazy_router_file "$OAW_PROJECT_CLAUDE" "$OAW_POLICY" "project Claude instructions"
+assert_lazy_router_file "$OAW_PROJECT_CLAUDE" "$OAW_PROJECT_POLICY_REFERENCE" "project Claude instructions"
 grep -Fx 'personal project Claude instruction' "$OAW_PROJECT_CLAUDE" >/dev/null ||
   fail "project Claude install did not preserve project instructions"
 grep -F "$(printf 'scope\tproject')" "$OAW_PROJECT_STATE" >/dev/null ||
@@ -381,13 +383,13 @@ assert_status 0 "fresh project Codex install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-project-agents-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-project-agents-block
 
-write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_PROJECT_POLICY_REFERENCE"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
@@ -395,7 +397,7 @@ awk '
 ' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
   fail "project Codex does not use the shared AGENTS activation router"
-assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_POLICY" "project Codex instructions"
+assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_PROJECT_POLICY_REFERENCE" "project Codex instructions"
 grep -Fx 'personal shared project instruction' "$OAW_PROJECT_AGENTS" >/dev/null ||
   fail "project Codex install did not preserve project AGENTS content"
 grep -F "$(printf 'target\tcodex\t%s\tmanaged-block' "$OAW_PROJECT_AGENTS")" \
@@ -430,13 +432,13 @@ assert_status 0 "fresh project Gemini install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_GEMINI=$OAW_PROJECT_PHYSICAL/GEMINI.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-project-gemini-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-project-gemini-block
 
-write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_PROJECT_POLICY_REFERENCE"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
@@ -444,10 +446,10 @@ awk '
 ' "$OAW_PROJECT_GEMINI" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
   fail "project Gemini does not use the activation router"
-if grep -Fx "@$OAW_POLICY" "$OAW_PROJECT_GEMINI" >/dev/null; then
+if grep -Fx "@$OAW_PROJECT_POLICY_REFERENCE" "$OAW_PROJECT_GEMINI" >/dev/null; then
   fail "project Gemini instructions incorrectly use a standalone Markdown import"
 fi
-assert_lazy_router_file "$OAW_PROJECT_GEMINI" "$OAW_POLICY" "project Gemini instructions"
+assert_lazy_router_file "$OAW_PROJECT_GEMINI" "$OAW_PROJECT_POLICY_REFERENCE" "project Gemini instructions"
 grep -Fx 'personal project Gemini instruction' "$OAW_PROJECT_GEMINI" >/dev/null ||
   fail "project Gemini install did not preserve project instructions"
 grep -F "$(printf 'target\tgemini\t%s\tmanaged-block' "$OAW_PROJECT_GEMINI")" \
@@ -480,13 +482,13 @@ assert_status 0 "fresh project OpenCode install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-project-opencode-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-project-opencode-block
 
-write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_PROJECT_POLICY_REFERENCE"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
@@ -494,7 +496,7 @@ awk '
 ' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
   fail "project OpenCode does not use the shared AGENTS activation router"
-assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_POLICY" "project OpenCode instructions"
+assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_PROJECT_POLICY_REFERENCE" "project OpenCode instructions"
 grep -Fx 'personal shared project instruction' "$OAW_PROJECT_AGENTS" >/dev/null ||
   fail "project OpenCode install did not preserve project AGENTS content"
 grep -F "$(printf 'target\topencode\t%s\tmanaged-block' "$OAW_PROJECT_AGENTS")" \
@@ -551,13 +553,13 @@ assert_status 0 "shared project AGENTS install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-shared-agents-block
 OAW_ACTUAL_BLOCK=$OAW_SANDBOX/actual-shared-agents-block
 
-write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_POLICY"
+write_expected_router_block "$OAW_EXPECTED_BLOCK" "$OAW_PROJECT_POLICY_REFERENCE"
 awk '
   $0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { copying = 1 }
   copying { print }
@@ -565,7 +567,7 @@ awk '
 ' "$OAW_PROJECT_AGENTS" >"$OAW_ACTUAL_BLOCK"
 cmp -s "$OAW_EXPECTED_BLOCK" "$OAW_ACTUAL_BLOCK" ||
   fail "shared project AGENTS block is not canonical"
-assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_POLICY" "shared project instructions"
+assert_lazy_router_file "$OAW_PROJECT_AGENTS" "$OAW_PROJECT_POLICY_REFERENCE" "shared project instructions"
 [ "$(awk '$0 == "<!-- BEGIN OPEN AGENT WORKFLOW -->" { count++ } END { print count + 0 }' \
   "$OAW_PROJECT_AGENTS")" -eq 1 ] || fail "shared project AGENTS has duplicate OAW blocks"
 OAW_CODEX_CHECKSUM=$(awk -F '\t' '$1 == "target" && $2 == "codex" { print $4 }' "$OAW_PROJECT_STATE")
@@ -599,33 +601,33 @@ cleanup_sandbox
 setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
-printf 'personal cross-scope project instruction\n' >"$OAW_PROJECT/AGENTS.md"
+printf 'personal independently scoped project instruction\n' >"$OAW_PROJECT/AGENTS.md"
 
 run_oaw install --project "$OAW_PROJECT" --target codex
-assert_status 0 "cross-scope project fixture install"
+assert_status 0 "independent project fixture install"
 run_oaw install --target codex
-assert_status 0 "cross-scope user fixture install"
+assert_status 0 "independent user fixture install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_AGENTS=$OAW_PROJECT_PHYSICAL/AGENTS.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 
 run_oaw uninstall --target codex
-assert_status 0 "cross-scope user uninstall"
-[ -f "$OAW_POLICY" ] || fail "user uninstall removed policy referenced by project state"
+assert_status 0 "independent user uninstall"
+[ -f "$OAW_POLICY" ] || fail "user uninstall removed project-owned policy"
 [ -f "$OAW_PROJECT_STATE" ] || fail "user uninstall removed project state"
 [ -f "$OAW_PROJECT_AGENTS" ] || fail "user uninstall changed project adapter"
 [ ! -e "$OAW_USER_STATE" ] || fail "user uninstall kept user state"
 
 run_oaw uninstall --project "$OAW_PROJECT" --target codex
-assert_status 0 "cross-scope project uninstall"
-[ ! -e "$OAW_POLICY" ] || fail "final cross-scope uninstall kept policy"
-[ ! -e "$OAW_PROJECT_STATE" ] || fail "final cross-scope uninstall kept project state"
+assert_status 0 "independent project uninstall"
+[ ! -e "$OAW_POLICY" ] || fail "project uninstall kept project-owned policy"
+[ ! -e "$OAW_PROJECT_STATE" ] || fail "project uninstall kept project state"
 
-pass "canonical policy survives until the final cross-scope reference"
+pass "user and project policy ownership remain independent"
 
 cleanup_sandbox
 setup_sandbox
@@ -640,7 +642,7 @@ assert_status 0 "project root mismatch fixture install"
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_OTHER_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_OTHER_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_CLAUDE=$OAW_PROJECT_PHYSICAL/.claude/CLAUDE.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 OAW_TAMPERED_STATE=$OAW_SANDBOX/tampered-project.state
@@ -693,14 +695,14 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo 
   assert_status 0 "$OAW_MATRIX_TARGET project matrix install"
   OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
   OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
   OAW_MATRIX_PATH=$OAW_PROJECT_PHYSICAL/$OAW_MATRIX_RELATIVE
   OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
   OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-$OAW_MATRIX_TARGET
   cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
   printf '0.1.1-project-%s\n' "$OAW_MATRIX_TARGET" >"$OAW_UPDATE_CHECKOUT/VERSION"
   printf '\nTASK 4 MATRIX %s UPDATE SENTINEL\n' "$OAW_MATRIX_TARGET" \
-    >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+    >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
   build_checkout_installer "$OAW_UPDATE_CHECKOUT"
   OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
@@ -718,7 +720,7 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo 
   grep -F "TASK 4 MATRIX $OAW_MATRIX_TARGET UPDATE SENTINEL" "$OAW_POLICY" >/dev/null || fail "$OAW_MATRIX_TARGET update ignored checkout"
   grep -F "$(printf 'version\t0.1.1-project-%s' "$OAW_MATRIX_TARGET")" "$OAW_PROJECT_STATE" >/dev/null || fail "$OAW_MATRIX_TARGET update did not record version"
   [ -z "$OAW_MATRIX_SIBLING" ] || [ "$(cksum <"$OAW_MATRIX_SIBLING")" = "$OAW_MATRIX_SIBLING_BEFORE" ] || fail "$OAW_MATRIX_TARGET update changed sibling"
-  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET updated project instructions"
+  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_PROJECT_POLICY_REFERENCE" "$OAW_MATRIX_TARGET updated project instructions"
 
   OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
   OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
@@ -750,7 +752,7 @@ run_oaw install --project "$OAW_PROJECT"
 assert_status 0 "default nine-target project install"
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
 [ "$(awk -F '\t' '$1 == "target" { count++ } END { print count + 0 }' "$OAW_PROJECT_STATE")" -eq 9 ] || fail "default project install did not record nine targets"
 OAW_DEFAULT_TARGETS=$(awk -F '\t' '$1 == "target" { if (targets == "") targets = $2; else targets = targets "," $2 } END { print targets }' "$OAW_PROJECT_STATE")
@@ -763,7 +765,7 @@ OAW_DEFAULT_CURSOR=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-default
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-project-default\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
-printf '\nTASK 4 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+printf '\nTASK 4 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
 build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
@@ -783,7 +785,7 @@ grep -F "$(printf 'version\t0.1.1-project-default')" "$OAW_PROJECT_STATE" >/dev/
 for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo copilot; do
   OAW_MATRIX_RELATIVE=$(project_target_path_for_test "$OAW_MATRIX_TARGET")
   OAW_MATRIX_PATH=$OAW_PROJECT_PHYSICAL/$OAW_MATRIX_RELATIVE
-  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET default updated project instructions"
+  assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_PROJECT_POLICY_REFERENCE" "$OAW_MATRIX_TARGET default updated project instructions"
 done
 run_oaw uninstall --project "$OAW_PROJECT" --target cursor
 assert_status 0 "default project selected uninstall"
@@ -807,7 +809,7 @@ OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
 OAW_CURSOR=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 run_oaw check --project "$OAW_PROJECT" --target cursor
 assert_status 0 "project check reports clean adapter"
 assert_contains "installed cursor: clean" "project check reports clean state"

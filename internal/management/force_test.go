@@ -140,6 +140,67 @@ func TestPrepareUpdateForcePolicyDriftAndCleanForce(t *testing.T) {
 	})
 }
 
+func TestPrepareUpdateForceHandlesProjectPolicySetOwnership(t *testing.T) {
+	t.Run("backs up tracked drift", func(t *testing.T) {
+		fixture := newPrepareFixture(t)
+		project := filepath.Join(fixture.root, "project")
+		if err := os.Mkdir(project, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		source := projectPolicySetSource(t, "0.1.0", "")
+		installed, err := PrepareInstall(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := ApplyInstall(installed); err != nil {
+			t.Fatal(err)
+		}
+		physicalProject, err := filepath.EvalSymlinks(project)
+		if err != nil {
+			t.Fatal(err)
+		}
+		drifted := filepath.Join(physicalProject, ".oaw", "policy", "cooperative-protocol.md")
+		writePrepareFile(t, drifted, []byte("tracked drift\n"), 0o644)
+
+		prepared, err := prepareUpdateWithoutWrites(
+			t, fixture.root, source, fixture.environment,
+			UpdateRequest{Project: project, Targets: "codex", Force: true},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !prepared.plan.backup.required {
+			t.Fatal("forced project Policy Set update did not require a backup")
+		}
+		want := []string{drifted, installed.stateActions[0].destination}
+		if got := backupCandidateOriginals(prepared.plan.backup.candidates); !reflect.DeepEqual(got, want) {
+			t.Fatalf("project Policy Set backup candidates = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("rejects untracked injection", func(t *testing.T) {
+		fixture := newPrepareFixture(t)
+		project := filepath.Join(fixture.root, "project")
+		if err := os.Mkdir(project, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		source := projectPolicySetSource(t, "0.1.0", "")
+		if _, err := Install(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"}); err != nil {
+			t.Fatal(err)
+		}
+		injected := filepath.Join(project, ".oaw", "policy", "injected.md")
+		writePrepareFile(t, injected, []byte("untracked\n"), 0o644)
+
+		_, err := prepareUpdateWithoutWrites(
+			t, fixture.root, source, fixture.environment,
+			UpdateRequest{Project: project, Targets: "codex", Force: true},
+		)
+		if err == nil || !strings.Contains(err.Error(), "unexpected managed Policy Set entry") {
+			t.Fatalf("forced update error = %v", err)
+		}
+	})
+}
+
 func TestPrepareUninstallForceBacksUpFinalArtifacts(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	project := filepath.Join(fixture.root, "project")

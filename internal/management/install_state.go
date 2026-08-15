@@ -34,6 +34,9 @@ func serializeInstallState(state installationState) ([]byte, error) {
 	if !validChecksum(state.policyChecksum) {
 		return nil, compatibilityError("invalid policy checksum")
 	}
+	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
+		return nil, compatibilityError(err.Error())
+	}
 	if state.backupPath != "" {
 		if !safeStateField(state.backupPath) {
 			return nil, compatibilityError("backup path cannot be serialized")
@@ -71,6 +74,9 @@ func serializeInstallState(state installationState) ([]byte, error) {
 		fmt.Fprintf(&result, "project\t%s\n", state.project)
 	}
 	fmt.Fprintf(&result, "policy\t%s\t%s\n", state.policyPath, state.policyChecksum)
+	for _, record := range state.policyFiles {
+		fmt.Fprintf(&result, "policy-file\t%s\t%s\n", record.path, record.checksum)
+	}
 	if state.backupPath != "" {
 		fmt.Fprintf(&result, "backup\t%s\n", state.backupPath)
 	}

@@ -159,6 +159,25 @@ func TestPrepareInstallProjectUsesPhysicalRootAndDeduplicatesSharedDestination(t
 	}
 }
 
+func TestProjectInstallRejectsUntrackedPolicySetContentWithoutWrites(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	project := filepath.Join(fixture.root, "project")
+	foreign := filepath.Join(project, ".oaw", "policy", "POLICY.md")
+	writePrepareFile(t, foreign, []byte("foreign policy\n"), 0o644)
+	before := snapshotPrepareTree(t, fixture.root)
+
+	_, err := Install(
+		projectPolicySetSource(t, "0.1.0", ""), fixture.environment,
+		InstallRequest{Project: project, Targets: "codex"},
+	)
+	if err == nil {
+		t.Fatal("project install replaced untracked Policy Set content")
+	}
+	if after := snapshotPrepareTree(t, fixture.root); !reflect.DeepEqual(before, after) {
+		t.Fatal("rejected project install changed the filesystem")
+	}
+}
+
 func TestPrepareInstallRepeatedAdditiveAndForcePreserveState(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	fresh, err := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})

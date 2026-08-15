@@ -172,15 +172,18 @@ OAW_OTHER_PROJECT=$(CDPATH='' cd -P -- "$OAW_OTHER_PROJECT" && pwd -P)
 OAW_OTHER_PROJECT_ID=$(printf '%s' "$OAW_OTHER_PROJECT" | cksum | awk '{ print $1 "-" $2 }')
 OAW_OTHER_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_OTHER_PROJECT_ID.state
 OAW_OTHER_CLAUDE=$OAW_OTHER_PROJECT/.claude/CLAUDE.md
+OAW_OTHER_POLICY=$OAW_OTHER_PROJECT/.oaw/policy/POLICY.md
 
 run_oaw uninstall --target claude
 assert_status 0 "uninstall with another policy reference"
-[ -f "$OAW_POLICY" ] ||
-  fail "uninstall removed a canonical policy referenced by another valid state"
+[ ! -e "$OAW_POLICY" ] ||
+  fail "uninstall retained the user-owned canonical policy"
 [ ! -e "$OAW_CLAUDE" ] ||
   fail "uninstall retained the current state's created Claude file"
 [ ! -e "$OAW_INSTALL_STATE" ] ||
   fail "uninstall retained current state after removing its managed target"
+[ -f "$OAW_OTHER_POLICY" ] ||
+  fail "uninstall removed another project's canonical Policy Set"
 [ -f "$OAW_OTHER_STATE" ] ||
   fail "uninstall removed another installation state"
 [ -f "$OAW_OTHER_CLAUDE" ] ||
@@ -189,4 +192,4 @@ case "$OAW_OUTPUT" in
   *"remove: $OAW_CLAUDE"*"remove: $OAW_INSTALL_STATE"*) ;;
   *) fail "uninstall did not remove managed target before current state (output: $OAW_OUTPUT)" ;;
 esac
-pass "uninstall retains policy referenced by another valid installation state"
+pass "uninstall keeps user and project Policy Set ownership independent"

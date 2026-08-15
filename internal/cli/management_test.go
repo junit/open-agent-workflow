@@ -3,10 +3,13 @@ package cli
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	oaw "github.com/wifibaby4u/open-agent-workflow"
 )
 
 func TestParseManagementAcceptsBashOptions(t *testing.T) {
@@ -141,6 +144,114 @@ func TestRunManagementHelpAndLifecycle(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "oaw: remove: ") || stderr.Len() != 0 {
 		t.Fatalf("uninstall stdout=%q stderr=%q", stdout.String(), stderr.String())
+	}
+}
+
+func TestProjectInstallWritesSelfContainedPolicySet(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	config := filepath.Join(root, "config")
+	state := filepath.Join(root, "state")
+	project := filepath.Join(root, "project")
+	customProfile := filepath.Join(project, ".oaw", "profiles", "team-delivery.md")
+	for _, directory := range []string{home, config, state, filepath.Dir(customProfile)} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
+	if err := os.WriteFile(customProfile, []byte(customContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("XDG_STATE_HOME", state)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"install", "--project", project, "--target", "codex"}
+	if status := Run(args, &stdout, &stderr); status != 0 {
+		t.Fatalf("Run(%v)=%d stdout=%q stderr=%q", args, status, stdout.String(), stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(%v) stderr=%q", args, stderr.String())
+	}
+
+	for _, file := range oaw.CanonicalPolicySet() {
+		installed := filepath.Join(project, ".oaw", "policy", filepath.FromSlash(file.Path))
+		got, err := os.ReadFile(installed)
+		if err != nil {
+			t.Fatalf("read installed Policy Set file %q: %v", file.Path, err)
+		}
+		if !bytes.Equal(got, file.Content) {
+			t.Errorf("installed Policy Set file %q differs from canonical content", file.Path)
+		}
+	}
+
+	router, err := os.ReadFile(filepath.Join(project, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(router, []byte("read `.oaw/policy/POLICY.md`")) {
+		t.Fatalf("project Activation Router is not project-relative: %q", router)
+	}
+	if bytes.Contains(router, []byte(project)) {
+		t.Fatalf("project Activation Router contains physical project path: %q", router)
+	}
+	if _, err := os.Stat(filepath.Join(config, "open-agent-workflow", "ENGINEERING.md")); !os.IsNotExist(err) {
+		t.Fatalf("project install wrote legacy global policy: %v", err)
+	}
+	gotCustom, err := os.ReadFile(customProfile)
+	if err != nil || string(gotCustom) != customContent {
+		t.Fatalf("project install changed Custom Profile: content=%q error=%v", gotCustom, err)
+	}
+}
+
+func TestInstalledProjectPolicySetWorksWithoutOAWExecutable(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	config := filepath.Join(root, "config")
+	state := filepath.Join(root, "state")
+	project := filepath.Join(root, "project")
+	emptyPath := filepath.Join(root, "empty-bin")
+	for _, directory := range []string{home, config, state, project, emptyPath} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("XDG_STATE_HOME", state)
+
+	var stdout, stderr bytes.Buffer
+	if status := Run([]string{"install", "--project", project, "--target", "codex"}, &stdout, &stderr); status != 0 {
+		t.Fatalf("install status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
+	}
+	t.Setenv("PATH", emptyPath)
+	if path, err := exec.LookPath("oaw"); err == nil {
+		t.Fatalf("oaw executable unexpectedly remains available at %q", path)
+	}
+
+	installed := make([]oaw.PolicyFile, 0, len(oaw.CanonicalPolicySet()))
+	for _, canonical := range oaw.CanonicalPolicySet() {
+		content, err := os.ReadFile(filepath.Join(project, ".oaw", "policy", filepath.FromSlash(canonical.Path)))
+		if err != nil {
+			t.Fatalf("read installed Policy Set file %q: %v", canonical.Path, err)
+		}
+		installed = append(installed, oaw.PolicyFile{Path: canonical.Path, Content: content})
+	}
+	if err := oaw.ValidatePolicySet(installed); err != nil {
+		t.Fatalf("installed Policy Set is not self-contained: %v", err)
+	}
+	profileContent, err := os.ReadFile(filepath.Join(project, ".oaw", "policy", "profiles", "MATT-FULL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := oaw.ParsePolicyProfile("profiles/MATT-FULL.md", profileContent)
+	if err != nil {
+		t.Fatalf("parse installed MATT-FULL Profile: %v", err)
+	}
+	if len(profile.Responsibilities) != len(oaw.PolicyResponsibilities()) {
+		t.Fatalf("installed Profile Responsibilities=%d want=%d", len(profile.Responsibilities), len(oaw.PolicyResponsibilities()))
 	}
 }
 

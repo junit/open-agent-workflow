@@ -29,6 +29,7 @@ type mutationPlan struct {
 	coordinates      coordinates
 	targetActions    []mutationAction
 	policyAction     mutationAction
+	policySetActions []mutationAction
 	stateActions     []mutationAction
 	directoryActions []directoryAction
 	leadingLines     []string
@@ -87,6 +88,19 @@ func prepareMutationInputs(environment Environment, request mutationRequest) (mu
 	if err != nil {
 		return mutationPreparation{}, installError(err)
 	}
+	if exists && resolved.scope == "project" {
+		projectCoords, projectErr := initializeProjectPolicySetCoordinates(environment, resolved)
+		if projectErr != nil {
+			return mutationPreparation{}, projectErr
+		}
+		if state.policyPath == projectCoords.policyPath {
+			coords = projectCoords
+			policy, err = inspectInstallPath(coords.policyPath)
+			if err != nil {
+				return mutationPreparation{}, err
+			}
+		}
+	}
 	return mutationPreparation{
 		resolved: cloneResolvedRequest(resolved), coordinates: coords,
 		backupPath: backupPath, policy: cloneInstallPathSnapshot(policy),
@@ -139,6 +153,9 @@ func validateCleanMutationState(state installationState, coords coordinates, res
 	if checksumBytes(policy.data) != state.policyChecksum {
 		return compatibilityError("managed policy has drifted")
 	}
+	if err := validateProjectPolicySetFiles(state, coords); err != nil {
+		return err
+	}
 	if err := validateLiveTargetRecords(state.targets, coords, state.scope, state.project); err != nil {
 		return err
 	}
@@ -176,9 +193,10 @@ func predictMutationResult(plan mutationPlan) Result {
 	if plan.operation == mutationUninstall {
 		return predictUninstallResult(plan)
 	}
-	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
+	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.policySetActions)+len(plan.stateActions))
 	actions = append(actions, plan.targetActions...)
 	actions = append(actions, plan.policyAction)
+	actions = append(actions, plan.policySetActions...)
 	actions = append(actions, plan.stateActions...)
 	lines := make([]string, 0, len(actions))
 	for _, action := range actions {
@@ -222,6 +240,9 @@ func predictUninstallResult(plan mutationPlan) Result {
 	}
 	lines = append(lines, predictDirectoryRemovalClass(plan, false)...)
 	lines = append(lines, predictMutationAction(plan.policyAction)...)
+	for _, action := range plan.policySetActions {
+		lines = append(lines, predictMutationAction(action)...)
+	}
 	for _, action := range plan.stateActions {
 		lines = append(lines, predictMutationAction(action)...)
 	}
@@ -257,6 +278,7 @@ func predictDirectoryRemovalClass(plan mutationPlan, namespace bool) []string {
 	actions := make([]mutationAction, 0, len(plan.targetActions)+1+len(plan.stateActions))
 	actions = append(actions, plan.targetActions...)
 	actions = append(actions, plan.policyAction)
+	actions = append(actions, plan.policySetActions...)
 	actions = append(actions, plan.stateActions...)
 	for _, action := range actions {
 		if action.effect == mutationRemove {
@@ -290,10 +312,11 @@ func predictDirectoryRemovalClass(plan mutationPlan, namespace bool) []string {
 }
 
 func cloneMutationPlan(plan mutationPlan) mutationPlan {
-	plan.source = Source{version: plan.source.version, policy: bytes.Clone(plan.source.policy)}
+	plan.source = cloneSource(plan.source)
 	plan.resolved = cloneResolvedRequest(plan.resolved)
 	plan.targetActions = cloneMutationActions(plan.targetActions)
 	plan.policyAction = cloneMutationAction(plan.policyAction)
+	plan.policySetActions = cloneMutationActions(plan.policySetActions)
 	plan.stateActions = cloneMutationActions(plan.stateActions)
 	plan.directoryActions = cloneDirectoryActions(plan.directoryActions)
 	plan.leadingLines = append([]string(nil), plan.leadingLines...)

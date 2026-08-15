@@ -41,7 +41,7 @@ assert_invalid_project_state() {
 
   OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
   OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
   OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
   OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
   original_state=$OAW_SANDBOX/original.state
@@ -195,7 +195,7 @@ assert_project_drift_blocks_mutation() {
     *) fail "unknown drift target: $target_id" ;;
   esac
   project_state=$OAW_STATE/open-agent-workflow/installations/projects/$project_id.state
-  policy_path=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  policy_path=$project_physical/.oaw/policy/POLICY.md
   mutated_file=$OAW_SANDBOX/mutated-target
 
   case "$drift_case" in
@@ -308,7 +308,7 @@ OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_UNTRACKED_TARGET=$OAW_PROJECT_PHYSICAL/AGENTS.md
 OAW_UNTRACKED_STATE_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
 OAW_UNTRACKED_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_UNTRACKED_STATE_ID.state
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy
 printf '%s\nuntracked body\n%s\n' \
   '<!-- BEGIN OPEN AGENT WORKFLOW -->' '<!-- END OPEN AGENT WORKFLOW -->' \
   >"$OAW_UNTRACKED_TARGET"
@@ -338,225 +338,46 @@ assert_artifact_snapshot "$OAW_UNTRACKED_TARGET" "$OAW_UNTRACKED_BEFORE" \
 
 pass "untracked OAW markers block mutation without creating policy or state"
 
-setup_cross_scope_candidate_fixture() {
-  cleanup_sandbox
-  setup_sandbox
-  OAW_INSTALLER=$OAW_BASE_INSTALLER
-  OAW_PROJECT="$OAW_SANDBOX/project with spaces"
-  mkdir -p "$OAW_PROJECT"
-  run_oaw install --target codex
-  assert_status 0 "cross-scope candidate user fixture install"
-  run_oaw install --project "$OAW_PROJECT" --target cursor
-  assert_status 0 "cross-scope candidate project fixture install"
-
-  OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
-  OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
-  OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
-  OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
-  OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
-  OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-}
-
-assert_cross_scope_candidate_unchanged() {
-  local description=$1
-  local policy_before=$2
-  local user_target_before=$3
-  local user_state_before=$4
-  local project_target_before=$5
-  local project_state_before=$6
-
-  assert_artifact_snapshot "$OAW_POLICY" "$policy_before" "$description"
-  assert_artifact_snapshot "$OAW_USER_TARGET" "$user_target_before" "$description"
-  assert_artifact_snapshot "$OAW_USER_STATE" "$user_state_before" "$description"
-  assert_artifact_snapshot "$OAW_PROJECT_TARGET" "$project_target_before" "$description"
-  assert_artifact_snapshot "$OAW_PROJECT_STATE" "$project_state_before" "$description"
-}
-
-setup_cross_scope_candidate_fixture
-printf 'drifted candidate adapter\n' >"$OAW_PROJECT_TARGET"
-run_oaw check --project "$OAW_PROJECT" --target cursor
-assert_status 0 "drifted candidate check"
-assert_contains "installed cursor: drift" "drifted candidate check reports drift"
-OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
-OAW_USER_TARGET_BEFORE=$(artifact_snapshot "$OAW_USER_TARGET")
-OAW_USER_STATE_BEFORE=$(artifact_snapshot "$OAW_USER_STATE")
-OAW_PROJECT_TARGET_BEFORE=$(artifact_snapshot "$OAW_PROJECT_TARGET")
-OAW_PROJECT_STATE_BEFORE=$(artifact_snapshot "$OAW_PROJECT_STATE")
-
-run_oaw update --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "cross-scope update accepted a drifted candidate state"
-assert_contains "cursor" "cross-scope update identifies the drifted candidate target"
-assert_contains "$OAW_PROJECT_TARGET" \
-  "cross-scope update identifies the drifted candidate destination"
-assert_cross_scope_candidate_unchanged "cross-scope update with drifted candidate" \
-  "$OAW_POLICY_BEFORE" "$OAW_USER_TARGET_BEFORE" "$OAW_USER_STATE_BEFORE" \
-  "$OAW_PROJECT_TARGET_BEFORE" "$OAW_PROJECT_STATE_BEFORE"
-
-pass "cross-scope policy synchronization rejects a drifted live candidate"
-
-setup_cross_scope_candidate_fixture
-printf 'drifted retention candidate\n' >"$OAW_PROJECT_TARGET"
-OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
-OAW_USER_TARGET_BEFORE=$(artifact_snapshot "$OAW_USER_TARGET")
-OAW_USER_STATE_BEFORE=$(artifact_snapshot "$OAW_USER_STATE")
-OAW_PROJECT_TARGET_BEFORE=$(artifact_snapshot "$OAW_PROJECT_TARGET")
-OAW_PROJECT_STATE_BEFORE=$(artifact_snapshot "$OAW_PROJECT_STATE")
-
-run_oaw uninstall --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "final uninstall accepted a drifted policy-retention candidate"
-assert_contains "cursor" "final uninstall identifies the drifted retention target"
-assert_contains "$OAW_PROJECT_TARGET" \
-  "final uninstall identifies the drifted retention destination"
-assert_cross_scope_candidate_unchanged "final uninstall with drifted retention candidate" \
-  "$OAW_POLICY_BEFORE" "$OAW_USER_TARGET_BEFORE" "$OAW_USER_STATE_BEFORE" \
-  "$OAW_PROJECT_TARGET_BEFORE" "$OAW_PROJECT_STATE_BEFORE"
-
-pass "final uninstall rejects a drifted policy-retention candidate"
-
-setup_forged_candidate_fixture() {
-  local policy_checksum=
-  local source_version=
-
-  cleanup_sandbox
-  setup_sandbox
-  OAW_INSTALLER=$OAW_BASE_INSTALLER
-  OAW_PROJECT="$OAW_SANDBOX/forged project"
-  mkdir -p "$OAW_PROJECT"
-  run_oaw install --target codex
-  assert_status 0 "forged candidate user fixture install"
-
-  OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
-  OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
-  OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
-  OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
-  OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
-  OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-  policy_checksum=$(cksum <"$OAW_POLICY" | awk '{ print $1 ":" $2 }')
-  IFS= read -r source_version <"$OAW_REPOSITORY/VERSION"
-  mkdir -p "$(dirname -- "$OAW_PROJECT_STATE")"
-  {
-    printf 'format\t1\n'
-    printf 'version\t%s\n' "$source_version"
-    printf 'scope\tproject\n'
-    printf 'project\t%s\n' "$OAW_PROJECT_PHYSICAL"
-    printf 'policy\t%s\t%s\n' "$OAW_POLICY" "$policy_checksum"
-    printf 'target\tcursor\t%s\towned-file\t1:1\tcreated-file\n' "$OAW_PROJECT_TARGET"
-  } >"$OAW_PROJECT_STATE"
-}
-
-assert_forged_candidate_unchanged() {
-  local description=$1
-  local policy_before=$2
-  local user_target_before=$3
-  local user_state_before=$4
-  local project_state_before=$5
-
-  assert_artifact_snapshot "$OAW_POLICY" "$policy_before" "$description"
-  assert_artifact_snapshot "$OAW_USER_TARGET" "$user_target_before" "$description"
-  assert_artifact_snapshot "$OAW_USER_STATE" "$user_state_before" "$description"
-  assert_artifact_snapshot "$OAW_PROJECT_TARGET" absent "$description"
-  assert_artifact_snapshot "$OAW_PROJECT_STATE" "$project_state_before" "$description"
-}
-
-setup_forged_candidate_fixture
-run_oaw check --project "$OAW_PROJECT" --target cursor
-assert_status 0 "forged candidate check"
-assert_contains "installed cursor: drift" "forged non-live candidate is classified as drift"
-OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
-OAW_USER_TARGET_BEFORE=$(artifact_snapshot "$OAW_USER_TARGET")
-OAW_USER_STATE_BEFORE=$(artifact_snapshot "$OAW_USER_STATE")
-OAW_PROJECT_STATE_BEFORE=$(artifact_snapshot "$OAW_PROJECT_STATE")
-
-run_oaw update --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "cross-scope update synchronized a forged non-live candidate"
-assert_contains "cursor" "forged update identifies the missing candidate target"
-assert_contains "$OAW_PROJECT_TARGET" "forged update identifies the missing candidate destination"
-assert_forged_candidate_unchanged "cross-scope update with forged candidate" \
-  "$OAW_POLICY_BEFORE" "$OAW_USER_TARGET_BEFORE" "$OAW_USER_STATE_BEFORE" \
-  "$OAW_PROJECT_STATE_BEFORE"
-
-pass "cross-scope update never synchronizes a forged non-live candidate"
-
-setup_forged_candidate_fixture
-OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
-OAW_USER_TARGET_BEFORE=$(artifact_snapshot "$OAW_USER_TARGET")
-OAW_USER_STATE_BEFORE=$(artifact_snapshot "$OAW_USER_STATE")
-OAW_PROJECT_STATE_BEFORE=$(artifact_snapshot "$OAW_PROJECT_STATE")
-
-run_oaw uninstall --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "final uninstall retained policy for a forged non-live candidate"
-assert_contains "cursor" "forged retention identifies the missing candidate target"
-assert_contains "$OAW_PROJECT_TARGET" \
-  "forged retention identifies the missing candidate destination"
-assert_forged_candidate_unchanged "final uninstall with forged candidate" \
-  "$OAW_POLICY_BEFORE" "$OAW_USER_TARGET_BEFORE" "$OAW_USER_STATE_BEFORE" \
-  "$OAW_PROJECT_STATE_BEFORE"
-
-pass "forged non-live candidate cannot retain policy through a successful uninstall"
-
 cleanup_sandbox
 setup_sandbox
 OAW_INSTALLER=$OAW_BASE_INSTALLER
-OAW_PROJECT_ONE="$OAW_SANDBOX/project one"
-OAW_PROJECT_TWO="$OAW_SANDBOX/project two"
-mkdir -p "$OAW_PROJECT_ONE" "$OAW_PROJECT_TWO"
-run_oaw install --target codex
-assert_status 0 "multi-candidate user fixture install"
-run_oaw install --project "$OAW_PROJECT_ONE" --target cursor
-assert_status 0 "multi-candidate first project install"
-run_oaw install --project "$OAW_PROJECT_TWO" --target cursor
-assert_status 0 "multi-candidate second project install"
+OAW_PROJECT="$OAW_SANDBOX/project with spaces"
+mkdir -p "$OAW_PROJECT"
 
-OAW_PROJECT_ONE_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT_ONE" && pwd -P)
-OAW_PROJECT_TWO_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT_TWO" && pwd -P)
-OAW_PROJECT_ONE_ID=$(printf '%s' "$OAW_PROJECT_ONE_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_PROJECT_TWO_ID=$(printf '%s' "$OAW_PROJECT_TWO_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_PROJECT_ONE_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ONE_ID.state
-OAW_PROJECT_TWO_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_TWO_ID.state
-OAW_PROJECT_ONE_TARGET=$OAW_PROJECT_ONE_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
-OAW_PROJECT_TWO_TARGET=$OAW_PROJECT_TWO_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
-if [[ "$OAW_PROJECT_ONE_STATE" < "$OAW_PROJECT_TWO_STATE" ]]; then
-  OAW_EARLY_TARGET=$OAW_PROJECT_ONE_TARGET
-  OAW_EARLY_STATE=$OAW_PROJECT_ONE_STATE
-  OAW_LATE_TARGET=$OAW_PROJECT_TWO_TARGET
-  OAW_LATE_STATE=$OAW_PROJECT_TWO_STATE
-else
-  OAW_EARLY_TARGET=$OAW_PROJECT_TWO_TARGET
-  OAW_EARLY_STATE=$OAW_PROJECT_TWO_STATE
-  OAW_LATE_TARGET=$OAW_PROJECT_ONE_TARGET
-  OAW_LATE_STATE=$OAW_PROJECT_ONE_STATE
-fi
-printf 'drifted later retention candidate\n' >"$OAW_LATE_TARGET"
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
-OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
-OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
-OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
-OAW_USER_TARGET_BEFORE=$(artifact_snapshot "$OAW_USER_TARGET")
-OAW_USER_STATE_BEFORE=$(artifact_snapshot "$OAW_USER_STATE")
-OAW_EARLY_TARGET_BEFORE=$(artifact_snapshot "$OAW_EARLY_TARGET")
-OAW_EARLY_STATE_BEFORE=$(artifact_snapshot "$OAW_EARLY_STATE")
-OAW_LATE_TARGET_BEFORE=$(artifact_snapshot "$OAW_LATE_TARGET")
-OAW_LATE_STATE_BEFORE=$(artifact_snapshot "$OAW_LATE_STATE")
+run_oaw install --target codex
+assert_status 0 "scope-isolation user fixture install"
+run_oaw install --project "$OAW_PROJECT" --target cursor
+assert_status 0 "scope-isolation project fixture install"
+
+OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
+OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
+OAW_PROJECT_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
+OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
+OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
+printf 'drifted independent project adapter\n' >"$OAW_PROJECT_TARGET"
+OAW_PROJECT_POLICY_BEFORE=$(artifact_snapshot "$OAW_PROJECT_POLICY")
+OAW_PROJECT_TARGET_BEFORE=$(artifact_snapshot "$OAW_PROJECT_TARGET")
+OAW_PROJECT_STATE_BEFORE=$(artifact_snapshot "$OAW_PROJECT_STATE")
+
+run_oaw update --target codex
+assert_status 0 "user update with drifted independent project scope"
+assert_artifact_snapshot "$OAW_PROJECT_POLICY" "$OAW_PROJECT_POLICY_BEFORE" \
+  "user update with project drift"
+assert_artifact_snapshot "$OAW_PROJECT_TARGET" "$OAW_PROJECT_TARGET_BEFORE" \
+  "user update with project drift"
+assert_artifact_snapshot "$OAW_PROJECT_STATE" "$OAW_PROJECT_STATE_BEFORE" \
+  "user update with project drift"
 
 run_oaw uninstall --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "retention preflight stopped before a later drifted candidate"
-assert_contains "cursor" "retention preflight identifies the later drifted target"
-assert_contains "$OAW_LATE_TARGET" "retention preflight identifies the later drifted destination"
-assert_artifact_snapshot "$OAW_POLICY" "$OAW_POLICY_BEFORE" "multi-candidate uninstall"
-assert_artifact_snapshot "$OAW_USER_TARGET" "$OAW_USER_TARGET_BEFORE" "multi-candidate uninstall"
-assert_artifact_snapshot "$OAW_USER_STATE" "$OAW_USER_STATE_BEFORE" "multi-candidate uninstall"
-assert_artifact_snapshot "$OAW_EARLY_TARGET" "$OAW_EARLY_TARGET_BEFORE" \
-  "multi-candidate uninstall"
-assert_artifact_snapshot "$OAW_EARLY_STATE" "$OAW_EARLY_STATE_BEFORE" \
-  "multi-candidate uninstall"
-assert_artifact_snapshot "$OAW_LATE_TARGET" "$OAW_LATE_TARGET_BEFORE" \
-  "multi-candidate uninstall"
-assert_artifact_snapshot "$OAW_LATE_STATE" "$OAW_LATE_STATE_BEFORE" \
-  "multi-candidate uninstall"
+assert_status 0 "user uninstall with drifted independent project scope"
+assert_artifact_snapshot "$OAW_PROJECT_POLICY" "$OAW_PROJECT_POLICY_BEFORE" \
+  "user uninstall with project drift"
+assert_artifact_snapshot "$OAW_PROJECT_TARGET" "$OAW_PROJECT_TARGET_BEFORE" \
+  "user uninstall with project drift"
+assert_artifact_snapshot "$OAW_PROJECT_STATE" "$OAW_PROJECT_STATE_BEFORE" \
+  "user uninstall with project drift"
 
-pass "retention preflight validates every matching candidate before mutation"
+pass "scope-local drift does not veto or mutate an independent installation"
 
 cleanup_sandbox
 setup_sandbox
@@ -571,7 +392,7 @@ OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/rules/open-agent-workflow.mdc
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy
 
 run_oaw install --project "$OAW_PROJECT" --target cursor
 [ "$OAW_STATUS" -ne 0 ] || fail "symlinked project component allowed an outside write"
@@ -615,7 +436,7 @@ assert_project_final_symlink_rejected() {
   ln -s "$link_destination" "$project_target"
   project_id=$(printf '%s' "$project_physical" | cksum | awk '{ print $1 "-" $2 }')
   project_state=$OAW_STATE/open-agent-workflow/installations/projects/$project_id.state
-  policy_path=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  policy_path=$project_physical/.oaw/policy
 
   run_oaw install --project "$OAW_PROJECT" --target "$target_id"
   [ "$OAW_STATUS" -ne 0 ] || fail "$target_id accepted a final $link_scope symlink"

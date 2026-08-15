@@ -1,9 +1,12 @@
 package management
 
-import "fmt"
+import (
+	"fmt"
+	"path/filepath"
+)
 
 func PrepareUpdate(source Source, environment Environment, request UpdateRequest) (PreparedUpdate, error) {
-	source, err := NewSource(source.version, source.policy)
+	source, err := validateSource(source)
 	if err != nil {
 		return PreparedUpdate{}, err
 	}
@@ -64,23 +67,20 @@ func prepareUpdatePlan(
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	policyChecksum := checksumBytes(source.policy)
+	policyAction, policySetActions, policyFiles, policyChecksum, err := prepareUpdatePolicyActions(source, preparation)
+	if err != nil {
+		return mutationPlan{}, err
+	}
 	stateActions, err := prepareUpdateStateActions(
-		source, environment, preparation, force, policyChecksum, records, references,
+		source, environment, preparation, force, policyChecksum, policyFiles, records, references,
 	)
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	policyAction, err := newMutationAction(
-		mutationReplace, "policy", source.policy, preparation.coordinates.policyPath, 0o600,
-		environment.ConfigHome, "open-agent-workflow/ENGINEERING.md", preparation.policy,
-	)
-	if err != nil {
-		return mutationPlan{}, err
-	}
+	backupTargets := append(cloneMutationActions(targetActions), cloneMutationActions(policySetActions)...)
 	backup, err := buildMutationBackupPlan(
 		force.backupRequired, "update", preparation.resolved.scope, preparation.backupPath,
-		policyAction, targetActions, stateActions,
+		policyAction, backupTargets, stateActions,
 	)
 	if err != nil {
 		return mutationPlan{}, err
@@ -89,10 +89,90 @@ func prepareUpdatePlan(
 		operation: mutationUpdate, source: source, environment: environment, request: request,
 		resolved: cloneResolvedRequest(preparation.resolved), coordinates: preparation.coordinates,
 		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
-		stateActions: cloneMutationActions(stateActions), backup: cloneBackupPlan(backup),
+		policySetActions: cloneMutationActions(policySetActions),
+		stateActions:     cloneMutationActions(stateActions), backup: cloneBackupPlan(backup),
 	}
 	plan.predicted = predictMutationResult(plan)
 	return cloneMutationPlan(plan), nil
+}
+
+func prepareUpdatePolicyActions(
+	source Source,
+	preparation mutationPreparation,
+) (mutationAction, []mutationAction, []policyFileRecord, string, error) {
+	if !preparation.coordinates.projectPolicySet {
+		action, err := newMutationAction(
+			mutationReplace, "policy", source.policy, preparation.coordinates.policyPath, 0o600,
+			preparation.coordinates.environment.ConfigHome, "open-agent-workflow/ENGINEERING.md", preparation.policy,
+		)
+		return action, nil, nil, checksumBytes(source.policy), err
+	}
+	if len(source.policySet) == 0 {
+		return mutationAction{}, nil, nil, "", compatibilityError("project Policy Set source is missing")
+	}
+
+	currentByPath := make(map[string]policyFileRecord, len(preparation.state.policyFiles))
+	for _, record := range preparation.state.policyFiles {
+		currentByPath[filepath.Clean(record.path)] = record
+	}
+	var primary mutationAction
+	extras := make([]mutationAction, 0, len(source.policySet)-1)
+	records := make([]policyFileRecord, 0, len(source.policySet))
+	wanted := make(map[string]struct{}, len(source.policySet))
+	for _, file := range source.policySet {
+		suffix := filepath.ToSlash(filepath.Join(".oaw", "policy", filepath.FromSlash(file.Path)))
+		destination, err := validatedDestinationPath(preparation.resolved.projectRoot, suffix)
+		if err != nil {
+			return mutationAction{}, nil, nil, "", err
+		}
+		current, err := inspectInstallPath(destination)
+		if err != nil {
+			return mutationAction{}, nil, nil, "", err
+		}
+		label := "policy/" + file.Path
+		if file.Path == "POLICY.md" {
+			label = "policy"
+		}
+		action, err := newMutationAction(
+			mutationReplace, label, file.Content, destination, 0o644,
+			preparation.resolved.projectRoot, suffix, current,
+		)
+		if err != nil {
+			return mutationAction{}, nil, nil, "", err
+		}
+		wanted[filepath.Clean(destination)] = struct{}{}
+		records = append(records, policyFileRecord{path: destination, checksum: checksumBytes(file.Content)})
+		if file.Path == "POLICY.md" {
+			primary = action
+		} else {
+			extras = append(extras, action)
+		}
+	}
+	for path := range currentByPath {
+		if _, keep := wanted[path]; keep {
+			continue
+		}
+		relative, err := stateActionRelativeSuffix(preparation.resolved.projectRoot, path)
+		if err != nil {
+			return mutationAction{}, nil, nil, "", err
+		}
+		current, err := inspectInstallPath(path)
+		if err != nil {
+			return mutationAction{}, nil, nil, "", err
+		}
+		action, err := newMutationAction(
+			mutationRemove, "policy/obsolete", nil, path, 0,
+			preparation.resolved.projectRoot, relative, current,
+		)
+		if err != nil {
+			return mutationAction{}, nil, nil, "", err
+		}
+		extras = append(extras, action)
+	}
+	if primary.destination == "" {
+		return mutationAction{}, nil, nil, "", compatibilityError("project Policy Set is missing POLICY.md")
+	}
+	return primary, extras, records, checksumBytes(primary.data), nil
 }
 
 func prepareUpdateTargets(preparation mutationPreparation, force forcePreparation) ([]mutationAction, []targetRecord, error) {
@@ -161,14 +241,14 @@ func renderUpdatedTarget(
 ) ([]byte, string, error) {
 	switch candidate.Ownership {
 	case "managed-block":
-		block, err := renderManagedBlock(targetID(record.id), scope(preparation.resolved.scope), preparation.coordinates.policyPath)
+		block, err := renderManagedBlock(targetID(record.id), scope(preparation.resolved.scope), policyRouterReference(preparation.coordinates))
 		if err != nil {
 			return nil, "", err
 		}
 		rendered, err := renderManagedFile(current.data, block)
 		return rendered, checksumBytes(block), err
 	case "owned-file":
-		rendered, err := renderTarget(targetID(record.id), scope(preparation.resolved.scope), preparation.coordinates.policyPath)
+		rendered, err := renderTarget(targetID(record.id), scope(preparation.resolved.scope), policyRouterReference(preparation.coordinates))
 		return rendered, checksumBytes(rendered), err
 	default:
 		return nil, "", compatibilityError("unknown target ownership mode: " + candidate.Ownership)
@@ -181,13 +261,14 @@ func prepareUpdateStateActions(
 	preparation mutationPreparation,
 	force forcePreparation,
 	policyChecksum string,
+	policyFiles []policyFileRecord,
 	records []targetRecord,
 	references []policyStateReference,
 ) ([]mutationAction, error) {
 	current := cloneInstallationStateValue(preparation.state)
 	current.targets = cloneTargetRecords(records)
 	action, err := newUpdatedStateMutationAction(
-		"state", current, source.version, policyChecksum, preparation.backupPath,
+		"state", current, source.version, policyChecksum, policyFiles, preparation.backupPath,
 		force.backupRequired, preparation.coordinates.stateFile, environment.StateHome,
 	)
 	if err != nil {
@@ -197,7 +278,7 @@ func prepareUpdateStateActions(
 	for _, reference := range references {
 		action, err := newUpdatedStateMutationAction(
 			fmt.Sprintf("state-reference-%d", reference.index), reference.state,
-			source.version, policyChecksum, preparation.backupPath,
+			source.version, policyChecksum, policyFiles, preparation.backupPath,
 			force.backupRequired, reference.path, environment.StateHome,
 		)
 		if err != nil {
@@ -216,6 +297,7 @@ func newUpdatedStateMutationAction(
 	state installationState,
 	version string,
 	policyChecksum string,
+	policyFiles []policyFileRecord,
 	backupPath string,
 	backupRequired bool,
 	destination string,
@@ -224,6 +306,7 @@ func newUpdatedStateMutationAction(
 	updated := cloneInstallationStateValue(state)
 	updated.version = version
 	updated.policyChecksum = policyChecksum
+	updated.policyFiles = append([]policyFileRecord(nil), policyFiles...)
 	if backupRequired {
 		updated.backupPath = backupPath
 	}
