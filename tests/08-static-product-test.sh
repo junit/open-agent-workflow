@@ -9,6 +9,16 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 trap cleanup_sandbox EXIT HUP INT TERM
 setup_sandbox
 
+for retired_package in policyflow policyroute policyengagement policyrun; do
+  [ ! -e "$OAW_REPOSITORY/internal/$retired_package" ] ||
+    fail "retired Policy state package remains: internal/$retired_package"
+done
+
+PROGRESS_NOTE="$OAW_PROJECT/.scratch/progress.md"
+mkdir -p "$(dirname -- "$PROGRESS_NOTE")"
+printf '%s\n' 'profile: MATT-SP-HYBRID' 'next: model-owned work' >"$PROGRESS_NOTE"
+PROGRESS_NOTE_BEFORE=$(cksum <"$PROGRESS_NOTE")
+
 run_oaw --help
 assert_status 0 "static CLI help"
 for command in \
@@ -57,5 +67,7 @@ done
   fail "static CLI created Workflow State"
 [ ! -e "$OAW_STATE/open-agent-workflow/policy-engagements" ] ||
   fail "static CLI created Policy Engagement state"
+[ "$(cksum <"$PROGRESS_NOTE")" = "$PROGRESS_NOTE_BEFORE" ] ||
+  fail "static CLI changed the model-owned Progress Note"
 
-pass "default oaw exposes only installation management and advisory Profile inspection"
+pass "default oaw exposes only static inspection and leaves model-owned progress untouched"

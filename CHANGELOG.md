@@ -27,6 +27,10 @@ All notable changes to Open Agent Workflow will be documented in this file.
 
 #### Removed
 
+- The cooperative Policy route admission, lifecycle reducer, Engagement store,
+  policy-run persistence, local lifecycle locks, replay state, and typed
+  transition machinery. Model-owned progress and optional Markdown Progress
+  Notes now remain outside the static CLI.
 - Provider/catalog inspection, Policy lifecycle transitions, Workflow exchange,
   Bridge routing, status, and machine-run commands from the default `oaw`
   executable. Removed commands are absent rather than compatibility-wrapped.
