@@ -1,1 +1,0 @@
-{"schema_version":"oaw.profile-alias-set/v1","aliases":[{"alias":"SP-FULL","recipe_id":"oaw/delivery"},{"alias":"MATT-FULL","recipe_id":"oaw/domain-engineering"},{"alias":"ECC-FULL","recipe_id":"oaw/ecc-engineering"},{"alias":"MATT-SP-HYBRID","recipe_id":"oaw/reliable-feature"}]}

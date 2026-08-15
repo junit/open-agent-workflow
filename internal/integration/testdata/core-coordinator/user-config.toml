@@ -1,9 +1,0 @@
-schema_version = "oaw.user-config/v3"
-
-[[provider_descriptors]]
-id = "acme/engineering"
-path = "acme-provider.json"
-
-[[profile_recipes]]
-id = "acme/current-delivery"
-path = "acme-profile.json"

@@ -12,7 +12,6 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
@@ -285,13 +284,12 @@ func testCatalogWithBindings(t *testing.T, providerID, candidatePath string, bin
 		bindings[index].Surface = "codex-skills"
 	}
 	provider := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: providerID, DisplayName: providerID,
+		SchemaVersion: catalog.ProviderDescriptorSchemaV5, DescriptorVersion: "5.0.0", ID: providerID, DisplayName: providerID,
 		Distributions: []catalog.DistributionRecord{{ID: "distribution", SourceURI: "https://example.test/" + strings.TrimPrefix(providerID, "oaw/"), Revision: revision, TreeDigest: distributionDigest}},
 		Discovery:     []catalog.DiscoveryProbe{{ID: "probe", Hosts: []string{"codex"}, Surface: bindings[0].Surface, DistributionID: "distribution", Kind: "path-exists", Root: "user-home", CandidatePath: candidatePath, EvidencePath: "probe.txt"}},
 		Bindings:      bindings,
-		Capabilities:  []catalog.CapabilityRecord{{ID: "capability", InputSchema: "artifact", OutcomeSchema: "artifact", RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: bindingIDs(bindings)}},
 	}
-	value, err := catalog.New([]catalog.ProviderDescriptorRecord{provider}, nil, nil)
+	value, err := catalog.New([]catalog.ProviderDescriptorRecord{provider})
 	if err != nil {
 		t.Fatalf("catalog.New() error = %v", err)
 	}
@@ -306,13 +304,13 @@ func testCatalogWithProviders(t *testing.T, inputs []providerInput) catalog.Cata
 		binding.Surface = input.Surface
 		binding.Host = "codex"
 		providers = append(providers, catalog.ProviderDescriptorRecord{
-			SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: input.ID, DisplayName: input.ID,
+			SchemaVersion: catalog.ProviderDescriptorSchemaV5, DescriptorVersion: "5.0.0", ID: input.ID, DisplayName: input.ID,
 			Distributions: []catalog.DistributionRecord{{ID: "distribution", SourceURI: "https://example.test/provider", Revision: distributionRevision, TreeDigest: "sha256:" + strings.Repeat("e", 64)}},
 			Discovery:     []catalog.DiscoveryProbe{{ID: "probe", Hosts: []string{"codex"}, Surface: input.Surface, DistributionID: "distribution", Kind: "path-exists", Root: "user-home", CandidatePath: input.CandidatePath, EvidencePath: "probe.txt"}},
-			Bindings:      []catalog.BindingRecord{binding}, Capabilities: []catalog.CapabilityRecord{{ID: "capability", InputSchema: "artifact", OutcomeSchema: "artifact", RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"binding"}}},
+			Bindings:      []catalog.BindingRecord{binding},
 		})
 	}
-	value, err := catalog.New(providers, nil, nil)
+	value, err := catalog.New(providers)
 	if err != nil {
 		t.Fatalf("catalog.New() error = %v", err)
 	}
@@ -323,16 +321,7 @@ func bindingRecord(id, installRoot, digest string) catalog.BindingRecord {
 	return catalog.BindingRecord{
 		ID: id, DistributionID: "distribution", ContentRoot: "skills/engineering/to-spec", InstallRoot: installRoot, TreeDigest: digest,
 		Host: "codex", Surface: "codex-skills", Kind: catalog.BindingSkill, Reference: "to-spec", Invocation: catalog.InvocationModel,
-		Responsibilities: []catalog.ResponsibilityClaim{{Namespace: catalog.OwnershipStage, Name: "implementation", SlotID: catalog.SlotImplementation, OutcomeOwner: true}}, InputArtifact: "artifact", OutputArtifact: "artifact", MaximumEffects: []string{"read-project"}, Resources: []string{"project"}, SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{}, StageSpan: []catalog.SlotID{catalog.SlotImplementation}, InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
 	}
-}
-
-func bindingIDs(values []catalog.BindingRecord) []string {
-	result := make([]string, len(values))
-	for index := range values {
-		result[index] = values[index].ID
-	}
-	return result
 }
 
 func writeFile(t *testing.T, root, relative, content string) string {

@@ -33,7 +33,7 @@ func TestAuditCLIRejectsExportedRootsMode(t *testing.T) {
 
 func TestAuditCLIRoundTripsPinnedGitRoots(t *testing.T) {
 	matt, superpowers, openaiPlugins, ecc := pinnedGitProviderRoots(t)
-	manifest := filepath.Join(t.TempDir(), "provider-sources-v4.json")
+	manifest := filepath.Join(t.TempDir(), "provider-sources-v5.json")
 	providerArgs := []string{"--matt-root", matt, "--superpowers-root", superpowers, "--openai-plugins-root", openaiPlugins, "--ecc-root", ecc}
 	if err := run(append([]string{"--write", "--output", manifest}, providerArgs...)); err != nil {
 		t.Fatal(err)
@@ -58,11 +58,11 @@ func TestAuditCLIRoundTripsPinnedGitRoots(t *testing.T) {
 
 func TestAuditCLIProcessRoundTripsPinnedGitRoots(t *testing.T) {
 	matt, superpowers, openaiPlugins, ecc := pinnedGitProviderRoots(t)
-	manifest := filepath.Join(t.TempDir(), "provider-sources-v4.json")
+	manifest := filepath.Join(t.TempDir(), "provider-sources-v5.json")
 	providerArgs := []string{"--matt-root", matt, "--superpowers-root", superpowers, "--openai-plugins-root", openaiPlugins, "--ecc-root", ecc}
 	runAuditCLIProcess(t, append([]string{"--write", "--output", manifest}, providerArgs...)...)
 	output := runAuditCLIProcess(t, "--validate", "--manifest", manifest)
-	if !strings.Contains(output, provideraudit.ProviderSourceAuditSchemaV1) {
+	if !strings.Contains(output, provideraudit.ProviderSourceAuditSchemaV2) {
 		t.Fatalf("validate output = %q", output)
 	}
 	runAuditCLIProcess(t, append([]string{"--check", "--manifest", manifest}, providerArgs...)...)

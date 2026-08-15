@@ -428,7 +428,6 @@ case "${1:-all}" in
   all)
     run_wrapper_contract
     run_release_contract
-    run_host_native_contract
     run_docker_contract
     ;;
   wrapper) run_wrapper_contract ;;

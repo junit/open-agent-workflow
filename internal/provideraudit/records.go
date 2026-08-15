@@ -15,8 +15,7 @@ import (
 )
 
 const (
-	ProviderSourceAuditSchemaV1 = "oaw.provider-source-audit/v1"
-	CanonicalMatrixDigest       = "49ec1819ab22364d763d0875d9af299ee332de3d6d39a7178a715c2b13272ccf"
+	ProviderSourceAuditSchemaV2 = "oaw.provider-source-audit/v2"
 )
 
 type BindingSource struct {
@@ -57,10 +56,9 @@ type ProviderSource struct {
 }
 
 type Manifest struct {
-	SchemaVersion         string           `json:"schema_version"`
-	CanonicalMatrixDigest string           `json:"canonical_matrix_digest"`
-	Providers             []ProviderSource `json:"providers"`
-	Digest                string           `json:"digest"`
+	SchemaVersion string           `json:"schema_version"`
+	Providers     []ProviderSource `json:"providers"`
+	Digest        string           `json:"digest"`
 }
 
 type bindingSpec struct {
@@ -97,7 +95,7 @@ var (
 var lockedProviderSpecs = []providerSpec{
 	{
 		ID: "oaw/matt", SourceURI: "https://github.com/mattpocock/skills", Revision: "84fdeffd12f2ee307994d1eb6feb48173b6e0502", DistributionID: "matt-skills", DistributionRoot: ".",
-		Bindings: hostSkillBindings([]skillRoot{
+		Bindings: mattSkillBindings([]skillRoot{
 			{"grill-with-docs", "skills/engineering/grill-with-docs", "grill-with-docs"},
 			{"grilling", "skills/productivity/grilling", "grilling"},
 			{"domain-modeling", "skills/engineering/domain-modeling", "domain-modeling"},
@@ -107,7 +105,7 @@ var lockedProviderSpecs = []providerSpec{
 			{"tdd", "skills/engineering/tdd", "tdd"},
 			{"diagnosing-bugs", "skills/engineering/diagnosing-bugs", "diagnosing-bugs"},
 			{"code-review", "skills/engineering/code-review", "code-review"},
-		}, false),
+		}),
 		EvidenceRoots: []string{".agents/invocation.md", ".claude-plugin/plugin.json", "README.md"},
 	},
 	{
@@ -133,8 +131,21 @@ type skillRoot struct {
 	InstallRoot string
 }
 
-func hostSkillBindings(values []skillRoot, superpowersNamespace bool) []bindingSpec {
-	return qualifiedSkillBindings(values, []string{"codex", "claude"}, superpowersNamespace)
+func mattSkillBindings(values []skillRoot) []bindingSpec {
+	result := make([]bindingSpec, 0, len(values)*2)
+	for _, host := range []string{"codex", "claude"} {
+		for _, value := range values {
+			installRoot := value.ContentRoot
+			if host == "codex" {
+				installRoot = "skills/" + value.InstallRoot
+			}
+			result = append(result, bindingSpec{
+				ID: host + "-" + value.Name, ContentRoot: value.ContentRoot,
+				InstallRoot: installRoot, Kind: "skill", References: []string{value.Name},
+			})
+		}
+	}
+	return result
 }
 
 func qualifiedSkillBindings(values []skillRoot, prefixes []string, superpowersNamespace bool) []bindingSpec {
@@ -168,7 +179,7 @@ func superpowersSkillRoots() []skillRoot {
 }
 
 func eccBindings() []bindingSpec {
-	result := hostSkillBindings([]skillRoot{
+	skills := []skillRoot{
 		{"intent-driven-development", "skills/intent-driven-development", "skills/intent-driven-development"},
 		{"product-capability", "skills/product-capability", "skills/product-capability"},
 		{"contract-first", "skills/contract-first", "skills/contract-first"},
@@ -178,7 +189,16 @@ func eccBindings() []bindingSpec {
 		{"verification-loop", "skills/verification-loop", "skills/verification-loop"},
 		{"security-review", "skills/security-review", "skills/security-review"},
 		{"e2e-testing", "skills/e2e-testing", "skills/e2e-testing"},
-	}, false)
+	}
+	result := make([]bindingSpec, 0, len(skills)*2+12)
+	for _, prefix := range []string{"codex", "claude"} {
+		for _, skill := range skills {
+			result = append(result, bindingSpec{
+				ID: prefix + "-" + skill.Name, ContentRoot: skill.ContentRoot, InstallRoot: skill.InstallRoot,
+				Kind: "skill", References: []string{"ecc:" + skill.Name},
+			})
+		}
+	}
 	for _, name := range []string{"architect", "planner", "tdd-guide", "build-error-resolver", "code-reviewer", "security-reviewer", "e2e-runner"} {
 		root := "agents/" + name + ".md"
 		result = append(result, bindingSpec{ID: "claude-" + name, ContentRoot: root, InstallRoot: root, Kind: "agent", References: []string{name}})
@@ -215,7 +235,7 @@ func Decode(raw []byte) (Manifest, error) {
 }
 
 func Validate(value Manifest) error {
-	if value.SchemaVersion != ProviderSourceAuditSchemaV1 || value.CanonicalMatrixDigest != CanonicalMatrixDigest || len(value.Providers) != len(lockedProviderSpecs) || !recordDigestPattern.MatchString(value.Digest) || value.ContentDigest() != value.Digest {
+	if value.SchemaVersion != ProviderSourceAuditSchemaV2 || len(value.Providers) != len(lockedProviderSpecs) || !recordDigestPattern.MatchString(value.Digest) || value.ContentDigest() != value.Digest {
 		return invalidAudit("manifest header or digest mismatch", nil)
 	}
 	for index, spec := range lockedProviderSpecs {

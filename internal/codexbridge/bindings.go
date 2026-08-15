@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -13,22 +14,46 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
-const maximumSkillEvidenceBytes int64 = 4 << 20
+const (
+	bindingInventorySchemaV1   = "oaw.codex-binding-inventory/v1"
+	observationSourceNativeAPI = "native-api"
+)
 
-func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metadata appserver.MetadataObservation, cwd string) (host.BindingInventory, []Diagnostic, error) {
+type BindingObservation struct {
+	HostID            string                        `json:"host_id"`
+	ProviderID        string                        `json:"provider_id"`
+	InstallationKey   string                        `json:"installation_key"`
+	DistributionID    string                        `json:"distribution_id"`
+	BindingID         string                        `json:"binding_id"`
+	Surface           string                        `json:"surface"`
+	Kind              catalog.BindingKind           `json:"kind"`
+	Reference         string                        `json:"reference"`
+	Invocation        catalog.InvocationDisposition `json:"invocation"`
+	BindingTreeDigest string                        `json:"binding_tree_digest"`
+	Source            string                        `json:"source"`
+	EvidenceReference string                        `json:"evidence_reference"`
+	Digest            string                        `json:"digest"`
+}
+
+type BindingInventory struct {
+	SchemaVersion string               `json:"schema_version"`
+	HostID        string               `json:"host_id"`
+	Observations  []BindingObservation `json:"observations"`
+	Digest        string               `json:"digest"`
+}
+
+func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metadata appserver.MetadataObservation, cwd string) (BindingInventory, []Diagnostic, error) {
 	diagnostics := make([]Diagnostic, 0)
 	add := func(code, detail string, providerIDs ...string) {
 		diagnostic := NewDiagnostic(code, "binding", detail)
 		diagnostic.AffectedProviders = sortedUniqueDiagnosticOwners(providerIDs)
 		diagnostics = append(diagnostics, diagnostic)
 	}
-	empty := func() (host.BindingInventory, []Diagnostic, error) {
-		inventory, err := host.BuildBindingInventoryV3("codex", nil)
+	empty := func() (BindingInventory, []Diagnostic, error) {
+		inventory, err := buildBindingInventory("codex", nil)
 		return inventory, aggregateDiagnostics(diagnostics), err
 	}
 	if report.HostID() != "codex" || !validCanonicalPath(cwd) || metadata.Skills.CWD != cwd {
@@ -36,7 +61,7 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 		return empty()
 	}
 
-	observations := make([]host.BindingObservation, 0)
+	observations := make([]BindingObservation, 0)
 	for _, entry := range metadata.Skills.Skills {
 		if !entry.Enabled {
 			continue
@@ -68,11 +93,6 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 
 		matchedRoot := false
 		for _, binding := range bindings {
-			topologies := intersectTopologies(binding.SupportedTopologies, []execution.Topology{execution.TopologyCurrent})
-			if len(topologies) == 0 {
-				add("HOST_BINDING_TOPOLOGY_UNAVAILABLE", "declared Skill binding does not support CURRENT", candidate.ProviderID)
-				continue
-			}
 			rootEvidence, found := bindingRoot(candidate.BindingRoots, binding.ID)
 			if !found {
 				add("PROVIDER_BINDING_CONTENT_MISMATCH", "discovery did not attest the declared Binding tree", candidate.ProviderID)
@@ -107,21 +127,21 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 				BindingTreeDigest string                        `json:"binding_tree_digest"`
 				Scope             string                        `json:"scope"`
 				Enabled           bool                          `json:"enabled"`
-				Source            host.ObservationSource        `json:"source"`
+				Source            string                        `json:"source"`
 			}{
 				HostID: candidate.HostID, ProviderID: candidate.ProviderID, InstallationKey: candidate.InstallationKey,
 				DistributionID: binding.DistributionID, BindingID: binding.ID, Surface: binding.Surface,
 				Kind: binding.Kind, Reference: binding.Reference, Invocation: binding.Invocation,
-				BindingTreeDigest: tree.RootDigest, Scope: entry.Scope, Enabled: true, Source: host.SourceNativeAPI,
+				BindingTreeDigest: tree.RootDigest, Scope: entry.Scope, Enabled: true, Source: observationSourceNativeAPI,
 			})
 			if err != nil {
-				return host.BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill evidence cannot be canonicalized", err)
+				return BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill evidence cannot be canonicalized", err)
 			}
-			observations = append(observations, host.BindingObservation{
+			observations = append(observations, BindingObservation{
 				HostID: candidate.HostID, ProviderID: candidate.ProviderID, InstallationKey: candidate.InstallationKey,
 				DistributionID: binding.DistributionID, BindingID: binding.ID, Surface: binding.Surface,
 				Kind: binding.Kind, Reference: binding.Reference, Invocation: binding.Invocation,
-				BindingTreeDigest: tree.RootDigest, Topologies: topologies, Source: host.SourceNativeAPI,
+				BindingTreeDigest: tree.RootDigest, Source: observationSourceNativeAPI,
 				EvidenceReference: "evidence://codex/skills-list/" + evidenceDigest,
 			})
 		}
@@ -130,11 +150,75 @@ func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metad
 			continue
 		}
 	}
-	inventory, err := host.BuildBindingInventoryV3("codex", observations)
+	inventory, err := buildBindingInventory("codex", observations)
 	if err != nil {
-		return host.BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill inventory cannot be normalized", err)
+		return BindingInventory{}, diagnostics, NewError("HOST_OBSERVATION_FAILED", "Skill inventory cannot be normalized", err)
 	}
 	return inventory, aggregateDiagnostics(diagnostics), nil
+}
+
+func buildBindingInventory(hostID string, observations []BindingObservation) (BindingInventory, error) {
+	if _, err := catalog.ParseLocalID(hostID); err != nil {
+		return BindingInventory{}, err
+	}
+	values := append([]BindingObservation{}, observations...)
+	for index := range values {
+		values[index].Digest = ""
+		if err := validateBindingObservation(values[index], hostID); err != nil {
+			return BindingInventory{}, err
+		}
+		digest, _, err := canonicaljson.Digest(values[index])
+		if err != nil {
+			return BindingInventory{}, err
+		}
+		values[index].Digest = digest
+	}
+	sort.Slice(values, func(left, right int) bool {
+		return bindingObservationIdentity(values[left]) < bindingObservationIdentity(values[right])
+	})
+	for index := 1; index < len(values); index++ {
+		if bindingObservationIdentity(values[index-1]) == bindingObservationIdentity(values[index]) {
+			return BindingInventory{}, errors.New("duplicate Codex Binding observation")
+		}
+	}
+	result := BindingInventory{SchemaVersion: bindingInventorySchemaV1, HostID: hostID, Observations: values}
+	digest, _, err := canonicaljson.Digest(result)
+	if err != nil {
+		return BindingInventory{}, err
+	}
+	result.Digest = digest
+	return result, nil
+}
+
+func validateBindingObservation(value BindingObservation, hostID string) error {
+	if value.HostID != hostID || value.Source != observationSourceNativeAPI ||
+		!validObservationText(value.InstallationKey, 512) || !validObservationText(value.Surface, 128) ||
+		!validObservationText(value.Reference, 2048) || !validObservationText(value.EvidenceReference, 4096) ||
+		!strings.HasPrefix(value.EvidenceReference, "evidence://") || !strings.HasPrefix(value.BindingTreeDigest, "sha256:") {
+		return errors.New("invalid Codex Binding observation")
+	}
+	if _, err := catalog.ParseQualifiedID(value.ProviderID); err != nil {
+		return err
+	}
+	if _, err := catalog.ParseLocalID(value.DistributionID); err != nil {
+		return err
+	}
+	if _, err := catalog.ParseLocalID(value.BindingID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validObservationText(value string, maximum int) bool {
+	return value != "" && utf8.ValidString(value) && utf8.RuneCountInString(value) <= maximum &&
+		value == strings.TrimSpace(value) && strings.IndexFunc(value, unicode.IsControl) < 0
+}
+
+func bindingObservationIdentity(value BindingObservation) string {
+	return strings.Join([]string{
+		value.HostID, value.ProviderID, value.InstallationKey, value.DistributionID,
+		value.BindingID, value.Surface, string(value.Kind), value.Reference, string(value.Invocation),
+	}, "\x00")
 }
 
 func digestLiveBindingRoot(candidate discovery.Candidate, binding catalog.BindingRecord) (integrity.TreeEvidence, error) {
@@ -270,16 +354,6 @@ func skillBindings(value catalog.Catalog, candidate discovery.Candidate, skillNa
 				!slices.ContainsFunc(result, func(existing catalog.BindingRecord) bool { return existing.ID == binding.ID }) {
 				result = append(result, binding)
 			}
-		}
-	}
-	return result
-}
-
-func intersectTopologies(left, right []execution.Topology) []execution.Topology {
-	result := make([]execution.Topology, 0, len(left))
-	for _, topology := range left {
-		if slices.Contains(right, topology) && !slices.Contains(result, topology) {
-			result = append(result, topology)
 		}
 	}
 	return result

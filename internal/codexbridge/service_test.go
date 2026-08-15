@@ -3,7 +3,7 @@ package codexbridge
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,12 +12,40 @@ import (
 	"github.com/wifibaby4u/open-agent-workflow/internal/assurance"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
 	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 )
 
 type bridgeTestObserver struct {
 	metadata appserver.MetadataObservation
+}
+
+func TestNewServiceLoadsBuiltInProviderIdentityByDefault(t *testing.T) {
+	service, err := NewService(ServiceOptions{
+		Observer: &bridgeTestObserver{}, UserHome: t.TempDir(), ProfileConfigHome: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if providers := service.catalog.Providers(); len(providers) != 3 {
+		t.Fatalf("built-in Providers = %d, want 3", len(providers))
+	}
+}
+
+func TestServicePreservesAssuranceAndAppServerErrorCodes(t *testing.T) {
+	assuranceErr := assuranceBridgeError("inspect", &assurance.Error{Code: "PROFILE_NOT_ASSURABLE"})
+	if Code(assuranceErr) != "PROFILE_NOT_ASSURABLE" {
+		t.Fatalf("assurance error = %v", assuranceErr)
+	}
+	appServerErr := bridgeErrorFromAppServer(appserver.NewError("HOST_BRIDGE_UNAVAILABLE", "offline", nil))
+	if Code(appServerErr) != "HOST_BRIDGE_UNAVAILABLE" {
+		t.Fatalf("App Server error = %v", appServerErr)
+	}
+	if got := bridgeErrorFromAppServer(errors.New("transport")); Code(got) != "HOST_OBSERVATION_FAILED" {
+		t.Fatalf("generic App Server error = %v", got)
+	}
+	if bridgeErrorFromAppServer(nil) != nil {
+		t.Fatal("nil App Server error did not remain nil")
+	}
 }
 
 func (observer *bridgeTestObserver) Observe(_ context.Context, cwd string) (appserver.MetadataObservation, error) {
@@ -132,7 +160,6 @@ func newBridgeTestService(t *testing.T, exposeSkill bool) (*Service, string) {
 	root := t.TempDir()
 	projectRoot := filepath.Join(root, "project")
 	configHome := filepath.Join(root, "config")
-	configRoot := filepath.Join(configHome, "open-agent-workflow")
 	userHome := filepath.Join(root, "home")
 	profilePath := filepath.Join(projectRoot, ".oaw", "profiles", "team-delivery.md")
 	writeBridgeTestFile(t, profilePath, "---\nid: team-delivery\nname: Team Delivery\n---\n\n## Responsibilities\n\n| Responsibility | Skill or action |\n| --- | --- |\n| Implementation and TDD | `acme:delivery` |\n\n## Rules\n\nThe Markdown Profile remains normative.\n")
@@ -150,16 +177,8 @@ func newBridgeTestService(t *testing.T, exposeSkill bool) (*Service, string) {
 		t.Fatal(err)
 	}
 
-	claims := make([]catalog.ResponsibilityClaim, 0, len(catalog.CanonicalSlots()))
-	stageSpan := make([]catalog.SlotID, 0, len(catalog.CanonicalSlots()))
-	for _, slot := range catalog.CanonicalSlots() {
-		claims = append(claims, catalog.ResponsibilityClaim{
-			Namespace: catalog.OwnershipStage, Name: string(slot.ID), SlotID: slot.ID, OutcomeOwner: true,
-		})
-		stageSpan = append(stageSpan, slot.ID)
-	}
 	descriptor := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0",
+		SchemaVersion: catalog.ProviderDescriptorSchemaV5, DescriptorVersion: "5.0.0",
 		ID: "acme/suite", DisplayName: "Acme Suite",
 		Distributions: []catalog.DistributionRecord{{
 			ID: "acme", SourceURI: "https://example.test/acme/suite",
@@ -172,24 +191,13 @@ func newBridgeTestService(t *testing.T, exposeSkill bool) (*Service, string) {
 		Bindings: []catalog.BindingRecord{{
 			ID: "codex-delivery", DistributionID: "acme", ContentRoot: "skills/delivery", InstallRoot: "skills/delivery",
 			TreeDigest: bindingTree.RootDigest, Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill,
-			Reference: "acme:delivery", Invocation: catalog.InvocationModel, Responsibilities: claims,
-			InputArtifact: "oaw.workflow-artifact/v1", OutputArtifact: "oaw.workflow-artifact/v1",
-			MaximumEffects: []string{"read-project"}, Resources: []string{"project-worktree"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, StageSpan: stageSpan,
-			InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
-		}},
-		Capabilities: []catalog.CapabilityRecord{{
-			ID: "delivery", InputSchema: "oaw.capability-input/v1", OutcomeSchema: "oaw.capability-outcome/v1",
-			RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"codex-delivery"},
+			Reference: "acme:delivery", Invocation: catalog.InvocationModel,
 		}},
 	}
-	raw, err := json.Marshal(descriptor)
+	value, err := catalog.New([]catalog.ProviderDescriptorRecord{descriptor})
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeBridgeTestFile(t, filepath.Join(configRoot, "providers", "acme.json"), string(raw))
-	writeBridgeTestFile(t, filepath.Join(configRoot, "config.toml"),
-		"schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n")
 
 	metadata := appserver.MetadataObservation{
 		Skills:       appserver.SkillsEntry{Errors: []appserver.MetadataError{}, Skills: []appserver.SkillMetadata{}},
@@ -199,7 +207,7 @@ func newBridgeTestService(t *testing.T, exposeSkill bool) (*Service, string) {
 		metadata.Skills.Skills = []appserver.SkillMetadata{{Name: "acme:delivery", Enabled: true, Path: skillPath, Scope: "user"}}
 	}
 	service, err := NewService(ServiceOptions{
-		Observer: &bridgeTestObserver{metadata: metadata}, UserConfigRoot: configRoot,
+		Observer: &bridgeTestObserver{metadata: metadata}, Catalog: &value,
 		ProfileConfigHome: configHome, UserHome: userHome,
 	})
 	if err != nil {

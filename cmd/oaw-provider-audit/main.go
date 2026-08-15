@@ -374,7 +374,7 @@ func canonicalManifest(manifest provideraudit.Manifest) ([]byte, error) {
 
 func writeAtomic(target string, content []byte) error {
 	directory := filepath.Dir(target)
-	temporary, err := os.CreateTemp(directory, ".provider-sources-v4-*")
+	temporary, err := os.CreateTemp(directory, ".provider-sources-v5-*")
 	if err != nil {
 		return err
 	}

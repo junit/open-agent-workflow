@@ -50,6 +50,10 @@ scan_fixed_text() {
 scan_host_process_boundary() {
   matches=
 
+  if [ ! -e "$REPOSITORY/internal/host" ]; then
+    return
+  fi
+
   set +e
   matches=$(grep -RInF --include='*.go' --exclude='*_test.go' -- \
     '"os/exec"' "$REPOSITORY/internal/host")

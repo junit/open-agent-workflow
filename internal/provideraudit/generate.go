@@ -63,7 +63,7 @@ func Build(checkouts []Checkout) (Manifest, error) {
 		}
 		providers[index] = ProviderSource{ProviderID: spec.ID, SourceURI: spec.SourceURI, Revision: spec.Revision, DistributionID: spec.DistributionID, DistributionRoot: spec.DistributionRoot, DistributionTreeDigest: distributionDigest, Bindings: bindings, EvidenceRoots: append([]string{}, spec.EvidenceRoots...)}
 	}
-	manifest := Manifest{SchemaVersion: ProviderSourceAuditSchemaV1, CanonicalMatrixDigest: CanonicalMatrixDigest, Providers: providers}
+	manifest := Manifest{SchemaVersion: ProviderSourceAuditSchemaV2, Providers: providers}
 	manifest.Digest = manifest.ContentDigest()
 	if err := Validate(manifest); err != nil {
 		return Manifest{}, err

@@ -8,7 +8,6 @@ import (
 var (
 	qualifiedIDPattern    = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*/[a-z0-9][a-z0-9._-]*$`)
 	localIDPattern        = regexp.MustCompile(`^[a-z0-9][a-z0-9.-]*$`)
-	aliasPattern          = regexp.MustCompile(`^[A-Z0-9]+(?:-[A-Z0-9]+)*$`)
 	contentVersionPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$`)
 )
 
@@ -40,21 +39,6 @@ func ParseLocalID(value string) (LocalID, error) {
 
 func (id LocalID) String() string {
 	return id.value
-}
-
-type Alias struct {
-	value string
-}
-
-func ParseAlias(value string) (Alias, error) {
-	if !aliasPattern.MatchString(value) {
-		return Alias{}, fmt.Errorf("INVALID_PROFILE_ALIAS: %q", value)
-	}
-	return Alias{value: value}, nil
-}
-
-func (alias Alias) String() string {
-	return alias.value
 }
 
 type ContentVersion struct {

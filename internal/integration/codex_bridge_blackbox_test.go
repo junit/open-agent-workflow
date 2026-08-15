@@ -6,14 +6,16 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/wifibaby4u/open-agent-workflow/internal/assurance"
+	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/hook"
-	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
+	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
 	"github.com/wifibaby4u/open-agent-workflow/internal/profileinspect"
 )
 
@@ -31,10 +33,9 @@ func (observer assuranceBridgeObserver) Observe(_ context.Context, cwd string) (
 }
 
 func TestStandaloneCodexBridgeIssuesProfileBoundOverlayThroughHookAndMCP(t *testing.T) {
-	fixture := hosttest.BuildProviderFixture(t)
+	providerCatalog, userHome, skillPath := assuranceBridgeCatalog(t)
 	projectRoot := t.TempDir()
 	configHome := t.TempDir()
-	configRoot := filepath.Join(configHome, "open-agent-workflow")
 	profilePath := filepath.Join(projectRoot, ".oaw", "profiles", "team-review.md")
 	writeAssuranceBridgeFixture(t, profilePath,
 		"---\nid: team-review\nname: Team Review\n---\n\n"+
@@ -47,16 +48,6 @@ func TestStandaloneCodexBridgeIssuesProfileBoundOverlayThroughHookAndMCP(t *test
 		t.Fatal(err)
 	}
 
-	descriptor := fixture.Catalog.Providers()[0]
-	descriptorRaw, err := json.Marshal(descriptor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeAssuranceBridgeFixture(t, filepath.Join(configRoot, "providers", "acme.json"), string(descriptorRaw))
-	writeAssuranceBridgeFixture(t, filepath.Join(configRoot, "config.toml"),
-		"schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n")
-
-	skillPath := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills", "review", "SKILL.md")
 	service, err := codexbridge.NewService(codexbridge.ServiceOptions{
 		Observer: assuranceBridgeObserver{metadata: appserver.MetadataObservation{
 			Skills: appserver.SkillsEntry{
@@ -67,7 +58,7 @@ func TestStandaloneCodexBridgeIssuesProfileBoundOverlayThroughHookAndMCP(t *test
 			},
 			CodexVersion: "codex-cli/test",
 		}},
-		UserConfigRoot: configRoot, ProfileConfigHome: configHome, UserHome: fixture.Home,
+		Catalog: &providerCatalog, ProfileConfigHome: configHome, UserHome: userHome,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +83,7 @@ func TestStandaloneCodexBridgeIssuesProfileBoundOverlayThroughHookAndMCP(t *test
 	}
 
 	profiles, err := profileinspect.Discover(profileinspect.Environment{
-		WorkingDir: projectRoot, Home: fixture.Home, ConfigHome: configHome,
+		WorkingDir: projectRoot, Home: userHome, ConfigHome: configHome,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -164,4 +155,44 @@ func writeAssuranceBridgeFixture(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assuranceBridgeCatalog(t *testing.T) (catalog.Catalog, string, string) {
+	t.Helper()
+	userHome := t.TempDir()
+	providerRoot := filepath.Join(userHome, ".codex", "plugins", "acme")
+	skillRoot := filepath.Join(providerRoot, "skills", "review")
+	skillPath := filepath.Join(skillRoot, "SKILL.md")
+	writeAssuranceBridgeFixture(t, skillPath, "---\nname: acme:review\n---\n")
+	writeAssuranceBridgeFixture(t, filepath.Join(providerRoot, "marker.txt"), "acme\n")
+	bindingTree, err := integrity.DigestTree(skillRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	distributionTree, err := integrity.DigestTree(providerRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	descriptor := catalog.ProviderDescriptorRecord{
+		SchemaVersion: catalog.ProviderDescriptorSchemaV5, DescriptorVersion: "5.0.0",
+		ID: "acme/suite", DisplayName: "Acme Suite",
+		Distributions: []catalog.DistributionRecord{{
+			ID: "acme", SourceURI: "https://example.test/acme/suite",
+			Revision: strings.Repeat("a", 40), TreeDigest: distributionTree.RootDigest,
+		}},
+		Discovery: []catalog.DiscoveryProbe{{
+			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", DistributionID: "acme",
+			Kind: "path-exists", Root: "user-home", CandidatePath: ".codex/plugins/acme", EvidencePath: "marker.txt",
+		}},
+		Bindings: []catalog.BindingRecord{{
+			ID: "codex-review", DistributionID: "acme", ContentRoot: "skills/review", InstallRoot: "skills/review",
+			TreeDigest: bindingTree.RootDigest, Host: "codex", Surface: "codex-plugin",
+			Kind: catalog.BindingSkill, Reference: "acme:review", Invocation: catalog.InvocationModel,
+		}},
+	}
+	value, err := catalog.New([]catalog.ProviderDescriptorRecord{descriptor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return value, userHome, skillPath
 }

@@ -41,7 +41,10 @@ func TestStandaloneBridgeDependsOnAssurance(t *testing.T) {
 	for _, required := range []string{
 		modulePath + "internal/assurance",
 		modulePath + "internal/bridgecli",
+		modulePath + "internal/builtin",
+		modulePath + "internal/catalog",
 		modulePath + "internal/codexbridge",
+		modulePath + "internal/discovery",
 		modulePath + "internal/profileinspect",
 	} {
 		if !dependencies[required] {
@@ -54,7 +57,6 @@ func TestBridgeImportsNoMachineWorkflowAuthority(t *testing.T) {
 	root := bridgeRepositoryRoot(t)
 	forbidden := []string{
 		"internal/admission",
-		"internal/builtin",
 		"internal/classification",
 		"internal/coordinator",
 		"internal/core",

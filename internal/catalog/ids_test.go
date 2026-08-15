@@ -77,44 +77,6 @@ func TestParseLocalID(t *testing.T) {
 	}
 }
 
-func TestParseAlias(t *testing.T) {
-	valid := []string{
-		"SP-FULL",
-		"MATT-FULL",
-		"ECC-FULL",
-		"MATT-SP-HYBRID",
-	}
-	for _, input := range valid {
-		t.Run("valid_"+input, func(t *testing.T) {
-			got, err := ParseAlias(input)
-			if err != nil {
-				t.Fatalf("ParseAlias(%q) returned error: %v", input, err)
-			}
-			if got.String() != input {
-				t.Errorf("ParseAlias(%q).String() = %q, want %q", input, got.String(), input)
-			}
-		})
-	}
-
-	invalid := []string{
-		"",
-		"SP FULL",
-		" SP-FULL",
-		"SP-FULL ",
-		"SP--FULL",
-		"-SP-FULL",
-		"SP-FULL-",
-		"sp-full",
-		"SP_FULL",
-	}
-	for _, input := range invalid {
-		t.Run("invalid_"+input, func(t *testing.T) {
-			_, err := ParseAlias(input)
-			assertParseErrorCode(t, err, "INVALID_PROFILE_ALIAS")
-		})
-	}
-}
-
 func TestParseContentVersion(t *testing.T) {
 	valid := []string{"1.0.0"}
 	for _, input := range valid {

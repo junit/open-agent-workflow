@@ -24,6 +24,15 @@ All notable changes to Open Agent Workflow will be documented in this file.
 - Bridge observation is read-only and limited to Codex `skills/list`; a
   missing, revoked, failed, or incomplete Bridge cannot veto the no-Bridge
   rule-driven Policy path.
+- Optional Assurance now reads Binding occurrences from the selected Markdown
+  Profile and matches them against a minimal Provider Descriptor v5 identity
+  catalog. Provider discovery and Codex observation carry no Profile,
+  lifecycle, classification, Capability, topology, or progress semantics.
+- Provider source audits use `oaw.provider-source-audit/v2`; the audit binds
+  exact Provider distributions and Bindings without a Profile matrix digest.
+- Codex Binding identity now matches the Profile and Host surfaces exactly:
+  ECC Skills use `ecc:<skill>` references and Matt Skills resolve beneath
+  `.agents/skills/<skill>`.
 
 #### Removed
 
@@ -37,6 +46,10 @@ All notable changes to Open Agent Workflow will be documented in this file.
 - The legacy Bridge Core/Coordinator proxy operations, evidence handles,
   lifecycle Bundles, Receipts, Leases, delegation observations, and default
   `oaw/codex-host` host-native integration.
+- Fixed Go Profile semantics, Profile Recipes and aliases, request
+  classification, USER-DEFINED machine configuration, Capability compilation,
+  execution graphs, Core, Coordinator, Registry, Host workflow records, and
+  their pre-release schemas and compatibility surfaces.
 
 ## [0.1.0] - 2026-08-14
 

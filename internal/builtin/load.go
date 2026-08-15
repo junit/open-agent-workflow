@@ -3,25 +3,16 @@ package builtin
 import (
 	"fmt"
 	"io/fs"
-	"slices"
 
 	"github.com/wifibaby4u/open-agent-workflow/internal/assets"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/provideraudit"
-	"github.com/wifibaby4u/open-agent-workflow/internal/schema"
 )
 
 var providerPaths = []string{
 	"providers/oaw-ecc.json",
 	"providers/oaw-matt.json",
 	"providers/oaw-superpowers.json",
-}
-
-var recipePaths = []string{
-	"recipes/oaw-delivery.json",
-	"recipes/oaw-domain-engineering.json",
-	"recipes/oaw-ecc-engineering.json",
-	"recipes/oaw-reliable-feature.json",
 }
 
 func Load() (catalog.Catalog, error) {
@@ -33,7 +24,7 @@ func LoadSourceAudit() (provideraudit.Manifest, error) {
 }
 
 func loadSourceAuditFromFS(files fs.FS) (provideraudit.Manifest, error) {
-	raw, err := fs.ReadFile(files, "audits/provider-sources-v4.json")
+	raw, err := fs.ReadFile(files, "audits/provider-sources-v5.json")
 	if err != nil {
 		return provideraudit.Manifest{}, fmt.Errorf("BUILTIN_SOURCE_AUDIT_INVALID: read audit: %w", err)
 	}
@@ -45,30 +36,16 @@ func loadSourceAuditFromFS(files fs.FS) (provideraudit.Manifest, error) {
 }
 
 func loadFromFS(files fs.FS) (catalog.Catalog, error) {
-	result, audit, err := loadCatalogAndAuditFromFS(files)
-	if err != nil {
-		return catalog.Catalog{}, err
-	}
-	matrix, err := loadProfileMatrixFromFS(files)
-	if err != nil {
-		return catalog.Catalog{}, err
-	}
-	if err := ValidateProfileMatrix(result, audit, matrix); err != nil {
-		return catalog.Catalog{}, err
-	}
-	return result, nil
+	result, _, err := loadCatalogAndAuditFromFS(files)
+	return result, err
 }
 
 func loadCatalogAndAuditFromFS(files fs.FS) (catalog.Catalog, provideraudit.Manifest, error) {
-	registry, err := schema.New(files)
-	if err != nil {
-		return catalog.Catalog{}, provideraudit.Manifest{}, err
-	}
 	audit, err := loadSourceAuditFromFS(files)
 	if err != nil {
 		return catalog.Catalog{}, provideraudit.Manifest{}, err
 	}
-	result, err := loadCatalogRecords(files, registry)
+	result, err := loadCatalogRecords(files)
 	if err != nil {
 		return catalog.Catalog{}, provideraudit.Manifest{}, err
 	}
@@ -78,15 +55,12 @@ func loadCatalogAndAuditFromFS(files fs.FS) (catalog.Catalog, provideraudit.Mani
 	return result, audit, nil
 }
 
-func loadCatalogRecords(files fs.FS, registry *schema.Registry) (catalog.Catalog, error) {
+func loadCatalogRecords(files fs.FS) (catalog.Catalog, error) {
 	providers := make([]catalog.ProviderDescriptorRecord, 0, len(providerPaths))
 	for _, path := range providerPaths {
 		raw, readErr := fs.ReadFile(files, path)
 		if readErr != nil {
 			return catalog.Catalog{}, fmt.Errorf("BUILTIN_PROVIDER_READ_FAILED: %s: %w", path, readErr)
-		}
-		if validationErr := registry.Validate(schema.ProviderDescriptorV4, raw); validationErr != nil {
-			return catalog.Catalog{}, fmt.Errorf("BUILTIN_PROVIDER_INVALID: %s: %w", path, validationErr)
 		}
 		provider, decodeErr := catalog.DecodeProvider(raw)
 		if decodeErr != nil {
@@ -94,35 +68,7 @@ func loadCatalogRecords(files fs.FS, registry *schema.Registry) (catalog.Catalog
 		}
 		providers = append(providers, provider)
 	}
-	recipes := make([]catalog.ProfileRecipeRecord, 0, len(recipePaths))
-	for _, path := range recipePaths {
-		raw, readErr := fs.ReadFile(files, path)
-		if readErr != nil {
-			return catalog.Catalog{}, fmt.Errorf("BUILTIN_RECIPE_READ_FAILED: %s: %w", path, readErr)
-		}
-		if validationErr := registry.Validate(schema.ProfileRecipeV3, raw); validationErr != nil {
-			return catalog.Catalog{}, fmt.Errorf("BUILTIN_RECIPE_INVALID: %s: %w", path, validationErr)
-		}
-		recipe, decodeErr := catalog.DecodeRecipe(raw)
-		if decodeErr != nil {
-			return catalog.Catalog{}, fmt.Errorf("BUILTIN_RECIPE_INVALID: %s: %w", path, decodeErr)
-		}
-		recipes = append(recipes, recipe)
-	}
-	aliasRaw, err := fs.ReadFile(files, "profile-aliases.json")
-	if err != nil {
-		return catalog.Catalog{}, fmt.Errorf("BUILTIN_ALIAS_READ_FAILED: %w", err)
-	}
-	if err := registry.Validate(schema.ProfileAliasSetV1, aliasRaw); err != nil {
-		return catalog.Catalog{}, fmt.Errorf("BUILTIN_ALIAS_INVALID: profile-aliases.json: %w", err)
-	}
-	aliasSet, err := catalog.DecodeAliasSet(aliasRaw)
-	if err != nil {
-		return catalog.Catalog{}, fmt.Errorf("BUILTIN_ALIAS_INVALID: profile-aliases.json: %w", err)
-	}
-	aliases := make([]catalog.ProfileAliasRecord, len(aliasSet.Aliases))
-	copy(aliases, aliasSet.Aliases)
-	result, err := catalog.New(providers, recipes, aliases)
+	result, err := catalog.New(providers)
 	if err != nil {
 		return catalog.Catalog{}, fmt.Errorf("BUILTIN_CATALOG_INVALID: %w", err)
 	}
@@ -163,7 +109,7 @@ func validateProviderAudit(providers []catalog.ProviderDescriptorRecord, audit p
 			auditedBindingCount += len(source.Bindings)
 			for _, audited := range source.Bindings {
 				binding, found := bindings[audited.ID]
-				if !found || binding.DistributionID != source.DistributionID || binding.ContentRoot != audited.ContentRoot || binding.InstallRoot != audited.InstallRoot || binding.TreeDigest != audited.TreeDigest || string(binding.Kind) != audited.Kind || !slices.Contains(audited.References, binding.Reference) {
+				if !found || binding.DistributionID != source.DistributionID || binding.ContentRoot != audited.ContentRoot || binding.InstallRoot != audited.InstallRoot || binding.TreeDigest != audited.TreeDigest || string(binding.Kind) != audited.Kind || !containsReference(audited.References, binding.Reference) {
 					return fmt.Errorf("Provider %s Binding %s mismatch", providerID, audited.ID)
 				}
 			}
@@ -173,4 +119,13 @@ func validateProviderAudit(providers []catalog.ProviderDescriptorRecord, audit p
 		}
 	}
 	return nil
+}
+
+func containsReference(values []string, wanted string) bool {
+	for _, value := range values {
+		if value == wanted {
+			return true
+		}
+	}
+	return false
 }

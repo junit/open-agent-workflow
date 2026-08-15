@@ -193,8 +193,7 @@ func serve(ctx context.Context, environment install.Environment) error {
 		return err
 	}
 	service, err := codexbridge.NewService(codexbridge.ServiceOptions{
-		Observer: client, UserConfigRoot: filepath.Join(configHome, "open-agent-workflow"),
-		ProfileConfigHome: configHome, UserHome: home,
+		Observer: client, ProfileConfigHome: configHome, UserHome: home,
 	})
 	if err != nil {
 		return err

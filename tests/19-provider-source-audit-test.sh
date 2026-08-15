@@ -3,12 +3,12 @@
 set -eu
 
 repo_dir=$(CDPATH='' cd -P -- "$(dirname -- "$0")/.." && pwd)
-manifest="$repo_dir/internal/assets/audits/provider-sources-v4.json"
+manifest="$repo_dir/internal/assets/audits/provider-sources-v5.json"
 
 test -f "$manifest"
 output=$(cd "$repo_dir" && go run ./cmd/oaw-provider-audit --validate --manifest "$manifest")
 case "$output" in
-  *"oaw.provider-source-audit/v1"*) ;;
+  *"oaw.provider-source-audit/v2"*) ;;
   *) printf 'manifest validation omitted schema id: %s\n' "$output" >&2; exit 1 ;;
 esac
 for expected in \
@@ -16,13 +16,13 @@ for expected in \
   '44c9b2d6e889982ac18c27d05a19fefe335194e1' \
   '11c74d6ba24d3a6d48f54a194cd00ef3beea18f9' \
   '2d46e80e0925c7be0907f18c1812311ac212a6c5' \
-  '49ec1819ab22364d763d0875d9af299ee332de3d6d39a7178a715c2b13272ccf' \
   '"distribution_id":"superpowers-codex"' \
   '"distribution_root":"plugins/superpowers"' \
   'codex-grill-with-docs' 'claude-grill-with-docs' \
   'codex-brainstorming' 'codex-upstream-brainstorming' 'claude-brainstorming' \
   'superpowers:brainstorming' \
   'codex-intent-driven-development' 'claude-intent-driven-development' \
+  'ecc:intent-driven-development' '"install_root":"skills/grill-with-docs"' \
   'claude-architect' 'codex-explorer' 'codex-plan'; do
   grep -F "$expected" "$manifest" >/dev/null
 done

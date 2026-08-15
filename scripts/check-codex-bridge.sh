@@ -20,7 +20,7 @@ fail() {
 trap cleanup EXIT HUP INT TERM
 
 cd "$REPOSITORY"
-go test ./cmd/oaw-bridge ./internal/assurance ./internal/bridgecli ./internal/codexbridge/... ./internal/profileinspect ./internal/cli ./internal/integration ./internal/assets ./internal/assets/generate
+go test ./cmd/oaw-bridge ./internal/assurance ./internal/bridgecli ./internal/codexbridge/... ./internal/profileinspect ./internal/cli ./internal/integration ./internal/assets
 go test -race ./internal/assurance ./internal/bridgecli ./internal/codexbridge/... ./internal/profileinspect ./internal/cli ./internal/integration
 
 BRIDGE_COVERAGE_TEMP=$(mktemp -d "${TMPDIR:-/tmp}/oaw-bridge-coverage.XXXXXX") ||
@@ -39,7 +39,7 @@ if ! awk -v total="$BRIDGE_COVERAGE_TOTAL" 'BEGIN { exit !(total + 0 >= 80.0) }'
   fail "aggregate statement coverage is ${BRIDGE_COVERAGE_TOTAL}%, want at least 80.0%"
 fi
 
-go vet ./cmd/oaw-bridge ./internal/assurance ./internal/bridgecli ./internal/codexbridge/... ./internal/profileinspect ./internal/cli ./internal/integration ./internal/assets ./internal/assets/generate
+go vet ./cmd/oaw-bridge ./internal/assurance ./internal/bridgecli ./internal/codexbridge/... ./internal/profileinspect ./internal/cli ./internal/integration ./internal/assets
 bash tests/17-codex-bridge-management-test.sh
 bash tests/18-codex-bridge-protocol-test.sh
 

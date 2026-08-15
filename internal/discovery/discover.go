@@ -22,15 +22,6 @@ type Options struct {
 	HostID               string
 	UserHome             string
 	MaximumEvidenceBytes int64
-	Installations        []InstallationHint
-}
-
-type InstallationHint struct {
-	ProviderID       string
-	HostID           string
-	SurfaceID        string
-	Location         string
-	DiscoveryProbeID string
 }
 
 type evidenceSeed struct {
@@ -45,7 +36,6 @@ type candidateAccumulator struct {
 	distribution string
 	location     string
 	version      string
-	direct       bool
 	evidence     []evidenceSeed
 }
 
@@ -70,7 +60,7 @@ func Discover(value catalog.Catalog, options Options) (Report, error) {
 			}
 			switch probe.Kind {
 			case "path-exists":
-				if err := discoverDirect(accumulators, root, maximum, provider.ID, options.HostID, probe, ""); err != nil {
+				if err := discoverDirect(accumulators, root, maximum, provider.ID, options.HostID, probe); err != nil {
 					return Report{}, err
 				}
 			case "one-level-version-path-exists":
@@ -82,10 +72,6 @@ func Discover(value catalog.Catalog, options Options) (Report, error) {
 			}
 		}
 	}
-	if err := discoverInstallations(accumulators, providers, options.HostID, maximum, options.Installations); err != nil {
-		return Report{}, err
-	}
-
 	providerIndex := make(map[string]catalog.ProviderDescriptorRecord, len(providers))
 	for _, provider := range providers {
 		providerIndex[provider.ID] = provider
@@ -106,14 +92,10 @@ func Discover(value catalog.Catalog, options Options) (Report, error) {
 	return newReport(options.HostID, candidates)
 }
 
-func discoverDirect(accumulators map[string]*candidateAccumulator, root string, maximum int64, providerID, hostID string, probe catalog.DiscoveryProbe, explicitLocation string) error {
-	location := explicitLocation
-	if location == "" {
-		candidate, found, err := resolveContained(root, probe.CandidatePath)
-		if err != nil || !found {
-			return err
-		}
-		location = candidate
+func discoverDirect(accumulators map[string]*candidateAccumulator, root string, maximum int64, providerID, hostID string, probe catalog.DiscoveryProbe) error {
+	location, found, err := resolveContained(root, probe.CandidatePath)
+	if err != nil || !found {
+		return err
 	}
 	if err := requireDirectory(location, providerID, probe.ID); err != nil {
 		return err
@@ -121,7 +103,7 @@ func discoverDirect(accumulators map[string]*candidateAccumulator, root string, 
 	if _, _, found, err := readEvidence(location, probe.EvidencePath, maximum); err != nil || !found {
 		return err
 	}
-	accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.DistributionID, location, "", true)
+	accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.DistributionID, location, "")
 	accumulator.evidence = append(accumulator.evidence, evidenceSeed{probeID: probe.ID, kind: probe.Kind})
 	return nil
 }
@@ -157,68 +139,18 @@ func discoverVersions(accumulators map[string]*candidateAccumulator, root string
 		if !found {
 			continue
 		}
-		accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.DistributionID, versionDirectory, entry.Name(), false)
+		accumulator := ensureAccumulator(accumulators, providerID, hostID, probe.Surface, probe.DistributionID, versionDirectory, entry.Name())
 		accumulator.evidence = append(accumulator.evidence, evidenceSeed{probeID: probe.ID, kind: probe.Kind})
 	}
 	return nil
 }
 
-func discoverInstallations(accumulators map[string]*candidateAccumulator, providers []catalog.ProviderDescriptorRecord, hostID string, maximum int64, hints []InstallationHint) error {
-	providerIndex := make(map[string]catalog.ProviderDescriptorRecord, len(providers))
-	for _, provider := range providers {
-		providerIndex[provider.ID] = provider
-	}
-	for _, hint := range hints {
-		if hint.HostID != hostID {
-			continue
-		}
-		provider, found := providerIndex[hint.ProviderID]
-		if !found {
-			return fmt.Errorf("DISCOVERY_INSTALLATION_INVALID: provider %q is not registered", hint.ProviderID)
-		}
-		probe, found := findProbe(provider.Discovery, hint.DiscoveryProbeID)
-		if !found || !contains(probe.Hosts, hostID) || probe.Surface != hint.SurfaceID {
-			return fmt.Errorf("DISCOVERY_INSTALLATION_INVALID: probe %q does not match host installation", hint.DiscoveryProbeID)
-		}
-		location, err := physicalInstallation(hint.Location)
-		if err != nil {
-			return err
-		}
-		if probe.Kind == "path-exists" {
-			if err := discoverDirect(accumulators, "", maximum, provider.ID, hostID, probe, location); err != nil {
-				return err
-			}
-			continue
-		}
-		if probe.Kind != "one-level-version-path-exists" {
-			return fmt.Errorf("DISCOVERY_PROBE_UNSUPPORTED: %s/%s kind %q", provider.ID, probe.ID, probe.Kind)
-		}
-		_, _, found, err = readEvidence(location, probe.EvidencePath, maximum)
-		if err != nil || !found {
-			return err
-		}
-		version := filepath.Base(location)
-		accumulator := ensureAccumulator(accumulators, provider.ID, hostID, probe.Surface, probe.DistributionID, location, version, false)
-		accumulator.evidence = append(accumulator.evidence, evidenceSeed{probeID: probe.ID, kind: probe.Kind})
-	}
-	return nil
-}
-
-func findProbe(probes []catalog.DiscoveryProbe, id string) (catalog.DiscoveryProbe, bool) {
-	for _, probe := range probes {
-		if probe.ID == id {
-			return probe, true
-		}
-	}
-	return catalog.DiscoveryProbe{}, false
-}
-
-func ensureAccumulator(values map[string]*candidateAccumulator, providerID, hostID, surface, distribution, location, version string, direct bool) *candidateAccumulator {
+func ensureAccumulator(values map[string]*candidateAccumulator, providerID, hostID, surface, distribution, location, version string) *candidateAccumulator {
 	mapKey := strings.Join([]string{providerID, hostID, surface, distribution, location, version}, "\x00")
 	if value, found := values[mapKey]; found {
 		return value
 	}
-	value := &candidateAccumulator{providerID: providerID, hostID: hostID, surface: surface, distribution: distribution, location: location, version: version, direct: direct, evidence: []evidenceSeed{}}
+	value := &candidateAccumulator{providerID: providerID, hostID: hostID, surface: surface, distribution: distribution, location: location, version: version, evidence: []evidenceSeed{}}
 	values[mapKey] = value
 	return value
 }
@@ -288,17 +220,6 @@ func physicalUserHome(value string) (string, error) {
 		return "", fmt.Errorf("DISCOVERY_ROOT_INVALID: %w", err)
 	}
 	return physical, nil
-}
-
-func physicalInstallation(value string) (string, error) {
-	if value == "" || !filepath.IsAbs(value) || filepath.Clean(value) != value || hasControl(value) {
-		return "", fmt.Errorf("DISCOVERY_INSTALLATION_INVALID: unsafe location")
-	}
-	physical, err := physicalDirectory(value)
-	if err != nil {
-		return "", fmt.Errorf("DISCOVERY_INSTALLATION_INVALID: %w", err)
-	}
-	return filepath.Clean(physical), nil
 }
 
 func physicalDirectory(value string) (string, error) {

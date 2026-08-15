@@ -95,14 +95,6 @@ func TestManifestRequiresPrefixedTreeDigests(t *testing.T) {
 	}
 }
 
-func TestManifestRequiresCanonicalMatrixDigest(t *testing.T) {
-	manifest := buildTestManifest(t)
-	manifest.CanonicalMatrixDigest = strings.Repeat("a", 64)
-	if err := Validate(manifest); err == nil {
-		t.Fatal("Validate accepted incorrect matrix digest")
-	}
-}
-
 func TestBuildManifestUsesTrackedBindingRoots(t *testing.T) {
 	manifest := buildTestManifest(t)
 	if len(manifest.Providers) != 4 || !strings.HasPrefix(manifest.Providers[0].DistributionTreeDigest, "sha256:") {
@@ -140,7 +132,7 @@ func TestBuildManifestUsesTrackedBindingRoots(t *testing.T) {
 		}
 	}
 	binding, found := manifest.Binding("oaw/matt", "codex-grill-with-docs")
-	if !found || !strings.HasPrefix(binding.TreeDigest, "sha256:") || binding.InstallRoot != "grill-with-docs" {
+	if !found || !strings.HasPrefix(binding.TreeDigest, "sha256:") || binding.InstallRoot != "skills/grill-with-docs" {
 		t.Fatalf("Binding() = %#v, %v", binding, found)
 	}
 	upstream, found := manifest.Binding("oaw/superpowers", "codex-upstream-brainstorming")

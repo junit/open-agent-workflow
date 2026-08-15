@@ -14,6 +14,26 @@ for retired_package in policyflow policyroute policyengagement policyrun; do
     fail "retired Policy state package remains: internal/$retired_package"
 done
 
+for retired_authority in \
+  admission classification config coordinator core dogfood execution host \
+  hosttest policycatalog profile registry schema; do
+  [ ! -e "$OAW_REPOSITORY/internal/$retired_authority" ] ||
+    fail "retired machine workflow authority remains: internal/$retired_authority"
+done
+
+for retired_asset in \
+  cmd/oaw-dogfood internal/assets/generate internal/assets/host-integrations.json \
+  internal/assets/profile-aliases.json internal/assets/profile-matrix.json \
+  internal/assets/recipes internal/assets/schemas/v1/classification-proposal.schema.json \
+  internal/assets/schemas/v1/profile-alias-set.schema.json \
+  internal/assets/schemas/v1/project-config.schema.json \
+  internal/assets/schemas/v3/profile-recipe.schema.json \
+  internal/assets/schemas/v3/user-config.schema.json \
+  internal/assets/schemas/v4/provider-descriptor.schema.json; do
+  [ ! -e "$OAW_REPOSITORY/$retired_asset" ] ||
+    fail "retired duplicate workflow asset remains: $retired_asset"
+done
+
 PROGRESS_NOTE="$OAW_PROJECT/.scratch/progress.md"
 mkdir -p "$(dirname -- "$PROGRESS_NOTE")"
 printf '%s\n' 'profile: MATT-SP-HYBRID' 'next: model-owned work' >"$PROGRESS_NOTE"
