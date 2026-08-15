@@ -35,8 +35,7 @@ Run oaw check with the same project and target arguments. Typical causes are:
 - the selected scope does not match Install State.
 
 Resolve or back up user-owned content explicitly, then run update. Force mode
-backs up tracked drift but does not adopt foreign files. There is no migration
-reader for an old Policy artifact.
+backs up tracked drift but does not adopt foreign files.
 
 ## Bridge or Machine Evidence Is Missing
 

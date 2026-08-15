@@ -70,7 +70,7 @@ func buildMutationBackupPlan(
 		}
 	}
 	if len(plan.candidates) == 0 {
-		return backupPlan{}, compatibilityError("forced mutation has no recoverable artifacts")
+		return backupPlan{}, integrityError("forced mutation has no recoverable artifacts")
 	}
 	if _, err := renderBackupManifest(plan); err != nil {
 		return backupPlan{}, err
@@ -106,17 +106,17 @@ func addBackupCandidate(
 		}
 	}
 	if before.kind != installPathRegular {
-		return nil, compatibilityError("backup source is not a file: " + original)
+		return nil, integrityError("backup source is not a file: " + original)
 	}
 	if !safeStateField(original) || !safeStateField(root) || !safeStateField(suffix) {
-		return nil, compatibilityError("backup candidate cannot be serialized")
+		return nil, integrityError("backup candidate cannot be serialized")
 	}
 	rebuilt, err := validatedDestinationPath(root, suffix)
 	if err != nil {
 		return nil, err
 	}
 	if rebuilt != original {
-		return nil, compatibilityError("backup candidate destination does not match: " + original)
+		return nil, integrityError("backup candidate destination does not match: " + original)
 	}
 	identity, err := captureMutationPathIdentity(root, original)
 	if err != nil {
@@ -134,19 +134,19 @@ func addBackupCandidate(
 
 func renderBackupManifest(plan backupPlan) ([]byte, error) {
 	if !plan.required {
-		return nil, compatibilityError("backup plan is not required")
+		return nil, integrityError("backup plan is not required")
 	}
 	if plan.operation != "update" && plan.operation != "uninstall" {
-		return nil, compatibilityError("invalid backup operation")
+		return nil, integrityError("invalid backup operation")
 	}
 	if plan.scope != "user" && plan.scope != "project" {
-		return nil, compatibilityError("invalid backup scope")
+		return nil, integrityError("invalid backup scope")
 	}
 	if !filepath.IsAbs(plan.path) || !safeStateField(plan.path) {
-		return nil, compatibilityError("invalid backup path")
+		return nil, integrityError("invalid backup path")
 	}
 	if len(plan.candidates) == 0 {
-		return nil, compatibilityError("forced mutation has no recoverable artifacts")
+		return nil, integrityError("forced mutation has no recoverable artifacts")
 	}
 	seenOriginals := make(map[string]struct{}, len(plan.candidates))
 	seenBackups := make(map[string]struct{}, len(plan.candidates))
@@ -158,20 +158,20 @@ func renderBackupManifest(plan backupPlan) ([]byte, error) {
 		if !filepath.IsAbs(candidate.original) || !safeStateField(candidate.original) ||
 			!filepath.IsAbs(candidate.backup) || !safeStateField(candidate.backup) ||
 			!validChecksum(candidate.checksum) {
-			return nil, compatibilityError("backup candidate cannot be serialized")
+			return nil, integrityError("backup candidate cannot be serialized")
 		}
 		artifactName := filepath.Base(candidate.backup)
 		expectedArtifact := plan.path + string(filepath.Separator) + artifactName
 		if candidate.backup != expectedArtifact || filepath.Dir(filepath.Clean(candidate.backup)) != filepath.Clean(plan.path) {
-			return nil, compatibilityError("backup artifact escapes operation directory")
+			return nil, integrityError("backup artifact escapes operation directory")
 		}
 		originalKey := filepath.Clean(candidate.original)
 		backupKey := filepath.Clean(candidate.backup)
 		if _, exists := seenOriginals[originalKey]; exists {
-			return nil, compatibilityError("duplicate backup original")
+			return nil, integrityError("duplicate backup original")
 		}
 		if _, exists := seenBackups[backupKey]; exists {
-			return nil, compatibilityError("duplicate backup artifact")
+			return nil, integrityError("duplicate backup artifact")
 		}
 		seenOriginals[originalKey] = struct{}{}
 		seenBackups[backupKey] = struct{}{}
@@ -241,10 +241,10 @@ func revalidateBackupSources(plan backupPlan) error {
 			return err
 		}
 		if rebuilt != candidate.original {
-			return compatibilityError("backup candidate destination does not match: " + candidate.original)
+			return integrityError("backup candidate destination does not match: " + candidate.original)
 		}
 		if !candidate.identity.captured {
-			return compatibilityError("backup source identity is missing: " + candidate.original)
+			return integrityError("backup source identity is missing: " + candidate.original)
 		}
 		if err := revalidateMutationPathIdentity(candidate.identity, candidate.allowedRoot, candidate.original); err != nil {
 			return err
@@ -254,7 +254,7 @@ func revalidateBackupSources(plan backupPlan) error {
 			return err
 		}
 		if current.kind != installPathRegular || checksumBytes(current.data) != candidate.checksum {
-			return compatibilityError("backup source changed before mutation: " + candidate.original)
+			return integrityError("backup source changed before mutation: " + candidate.original)
 		}
 		if err := revalidateMutationPathIdentity(candidate.identity, candidate.allowedRoot, candidate.original); err != nil {
 			return err
@@ -272,14 +272,14 @@ func readVerifiedBackupFile(environment Environment, destination, description st
 	defer file.Close()
 	data, err := io.ReadAll(io.LimitReader(file, maximumInstallArtifactBytes+1))
 	if err != nil {
-		return nil, compatibilityError(description + " could not be read")
+		return nil, integrityError(description + " could not be read")
 	}
 	if len(data) > maximumInstallArtifactBytes {
-		return nil, compatibilityError(description + " exceeds read limit")
+		return nil, integrityError(description + " exceeds read limit")
 	}
 	current, err := root.Lstat(relative)
 	if err != nil || !current.Mode().IsRegular() || current.Mode().Perm() != 0o600 || !os.SameFile(opened, current) {
-		return nil, compatibilityError(description + " changed while reading")
+		return nil, integrityError(description + " changed while reading")
 	}
 	action := installAction{
 		destination: destination, allowedRoot: environment.StateHome,
@@ -323,35 +323,35 @@ func openVerifiedBackupFile(
 	file, err := root.Open(relative)
 	if err != nil {
 		root.Close()
-		return nil, nil, nil, "", compatibilityError(description + " could not be read")
+		return nil, nil, nil, "", integrityError(description + " could not be read")
 	}
 	opened, err := file.Stat()
 	if err != nil || !opened.Mode().IsRegular() || opened.Mode().Perm() != 0o600 || !os.SameFile(info, opened) {
 		file.Close()
 		root.Close()
-		return nil, nil, nil, "", compatibilityError(description + " changed while opening")
+		return nil, nil, nil, "", integrityError(description + " changed while opening")
 	}
 	return root, file, opened, relative, nil
 }
 
 func validatePrivateBackupFileInfo(info fs.FileInfo, err error, description string) error {
 	if errors.Is(err, fs.ErrNotExist) {
-		return compatibilityError(description + " is missing")
+		return integrityError(description + " is missing")
 	}
 	if err != nil {
-		return compatibilityError(description + " could not be inspected")
+		return integrityError(description + " could not be inspected")
 	}
 	if info == nil {
-		return compatibilityError(description + " could not be inspected")
+		return integrityError(description + " could not be inspected")
 	}
 	if !info.Mode().IsRegular() {
-		return compatibilityError(description + " is not a regular file")
+		return integrityError(description + " is not a regular file")
 	}
 	if info.Mode().Perm() != 0o600 {
-		return compatibilityError(description + " is not private")
+		return integrityError(description + " is not private")
 	}
 	if info.Size() > maximumInstallArtifactBytes {
-		return compatibilityError(description + " exceeds read limit")
+		return integrityError(description + " exceeds read limit")
 	}
 	return nil
 }
@@ -375,19 +375,19 @@ func verifyPrivateBackupDirectory(environment Environment, destination string) e
 	}
 	info, err := root.Lstat(relative)
 	if err != nil || !info.IsDir() {
-		return compatibilityError("active backup directory is missing")
+		return integrityError("active backup directory is missing")
 	}
 	if info.Mode().Perm() != 0o700 {
-		return compatibilityError("active backup directory is not private")
+		return integrityError("active backup directory is not private")
 	}
 	opened, err := root.OpenRoot(relative)
 	if err != nil {
-		return compatibilityError("active backup directory could not be opened")
+		return integrityError("active backup directory could not be opened")
 	}
 	defer opened.Close()
 	current, err := opened.Stat(".")
 	if err != nil || !current.IsDir() || current.Mode().Perm() != 0o700 || !os.SameFile(info, current) {
-		return compatibilityError("active backup directory changed while opening")
+		return integrityError("active backup directory changed while opening")
 	}
 	return nil
 }
@@ -404,18 +404,18 @@ func createPrivateBackupPath(root *os.Root, relative, expected string) error {
 		info, err := root.Lstat(consumed)
 		if err == nil {
 			if info.Mode()&os.ModeSymlink != 0 {
-				return compatibilityError("destination path contains a symlink: " + filepath.Join(root.Name(), filepath.FromSlash(consumed)))
+				return integrityError("destination path contains a symlink: " + filepath.Join(root.Name(), filepath.FromSlash(consumed)))
 			}
 			if !info.IsDir() {
-				return compatibilityError("destination path component is not a directory: " + filepath.Join(root.Name(), filepath.FromSlash(consumed)))
+				return integrityError("destination path component is not a directory: " + filepath.Join(root.Name(), filepath.FromSlash(consumed)))
 			}
 			if index == len(components)-1 {
-				return compatibilityError("backup directory already exists: " + expected)
+				return integrityError("backup directory already exists: " + expected)
 			}
 			continue
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
-			return compatibilityError("destination path could not be inspected: " + expected)
+			return integrityError("destination path could not be inspected: " + expected)
 		}
 		if err := root.Mkdir(consumed, 0o700); err != nil {
 			return &Error{Status: 73, Message: "cannot create backup directory: " + expected}
@@ -429,7 +429,7 @@ func createPrivateBackupPath(root *os.Root, relative, expected string) error {
 
 func writePrivateBackupFile(root *os.Root, name string, data []byte) error {
 	if path.Base(name) != name || name == "." || name == ".." {
-		return compatibilityError("invalid backup artifact name")
+		return integrityError("invalid backup artifact name")
 	}
 	temporaryName, temporary, err := createScopedTemporary(root, ".")
 	if err != nil {
@@ -455,9 +455,9 @@ func writePrivateBackupFile(root *os.Root, name string, data []byte) error {
 		return installIOError("cannot close backup artifact")
 	}
 	if _, err := root.Lstat(name); err == nil {
-		return compatibilityError("backup artifact already exists: " + name)
+		return integrityError("backup artifact already exists: " + name)
 	} else if !errors.Is(err, fs.ErrNotExist) {
-		return compatibilityError("backup artifact could not be inspected: " + name)
+		return integrityError("backup artifact could not be inspected: " + name)
 	}
 	if err := root.Rename(temporaryName, name); err != nil {
 		return installIOError("cannot publish backup artifact")

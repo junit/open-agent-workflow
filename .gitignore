@@ -14,6 +14,5 @@ Thumbs.db
 tests/.tmp/
 tests/tmp/
 
-# Lifecycle evidence is intentionally tracked.
-!.scratch/
-!.scratch/**
+# Local work and generated evidence
+.scratch/

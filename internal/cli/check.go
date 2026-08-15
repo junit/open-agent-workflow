@@ -7,12 +7,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
-	checkcommand "github.com/wifibaby4u/open-agent-workflow/internal/check"
+	"github.com/wifibaby4u/open-agent-workflow/internal/management"
 )
 
 type checkCommand struct {
-	request checkcommand.Request
+	request management.CheckRequest
 	help    bool
 }
 
@@ -26,11 +25,6 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stdout, installerUsage())
 		return 0
 	}
-	value, err := builtin.Load()
-	if err != nil {
-		fmt.Fprintf(stderr, "oaw: error: %s\n", err)
-		return 65
-	}
 	home := os.Getenv("HOME")
 	configHome := os.Getenv("XDG_CONFIG_HOME")
 	if configHome == "" {
@@ -40,16 +34,16 @@ func runCheck(args []string, stdout, stderr io.Writer) int {
 	if stateHome == "" {
 		stateHome = home + "/.local/state"
 	}
-	result, err := checkcommand.Execute(value, checkcommand.Environment{
+	result, err := management.Check(management.Environment{
 		Home: home, ConfigHome: configHome, StateHome: stateHome,
 		Path: os.Getenv("PATH"),
 	}, parsed.request)
-	if writeErr := checkcommand.Write(result, stdout); writeErr != nil {
+	if writeErr := management.WriteResult(result, stdout); writeErr != nil {
 		fmt.Fprintf(stderr, "oaw: error: %s\n", writeErr)
 		return 1
 	}
 	if err != nil {
-		var checkError *checkcommand.Error
+		var checkError *management.Error
 		if errors.As(err, &checkError) {
 			fmt.Fprintf(stderr, "oaw: error: %s\n", checkError.Message)
 			return checkError.Status
@@ -144,10 +138,10 @@ func parseCheck(args []string) (checkCommand, error) {
 func installerUsage() string {
 	return "Usage: ./install.sh <command> [options]\n\n" +
 		"Commands:\n" +
-		"  check       Report provider and target readiness\n" +
-		"  install     Install selected workflow adapters\n" +
-		"  update      Update selected workflow adapters\n" +
-		"  uninstall   Remove selected workflow adapters\n\n" +
+		"  check       Report installation and target readiness\n" +
+		"  install     Install the Policy Set and selected Host targets\n" +
+		"  update      Update the Policy Set and selected Host targets\n" +
+		"  uninstall   Remove the Policy Set from selected Host targets\n\n" +
 		"Options:\n" +
 		"  --target <ids>   Select comma-separated targets\n" +
 		"  --project <path> Use project scope at an existing path\n" +

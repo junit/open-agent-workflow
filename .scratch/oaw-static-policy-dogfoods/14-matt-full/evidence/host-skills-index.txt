@@ -1,7 +1,0 @@
-# Intentional incomplete Host index observed during this dogfood
-implement
-tdd
-code-review
-
-# The framing entry is intentionally absent from this index. The model resolves
-# it from the readable Skill document supplied by the current Host.

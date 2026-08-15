@@ -28,8 +28,7 @@
 - 未跟踪文件占用了 owned destination；
 - scope 与 Install State 不一致。
 
-显式处理或备份用户内容后再运行 update。Force 会备份已跟踪的漂移，但不会接管外部文件。旧 Policy
-文件没有 migration reader。
+显式处理或备份用户内容后再运行 update。Force 会备份已跟踪的漂移，但不会接管外部文件。
 
 ## Bridge 或机器证据缺失
 

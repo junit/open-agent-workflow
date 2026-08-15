@@ -1,7 +1,8 @@
 # Extending OAW
 
-OAW has two simple extension points: Host Adapters and Markdown Custom
-Profiles. Neither requires a Bridge, Provider registration, or Go changes.
+OAW has two extension points: Markdown Custom Profiles and Host Adapters. A
+Custom Profile needs no Bridge, Provider registration, or Go change. Adding an
+installable Host target also requires a small installer target definition.
 
 ## Host Adapter
 
@@ -12,17 +13,19 @@ An adapter documents how one host loads the Canonical Policy Set:
 - Skill index and native invocation surfaces;
 - reload timing and readable fallback paths.
 
-An adapter may report an Observed Route as a hint. It must not decide that a
-Profile is eligible, attest Skill content, select a method, or own physical
-execution. Keep host-specific paths in policy/adapters/, not in POLICY.md.
+Adapter discovery hints must not decide that a Profile is available, attest
+Skill content, select a method, or own physical execution. Keep Host-specific
+paths in `policy/adapters/`, not in `POLICY.md`. Add install coordinates to
+`internal/management/targets.go` only when OAW should manage that Host's
+instruction file.
 
 ## Custom Profile
 
-Create .oaw/profiles/<id>.md in a project or
-$XDG_CONFIG_HOME/open-agent-workflow/profiles/<id>.md for a user Profile.
-Use id and name front matter and a Responsibilities table. Refer to Skills by
-their host-visible name and state a neutral Host-native action when no Skill is
-required.
+Create `.oaw/profiles/<id>.md` in a project or
+`$XDG_CONFIG_HOME/open-agent-workflow/profiles/<id>.md` for a user Profile.
+Use `id` and `name` front matter and a Responsibilities table. Refer to Skills
+by their Host-visible name and state a neutral Host-native action when no Skill
+is required.
 
 Custom Profiles are partial by design. The Policy fills unspecified
 Responsibilities with defaults. A project Profile wins only when explicitly
@@ -47,7 +50,7 @@ name: Release Readiness
 | closeout | Host-native closeout |
 ~~~
 
-Use oaw profile check to validate metadata and inspect warnings. Validation
+Use `oaw profile check` to validate metadata and inspect warnings. Validation
 does not read or verify Skill content and does not select the Profile.
 
 ## Design Rules

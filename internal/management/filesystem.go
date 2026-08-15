@@ -73,9 +73,9 @@ func publishScopedMutationReplacement(
 	}
 	destinationName := path.Base(action.relativeSuffix)
 	if info, err := directoryRoot.Lstat(destinationName); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return compatibilityError("destination path contains a symlink: " + action.destination)
+		return integrityError("destination path contains a symlink: " + action.destination)
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return compatibilityError("destination path could not be inspected: " + action.destination)
+		return integrityError("destination path could not be inspected: " + action.destination)
 	}
 	if err := directoryRoot.Rename(temporaryName, destinationName); err != nil {
 		return installIOError("cannot replace destination: " + action.destination)
@@ -110,13 +110,13 @@ func scopedAtomicRemoveMutation(action mutationAction) error {
 		return nil
 	}
 	if err != nil {
-		return compatibilityError("destination path could not be inspected: " + action.destination)
+		return integrityError("destination path could not be inspected: " + action.destination)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return compatibilityError("destination path contains a symlink: " + action.destination)
+		return integrityError("destination path contains a symlink: " + action.destination)
 	}
 	if !info.Mode().IsRegular() {
-		return compatibilityError("mutation destination is not a regular file: " + action.destination)
+		return integrityError("mutation destination is not a regular file: " + action.destination)
 	}
 	if err := revalidateMutationActionSnapshot(action); err != nil {
 		return err
@@ -134,7 +134,7 @@ func scopedRemoveMutationDirectory(action directoryAction) (bool, error) {
 		return false, err
 	}
 	if !reflect.DeepEqual(current, action.before) {
-		return false, compatibilityError("owned directory changed after preparation: " + action.destination)
+		return false, integrityError("owned directory changed after preparation: " + action.destination)
 	}
 	if err := revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination); err != nil {
 		return false, err
@@ -156,7 +156,7 @@ func removeScopedMutationDirectory(root *os.Root, action directoryAction) (bool,
 		return false, err
 	}
 	if rebuilt != action.destination {
-		return false, compatibilityError("directory action destination does not match registry: " + action.destination)
+		return false, integrityError("directory action destination does not match registry: " + action.destination)
 	}
 	install := installAction{
 		destination: action.destination, allowedRoot: action.allowedRoot,
@@ -173,13 +173,13 @@ func removeScopedMutationDirectory(root *os.Root, action directoryAction) (bool,
 	name := path.Base(action.relativeSuffix)
 	info, err := directoryRoot.Lstat(name)
 	if err != nil {
-		return false, compatibilityError("owned directory changed before removal: " + action.destination)
+		return false, integrityError("owned directory changed before removal: " + action.destination)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return false, compatibilityError("owned directory changed before removal: " + action.destination)
+		return false, integrityError("owned directory changed before removal: " + action.destination)
 	}
 	if !sameMutationFileIdentity(action.identity.destination, info) {
-		return false, compatibilityError("destination identity changed after preparation: " + action.destination)
+		return false, integrityError("destination identity changed after preparation: " + action.destination)
 	}
 	if err := revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination); err != nil {
 		return false, err
@@ -257,9 +257,9 @@ func publishScopedInstallReplacement(
 	}
 	destinationName := path.Base(action.relativeSuffix)
 	if info, err := directoryRoot.Lstat(destinationName); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return compatibilityError("destination path contains a symlink: " + action.destination)
+		return integrityError("destination path contains a symlink: " + action.destination)
 	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return compatibilityError("destination path could not be inspected: " + action.destination)
+		return integrityError("destination path could not be inspected: " + action.destination)
 	}
 	if err := directoryRoot.Rename(temporaryName, destinationName); err != nil {
 		return installIOError("cannot replace destination: " + action.destination)
@@ -271,7 +271,7 @@ func openScopedActionDirectory(root *os.Root, action installAction) (*os.Root, e
 	directory := path.Dir(action.relativeSuffix)
 	directoryRoot, err := root.OpenRoot(directory)
 	if err != nil {
-		return nil, compatibilityError("cannot enter destination directory: " + filepath.Dir(action.destination))
+		return nil, integrityError("cannot enter destination directory: " + filepath.Dir(action.destination))
 	}
 	if err := verifyScopedActionDirectory(directoryRoot, action); err != nil {
 		directoryRoot.Close()
@@ -283,11 +283,11 @@ func openScopedActionDirectory(root *os.Root, action installAction) (*os.Root, e
 func verifyScopedActionDirectory(directoryRoot *os.Root, action installAction) error {
 	expected, err := os.Stat(filepath.Dir(action.destination))
 	if err != nil || !expected.IsDir() {
-		return compatibilityError("destination directory changed during creation: " + filepath.Dir(action.destination))
+		return integrityError("destination directory changed during creation: " + filepath.Dir(action.destination))
 	}
 	opened, err := directoryRoot.Stat(".")
 	if err != nil || !opened.IsDir() || !os.SameFile(expected, opened) {
-		return compatibilityError("destination directory changed during creation: " + filepath.Dir(action.destination))
+		return integrityError("destination directory changed during creation: " + filepath.Dir(action.destination))
 	}
 	return nil
 }
@@ -296,7 +296,7 @@ func openInstallRoot(name string) (*os.Root, error) {
 	info, err := os.Lstat(name)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, compatibilityError("allowed root could not be inspected: " + name)
+			return nil, integrityError("allowed root could not be inspected: " + name)
 		}
 		if err := os.MkdirAll(name, 0o755); err != nil {
 			return nil, &Error{Status: 73, Message: "cannot create allowed root: " + name}
@@ -304,7 +304,7 @@ func openInstallRoot(name string) (*os.Root, error) {
 		info, err = os.Lstat(name)
 	}
 	if err != nil {
-		return nil, compatibilityError("allowed root could not be inspected: " + name)
+		return nil, integrityError("allowed root could not be inspected: " + name)
 	}
 	return openInspectedInstallRoot(name, info)
 }
@@ -312,21 +312,21 @@ func openInstallRoot(name string) (*os.Root, error) {
 func openExistingInstallRoot(name string) (*os.Root, error) {
 	info, err := os.Lstat(name)
 	if err != nil {
-		return nil, compatibilityError("allowed root could not be inspected: " + name)
+		return nil, integrityError("allowed root could not be inspected: " + name)
 	}
 	return openInspectedInstallRoot(name, info)
 }
 
 func openInspectedInstallRoot(name string, info fs.FileInfo) (*os.Root, error) {
 	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, compatibilityError("allowed root is a symlink: " + name)
+		return nil, integrityError("allowed root is a symlink: " + name)
 	}
 	if !info.IsDir() {
-		return nil, compatibilityError("allowed root is not a directory: " + name)
+		return nil, integrityError("allowed root is not a directory: " + name)
 	}
 	root, err := os.OpenRoot(name)
 	if err != nil {
-		return nil, compatibilityError("cannot enter allowed root: " + name)
+		return nil, integrityError("cannot enter allowed root: " + name)
 	}
 	if err := verifyOpenedInstallRoot(name, info, root); err != nil {
 		root.Close()
@@ -338,7 +338,7 @@ func openInspectedInstallRoot(name string, info fs.FileInfo) (*os.Root, error) {
 func verifyOpenedInstallRoot(name string, inspected fs.FileInfo, root *os.Root) error {
 	opened, err := root.Stat(".")
 	if err != nil || !opened.IsDir() || !os.SameFile(inspected, opened) {
-		return compatibilityError("allowed root changed while opening: " + name)
+		return integrityError("allowed root changed while opening: " + name)
 	}
 	return nil
 }
@@ -378,28 +378,28 @@ func ensureScopedInstallDirectoryComponent(
 	info, err := root.Lstat(relative)
 	if err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			return compatibilityError("destination path contains a symlink: " + expected)
+			return integrityError("destination path contains a symlink: " + expected)
 		}
 		if isPlanned && !wasCreated {
-			return compatibilityError("owned directory appeared before creation: " + expected)
+			return integrityError("owned directory appeared before creation: " + expected)
 		}
 		if !info.IsDir() {
-			return compatibilityError("destination path component is not a directory: " + expected)
+			return integrityError("destination path component is not a directory: " + expected)
 		}
 		return nil
 	}
 	if !errors.Is(err, fs.ErrNotExist) {
-		return compatibilityError("destination path could not be inspected: " + expected)
+		return integrityError("destination path could not be inspected: " + expected)
 	}
 	if err := root.Mkdir(relative, 0o755); err != nil {
 		if isPlanned {
-			return compatibilityError("owned directory appeared before creation: " + expected)
+			return integrityError("owned directory appeared before creation: " + expected)
 		}
 		return &Error{Status: 73, Message: "cannot create destination directory: " + expected}
 	}
 	info, err = root.Lstat(relative)
 	if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return compatibilityError("destination directory changed during creation: " + expected)
+		return integrityError("destination directory changed during creation: " + expected)
 	}
 	if isPlanned {
 		created[expected] = struct{}{}
@@ -413,7 +413,7 @@ func revalidateScopedAction(root *os.Root, action installAction) error {
 		return err
 	}
 	if !matchesValidatedDestination(rebuilt, action.destination) {
-		return compatibilityError("destination changed after preparation: " + action.destination)
+		return integrityError("destination changed after preparation: " + action.destination)
 	}
 	components := strings.Split(action.relativeSuffix, "/")
 	consumed := ""
@@ -428,13 +428,13 @@ func revalidateScopedAction(root *os.Root, action installAction) error {
 			if errors.Is(err, fs.ErrNotExist) && index == len(components)-1 {
 				return nil
 			}
-			return compatibilityError("destination path could not be inspected: " + action.destination)
+			return integrityError("destination path could not be inspected: " + action.destination)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return compatibilityError("destination path contains a symlink: " + filepath.Join(action.allowedRoot, filepath.FromSlash(consumed)))
+			return integrityError("destination path contains a symlink: " + filepath.Join(action.allowedRoot, filepath.FromSlash(consumed)))
 		}
 		if index != len(components)-1 && !info.IsDir() {
-			return compatibilityError("destination path component is not a directory: " + filepath.Join(action.allowedRoot, filepath.FromSlash(consumed)))
+			return integrityError("destination path component is not a directory: " + filepath.Join(action.allowedRoot, filepath.FromSlash(consumed)))
 		}
 	}
 	return nil
@@ -493,12 +493,12 @@ func installIOError(message string) error {
 func validateCreatedInstallDirectories(planned, created map[string]struct{}) error {
 	for directory := range planned {
 		if _, exists := created[directory]; !exists {
-			return compatibilityError("planned owned directory was not created: " + directory)
+			return integrityError("planned owned directory was not created: " + directory)
 		}
 	}
 	for directory := range created {
 		if _, exists := planned[directory]; !exists {
-			return compatibilityError("unplanned owned directory was created: " + directory)
+			return integrityError("unplanned owned directory was created: " + directory)
 		}
 	}
 	return nil
@@ -508,10 +508,10 @@ func installPathSet(values []string) (map[string]struct{}, error) {
 	result := make(map[string]struct{}, len(values))
 	for _, value := range values {
 		if value == "" || !filepath.IsAbs(value) || !safeStateField(value) {
-			return nil, compatibilityError("invalid planned owned directory: " + value)
+			return nil, integrityError("invalid planned owned directory: " + value)
 		}
 		if _, exists := result[value]; exists {
-			return nil, compatibilityError("duplicate planned owned directory: " + value)
+			return nil, integrityError("duplicate planned owned directory: " + value)
 		}
 		result[value] = struct{}{}
 	}

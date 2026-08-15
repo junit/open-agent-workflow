@@ -8,8 +8,9 @@ Adapter 是某个 Agent Host 的安装与加载指引，不是工程方法，也
 原生 Skill 调用面。可以说明可读 cache 位置作为 fallback，但不能要求特定 cache、lockfile、revision
 或 digest 才能使用 Policy。
 
-当前内置 Adapter 是 Codex Adapter。其他 Host 通过自己的原生指令格式使用同一 Policy 语义。新增 Adapter
-放入 policy/adapters/，并在 installer registry 中加入 target 坐标。
+当前内置 Policy 指引是 Codex Adapter。其他 Host 通过自己的原生指令格式使用同一 Policy 语义。要增加
+可安装的 Host target，应在 `policy/adapters/` 中加入 Adapter 指引，并在
+`internal/management/targets.go` 中加入 destination 坐标。
 
 ## Target 所有权
 

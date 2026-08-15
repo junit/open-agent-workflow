@@ -8,62 +8,62 @@ import (
 
 func serializeInstallState(state installationState) ([]byte, error) {
 	if state.version == "" || !safeStateField(state.version) {
-		return nil, compatibilityError("version cannot be serialized")
+		return nil, integrityError("version cannot be serialized")
 	}
 	switch state.scope {
 	case "user":
 		if state.project != "" {
-			return nil, compatibilityError("user state cannot contain a project root")
+			return nil, integrityError("user state cannot contain a project root")
 		}
 	case "project":
 		if state.project == "" || !safeStateField(state.project) {
-			return nil, compatibilityError("project root cannot be serialized")
+			return nil, integrityError("project root cannot be serialized")
 		}
 		if !filepath.IsAbs(state.project) {
-			return nil, compatibilityError("invalid project root")
+			return nil, integrityError("invalid project root")
 		}
 	default:
-		return nil, compatibilityError("invalid state scope")
+		return nil, integrityError("invalid state scope")
 	}
 	if state.policyPath == "" || !safeStateField(state.policyPath) {
-		return nil, compatibilityError("policy path cannot be serialized")
+		return nil, integrityError("policy path cannot be serialized")
 	}
 	if !filepath.IsAbs(state.policyPath) {
-		return nil, compatibilityError("invalid policy path")
+		return nil, integrityError("invalid policy path")
 	}
 	if !validChecksum(state.policyChecksum) {
-		return nil, compatibilityError("invalid policy checksum")
+		return nil, integrityError("invalid policy checksum")
 	}
 	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
-		return nil, compatibilityError(err.Error())
+		return nil, integrityError(err.Error())
 	}
 	if state.backupPath != "" {
 		if !safeStateField(state.backupPath) {
-			return nil, compatibilityError("backup path cannot be serialized")
+			return nil, integrityError("backup path cannot be serialized")
 		}
 		if !filepath.IsAbs(state.backupPath) {
-			return nil, compatibilityError("invalid backup path")
+			return nil, integrityError("invalid backup path")
 		}
 	}
 
 	seenDirectories := make(map[string]struct{}, len(state.directories))
 	for _, directory := range state.directories {
 		if directory == "" || !safeStateField(directory) {
-			return nil, compatibilityError("directory record cannot be serialized")
+			return nil, integrityError("directory record cannot be serialized")
 		}
 		if !filepath.IsAbs(directory) {
-			return nil, compatibilityError("invalid owned directory")
+			return nil, integrityError("invalid owned directory")
 		}
 		if _, exists := seenDirectories[directory]; exists {
-			return nil, compatibilityError("duplicate owned directory")
+			return nil, integrityError("duplicate owned directory")
 		}
 		seenDirectories[directory] = struct{}{}
 	}
 	if len(state.targets) == 0 {
-		return nil, compatibilityError("state has no target records")
+		return nil, integrityError("state has no target records")
 	}
 	if err := validateTargetRecords(state); err != nil {
-		return nil, compatibilityError(err.Error())
+		return nil, integrityError(err.Error())
 	}
 
 	var result bytes.Buffer

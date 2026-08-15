@@ -30,7 +30,7 @@ For each declared Skill, use the current Host's native invocation or a
 readable Skill document. The Host index is advisory and may be incomplete.
 When a Skill is unavailable, use an alternative explicitly named by the
 Profile or the Policy default, or state the limitation and ask the user.
-Do not invent a provider, route, result, or recovery owner.
+Do not invent Skill availability, a result, or a recovery owner.
 
 ## Natural-Language Examples
 
@@ -68,9 +68,9 @@ appropriate strength, freshly verified, and reported with remaining risks.
 Git commits, releases, and deployment are user-authorized actions, not hidden
 lifecycle stages.
 
-## Optional Machine Path
+## Optional Machine Evidence
 
-An optional Machine Assurance component may attest Profile content or exact
-Skill identity. An optional coordinator may record cooperating-client
-coordination. These components add evidence only; their absence, failure, or
-unavailability never blocks the normal Policy lifecycle.
+`oaw-assurance` may attest exact Profile content and Skill Binding identity.
+`oaw-bridge` may supply current Codex Host observations to that evidence path.
+They do not manage delivery, and their absence or failure never blocks the
+normal Policy lifecycle.

@@ -575,7 +575,7 @@ func TestInstallActionValuesAreDefensiveAndFailClosed(t *testing.T) {
 	if _, _, err := targetInstallCoordinates(coords, resolvedRequest{scope: "user"}, "unknown"); err == nil {
 		t.Fatal("unknown target coordinates were accepted")
 	}
-	typed := compatibilityError("typed")
+	typed := integrityError("typed")
 	if installError(typed) != typed {
 		t.Fatal("installError() replaced a typed error")
 	}

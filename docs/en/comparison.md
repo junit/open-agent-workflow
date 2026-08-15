@@ -13,8 +13,8 @@ target-native activation routers. Profile inspection is advisory and cannot
 select a method or prove a Skill's contents.
 
 Optional machine evidence is deliberately additive. It can make a claim more
-precise, but a missing scanner, Bridge, or coordinator does not remove a
-Profile or stop the model from following readable rules.
+precise, but missing evidence cannot remove a Profile or stop the model from
+following readable rules.
 
 This design favors a small, understandable rule surface over a second
 workflow implementation. It is based on the project's dogfood experience and

@@ -154,7 +154,7 @@ func prepareUpdatePolicyActions(
 		extras = append(extras, action)
 	}
 	if primary.destination == "" {
-		return mutationAction{}, nil, nil, "", compatibilityError("managed Policy Set is missing POLICY.md")
+		return mutationAction{}, nil, nil, "", integrityError("managed Policy Set is missing POLICY.md")
 	}
 	return primary, extras, records, checksumBytes(primary.data), nil
 }
@@ -235,7 +235,7 @@ func renderUpdatedTarget(
 		rendered, err := renderTarget(targetID(record.id), scope(preparation.resolved.scope), policyRouterReference(preparation.coordinates))
 		return rendered, checksumBytes(rendered), err
 	default:
-		return nil, "", compatibilityError("unknown target ownership mode: " + candidate.Ownership)
+		return nil, "", integrityError("unknown target ownership mode: " + candidate.Ownership)
 	}
 }
 

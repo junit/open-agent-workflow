@@ -153,5 +153,5 @@ fresh verification has run. Report:
 - residual risks or unavailable checks;
 - repository or external actions actually authorized and completed.
 
-Never report a native Skill invocation, machine attestation, receipt, lock, or
-guarantee that did not occur.
+Never report a native Skill invocation, machine evidence, or guarantee that did
+not occur.

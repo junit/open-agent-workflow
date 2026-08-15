@@ -110,7 +110,7 @@ func initializeCoordinates(environment Environment, resolved resolvedRequest) (c
 		coords.policyReference = policyPath
 		coords.customProfilesDir = customProfilesDir
 	default:
-		return coordinates{}, compatibilityError("unknown Policy Set scope: " + resolved.scope)
+		return coordinates{}, integrityError("unknown Policy Set scope: " + resolved.scope)
 	}
 	return coords, nil
 }
@@ -146,16 +146,16 @@ func validatedDestinationPath(root, suffix string) (string, error) {
 		return "", usageError("root contains control characters")
 	}
 	if suffix == "" || filepath.IsAbs(suffix) {
-		return "", compatibilityError("destination suffix must be relative: " + suffix)
+		return "", integrityError("destination suffix must be relative: " + suffix)
 	}
 	components := strings.Split(filepath.ToSlash(suffix), "/")
 	candidate := root
 	for index, component := range components {
 		if component == "" || component == "." || component == ".." {
-			return "", compatibilityError("destination suffix contains an unsafe component: " + suffix)
+			return "", integrityError("destination suffix contains an unsafe component: " + suffix)
 		}
 		if hasControl(component) {
-			return "", compatibilityError("destination suffix contains control characters")
+			return "", integrityError("destination suffix contains control characters")
 		}
 		candidate = candidate + string(filepath.Separator) + filepath.FromSlash(component)
 		info, err := os.Lstat(candidate)
@@ -163,13 +163,13 @@ func validatedDestinationPath(root, suffix string) (string, error) {
 			if os.IsNotExist(err) {
 				continue
 			}
-			return "", compatibilityError("destination path could not be inspected: " + candidate)
+			return "", integrityError("destination path could not be inspected: " + candidate)
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
-			return "", compatibilityError("destination path contains a symlink: " + candidate)
+			return "", integrityError("destination path contains a symlink: " + candidate)
 		}
 		if index != len(components)-1 && !info.IsDir() {
-			return "", compatibilityError("destination path component is not a directory: " + candidate)
+			return "", integrityError("destination path component is not a directory: " + candidate)
 		}
 	}
 	return candidate, nil
@@ -182,13 +182,13 @@ func matchesValidatedDestination(rebuilt, destination string) bool {
 func targetDestination(coords coordinates, scope, project, id string) (string, error) {
 	candidate, found := findTarget(id)
 	if !found {
-		return "", compatibilityError("unknown target '" + id + "'")
+		return "", integrityError("unknown target '" + id + "'")
 	}
 	var root, suffix string
 	switch scope {
 	case "user":
 		if !candidate.User {
-			return "", compatibilityError(fmt.Sprintf("target '%s' is not implemented for user scope", id))
+			return "", integrityError(fmt.Sprintf("target '%s' is not implemented for user scope", id))
 		}
 		root = coords.environment.Home
 		suffix = candidate.UserSuffix
@@ -199,7 +199,7 @@ func targetDestination(coords coordinates, scope, project, id string) (string, e
 		root = project
 		suffix = candidate.ProjectSuffix
 	default:
-		return "", compatibilityError("unknown operation scope: " + scope)
+		return "", integrityError("unknown operation scope: " + scope)
 	}
 	return validatedDestinationPath(root, suffix)
 }

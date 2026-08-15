@@ -42,7 +42,7 @@ func TestDecodeProviderRejectsRemovedWorkflowFields(t *testing.T) {
 	}
 }
 
-func TestDecodeProviderRejectsPreCutoverSchema(t *testing.T) {
+func TestDecodeProviderRejectsLegacySchema(t *testing.T) {
 	raw, err := json.Marshal(testProviderRecord())
 	if err != nil {
 		t.Fatal(err)

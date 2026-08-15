@@ -51,17 +51,17 @@ func prepareMutationForce(
 		return result, nil
 	}
 	if err := validateOwnedDirectories(state, coords); err != nil {
-		return forcePreparation{}, compatibilityError(err.Error())
+		return forcePreparation{}, integrityError(err.Error())
 	}
 	return result, nil
 }
 
 func policySetNeedsBackup(state installationState, coords coordinates) (bool, error) {
 	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
-		return false, compatibilityError(err.Error())
+		return false, integrityError(err.Error())
 	}
 	if len(state.policyFiles) == 0 {
-		return false, compatibilityError("managed Policy Set state is missing")
+		return false, integrityError("managed Policy Set state is missing")
 	}
 	if err := validatePolicySetTree(state, coords); err != nil {
 		return false, err
@@ -70,14 +70,14 @@ func policySetNeedsBackup(state installationState, coords coordinates) (bool, er
 	for _, record := range state.policyFiles {
 		relative, err := filepath.Rel(coords.policyDir, record.path)
 		if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return false, compatibilityError("managed Policy Set file escapes its directory")
+			return false, integrityError("managed Policy Set file escapes its directory")
 		}
 		current, err := inspectInstallPath(record.path)
 		if err != nil {
 			return false, err
 		}
 		if current.kind != installPathRegular {
-			return false, compatibilityError("managed Policy Set file has no recoverable content: " + record.path)
+			return false, integrityError("managed Policy Set file has no recoverable content: " + record.path)
 		}
 		if checksumBytes(current.data) != record.checksum {
 			changed = true
@@ -93,20 +93,20 @@ func validateForcedMutationState(
 	policy installPathSnapshot,
 ) error {
 	if state.scope != resolved.scope {
-		return compatibilityError("installed scope does not match")
+		return integrityError("installed scope does not match")
 	}
 	if resolved.scope == "user" {
 		if state.project != "" {
-			return compatibilityError("installed project root does not match")
+			return integrityError("installed project root does not match")
 		}
 	} else if state.project != resolved.projectRoot {
-		return compatibilityError("installed project root does not match")
+		return integrityError("installed project root does not match")
 	}
 	if state.policyPath != coords.policyPath {
-		return compatibilityError("installed policy path does not match")
+		return integrityError("installed policy path does not match")
 	}
 	if policy.kind != installPathRegular {
-		return compatibilityError("managed policy is missing")
+		return integrityError("managed policy is missing")
 	}
 	return nil
 }
@@ -160,18 +160,18 @@ func verifyForcedTargetRecord(record targetRecord, coords coordinates, state ins
 		return current, repaired, false, false, err
 	}
 	if record.path != expected {
-		return current, repaired, false, false, compatibilityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
+		return current, repaired, false, false, integrityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
 	}
 	candidate, _ := findTarget(record.id)
 	if record.mode != candidate.Ownership {
-		return current, repaired, false, false, compatibilityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
+		return current, repaired, false, false, integrityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
 	}
 	current, err = inspectInstallPath(record.path)
 	if err != nil {
 		return current, repaired, false, false, err
 	}
 	if current.kind != installPathRegular {
-		return current, repaired, false, false, compatibilityError(fmt.Sprintf("forced target has no recoverable file: %s at %s", record.id, record.path))
+		return current, repaired, false, false, integrityError(fmt.Sprintf("forced target has no recoverable file: %s at %s", record.id, record.path))
 	}
 	switch record.mode {
 	case "managed-block":
@@ -194,7 +194,7 @@ func verifyForcedTargetRecord(record targetRecord, coords coordinates, state ins
 	case "owned-file":
 		return current, repaired, false, checksumBytes(current.data) != record.checksum, nil
 	default:
-		return current, repaired, false, false, compatibilityError("unknown target ownership mode: " + record.mode)
+		return current, repaired, false, false, integrityError("unknown target ownership mode: " + record.mode)
 	}
 }
 

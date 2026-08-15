@@ -133,11 +133,11 @@ pass "command-scoped help is inert"
 run_oaw check
 assert_status 0 "check accepts the user-scope defaults"
 assert_contains "scope: user" "check reports user scope"
-assert_contains "targets: claude,codex,gemini,opencode" "user defaults are the four core targets"
+assert_contains "targets: claude,codex,gemini,opencode" "user defaults are the four user targets"
 assert_read_only_roots
 
 run_oaw check --target opencode,claude,codex,claude,gemini
-assert_status 0 "check accepts an explicit core target selection"
+assert_status 0 "check accepts an explicit user target selection"
 assert_contains "targets: claude,codex,gemini,opencode" "user targets are deduplicated in registry order"
 assert_read_only_roots
 pass "user target selection is deterministic"

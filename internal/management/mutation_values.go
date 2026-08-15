@@ -46,17 +46,17 @@ func newMutationAction(
 	before installPathSnapshot,
 ) (mutationAction, error) {
 	if effect != mutationReplace && effect != mutationRemove && effect != mutationRetain {
-		return mutationAction{}, compatibilityError("invalid mutation effect")
+		return mutationAction{}, integrityError("invalid mutation effect")
 	}
 	if label == "" || !safeStateField(label) || destination == "" || !safeStateField(destination) || root == "" || !safeStateField(root) || suffix == "" || !safeStateField(suffix) {
-		return mutationAction{}, compatibilityError("mutation action cannot be serialized")
+		return mutationAction{}, integrityError("mutation action cannot be serialized")
 	}
 	rebuilt, err := validatedDestinationPath(root, suffix)
 	if err != nil {
 		return mutationAction{}, err
 	}
 	if rebuilt != destination {
-		return mutationAction{}, compatibilityError("mutation action destination does not match registry: " + destination)
+		return mutationAction{}, integrityError("mutation action destination does not match registry: " + destination)
 	}
 	if err := validateMutationEffect(effect, data, mode); err != nil {
 		return mutationAction{}, err
@@ -76,24 +76,24 @@ func validateMutationEffect(effect mutationEffect, data []byte, mode fs.FileMode
 	switch effect {
 	case mutationReplace:
 		if data == nil {
-			return compatibilityError("replace action has no data")
+			return integrityError("replace action has no data")
 		}
 		if mode != 0o600 && mode != 0o644 {
-			return compatibilityError("invalid prepared destination mode")
+			return integrityError("invalid prepared destination mode")
 		}
 	case mutationRemove:
 		if data != nil {
-			return compatibilityError("remove action has replacement data")
+			return integrityError("remove action has replacement data")
 		}
 		if mode != 0 {
-			return compatibilityError("remove action has a destination mode")
+			return integrityError("remove action has a destination mode")
 		}
 	case mutationRetain:
 		if data != nil {
-			return compatibilityError("retain action has replacement data")
+			return integrityError("retain action has replacement data")
 		}
 		if mode != 0 {
-			return compatibilityError("retain action has a destination mode")
+			return integrityError("retain action has a destination mode")
 		}
 	}
 	return nil
@@ -102,7 +102,7 @@ func validateMutationEffect(effect mutationEffect, data []byte, mode fs.FileMode
 func captureMutationPathIdentity(root, destination string) (mutationPathIdentity, error) {
 	rootInfo, err := os.Lstat(root)
 	if err != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-		return mutationPathIdentity{}, compatibilityError("mutation root identity could not be captured: " + root)
+		return mutationPathIdentity{}, integrityError("mutation root identity could not be captured: " + root)
 	}
 	inspect := func(path string, directory bool) (fs.FileInfo, error) {
 		info, err := os.Lstat(path)
@@ -110,10 +110,10 @@ func captureMutationPathIdentity(root, destination string) (mutationPathIdentity
 			return nil, nil
 		}
 		if err != nil {
-			return nil, compatibilityError("mutation path identity could not be captured: " + path)
+			return nil, integrityError("mutation path identity could not be captured: " + path)
 		}
 		if info.Mode()&os.ModeSymlink != 0 || (directory && !info.IsDir()) {
-			return nil, compatibilityError("mutation path identity is unsafe: " + path)
+			return nil, integrityError("mutation path identity is unsafe: " + path)
 		}
 		return info, nil
 	}
@@ -139,7 +139,7 @@ func revalidateMutationPathIdentity(expected mutationPathIdentity, root, destina
 	if !sameMutationFileIdentity(expected.root, current.root) ||
 		!sameMutationFileIdentity(expected.parent, current.parent) ||
 		!sameMutationFileIdentity(expected.destination, current.destination) {
-		return compatibilityError("destination identity changed after preparation: " + destination)
+		return integrityError("destination identity changed after preparation: " + destination)
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func addMutationAction(actions []mutationAction, action mutationAction) ([]mutat
 			continue
 		}
 		if !equivalentMutationAction(existing, action) {
-			return nil, compatibilityError("conflicting mutation actions for " + action.destination)
+			return nil, integrityError("conflicting mutation actions for " + action.destination)
 		}
 		return actions, nil
 	}
@@ -197,7 +197,7 @@ func mutationActionFromInstall(action installAction) (mutationAction, error) {
 
 func installActionFromMutation(action mutationAction) (installAction, error) {
 	if action.effect != mutationReplace {
-		return installAction{}, compatibilityError("install action must replace a destination")
+		return installAction{}, integrityError("install action must replace a destination")
 	}
 	return newInstallAction(
 		action.label, action.data, action.destination, action.mode,
@@ -207,21 +207,21 @@ func installActionFromMutation(action mutationAction) (installAction, error) {
 
 func newDirectoryAction(destination, root, suffix string, namespace bool) (directoryAction, error) {
 	if destination == "" || !safeStateField(destination) || root == "" || !safeStateField(root) || suffix == "" || !safeStateField(suffix) {
-		return directoryAction{}, compatibilityError("directory action cannot be serialized")
+		return directoryAction{}, integrityError("directory action cannot be serialized")
 	}
 	rebuilt, err := validatedDestinationPath(root, suffix)
 	if err != nil {
 		return directoryAction{}, err
 	}
 	if rebuilt != destination {
-		return directoryAction{}, compatibilityError("directory action destination does not match registry: " + destination)
+		return directoryAction{}, integrityError("directory action destination does not match registry: " + destination)
 	}
 	before, err := inspectInstallPath(destination)
 	if err != nil {
 		return directoryAction{}, err
 	}
 	if before.kind != installPathMissing && before.kind != installPathDirectory {
-		return directoryAction{}, compatibilityError("owned directory changed before removal: " + destination)
+		return directoryAction{}, integrityError("owned directory changed before removal: " + destination)
 	}
 	identity, err := captureMutationPathIdentity(root, destination)
 	if err != nil {

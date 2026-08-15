@@ -79,7 +79,7 @@ OAW_EXPECTED_CURSOR=$OAW_SANDBOX/expected-cursor.mdc
 
 printf '%s\n' \
   '---' \
-  'description: Open Agent Workflow lifecycle policy' \
+  'description: Open Agent Workflow activation router' \
   'globs: "**/*"' \
   'alwaysApply: true' \
   '---' \
@@ -741,7 +741,7 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode cursor windsurf cline roo 
   esac
   [ -z "$OAW_MATRIX_SIBLING" ] || [ "$(cksum <"$OAW_MATRIX_SIBLING")" = "$OAW_MATRIX_SIBLING_BEFORE" ] || fail "$OAW_MATRIX_TARGET uninstall changed sibling"
 done
-pass "all nine project targets complete copied-update and dry-run lifecycle"
+pass "all nine project targets complete copied-update and dry-run management"
 
 cleanup_sandbox
 setup_sandbox
@@ -798,7 +798,7 @@ run_oaw uninstall --project "$OAW_PROJECT"
 assert_status 0 "default project final uninstall"
 [ ! -e "$OAW_POLICY" ] || fail "default final uninstall kept policy"
 [ ! -e "$OAW_PROJECT_STATE" ] || fail "default final uninstall kept state"
-pass "default project set completes update and selected uninstall lifecycle"
+pass "default project set completes update and selected uninstall management"
 
 cleanup_sandbox
 setup_sandbox

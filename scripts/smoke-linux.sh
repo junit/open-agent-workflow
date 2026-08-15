@@ -110,7 +110,7 @@ for removed_command in \
   workflow providers policy catalog bridge runtime run; do
   run_oaw "removed-$removed_command" 64 "$removed_command"
   grep -F "unknown command '$removed_command'" "$LINUX_SMOKE_TEMP/removed-$removed_command.stderr" >/dev/null ||
-    fail "$removed_command retained a compatibility handler"
+    fail "$removed_command retained a removed-command handler"
 done
 assert_no_machine_state
 

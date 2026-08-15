@@ -46,7 +46,7 @@ func TestRunCheckHelpMatchesInstallerUsage(t *testing.T) {
 	if code := Run([]string{"check", "--help"}, &stdout, &stderr); code != 0 {
 		t.Fatalf("Run() = %d, stderr=%q", code, stderr.String())
 	}
-	if stderr.Len() != 0 || !strings.HasPrefix(stdout.String(), "Usage: ./install.sh <command> [options]\n") || !strings.Contains(stdout.String(), "  check       Report provider and target readiness\n") {
+	if stderr.Len() != 0 || !strings.HasPrefix(stdout.String(), "Usage: ./install.sh <command> [options]\n") || !strings.Contains(stdout.String(), "  check       Report installation and target readiness\n") {
 		t.Fatalf("stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 }

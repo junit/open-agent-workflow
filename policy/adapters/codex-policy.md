@@ -76,16 +76,13 @@ generic review and remediation. For a working-tree or local delivery review,
 use the selected Profile's declared review Skill or Codex's Host-native review
 behavior.
 
-## Observed Routes
+## Skill Listings
 
-An Adapter or optional CLI may report an Observed Route: a name and invocation
-surface that might be usable. This is advisory discovery data. It cannot prove
-Skill content, make a Profile eligible or ineligible, or veto model-led Skill
-resolution.
-
-Changes to cache paths, plugin revisions, or route listings do not create a
-Policy lifecycle event. Re-read the relevant Skill when its rules may have
-changed, and respond to the actual semantic difference.
+Codex Skill indexes and Adapter-discovered paths are advisory. They cannot
+prove Skill content, make a Profile available or unavailable, or veto
+model-led Skill resolution. Re-read a relevant Skill when its instructions may
+have changed, and respond to the actual semantic difference rather than cache
+or revision metadata alone.
 
 ## Host-Native Tools and Effects
 

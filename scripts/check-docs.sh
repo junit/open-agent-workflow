@@ -30,10 +30,11 @@ reject_text() {
 }
 
 VERSION=$(sed -n '1{s/\r$//;p;}' "$REPOSITORY/VERSION")
-[ "$VERSION" = "0.1.0" ] || fail "unexpected fixed source version: $VERSION"
-require_text CHANGELOG.md "## [0.1.0]"
-require_text README.md "source baseline is fixed at v0.1.0"
-require_text README-zh.md "源码基线固定为 v0.1.0"
+printf '%s\n' "$VERSION" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' >/dev/null ||
+  fail "VERSION is not a release version: $VERSION"
+require_text CHANGELOG.md "## [$VERSION]"
+require_text README.md 'The source version is recorded in `VERSION`.'
+require_text README-zh.md '源码版本记录在 `VERSION` 中。'
 
 for pair in \
   "README.md README-zh.md" \
@@ -56,6 +57,9 @@ for pair in \
 done
 
 for path in \
+  docs/adr/README.md \
+  docs/adr/0001-static-policy-product.md \
+  docs/adr/0002-optional-machine-evidence.md \
   policy/POLICY.md \
   policy/cooperative-protocol.md \
   policy/adapters/codex-policy.md \
@@ -70,15 +74,35 @@ for retired in \
   policy/ENGINEERING.md \
   internal/assets/audits \
   internal/assets/schemas \
+  internal/check \
   internal/provideraudit \
   cmd/oaw-provider-audit \
   scripts/audit-provider-sources.sh \
   scripts/check-core-coordinator-coverage.sh \
   scripts/dogfood-current.sh \
   scripts/smoke-host-native.sh \
-  tests/19-provider-source-audit-test.sh; do
+  tests/19-provider-source-audit-test.sh \
+  docs/superpowers \
+  docs/adr/0001-provider-neutral-arbitration-layer.md \
+  docs/adr/0002-xdg-canonical-rule-source.md \
+  docs/adr/0003-add-optional-capability-admission-runtime.md \
+  docs/adr/0004-implement-runtime-core-in-go.md \
+  docs/adr/0005-codex-read-only-mcp-containment.md \
+  docs/adr/0006-separate-codex-discovery-and-execution-profiles.md \
+  docs/adr/0007-use-host-native-execution-topologies.md \
+  docs/adr/0008-treat-subagent-environment-as-host-owned.md \
+  docs/adr/0009-separate-core-coordination-and-host-execution.md \
+  docs/adr/0010-policy-first-with-optional-machine-assurance.md \
+  docs/adr/0011-static-policy-profiles-as-the-product-core.md \
+  docs/adr/0012-retain-only-profile-binding-machine-assurance.md; do
   [ ! -e "$REPOSITORY/$retired" ] || fail "retired asset remains: $retired"
 done
+
+if command -v git >/dev/null 2>&1 &&
+  git -C "$REPOSITORY" rev-parse --is-inside-work-tree >/dev/null 2>&1 &&
+  [ -n "$(git -C "$REPOSITORY" ls-files -- .scratch)" ]; then
+  fail "tracked scratch data remains"
+fi
 
 for file in \
   README.md README-zh.md CONTRIBUTING.md CONTRIBUTING-zh.md \
@@ -93,6 +117,7 @@ for file in \
     "oaw run" \
     "oaw runtime" \
     "Policy Plane" \
+    "Observed Route" \
     "engineering manual"; do
     reject_text "$file" "$retired_text"
   done

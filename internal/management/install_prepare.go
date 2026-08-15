@@ -91,10 +91,10 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 			return PreparedInstall{}, err
 		}
 		if !bytes.Equal(policyContent, policyView.data) || checksumBytes(policyContent) != existingState.policyChecksum || source.version != existingState.version {
-			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
+			return PreparedInstall{}, integrityError("installed content differs from this checkout; run update")
 		}
 		if !policySetMatchesSource(existingState, source, coords, resolved) {
-			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
+			return PreparedInstall{}, integrityError("installed content differs from this checkout; run update")
 		}
 	}
 
@@ -124,7 +124,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		}
 		candidate, found := findTarget(id)
 		if !found {
-			return PreparedInstall{}, compatibilityError("unknown target '" + id + "'")
+			return PreparedInstall{}, integrityError("unknown target '" + id + "'")
 		}
 
 		origin := "existing-file"
@@ -133,7 +133,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		joinsShared := false
 		if wasInstalled {
 			if recorded.path != destination {
-				return PreparedInstall{}, compatibilityError("installed target path does not match")
+				return PreparedInstall{}, integrityError("installed target path does not match")
 			}
 			origin = recorded.origin
 		} else {
@@ -142,7 +142,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 				status, _ := managedInstallStatus(current)
 				if destinationReferenced(existingRecords, destination) {
 					if status != "present" {
-						return PreparedInstall{}, compatibilityError("managed target block has drifted")
+						return PreparedInstall{}, integrityError("managed target block has drifted")
 					}
 					origin, err = sharedDestinationOrigin(existingRecords, destination)
 					if err != nil {
@@ -155,7 +155,7 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 					joinsShared = true
 				} else {
 					if status != "absent" {
-						return PreparedInstall{}, compatibilityError("untracked OAW markers already exist: " + destination)
+						return PreparedInstall{}, integrityError("untracked OAW markers already exist: " + destination)
 					}
 					if current.kind == installPathMissing {
 						origin = "created-file"
@@ -163,11 +163,11 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 				}
 			case "owned-file":
 				if current.kind != installPathMissing {
-					return PreparedInstall{}, compatibilityError("owned target already exists: " + destination)
+					return PreparedInstall{}, integrityError("owned target already exists: " + destination)
 				}
 				origin = "created-file"
 			default:
-				return PreparedInstall{}, compatibilityError("unknown target ownership mode: " + candidate.Ownership)
+				return PreparedInstall{}, integrityError("unknown target ownership mode: " + candidate.Ownership)
 			}
 		}
 
@@ -192,10 +192,10 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 			renderedChecksum = checksumBytes(rendered)
 		}
 		if joinsShared && renderedChecksum != sharedChecksum {
-			return PreparedInstall{}, compatibilityError("conflicting target renders for " + destination)
+			return PreparedInstall{}, integrityError("conflicting target renders for " + destination)
 		}
 		if wasInstalled && renderedChecksum != recorded.checksum {
-			return PreparedInstall{}, compatibilityError("installed content differs from this checkout; run update")
+			return PreparedInstall{}, integrityError("installed content differs from this checkout; run update")
 		}
 
 		action, err := newInstallAction(id, rendered, destination, 0o644, allowedRoot, relativeSuffix, current)
@@ -264,7 +264,7 @@ func requireUnclaimedPolicySetDirectory(coords coordinates) error {
 	case installPathDirectory:
 		entries, err := os.ReadDir(coords.policyDir)
 		if err != nil {
-			return compatibilityError("Policy Set directory could not be inspected")
+			return integrityError("Policy Set directory could not be inspected")
 		}
 		if len(entries) == 0 {
 			return nil
@@ -273,18 +273,18 @@ func requireUnclaimedPolicySetDirectory(coords coordinates) error {
 			return requireUserPolicySetDirectoryContainsOnlyCustomProfiles(coords, entries)
 		}
 	}
-	return compatibilityError("untracked managed Policy Set content exists: " + coords.policyDir)
+	return integrityError("untracked managed Policy Set content exists: " + coords.policyDir)
 }
 
 func requireUserPolicySetDirectoryContainsOnlyCustomProfiles(coords coordinates, entries []os.DirEntry) error {
 	for _, entry := range entries {
 		if entry.Name() != "profiles" || !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			return compatibilityError("untracked managed Policy Set content exists: " + filepath.Join(coords.policyDir, entry.Name()))
+			return integrityError("untracked managed Policy Set content exists: " + filepath.Join(coords.policyDir, entry.Name()))
 		}
 	}
 	profiles, err := os.ReadDir(coords.customProfilesDir)
 	if err != nil {
-		return compatibilityError("user Custom Profile directory could not be inspected")
+		return integrityError("user Custom Profile directory could not be inspected")
 	}
 	for _, entry := range profiles {
 		if entry.Name() != "builtin" {
@@ -292,11 +292,11 @@ func requireUserPolicySetDirectoryContainsOnlyCustomProfiles(coords coordinates,
 		}
 		builtin := filepath.Join(coords.customProfilesDir, "builtin")
 		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-			return compatibilityError("untracked managed Policy Set content exists: " + builtin)
+			return integrityError("untracked managed Policy Set content exists: " + builtin)
 		}
 		children, err := os.ReadDir(builtin)
 		if err != nil || len(children) != 0 {
-			return compatibilityError("untracked managed Policy Set content exists: " + builtin)
+			return integrityError("untracked managed Policy Set content exists: " + builtin)
 		}
 	}
 	return nil
@@ -308,7 +308,7 @@ func sourcePolicyContent(source Source, coords coordinates) ([]byte, error) {
 			return policySetFileContent(coords, file), nil
 		}
 	}
-	return nil, compatibilityError("managed Policy Set is missing POLICY.md")
+	return nil, integrityError("managed Policy Set is missing POLICY.md")
 }
 
 func policySetFileContent(coords coordinates, file oaw.PolicyFile) []byte {
@@ -346,7 +346,7 @@ func prepareInstallPolicyActions(source Source, coords coordinates, resolved res
 		}
 	}
 	if primary.destination == "" {
-		return installAction{}, nil, compatibilityError("managed Policy Set is missing POLICY.md")
+		return installAction{}, nil, integrityError("managed Policy Set is missing POLICY.md")
 	}
 	return primary, extras, nil
 }
@@ -386,23 +386,23 @@ func policySetMatchesSource(state installationState, source Source, coords coord
 
 func validateCurrentInstallState(state installationState, coords coordinates, resolved resolvedRequest, policy installPathSnapshot) error {
 	if state.scope != resolved.scope {
-		return compatibilityError("installed scope does not match")
+		return integrityError("installed scope does not match")
 	}
 	if resolved.scope == "user" {
 		if state.project != "" {
-			return compatibilityError("installed project root does not match")
+			return integrityError("installed project root does not match")
 		}
 	} else if state.project != resolved.projectRoot {
-		return compatibilityError("installed project root does not match")
+		return integrityError("installed project root does not match")
 	}
 	if state.policyPath != coords.policyPath {
-		return compatibilityError("installed policy path does not match")
+		return integrityError("installed policy path does not match")
 	}
 	if policy.kind != installPathRegular {
-		return compatibilityError("managed policy is missing")
+		return integrityError("managed policy is missing")
 	}
 	if checksumBytes(policy.data) != state.policyChecksum {
-		return compatibilityError("managed policy has drifted")
+		return integrityError("managed policy has drifted")
 	}
 	if err := validatePolicySetFiles(state, coords); err != nil {
 		return err
@@ -411,7 +411,7 @@ func validateCurrentInstallState(state installationState, coords coordinates, re
 		return err
 	}
 	if err := validateOwnedDirectories(state, coords); err != nil {
-		return compatibilityError(err.Error())
+		return integrityError(err.Error())
 	}
 	return nil
 }
@@ -431,11 +431,11 @@ func validateLiveTargetRecord(record targetRecord, coords coordinates, recordSco
 		return err
 	}
 	if record.path != expected {
-		return compatibilityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
+		return integrityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
 	}
 	candidate, _ := findTarget(record.id)
 	if record.mode != candidate.Ownership {
-		return compatibilityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
+		return integrityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
 	}
 	current, err := inspectInstallPath(record.path)
 	if err != nil {
@@ -445,14 +445,14 @@ func validateLiveTargetRecord(record targetRecord, coords coordinates, recordSco
 	case "managed-block":
 		status, checksum := managedInstallStatus(current)
 		if status != "present" || checksum != record.checksum {
-			return compatibilityError(fmt.Sprintf("managed target block has drifted: %s at %s", record.id, record.path))
+			return integrityError(fmt.Sprintf("managed target block has drifted: %s at %s", record.id, record.path))
 		}
 	case "owned-file":
 		if current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
-			return compatibilityError(fmt.Sprintf("owned target file has drifted: %s at %s", record.id, record.path))
+			return integrityError(fmt.Sprintf("owned target file has drifted: %s at %s", record.id, record.path))
 		}
 	default:
-		return compatibilityError("unknown target ownership mode: " + record.mode)
+		return integrityError("unknown target ownership mode: " + record.mode)
 	}
 	return nil
 }
@@ -508,7 +508,7 @@ func prepareInstallDirectories(
 	}
 	state := installationState{scope: resolved.scope, project: resolved.projectRoot, directories: directories, targets: records}
 	if err := validateOwnedDirectories(state, coords); err != nil {
-		return nil, nil, compatibilityError(err.Error())
+		return nil, nil, integrityError(err.Error())
 	}
 	return directories, planned, nil
 }
@@ -523,7 +523,7 @@ func mergeInstallRecords(existing, selected []targetRecord, recordScope string) 
 	for _, record := range selected {
 		selectedByID[record.id] = record
 		if previous, exists := changedChecksums[record.path]; exists && previous != record.checksum {
-			return nil, compatibilityError("selected targets render conflicting checksums for " + record.path)
+			return nil, integrityError("selected targets render conflicting checksums for " + record.path)
 		}
 		changedChecksums[record.path] = record.checksum
 	}
@@ -543,7 +543,7 @@ func mergeInstallRecords(existing, selected []targetRecord, recordScope string) 
 	}
 	state := installationState{scope: recordScope, targets: result}
 	if err := validateTargetRecords(state); err != nil {
-		return nil, compatibilityError(err.Error())
+		return nil, integrityError(err.Error())
 	}
 	return result, nil
 }
@@ -551,7 +551,7 @@ func mergeInstallRecords(existing, selected []targetRecord, recordScope string) 
 func targetInstallCoordinates(coords coordinates, resolved resolvedRequest, id string) (string, string, error) {
 	candidate, found := findTarget(id)
 	if !found {
-		return "", "", compatibilityError("unknown target '" + id + "'")
+		return "", "", integrityError("unknown target '" + id + "'")
 	}
 	if resolved.scope == "project" {
 		return resolved.projectRoot, candidate.ProjectSuffix, nil
@@ -579,17 +579,17 @@ func newStateInstallAction(label string, data []byte, destination, root string) 
 
 func newInstallAction(label string, data []byte, destination string, mode fs.FileMode, root, suffix string, before installPathSnapshot) (installAction, error) {
 	if !safeStateField(label) || label == "" || !safeStateField(destination) || !safeStateField(root) || !safeStateField(suffix) {
-		return installAction{}, compatibilityError("target action cannot be serialized")
+		return installAction{}, integrityError("target action cannot be serialized")
 	}
 	if mode != 0o600 && mode != 0o644 {
-		return installAction{}, compatibilityError("invalid prepared destination mode")
+		return installAction{}, integrityError("invalid prepared destination mode")
 	}
 	rebuilt, err := validatedDestinationPath(root, suffix)
 	if err != nil {
 		return installAction{}, err
 	}
 	if rebuilt != destination {
-		return installAction{}, compatibilityError("target action destination does not match registry: " + destination)
+		return installAction{}, integrityError("target action destination does not match registry: " + destination)
 	}
 	return installAction{
 		label: label, data: bytes.Clone(data), destination: destination, mode: mode,
@@ -603,7 +603,7 @@ func addInstallAction(actions []installAction, action installAction) ([]installA
 			continue
 		}
 		if existing.mode != action.mode || existing.allowedRoot != action.allowedRoot || existing.relativeSuffix != action.relativeSuffix || !bytes.Equal(existing.data, action.data) {
-			return nil, compatibilityError("conflicting target renders for " + action.destination)
+			return nil, integrityError("conflicting target renders for " + action.destination)
 		}
 		return actions, nil
 	}
@@ -616,7 +616,7 @@ func inspectInstallPath(path string) (installPathSnapshot, error) {
 		if os.IsNotExist(err) {
 			return installPathSnapshot{kind: installPathMissing}, nil
 		}
-		return installPathSnapshot{}, compatibilityError("destination path could not be inspected: " + path)
+		return installPathSnapshot{}, integrityError("destination path could not be inspected: " + path)
 	}
 	result := installPathSnapshot{mode: info.Mode()}
 	switch {
@@ -632,7 +632,7 @@ func inspectInstallPath(path string) (installPathSnapshot, error) {
 		result.kind = installPathOther
 	}
 	if err != nil {
-		return installPathSnapshot{}, compatibilityError("destination path could not be read: " + path)
+		return installPathSnapshot{}, integrityError("destination path could not be read: " + path)
 	}
 	return result, nil
 }
@@ -728,7 +728,7 @@ func stateActionRelativeSuffix(root, destination string) (string, error) {
 	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(destination))
 	if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) ||
 		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", compatibilityError("destination escapes its allowed root: " + destination)
+		return "", integrityError("destination escapes its allowed root: " + destination)
 	}
 	relative = filepath.ToSlash(relative)
 	rebuilt, err := validatedDestinationPath(root, relative)
@@ -736,7 +736,7 @@ func stateActionRelativeSuffix(root, destination string) (string, error) {
 		return "", err
 	}
 	if !matchesValidatedDestination(rebuilt, destination) {
-		return "", compatibilityError("destination does not match its allowed root: " + destination)
+		return "", integrityError("destination does not match its allowed root: " + destination)
 	}
 	return relative, nil
 }
@@ -754,7 +754,7 @@ func installPathIsMissing(path string) (bool, error) {
 	if os.IsNotExist(err) {
 		return true, nil
 	}
-	return false, compatibilityError("destination path could not be inspected: " + path)
+	return false, integrityError("destination path could not be inspected: " + path)
 }
 
 func installNamespaceDirectory(coords coordinates, path string) bool {
@@ -796,12 +796,12 @@ func sharedDestinationOrigin(records []targetRecord, destination string) (string
 			continue
 		}
 		if value != "" && value != record.origin {
-			return "", compatibilityError("conflicting target origins for " + destination)
+			return "", integrityError("conflicting target origins for " + destination)
 		}
 		value = record.origin
 	}
 	if value == "" {
-		return "", compatibilityError("target destination is not referenced: " + destination)
+		return "", integrityError("target destination is not referenced: " + destination)
 	}
 	return value, nil
 }
@@ -813,12 +813,12 @@ func sharedDestinationChecksum(records []targetRecord, destination string) (stri
 			continue
 		}
 		if value != "" && value != record.checksum {
-			return "", compatibilityError("conflicting target checksums for " + destination)
+			return "", integrityError("conflicting target checksums for " + destination)
 		}
 		value = record.checksum
 	}
 	if value == "" {
-		return "", compatibilityError("target destination is not referenced: " + destination)
+		return "", integrityError("target destination is not referenced: " + destination)
 	}
 	return value, nil
 }

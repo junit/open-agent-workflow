@@ -10,7 +10,7 @@ OAW 是规则驱动产品。所有改动都必须保持静态 Policy Set 为正�
 - 在隔离的 HOME、XDG_CONFIG_HOME、XDG_STATE_HOME 和项目根目录中验证 CLI。
 - 保持 English 与 Chinese 用户文档语义一致。
 - Host 特定路径放在 policy/adapters，可移植语义放在 Policy 和 Profile。
-- 不要让 scanner、state machine 或 machine evidence 成为 Policy 路径的前置条件。
+- 不要让 machine evidence 成为 Policy 路径的前置条件，也不要在 Go 中复制 Profile 语义。
 
 ## 测试
 

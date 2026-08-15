@@ -20,7 +20,7 @@ func renderTarget(id targetID, operationScope scope, policyPath string) ([]byte,
 	case "project:codex", "project:opencode", "project:cline", "project:roo":
 		rendered = renderActivationRouter(operationScope, policyPath)
 	case "project:cursor":
-		rendered = "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + renderActivationRouter(operationScope, policyPath)
+		rendered = "---\ndescription: Open Agent Workflow activation router\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + renderActivationRouter(operationScope, policyPath)
 	case "project:windsurf":
 		rendered = "---\ntrigger: always_on\n---\n\n" + renderActivationRouter(operationScope, policyPath)
 	case "project:copilot":
@@ -85,7 +85,7 @@ func renderManagedFile(current, block []byte) ([]byte, error) {
 		return result, nil
 	}
 	if beginCount != 1 || endCount != 1 || beginIndex >= endIndex {
-		return nil, compatibilityError("managed markers are invalid")
+		return nil, integrityError("managed markers are invalid")
 	}
 
 	prefixEnd := lines[beginIndex].start

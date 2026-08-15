@@ -14,8 +14,8 @@ the normal product core and keep optional machine components additive.
 - Keep English and Chinese user documentation semantically equivalent.
 - Keep Host-specific paths in policy/adapters and portable semantics in Policy
   and Profiles.
-- Do not add a scanner, state machine, or machine evidence requirement to the
-  Policy path.
+- Do not make machine evidence a requirement for the Policy path or duplicate
+  Profile semantics in Go.
 
 ## Testing
 

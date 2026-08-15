@@ -1,13 +1,25 @@
 # Machine Assurance
 
-Machine Assurance 是面向需要机器可验证证据的部署的可选组件。它是静态 Policy 产品的 overlay，不是第二套
-工作流定义。
+`oaw-assurance` 是可选可执行程序，面向需要为一个已选 Markdown Profile 生成精确机器身份声明的用户。
 
-它可以验证 Profile 字节、Skill 身份、Host observation 或合作客户端事件。记录必须不含 secret，并明确
-自己的 scope。证据可以提高声明置信度，但不能决定 Policy Profile 是否存在，也不能 veto 有效的 Policy
-工作流。
+## Assurance Overlay
 
-Agent Host 仍负责物理执行与安全策略。Assurance 失败只报告证据缺失；除非用户明确要求 assurance-only
-交付物，模型可以继续正常 Policy 路径。
+Overlay 固定完整 Profile digest，并将确定的 Skill 或 Host-action occurrence 映射到精确的 Provider、
+distribution、Host、Binding、invocation、内容和 evidence 身份。无法证明请求的 occurrence 或 Binding
+时，签发与验证会 fail closed。
 
-Schema、digest、lease 和 receipt 都应留在可选组件中。可移植 Policy 与 Profile 必须不依赖它们且保持可读。
+Overlay 不包含工程方法、Responsibility ownership、顺序、进度、approval、执行结果或完成声明。
+它不能选择或修改 Profile，也不能授权 Host action。
+
+## 命令
+
+```text
+oaw-assurance overlay inspect --profile SOURCE:ID
+oaw-assurance overlay issue --profile SOURCE:ID --input INPUT.json
+oaw-assurance overlay verify --profile SOURCE:ID --input OVERLAY.json
+```
+
+该组件通过共享的只读 Profile inspector 读取 Profile，并独立构建和安装；默认 `oaw` 可执行程序
+不依赖它。
+
+Assurance 失败只表示请求的机器声明不可用，不会改变已选 Profile 或正常 Policy 工作流。

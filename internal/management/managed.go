@@ -11,7 +11,7 @@ func renderManagedFileWithoutBlock(current []byte) ([]byte, error) {
 	view := installPathSnapshot{kind: installPathRegular, data: bytes.Clone(current)}
 	status, _ := managedInstallStatus(view)
 	if status != "present" {
-		return nil, compatibilityError("managed markers are invalid")
+		return nil, integrityError("managed markers are invalid")
 	}
 	lines := managedLineSpans(current)
 	beginIndex, endIndex := -1, -1

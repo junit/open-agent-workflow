@@ -2,8 +2,8 @@
 
 ## Supported Version
 
-The supported version is the current unreleased 0.1.0 candidate on the active
-local branch. Earlier snapshots receive no separate security maintenance.
+The supported version is the latest tagged release and the current `main`
+branch. Earlier snapshots receive no separate security maintenance.
 
 ## Private Reporting
 

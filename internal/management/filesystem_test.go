@@ -222,7 +222,7 @@ func TestScopedFilesystemHelpersRejectInvalidCoordinatesAndMissingTempDirectory(
 	syncScopedDirectory(root, "missing")
 }
 
-func TestScopedFilesystemCreatesUnplannedCompatibilityDirectory(t *testing.T) {
+func TestScopedFilesystemCreatesUnplannedManagedDirectory(t *testing.T) {
 	root := t.TempDir()
 	action := installAction{
 		label: "artifact", data: []byte("x"), destination: filepath.Join(root, "compat", "artifact"), mode: 0o644,
@@ -233,7 +233,7 @@ func TestScopedFilesystemCreatesUnplannedCompatibilityDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(created) != 0 {
-		t.Fatalf("unplanned compatibility directory was claimed: %#v", created)
+		t.Fatalf("unplanned managed directory was claimed: %#v", created)
 	}
 }
 

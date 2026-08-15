@@ -31,9 +31,9 @@ A project Policy Set is self-contained and takes precedence over a user set;
 sets are not merged. Custom Profiles remain user- or project-owned.
 
 Machine Assurance and the Bridge are optional components. They may add exact
-content or Skill identity, evidence, or coordination. They cannot select a
+content, Skill identity, or Host-observation evidence. They cannot select a
 Profile, invoke a Skill, change Profile semantics, or veto a Policy-valid
-workflow. Offer eligibility and physical execution permission remain separate.
+workflow. Profile selection and physical execution permission remain separate.
 
 ## Normal Flow
 
@@ -53,6 +53,6 @@ their evidence claims.
 ## Extension Boundary
 
 Host adapters may document paths, indices, native invocation names, and reload
-behavior. They must not add a second Profile catalog, a route gate, a state
-machine, or Host-specific engineering ownership. See the extending-adapters
-guide and the accepted static-core ADR.
+behavior. They must not define Profile selection, progress control, or
+Host-specific engineering ownership. See the extending-adapters guide and the
+current architecture decisions.

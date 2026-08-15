@@ -33,7 +33,7 @@ for retired_asset in \
     fail "retired duplicate workflow asset remains: $retired_asset"
 done
 
-if go list -deps ./cmd/oaw | grep -E '/(assurance|codexbridge|coordinator)(/|$)' >/dev/null; then
+if go list -deps ./cmd/oaw | grep -E '/(assets|assurance|builtin|catalog|codexbridge|coordinator|discovery|integrity)(/|$)' >/dev/null; then
   fail "default oaw binary depends on an optional machine component"
 fi
 
@@ -88,7 +88,7 @@ for removed_command in \
   workflow providers policy catalog bridge runtime run; do
   run_oaw "$removed_command"
   assert_status 64 "$removed_command is absent"
-  assert_contains "unknown command '$removed_command'" "$removed_command has no compatibility wrapper"
+  assert_contains "unknown command '$removed_command'" "$removed_command has no command wrapper"
   assert_read_only_roots
 done
 

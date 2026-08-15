@@ -11,9 +11,10 @@ invocation surfaces. It may mention a readable cache location as a fallback,
 but it must not require a particular cache, lockfile, revision, or digest for
 Policy operation.
 
-The current built-in adapter is the Codex adapter. Other hosts use the same
-Policy semantics through their native instruction format. Add a new adapter
-under policy/adapters/ and add its target coordinates to the installer registry.
+The current built-in Policy guidance is the Codex Adapter. Other hosts use the
+same Policy semantics through their native instruction format. To add an
+installable Host target, add its Adapter guidance under `policy/adapters/` and
+its destination coordinates to `internal/management/targets.go`.
 
 ## Target Ownership
 

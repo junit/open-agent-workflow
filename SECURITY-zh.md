@@ -2,7 +2,7 @@
 
 ## Supported Version
 
-当前 active local branch 上尚未发布的 0.1.0 candidate 是唯一 supported version；更早快照不提供独立安全维护。
+最新 tag release 和当前 `main` 分支是 supported version；更早快照不提供独立安全维护。
 
 ## Private Reporting
 

@@ -15,7 +15,7 @@ func readinessLines(environment Environment, targets []string) []string {
 			continue
 		}
 		status := "missing"
-		if coreTargetDetected(environment, id) {
+		if hostTargetDetected(environment, id) {
 			status = "detected"
 		}
 		lines = append(lines, fmt.Sprintf("target %s: %s (user, project)", id, status))
@@ -23,14 +23,14 @@ func readinessLines(environment Environment, targets []string) []string {
 	return lines
 }
 
-func coreTargetDetected(environment Environment, id string) bool {
+func hostTargetDetected(environment Environment, id string) bool {
 	if executableOnPath(environment.Path, id) {
 		return true
 	}
 	var root string
 	switch id {
 	case "claude", "codex", "gemini":
-		root = compatibilityRootedPath(environment.Home, "."+id)
+		root = filepath.Join(environment.Home, "."+id)
 	case "opencode":
 		root = filepath.Join(environment.ConfigHome, "opencode")
 	}

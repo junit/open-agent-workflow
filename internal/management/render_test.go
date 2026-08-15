@@ -26,7 +26,7 @@ func TestRenderTargetMatchesBashBytes(t *testing.T) {
 		{name: "project codex", scope: "project", id: "codex", want: projectRouter},
 		{name: "project gemini", scope: "project", id: "gemini", want: projectRouter},
 		{name: "project opencode", scope: "project", id: "opencode", want: projectRouter},
-		{name: "project cursor", scope: "project", id: "cursor", want: "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + projectRouter},
+		{name: "project cursor", scope: "project", id: "cursor", want: "---\ndescription: Open Agent Workflow activation router\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + projectRouter},
 		{name: "project windsurf", scope: "project", id: "windsurf", want: "---\ntrigger: always_on\n---\n\n" + projectRouter},
 		{name: "project cline", scope: "project", id: "cline", want: projectRouter},
 		{name: "project roo", scope: "project", id: "roo", want: projectRouter},

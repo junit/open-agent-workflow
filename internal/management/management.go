@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	oaw "github.com/wifibaby4u/open-agent-workflow"
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 )
 
 type Environment struct {
@@ -93,7 +92,7 @@ type Error struct {
 
 func (err *Error) Error() string { return err.Message }
 
-func Check(value catalog.Catalog, environment Environment, request CheckRequest) (Result, error) {
+func Check(environment Environment, request CheckRequest) (Result, error) {
 	resolved, err := resolve(request)
 	if err != nil {
 		return Result{}, err
@@ -105,11 +104,6 @@ func Check(value catalog.Catalog, environment Environment, request CheckRequest)
 		lines = append(lines, "scope: user")
 	}
 	lines = append(lines, "targets: "+strings.Join(resolved.targets, ","))
-	providers, err := providerLines(value, environment.Home)
-	if err != nil {
-		return Result{}, err
-	}
-	lines = append(lines, providers...)
 	lines = append(lines, readinessLines(environment, resolved.targets)...)
 	installed, err := installationLines(environment, resolved)
 	lines = append(lines, installed.lines...)
@@ -136,4 +130,8 @@ func WriteResult(result Result, output io.Writer) error {
 
 func usageError(message string) error {
 	return &Error{Status: 64, Message: message}
+}
+
+func integrityError(message string) error {
+	return &Error{Status: 65, Message: message}
 }

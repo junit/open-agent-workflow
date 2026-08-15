@@ -50,5 +50,5 @@ func installError(err error) error {
 	if _, ok := err.(*Error); ok {
 		return err
 	}
-	return compatibilityError(err.Error())
+	return integrityError(err.Error())
 }

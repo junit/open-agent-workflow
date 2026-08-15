@@ -17,6 +17,9 @@ require_file() {
 bash "$REPOSITORY/scripts/check-docs.sh"
 
 for path in \
+  docs/adr/README.md \
+  docs/adr/0001-static-policy-product.md \
+  docs/adr/0002-optional-machine-evidence.md \
   policy/POLICY.md policy/cooperative-protocol.md \
   policy/adapters/codex-policy.md \
   policy/profiles/SP-FULL.md policy/profiles/MATT-FULL.md \
@@ -32,6 +35,12 @@ done
   fail "legacy Provider source-audit fixtures remain"
 [ ! -d "$REPOSITORY/internal/provideraudit" ] ||
   fail "legacy Provider source-audit package remains"
+[ ! -d "$REPOSITORY/internal/check" ] ||
+  fail "legacy check facade remains"
+[ ! -d "$REPOSITORY/docs/superpowers" ] ||
+  fail "obsolete implementation plans remain"
+[ -z "$(git -C "$REPOSITORY" ls-files -- .scratch)" ] ||
+  fail "tracked scratch data remains"
 
 for document in README.md README-zh.md docs/en/*.md docs/zh/*.md; do
   if grep -E '(^|[^[:alnum:]_])oaw (workflow|run|runtime)([^[:alnum:]_-]|$)' \

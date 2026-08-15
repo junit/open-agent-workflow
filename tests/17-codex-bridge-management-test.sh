@@ -85,7 +85,7 @@ if grep -F 'bridge install' "$OAW_SANDBOX/default-help.stdout" >/dev/null; then
 fi
 run_command default-rejects-bridge 64 /dev/null "$BRIDGE_RELEASE/oaw" bridge check codex
 grep -F "unknown command 'bridge'" "$OAW_SANDBOX/default-rejects-bridge.stderr" >/dev/null ||
-  fail 'default oaw retains a Bridge compatibility handler'
+  fail 'default oaw retains a Bridge command handler'
 
 run_command unknown-host 64 /dev/null "$BRIDGE_RELEASE/oaw-bridge" serve claude
 run_command check 0 /dev/null "$BRIDGE_RELEASE/oaw-bridge" check codex --format json

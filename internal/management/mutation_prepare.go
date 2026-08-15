@@ -99,7 +99,7 @@ func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest
 	for _, id := range resolved.targets {
 		candidate, found := findTarget(id)
 		if !found {
-			return compatibilityError("unknown target '" + id + "'")
+			return integrityError("unknown target '" + id + "'")
 		}
 		if candidate.Ownership != "managed-block" {
 			continue
@@ -114,7 +114,7 @@ func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest
 		}
 		status, _ := managedInstallStatus(current)
 		if status != "absent" {
-			return compatibilityError("untracked OAW markers already exist: " + id + " at " + destination)
+			return integrityError("untracked OAW markers already exist: " + id + " at " + destination)
 		}
 	}
 	return nil
@@ -122,23 +122,23 @@ func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest
 
 func validateCleanMutationState(state installationState, coords coordinates, resolved resolvedRequest, policy installPathSnapshot) error {
 	if state.scope != resolved.scope {
-		return compatibilityError("installed scope does not match")
+		return integrityError("installed scope does not match")
 	}
 	if resolved.scope == "user" {
 		if state.project != "" {
-			return compatibilityError("installed project root does not match")
+			return integrityError("installed project root does not match")
 		}
 	} else if state.project != resolved.projectRoot {
-		return compatibilityError("installed project root does not match")
+		return integrityError("installed project root does not match")
 	}
 	if state.policyPath != coords.policyPath {
-		return compatibilityError("installed policy path does not match")
+		return integrityError("installed policy path does not match")
 	}
 	if policy.kind != installPathRegular {
-		return compatibilityError("managed policy is missing")
+		return integrityError("managed policy is missing")
 	}
 	if checksumBytes(policy.data) != state.policyChecksum {
-		return compatibilityError("managed policy has drifted")
+		return integrityError("managed policy has drifted")
 	}
 	if err := validatePolicySetFiles(state, coords); err != nil {
 		return err
@@ -147,7 +147,7 @@ func validateCleanMutationState(state installationState, coords coordinates, res
 		return err
 	}
 	if err := validateOwnedDirectories(state, coords); err != nil {
-		return compatibilityError(err.Error())
+		return integrityError(err.Error())
 	}
 	return nil
 }
@@ -157,7 +157,7 @@ func selectedInstalledRecords(records []targetRecord, selected []string) ([]targ
 	for _, id := range selected {
 		record, found := findTargetRecord(records, id)
 		if !found {
-			return nil, compatibilityError("selected target is not installed: " + id)
+			return nil, integrityError("selected target is not installed: " + id)
 		}
 		result = append(result, record)
 	}

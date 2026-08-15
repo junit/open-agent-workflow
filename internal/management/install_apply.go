@@ -11,7 +11,7 @@ func ApplyInstall(prepared PreparedInstall) (Result, error) {
 		return Result{}, err
 	}
 	if !reflect.DeepEqual(prepared, revalidated) {
-		return Result{}, compatibilityError("installation changed after preparation")
+		return Result{}, integrityError("installation changed after preparation")
 	}
 	if prepared.request.DryRun {
 		return cloneManagementResult(revalidated.predicted), nil
@@ -72,7 +72,7 @@ func revalidateInstallActionSnapshot(action installAction) (installPathSnapshot,
 		return installPathSnapshot{}, err
 	}
 	if !reflect.DeepEqual(current, action.before) {
-		return installPathSnapshot{}, compatibilityError("destination changed after preparation: " + action.destination)
+		return installPathSnapshot{}, integrityError("destination changed after preparation: " + action.destination)
 	}
 	return current, nil
 }

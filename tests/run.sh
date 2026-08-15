@@ -24,16 +24,16 @@ export OAW_INSTALLER
 for test_script in \
   01-cli-test.sh \
   02-check-test.sh \
-  03-claude-lifecycle-test.sh \
-  04-core-adapters-test.sh \
+  03-claude-installation-test.sh \
+  04-user-adapters-test.sh \
   05-project-adapters-test.sh \
-  05-policy-coordination-test.sh \
+  05-policy-scope-test.sh \
   06-security-test.sh \
   07-containment-test.sh \
   08-static-product-test.sh \
   09-profile-inspection-test.sh \
   10-docs-test.sh \
-  14-cutover-release-test.sh \
+  14-release-contract-test.sh \
   15-host-execution-boundary-test.sh \
   17-codex-bridge-management-test.sh \
   18-codex-bridge-protocol-test.sh; do

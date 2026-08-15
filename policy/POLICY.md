@@ -3,10 +3,10 @@
 ## Purpose
 
 Open Agent Workflow (OAW) is an opt-in, rule-driven engineering workflow. Its
-normal operating path is this Policy, one selected Profile, the independently
+complete operating path is this Policy, one selected Profile, the independently
 installed Skills named by that Profile, and the Agent Host's native abilities.
-No OAW runtime process, Bridge, machine attestation, route scanner, reducer, or
-state database is required.
+Installation leaves readable rules in the Host or project, so delivery does not
+require an OAW process or optional machine evidence.
 
 This file defines portable semantics. Natural-language operation is defined by
 the [cooperative protocol](cooperative-protocol.md). Host-specific discovery
@@ -39,8 +39,8 @@ services those components provide; it must not disable the Policy workflow.
 
 ### Monotonic enhancement
 
-Optional components may add convenience, machine evidence, exact identities,
-or coordination. They may not redefine a Profile, reduce the model's ability to
+Optional components may add convenience, machine evidence, or exact identities.
+They may not redefine a Profile, reduce the model's ability to
 follow readable Skill rules, or veto a workflow that is valid under this Policy.
 A Host security rule may still refuse a physical action; that refusal concerns
 execution permission, not Profile existence.
@@ -71,8 +71,8 @@ One selected Canonical Policy Set consists of:
 - Built-in Profiles;
 - the current Host Adapter.
 
-A Project Policy Set takes precedence over a User Policy Set as a whole. Core
-Policy Sets are never merged. Project and user Custom Profiles may both be
+A Project Policy Set takes precedence over a User Policy Set as a whole. Policy
+Set files are never merged. Project and user Custom Profiles may both be
 discovered, but their source remains explicit.
 
 The Built-in Profiles are ordinary Markdown Profiles:
@@ -140,9 +140,9 @@ Do not request a second per-Skill confirmation solely because a Host marks a
 Skill as manual or user-invoked. Ask only when the Host physically requires a
 user action or when a proposed substitution changes important method semantics.
 
-Profile selection does not depend on Provider identity, revision, lockfile,
-digest, cache path, route contract, scanner output, Machine Assurance, or
-Bridge availability. A missing index entry is not proof that a Skill is absent.
+Profile selection does not depend on machine provenance, diagnostic output,
+Machine Assurance, or Bridge availability. A missing index entry is not proof
+that a Skill is absent.
 
 ## Policy Defaults
 
@@ -181,8 +181,8 @@ An exact Skill marked mandatory by the Profile is never silently replaced.
 Complexity and Risk are qualitative model judgments. They do not activate OAW,
 select a Profile, create CLI state, or grant permissions.
 
-- **Complexity** increases decomposition, written planning, coordination, and
-  continuity detail as interactions and uncertainty grow.
+- **Complexity** increases decomposition, written planning, and continuity
+  detail as interactions and uncertainty grow.
 - **Risk** increases approvals, negative testing, security attention, independent
   review, rollback preparation, and verification strength as consequences grow.
 

@@ -25,9 +25,9 @@ OAW 不启动 model process，也不会把逻辑规则变成 sandbox。
 安装管理只拥有 OAW 管理的文件和私有 Install State。项目 Policy Set 自包含，并优先于 User Set；
 两者不会合并。Custom Profile 仍归用户或项目所有。
 
-Machine Assurance 与 Bridge 是可选组件，可以增加精确内容、Skill 身份、证据或协同，但不能选择
-Profile、调用 Skill、改变 Profile 语义或 veto 有效的 Policy 工作流。Offer eligibility 与物理执行
-权限始终分离。
+Machine Assurance 与 Bridge 是可选组件，可以增加精确内容、Skill 身份或 Host observation 证据，
+但不能选择 Profile、调用 Skill、改变 Profile 语义或 veto 有效的 Policy 工作流。Profile 选择与
+物理执行权限始终分离。
 
 ## 正常流程
 
@@ -41,5 +41,5 @@ Profile、调用 Skill、改变 Profile 语义或 veto 有效的 Policy 工作�
 
 ## 扩展边界
 
-Host Adapter 可以说明路径、索引、原生调用名称和重新加载行为，但不能增加第二个 Profile 目录、
-route gate、状态机或 Host 特定的工程所有权。参见扩展 Adapter 和已接受的静态核心 ADR。
+Host Adapter 可以说明路径、索引、原生调用名称和重新加载行为，但不能定义 Profile 选择、进度控制
+或 Host 特定的工程所有权。参见扩展 Adapter 和当前架构决策。

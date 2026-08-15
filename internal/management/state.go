@@ -199,7 +199,7 @@ func validatePolicyFileRecords(records []policyFileRecord) error {
 
 func validatePolicySetFiles(state installationState, coords coordinates) error {
 	if len(state.policyFiles) == 0 {
-		return compatibilityError("managed Policy Set state is missing")
+		return integrityError("managed Policy Set state is missing")
 	}
 	if err := validatePolicySetTree(state, coords); err != nil {
 		return err
@@ -209,25 +209,25 @@ func validatePolicySetFiles(state installationState, coords coordinates) error {
 		relative, err := filepath.Rel(coords.policyDir, record.path)
 		if err != nil || relative == "." || relative == ".." || filepath.IsAbs(relative) ||
 			strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			return compatibilityError("managed Policy Set file escapes its directory")
+			return integrityError("managed Policy Set file escapes its directory")
 		}
 		rebuilt, err := validatedDestinationPath(coords.policyDir, filepath.ToSlash(relative))
 		if err != nil || rebuilt != record.path {
-			return compatibilityError("managed Policy Set file path is invalid")
+			return integrityError("managed Policy Set file path is invalid")
 		}
 		if coords.currentScope == "user" && userCustomProfilePath(coords, record.path) {
-			return compatibilityError("managed Policy Set file claims user Custom Profile: " + record.path)
+			return integrityError("managed Policy Set file claims user Custom Profile: " + record.path)
 		}
 		current, err := inspectInstallPath(record.path)
 		if err != nil || current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
-			return compatibilityError("managed Policy Set file has drifted: " + record.path)
+			return integrityError("managed Policy Set file has drifted: " + record.path)
 		}
 		if record.path == state.policyPath {
 			mainFound = record.checksum == state.policyChecksum
 		}
 	}
 	if !mainFound {
-		return compatibilityError("managed Policy Set main file state is invalid")
+		return integrityError("managed Policy Set main file state is invalid")
 	}
 	return nil
 }
@@ -268,7 +268,7 @@ func validatePolicySetTree(state installationState, coords coordinates) error {
 		return nil
 	})
 	if err != nil {
-		return compatibilityError("managed Policy Set tree has drifted: " + err.Error())
+		return integrityError("managed Policy Set tree has drifted: " + err.Error())
 	}
 	return nil
 }

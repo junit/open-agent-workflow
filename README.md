@@ -6,11 +6,10 @@ Open Agent Workflow (OAW) is a rule-driven engineering workflow for agent
 hosts. It installs one readable Policy Set and lets the model select a Profile
 and use the Skills already available in the host.
 
-The normal product is the Markdown Policy, its Profiles, the selected Skills,
-and the host's native abilities. No OAW runtime process, route scanner,
-reducer, Bridge, or state database is required to complete work. Optional
-machine components can add evidence or coordination, but cannot make a valid
-Policy workflow unavailable.
+The complete product path is the Markdown Policy, its Profiles, the selected
+Skills, and the Host's native abilities. Installation leaves readable rules in
+the Host or project, so delivery does not require a running OAW process or
+optional machine evidence.
 
 ## Quick Start
 
@@ -123,9 +122,10 @@ ambiguous. Built-in IDs are reserved and cannot be shadowed.
 ## Optional Assurance
 
 Machine Assurance and the separately built `oaw-bridge` are optional evidence
-components. They may attach exact content or Skill identity to a Profile, or
-coordinate a cooperating client, but they do not choose a Profile, invoke a
-Skill, own physical permissions, or veto the Policy path. Removing them removes
+components. Machine Assurance can issue or verify an exact identity mapping for
+a selected Profile; the Bridge can supply current Codex observations to that
+evidence path. They do not choose a Profile, invoke a Skill, own physical
+permissions, manage delivery, or veto the Policy path. Removing them removes
 only their machine-backed claim.
 
 The Agent Host owns model calls, Agents, Skills, Plugins, MCP, Hooks,
@@ -134,8 +134,8 @@ never starts a model process or emulates a Host.
 
 ## Development
 
-The source baseline is fixed at v0.1.0. Run the focused and full checks from a
-checkout:
+The source version is recorded in `VERSION`. Run the focused and full checks
+from a checkout:
 
 ```bash
 go test ./... -count=1
@@ -145,5 +145,5 @@ bash scripts/check-docs.sh
 bash tests/run.sh
 ```
 
-See [CONTEXT.md](CONTEXT.md), [the architecture ADR](docs/adr/0011-static-policy-profiles-as-the-product-core.md),
+See [CONTEXT.md](CONTEXT.md), [the architecture decisions](docs/adr/README.md),
 and the [Policy Set](policy/POLICY.md) for normative boundaries.

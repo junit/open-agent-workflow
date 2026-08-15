@@ -248,7 +248,7 @@ func failMutationApplication(result Result, journal []mutationInverse, err error
 
 func validateMutationPlan(plan mutationPlan) error {
 	if plan.operation != mutationUpdate && plan.operation != mutationUninstall {
-		return compatibilityError("invalid prepared mutation operation")
+		return integrityError("invalid prepared mutation operation")
 	}
 	if err := validatePreparedMutationActions(plan); err != nil {
 		return err
@@ -284,7 +284,7 @@ func validatePreparedMutationActions(plan mutationPlan) error {
 		}
 		destinationKey := filepath.Clean(action.destination)
 		if _, exists := seen[destinationKey]; exists {
-			return compatibilityError("duplicate prepared mutation destination: " + action.destination)
+			return integrityError("duplicate prepared mutation destination: " + action.destination)
 		}
 		seen[destinationKey] = struct{}{}
 		if err := revalidateMutationActionSnapshot(action); err != nil {
@@ -299,7 +299,7 @@ func validatePreparedDirectoryActions(actions []directoryAction) error {
 	for _, action := range actions {
 		destinationKey := filepath.Clean(action.destination)
 		if _, exists := seenDirectories[destinationKey]; exists {
-			return compatibilityError("duplicate prepared directory destination: " + action.destination)
+			return integrityError("duplicate prepared directory destination: " + action.destination)
 		}
 		seenDirectories[destinationKey] = struct{}{}
 		rebuilt, err := newDirectoryAction(action.destination, action.allowedRoot, action.relativeSuffix, action.namespace)
@@ -307,7 +307,7 @@ func validatePreparedDirectoryActions(actions []directoryAction) error {
 			return err
 		}
 		if !reflect.DeepEqual(rebuilt.before, action.before) {
-			return compatibilityError("owned directory changed after preparation: " + action.destination)
+			return integrityError("owned directory changed after preparation: " + action.destination)
 		}
 		if err := compareMutationPathIdentity(action.identity, rebuilt.identity, action.destination); err != nil {
 			return err
@@ -322,19 +322,19 @@ func revalidateMutationActionSnapshot(action mutationAction) error {
 		return err
 	}
 	if !reflect.DeepEqual(current, action.before) {
-		return compatibilityError("destination changed after preparation: " + action.destination)
+		return integrityError("destination changed after preparation: " + action.destination)
 	}
 	return revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination)
 }
 
 func compareMutationPathIdentity(expected, current mutationPathIdentity, destination string) error {
 	if !expected.captured || !current.captured {
-		return compatibilityError("prepared mutation identity is missing: " + destination)
+		return integrityError("prepared mutation identity is missing: " + destination)
 	}
 	if !sameMutationFileIdentity(expected.root, current.root) ||
 		!sameMutationFileIdentity(expected.parent, current.parent) ||
 		!sameMutationFileIdentity(expected.destination, current.destination) {
-		return compatibilityError("destination identity changed after preparation: " + destination)
+		return integrityError("destination identity changed after preparation: " + destination)
 	}
 	return nil
 }
@@ -348,7 +348,7 @@ func applyMutationAction(plan mutationPlan, action mutationAction) (string, bool
 		return "", false, err
 	}
 	if !reflect.DeepEqual(current, action.before) {
-		return "", false, compatibilityError("destination changed after preparation: " + action.destination)
+		return "", false, integrityError("destination changed after preparation: " + action.destination)
 	}
 	if err := revalidateMutationPathIdentity(action.identity, action.allowedRoot, action.destination); err != nil {
 		return "", false, err
@@ -381,7 +381,7 @@ func applyMutationAction(plan mutationPlan, action mutationAction) (string, bool
 		}
 		return "oaw: remove: " + action.destination, true, nil
 	default:
-		return "", false, compatibilityError("invalid mutation effect")
+		return "", false, integrityError("invalid mutation effect")
 	}
 }
 
@@ -395,7 +395,7 @@ func verifyActiveMutationBackup(plan mutationPlan, action mutationAction) error 
 	}
 	expected, err := renderBackupManifest(plan.backup)
 	if err != nil || !bytes.Equal(manifest, expected) {
-		return compatibilityError("active backup manifest has changed")
+		return integrityError("active backup manifest has changed")
 	}
 	for _, candidate := range plan.backup.candidates {
 		if candidate.original != action.destination {
@@ -403,15 +403,15 @@ func verifyActiveMutationBackup(plan mutationPlan, action mutationAction) error 
 		}
 		backupBytes, err := readVerifiedBackupFile(plan.environment, candidate.backup, "backup artifact")
 		if err != nil || checksumBytes(backupBytes) != candidate.checksum {
-			return compatibilityError("backup verification failed: " + action.destination)
+			return integrityError("backup verification failed: " + action.destination)
 		}
 		current, err := inspectInstallPath(action.destination)
 		if err != nil || current.kind != installPathRegular || checksumBytes(current.data) != candidate.checksum {
-			return compatibilityError("backup source changed before mutation: " + action.destination)
+			return integrityError("backup source changed before mutation: " + action.destination)
 		}
 		return nil
 	}
-	return compatibilityError("mutation destination is missing from backup: " + action.destination)
+	return integrityError("mutation destination is missing from backup: " + action.destination)
 }
 
 func rollbackMutationJournal(journal []mutationInverse) error {
@@ -437,7 +437,7 @@ func restoreMutationAction(applied mutationAction) error {
 		return err
 	}
 	if applied.before.kind != installPathMissing && applied.before.kind != installPathRegular {
-		return compatibilityError("cannot restore mutation destination: " + applied.destination)
+		return integrityError("cannot restore mutation destination: " + applied.destination)
 	}
 	if reflect.DeepEqual(current, applied.before) {
 		return nil
@@ -476,21 +476,21 @@ func revalidateAppliedMutationForRollback(applied mutationAction, current instal
 		if current.kind != installPathRegular ||
 			!bytes.Equal(current.data, applied.data) ||
 			current.mode.Perm() != applied.mode.Perm() {
-			return compatibilityError("mutation destination changed before rollback: " + applied.destination)
+			return integrityError("mutation destination changed before rollback: " + applied.destination)
 		}
 	case mutationRemove:
 		if current.kind != installPathMissing {
-			return compatibilityError("mutation destination changed before rollback: " + applied.destination)
+			return integrityError("mutation destination changed before rollback: " + applied.destination)
 		}
 	default:
-		return compatibilityError("cannot restore mutation destination: " + applied.destination)
+		return integrityError("cannot restore mutation destination: " + applied.destination)
 	}
 	return nil
 }
 
 func restoreMutationDirectory(removed directoryAction) error {
 	if removed.before.kind != installPathDirectory {
-		return compatibilityError("cannot restore owned directory: " + removed.destination)
+		return integrityError("cannot restore owned directory: " + removed.destination)
 	}
 	current, err := inspectInstallPath(removed.destination)
 	if err != nil {
@@ -498,12 +498,12 @@ func restoreMutationDirectory(removed directoryAction) error {
 	}
 	if current.kind == installPathDirectory {
 		if current.mode.Perm() != removed.before.mode.Perm() {
-			return compatibilityError("owned directory changed before rollback: " + removed.destination)
+			return integrityError("owned directory changed before rollback: " + removed.destination)
 		}
 		return nil
 	}
 	if current.kind != installPathMissing {
-		return compatibilityError("cannot restore owned directory: " + removed.destination)
+		return integrityError("cannot restore owned directory: " + removed.destination)
 	}
 	return restoreMissingMutationDirectory(removed)
 }
@@ -520,7 +520,7 @@ func restoreMissingMutationDirectory(removed directoryAction) error {
 		if openedErr != nil || inspectedErr != nil ||
 			!sameMutationFileIdentity(removed.identity.root, opened) ||
 			!sameMutationFileIdentity(opened, inspected) {
-			return compatibilityError("destination identity changed after preparation: " + removed.destination)
+			return integrityError("destination identity changed after preparation: " + removed.destination)
 		}
 	}
 	install := installAction{
@@ -541,7 +541,7 @@ func restoreMissingMutationDirectory(removed directoryAction) error {
 	}
 	created, err := directoryRoot.Lstat(name)
 	if err != nil || !created.IsDir() || created.Mode()&os.ModeSymlink != 0 {
-		return compatibilityError("owned directory changed during rollback: " + removed.destination)
+		return integrityError("owned directory changed during rollback: " + removed.destination)
 	}
 	if err := directoryRoot.Chmod(name, removed.before.mode.Perm()); err != nil {
 		if current, currentErr := directoryRoot.Lstat(name); currentErr == nil && sameMutationFileIdentity(created, current) {
@@ -551,7 +551,7 @@ func restoreMissingMutationDirectory(removed directoryAction) error {
 	}
 	info, err := directoryRoot.Lstat(name)
 	if err != nil || !sameMutationFileIdentity(created, info) || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != removed.before.mode.Perm() {
-		return compatibilityError("owned directory changed during rollback: " + removed.destination)
+		return integrityError("owned directory changed during rollback: " + removed.destination)
 	}
 	syncScopedDirectory(directoryRoot, ".")
 	return nil

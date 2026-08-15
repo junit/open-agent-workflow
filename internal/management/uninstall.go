@@ -153,7 +153,7 @@ func prepareUninstallTarget(
 	case "managed-block":
 		rendered, err := renderManagedFileWithoutBlock(renderCurrent.data)
 		if err != nil {
-			return mutationAction{}, compatibilityError("managed markers are invalid: " + record.path)
+			return mutationAction{}, integrityError("managed markers are invalid: " + record.path)
 		}
 		if record.origin == "created-file" && len(rendered) == 0 {
 			return newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
@@ -161,11 +161,11 @@ func prepareUninstallTarget(
 		return newMutationAction(mutationReplace, record.id, rendered, record.path, 0o644, root, suffix, current)
 	case "owned-file":
 		if record.origin != "created-file" {
-			return mutationAction{}, compatibilityError("invalid owned target origin")
+			return mutationAction{}, integrityError("invalid owned target origin")
 		}
 		return newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
 	default:
-		return mutationAction{}, compatibilityError("unknown target ownership mode: " + record.mode)
+		return mutationAction{}, integrityError("unknown target ownership mode: " + record.mode)
 	}
 }
 
@@ -244,7 +244,7 @@ func prepareUninstallPolicyActions(
 		}
 	}
 	if primary.destination == "" {
-		return mutationAction{}, nil, compatibilityError("managed Policy Set is missing POLICY.md state")
+		return mutationAction{}, nil, integrityError("managed Policy Set is missing POLICY.md state")
 	}
 	return primary, extras, nil
 }
@@ -360,5 +360,5 @@ func ownedDirectoryMutationRoot(directory string, state installationState, coord
 			return root, nil
 		}
 	}
-	return "", compatibilityError("cannot bind owned directory removal: " + directory)
+	return "", integrityError("cannot bind owned directory removal: " + directory)
 }

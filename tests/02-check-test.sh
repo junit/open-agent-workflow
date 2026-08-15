@@ -25,12 +25,6 @@ new_fixture() {
   OAW_PATH=$OAW_SANDBOX/system-bin
 }
 
-make_indicator() {
-  indicator_path=$1
-  mkdir -p "$(dirname -- "$indicator_path")"
-  : >"$indicator_path"
-}
-
 make_fake_executable() {
   executable_name=$1
   mkdir -p "$OAW_SANDBOX/bin"
@@ -41,15 +35,13 @@ make_fake_executable() {
 }
 
 new_fixture
+OAW_SOURCE_VERSION=$(tr -d '\r\n' <"$OAW_REPOSITORY/VERSION")
 run_oaw check
 assert_status 0 "an empty fixture is diagnostic only"
 assert_output_equals "$(printf '%s\n' \
-  'version: 0.1.0' \
+  "version: $OAW_SOURCE_VERSION" \
   'scope: user' \
   'targets: claude,codex,gemini,opencode' \
-  'provider superpowers: missing' \
-  'provider matt: missing' \
-  'provider ecc: missing' \
   'target claude: missing (user, project)' \
   'target codex: missing (user, project)' \
   'target gemini: missing (user, project)' \
@@ -66,71 +58,21 @@ run_oaw check --target claude
 assert_status 0 "a core instruction root is accepted as tool evidence"
 assert_contains "target claude: detected (user, project)" "Claude is detected from its instruction root"
 assert_empty_xdg_roots
-pass "core instruction roots are detected"
+pass "Host instruction roots are detected"
 
 new_fixture
-for matt_skill in to-spec to-tickets tdd; do
-  make_indicator "$OAW_HOME/.agents/skills/$matt_skill/SKILL.md"
-done
 
-run_oaw check --target claude
-assert_status 0 "an incomplete Matt bundle does not fail check"
-assert_contains "provider matt: missing" "Matt requires the complete capability bundle"
-assert_contains "provider superpowers: missing" "Matt files do not imply Superpowers"
-assert_contains "provider ecc: missing" "Matt files do not imply ECC"
-assert_empty_xdg_roots
-
-make_indicator "$OAW_HOME/.agents/skills/diagnosing-bugs/SKILL.md"
-run_oaw check --target claude
-assert_status 0 "the retired Matt bundle is diagnostic only"
-assert_contains "provider matt: missing" "the retired four-Skill Matt bundle stays missing"
-assert_contains "provider superpowers: missing" "the Matt-only fixture leaves Superpowers missing"
-assert_contains "provider ecc: missing" "the Matt-only fixture leaves ECC missing"
-assert_contains "target claude: missing (user, project)" "provider presence does not imply tool presence"
-assert_empty_xdg_roots
-pass "retired Matt compatibility is rejected"
-
-make_indicator "$OAW_HOME/.agents/.skill-lock.json"
-run_oaw check --target claude
-assert_status 0 "the Matt v4 probe is diagnostic only"
-assert_contains "provider matt: detected" "Matt is detected from the v4 Skill lock"
-assert_contains "provider superpowers: missing" "the Matt v4 fixture leaves Superpowers missing"
-assert_contains "provider ecc: missing" "the Matt v4 fixture leaves ECC missing"
-assert_empty_xdg_roots
-pass "Matt v4 capability detection is exact"
-
-new_fixture
-make_indicator "$OAW_HOME/.agents/skills/everything-claude-code/SKILL.md"
-run_oaw check --target claude
-assert_status 0 "the retired ECC Skill is diagnostic only"
-assert_contains "provider ecc: missing" "the retired generic ECC Skill stays missing"
-
-make_indicator "$OAW_HOME/.codex/plugins/ecc/.codex-plugin/plugin.json"
-run_oaw check --target claude
-assert_status 0 "the ECC v4 probe is diagnostic only"
-assert_contains "provider ecc: detected" "ECC is detected from the v4 Plugin manifest"
-assert_empty_xdg_roots
-pass "ECC v4 capability detection is exact"
-
-new_fixture
-make_indicator "$OAW_HOME/.agents/.skill-lock.json"
-make_indicator "$OAW_HOME/.codex/plugins/cache/openai-api-curated/superpowers/test-build/skills/using-superpowers/SKILL.md"
-make_indicator "$OAW_HOME/.codex/plugins/ecc/.codex-plugin/plugin.json"
-
-for core_tool in claude codex gemini opencode; do
-  make_fake_executable "$core_tool"
+for host_tool in claude codex gemini opencode; do
+  make_fake_executable "$host_tool"
 done
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 run_oaw check --project "$OAW_PROJECT"
-assert_status 0 "all detected providers and tools remain diagnostic"
+assert_status 0 "all detected Host targets remain diagnostic"
 assert_output_equals "$(printf '%s\n' \
-  'version: 0.1.0' \
+  "version: $OAW_SOURCE_VERSION" \
   "scope: project ($OAW_PROJECT_PHYSICAL)" \
   'targets: claude,codex,gemini,opencode,cursor,windsurf,cline,roo,copilot' \
-  'provider superpowers: detected' \
-  'provider matt: detected' \
-  'provider ecc: detected' \
   'target claude: detected (user, project)' \
   'target codex: detected (user, project)' \
   'target gemini: detected (user, project)' \
@@ -148,6 +90,6 @@ assert_output_equals "$(printf '%s\n' \
   'installed windsurf: not-installed' \
   'installed cline: not-installed' \
   'installed roo: not-installed' \
-  'installed copilot: not-installed')" "all-provider detection output is stable"
+  'installed copilot: not-installed')" "all target readiness output is stable"
 assert_empty_xdg_roots
-pass "all readiness indicators are reported without mutation"
+pass "all target readiness indicators are reported without mutation"

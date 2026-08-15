@@ -5,9 +5,8 @@
 Open Agent Workflow（OAW）是面向 Agent Host 的规则驱动工程工作流。它安装一套可读的
 Policy Set，由模型选择 Profile，并使用 Host 当前已经可以读取或调用的 Skill。
 
-正常产品由 Markdown Policy、Profile、选中的 Skill 和 Host 原生能力组成。完成工程工作不需要
-OAW runtime、route scanner、reducer、Bridge 或状态数据库。可选的机器组件只能增加证据或协同，
-不能让规则有效的工作流失效。
+完整产品路径由 Markdown Policy、Profile、选中的 Skill 和 Host 原生能力组成。安装后，规则保留在
+Host 或项目中；完成交付不需要运行中的 OAW 进程或可选机器证据。
 
 ## 快速开始
 
@@ -109,16 +108,16 @@ Custom Profile 未声明的 Responsibility 使用 Policy 默认行为。项目�
 
 ## 可选 Assurance
 
-Machine Assurance 和单独构建的 `oaw-bridge` 是可选证据组件。它们可以为 Profile 附加精确内容或 Skill
-身份，也可以协调合作客户端，但不选择 Profile、不调用 Skill、不拥有物理权限，也不能 veto Policy 路径。
-移除它们只会移除机器支撑声明。
+Machine Assurance 和单独构建的 `oaw-bridge` 是可选证据组件。Machine Assurance 可以签发或验证已选
+Profile 的精确身份映射，Bridge 可以向该证据路径提供当前 Codex observation。它们不选择 Profile、
+不调用 Skill、不拥有物理权限、不管理交付，也不能 veto Policy 路径。移除它们只会移除机器支撑声明。
 
 Agent Host 拥有 model call、Agent、Skill、Plugin、MCP、Hook、凭证、工具、sandbox、approval 以及所有物理效果。
 OAW 不启动 model process，也不模拟 Host。
 
 ## 开发
 
-源码基线固定为 v0.1.0。在 checkout 中运行：
+源码版本记录在 `VERSION` 中。在 checkout 中运行：
 
 ```bash
 go test ./... -count=1
@@ -128,5 +127,5 @@ bash scripts/check-docs.sh
 bash tests/run.sh
 ```
 
-参见 [CONTEXT.md](CONTEXT.md)、[架构 ADR](docs/adr/0011-static-policy-profiles-as-the-product-core.md)
-和 [Policy Set](policy/POLICY.md)。
+参见 [CONTEXT.md](CONTEXT.md)、[架构决策](docs/adr/README.md)和
+[Policy Set](policy/POLICY.md)。
