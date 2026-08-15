@@ -20,9 +20,22 @@ file_fingerprint() {
   printf '%s:%s\n' "$(cksum <"$fingerprint_file")" "$fingerprint_stat"
 }
 
+seed_user_custom_profile() {
+  OAW_USER_CUSTOM_PROFILE=$OAW_CONFIG/open-agent-workflow/profiles/team-delivery.md
+  mkdir -p "$(dirname -- "$OAW_USER_CUSTOM_PROFILE")"
+  printf '%s\n' '---' 'id: team-delivery' 'name: Team Delivery' '---' >"$OAW_USER_CUSTOM_PROFILE"
+  OAW_USER_CUSTOM_BEFORE=$(file_fingerprint "$OAW_USER_CUSTOM_PROFILE")
+}
+
+assert_user_custom_profile_unchanged() {
+  [ "$(file_fingerprint "$OAW_USER_CUSTOM_PROFILE")" = "$OAW_USER_CUSTOM_BEFORE" ] ||
+    fail "$1 changed the user Custom Profile"
+}
+
 setup_sandbox
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
+seed_user_custom_profile
 
 run_oaw install --target codex
 assert_status 0 "independent user fixture install"
@@ -31,13 +44,15 @@ assert_status 0 "independent project fixture install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_USER_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_USER_POLICY_DIR=$OAW_CONFIG/open-agent-workflow
+OAW_USER_POLICY=$OAW_USER_POLICY_DIR/POLICY.md
 OAW_PROJECT_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
 OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-OAW_USER_POLICY_BEFORE=$(file_fingerprint "$OAW_USER_POLICY")
+OAW_USER_POLICY_BEFORE=$OAW_SANDBOX/user-policy.before
+snapshot_tree "$OAW_USER_POLICY_DIR" >"$OAW_USER_POLICY_BEFORE"
 OAW_USER_TARGET_BEFORE=$(file_fingerprint "$OAW_USER_TARGET")
 OAW_USER_STATE_BEFORE=$(file_fingerprint "$OAW_USER_STATE")
 
@@ -54,12 +69,14 @@ grep -F 'PROJECT POLICY SET UPDATE SENTINEL' "$OAW_PROJECT_POLICY" >/dev/null ||
   fail "project update did not use the checkout Policy Set"
 grep -F "$(printf 'version\t0.1.1-project-independent')" "$OAW_PROJECT_STATE" >/dev/null ||
   fail "project update did not record the project version"
-[ "$(file_fingerprint "$OAW_USER_POLICY")" = "$OAW_USER_POLICY_BEFORE" ] ||
-  fail "project update changed the user Policy"
+snapshot_tree "$OAW_USER_POLICY_DIR" >"$OAW_SANDBOX/user-policy.after"
+cmp -s "$OAW_USER_POLICY_BEFORE" "$OAW_SANDBOX/user-policy.after" ||
+  fail "project update changed the User Policy Set"
 [ "$(file_fingerprint "$OAW_USER_TARGET")" = "$OAW_USER_TARGET_BEFORE" ] ||
   fail "project update changed the user adapter"
 [ "$(file_fingerprint "$OAW_USER_STATE")" = "$OAW_USER_STATE_BEFORE" ] ||
   fail "project update changed the user state"
+assert_user_custom_profile_unchanged "project update"
 
 run_oaw check --target codex
 assert_status 0 "user check after project update"
@@ -75,6 +92,7 @@ setup_sandbox
 OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
+seed_user_custom_profile
 
 run_oaw install --target codex
 assert_status 0 "reverse independent user fixture install"
@@ -83,7 +101,7 @@ assert_status 0 "reverse independent project fixture install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_USER_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_USER_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_PROJECT_POLICY_DIR=$OAW_PROJECT_PHYSICAL/.oaw/policy
 OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
@@ -96,7 +114,7 @@ OAW_PROJECT_STATE_BEFORE=$(file_fingerprint "$OAW_PROJECT_STATE")
 OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/user-update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.2-user-independent\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
-printf '\nUSER POLICY UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+printf '\nUSER POLICY UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
 build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
@@ -113,6 +131,7 @@ cmp -s "$OAW_PROJECT_POLICY_BEFORE" "$OAW_SANDBOX/project-policy.after" ||
   fail "user update changed the project adapter"
 [ "$(file_fingerprint "$OAW_PROJECT_STATE")" = "$OAW_PROJECT_STATE_BEFORE" ] ||
   fail "user update changed the project state"
+assert_user_custom_profile_unchanged "user update"
 
 run_oaw check --target codex
 assert_status 0 "user check after user update"
@@ -128,6 +147,7 @@ setup_sandbox
 OAW_INSTALLER=$OAW_BASE_INSTALLER
 OAW_PROJECT="$OAW_SANDBOX/project with spaces"
 mkdir -p "$OAW_PROJECT"
+seed_user_custom_profile
 
 run_oaw install --target codex
 assert_status 0 "independent uninstall user fixture install"
@@ -136,7 +156,7 @@ assert_status 0 "independent uninstall project fixture install"
 
 OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
-OAW_USER_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_USER_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_PROJECT_POLICY_DIR=$OAW_PROJECT_PHYSICAL/.oaw/policy
 OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
 OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
@@ -160,5 +180,6 @@ run_oaw uninstall --target codex
 assert_status 0 "user uninstall after project removal"
 [ ! -e "$OAW_USER_POLICY" ] || fail "user uninstall retained the user Policy"
 [ ! -e "$OAW_USER_STATE" ] || fail "user uninstall retained the user state"
+assert_user_custom_profile_unchanged "user uninstall"
 
 pass "user and project uninstall lifecycles are independent"

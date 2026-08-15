@@ -8,19 +8,20 @@ import (
 )
 
 type coordinates struct {
-	configDir        string
-	policyPath       string
-	policyDir        string
-	policyReference  string
-	projectPolicySet bool
-	stateDir         string
-	installations    string
-	projects         string
-	backupRoot       string
-	stateFile        string
-	currentScope     string
-	currentProject   string
-	environment      Environment
+	configDir         string
+	policyPath        string
+	policyDir         string
+	policyReference   string
+	customProfilesDir string
+	managedPolicySet  bool
+	stateDir          string
+	installations     string
+	projects          string
+	backupRoot        string
+	stateFile         string
+	currentScope      string
+	currentProject    string
+	environment       Environment
 }
 
 func initializeCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
@@ -77,27 +78,66 @@ func initializeCoordinates(environment Environment, resolved resolvedRequest) (c
 	}, nil
 }
 
-func initializeProjectPolicySetCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
+func initializePolicySetCoordinates(environment Environment, resolved resolvedRequest) (coordinates, error) {
 	coords, err := initializeCoordinates(environment, resolved)
 	if err != nil {
 		return coordinates{}, err
 	}
-	if resolved.scope != "project" {
-		return coordinates{}, compatibilityError("project Policy Set requires project scope")
+	switch resolved.scope {
+	case "project":
+		policyDir, err := validatedDestinationPath(resolved.projectRoot, ".oaw/policy")
+		if err != nil {
+			return coordinates{}, err
+		}
+		policyPath, err := validatedDestinationPath(resolved.projectRoot, ".oaw/policy/POLICY.md")
+		if err != nil {
+			return coordinates{}, err
+		}
+		customProfilesDir, err := validatedDestinationPath(resolved.projectRoot, ".oaw/profiles")
+		if err != nil {
+			return coordinates{}, err
+		}
+		coords.policyDir = policyDir
+		coords.policyPath = policyPath
+		coords.policyReference = ".oaw/policy/POLICY.md"
+		coords.customProfilesDir = customProfilesDir
+	case "user":
+		policyPath, err := validatedDestinationPath(environment.ConfigHome, "open-agent-workflow/POLICY.md")
+		if err != nil {
+			return coordinates{}, err
+		}
+		customProfilesDir, err := validatedDestinationPath(environment.ConfigHome, "open-agent-workflow/profiles")
+		if err != nil {
+			return coordinates{}, err
+		}
+		coords.policyDir = coords.configDir
+		coords.policyPath = policyPath
+		coords.policyReference = policyPath
+		coords.customProfilesDir = customProfilesDir
+	default:
+		return coordinates{}, compatibilityError("unknown Policy Set scope: " + resolved.scope)
 	}
-	policyDir, err := validatedDestinationPath(resolved.projectRoot, ".oaw/policy")
-	if err != nil {
-		return coordinates{}, err
-	}
-	policyPath, err := validatedDestinationPath(resolved.projectRoot, ".oaw/policy/POLICY.md")
-	if err != nil {
-		return coordinates{}, err
-	}
-	coords.policyDir = policyDir
-	coords.policyPath = policyPath
-	coords.policyReference = ".oaw/policy/POLICY.md"
-	coords.projectPolicySet = true
+	coords.managedPolicySet = true
 	return coords, nil
+}
+
+func policySetRelativePath(coords coordinates, sourcePath string) string {
+	if coords.currentScope == "user" && strings.HasPrefix(sourcePath, "profiles/") {
+		return filepath.ToSlash(filepath.Join("profiles", "builtin", strings.TrimPrefix(sourcePath, "profiles/")))
+	}
+	return sourcePath
+}
+
+func policySetDestination(coords coordinates, resolved resolvedRequest, sourcePath string) (string, string, string, error) {
+	relative := policySetRelativePath(coords, sourcePath)
+	root := resolved.projectRoot
+	suffix := filepath.ToSlash(filepath.Join(".oaw", "policy", filepath.FromSlash(relative)))
+	if resolved.scope == "user" {
+		root = coords.environment.ConfigHome
+		suffix = filepath.ToSlash(filepath.Join("open-agent-workflow", filepath.FromSlash(relative)))
+	}
+	destination, err := validatedDestinationPath(root, suffix)
+	return destination, root, suffix, err
 }
 
 func policyRouterReference(coords coordinates) string {

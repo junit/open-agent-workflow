@@ -83,8 +83,15 @@ Project scope installs the complete Canonical Policy Set under
 `<project>/.oaw/policy/` and writes a project-relative Activation Router to the
 selected Host target. Project Custom Profiles live under
 `<project>/.oaw/profiles/`; they are user-owned and are never managed by these
-commands. User scope continues to use the user Policy location until the
-user-scoped Policy Set cutover.
+commands. User scope installs the complete Policy Set under
+`${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/`; managed Built-in
+Profiles live in `profiles/builtin/`, while user-owned Custom Profiles remain in
+`profiles/*.md` and are never managed by these commands.
+
+The Activation Router selects a Project Policy Set as a whole when
+`.oaw/policy/POLICY.md` exists; otherwise it selects the User Policy Set. It
+never merges their core files. Project and user Custom Profiles remain
+discoverable with explicit source identity.
 
 `check` is read-only and rejects `--dry-run` and `--force`. The three mutation
 commands accept `--dry-run`. `--force` can recover eligible recorded drift on
@@ -136,6 +143,11 @@ untracked ownership and installation is refused. This prevents install from
 overwriting a project's existing rules; use the recorded `update` path for a
 managed Policy Set.
 
+For user scope, an existing `profiles/` directory containing Custom Profiles is
+allowed and preserved. Existing managed destinations such as `POLICY.md`,
+`cooperative-protocol.md`, `adapters/`, or `profiles/builtin/` remain untracked
+ownership conflicts and are never adopted by `install`.
+
 ### `update`
 
 `update` requires an existing valid installation record. The binary embeds the
@@ -151,8 +163,8 @@ add and `uninstall` to remove targets.
 
 With valid installation state, `uninstall` **removes only clean OAW ownership**:
 a clean managed block is removed from its host file and a clean OAW-owned file
-is deleted. In project scope, it also removes the clean managed files and
-directories under `.oaw/policy/`, while preserving `.oaw/profiles/`. It prunes
+is deleted. It removes clean managed Policy Set files and directories while
+preserving project `.oaw/profiles/` and user `profiles/*.md` Custom Profiles. It prunes
 **only OAW-created empty directories** recorded in state.
 It does not delete surrounding user content, non-empty directories, provider
 installations, or files whose ownership has drifted. An `uninstall` without
@@ -185,8 +197,8 @@ and concurrent filesystem changes can make that invocation fail.
 
 User and project installations never share a state file. Different physical
 project roots also receive different state files. Project Policy Set files are
-stored under `<project>/.oaw/policy/`; user Policy files remain under the XDG
-config root until the user-scope cutover. State and operation backups are
+stored under `<project>/.oaw/policy/`; the User Policy Set is stored under the
+XDG `open-agent-workflow/` config root. State and operation backups are
 stored under the XDG state root; see the [architecture guide](architecture.md)
 for exact paths and the record schema.
 
@@ -214,7 +226,8 @@ oaw bridge install codex
 
 The first command installs the Policy Set and policy adapter for the selected
 scope. In project scope the files are self-contained under `.oaw/policy/`; in
-user scope the current user Policy location is used. It does not install an
+user scope they are self-contained under the XDG `open-agent-workflow/` root.
+It does not install an
 executable Plugin or claim current-session Host evidence.
 The second command is an explicit opt-in transaction for the audited Codex Host
 Bridge. Neither command activates OAW for a request. Its management surface is:

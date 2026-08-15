@@ -60,12 +60,15 @@ func prepareUpdatePlan(
 	if err != nil {
 		return mutationPlan{}, err
 	}
-	references, err := collectPolicyStateReferencesWithBaseline(
-		preparation.coordinates, preparation.coordinates.stateFile,
-		preparation.policy, force.policyBaseline,
-	)
-	if err != nil {
-		return mutationPlan{}, err
+	var references []policyStateReference
+	if !preparation.coordinates.managedPolicySet {
+		references, err = collectPolicyStateReferencesWithBaseline(
+			preparation.coordinates, preparation.coordinates.stateFile,
+			preparation.policy, force.policyBaseline,
+		)
+		if err != nil {
+			return mutationPlan{}, err
+		}
 	}
 	policyAction, policySetActions, policyFiles, policyChecksum, err := prepareUpdatePolicyActions(source, preparation)
 	if err != nil {
@@ -100,7 +103,7 @@ func prepareUpdatePolicyActions(
 	source Source,
 	preparation mutationPreparation,
 ) (mutationAction, []mutationAction, []policyFileRecord, string, error) {
-	if !preparation.coordinates.projectPolicySet {
+	if !preparation.coordinates.managedPolicySet {
 		action, err := newMutationAction(
 			mutationReplace, "policy", source.policy, preparation.coordinates.policyPath, 0o600,
 			preparation.coordinates.environment.ConfigHome, "open-agent-workflow/ENGINEERING.md", preparation.policy,
@@ -108,7 +111,7 @@ func prepareUpdatePolicyActions(
 		return action, nil, nil, checksumBytes(source.policy), err
 	}
 	if len(source.policySet) == 0 {
-		return mutationAction{}, nil, nil, "", compatibilityError("project Policy Set source is missing")
+		return mutationAction{}, nil, nil, "", compatibilityError("managed Policy Set source is missing")
 	}
 
 	currentByPath := make(map[string]policyFileRecord, len(preparation.state.policyFiles))
@@ -120,8 +123,7 @@ func prepareUpdatePolicyActions(
 	records := make([]policyFileRecord, 0, len(source.policySet))
 	wanted := make(map[string]struct{}, len(source.policySet))
 	for _, file := range source.policySet {
-		suffix := filepath.ToSlash(filepath.Join(".oaw", "policy", filepath.FromSlash(file.Path)))
-		destination, err := validatedDestinationPath(preparation.resolved.projectRoot, suffix)
+		destination, root, suffix, err := policySetDestination(preparation.coordinates, preparation.resolved, file.Path)
 		if err != nil {
 			return mutationAction{}, nil, nil, "", err
 		}
@@ -134,14 +136,14 @@ func prepareUpdatePolicyActions(
 			label = "policy"
 		}
 		action, err := newMutationAction(
-			mutationReplace, label, file.Content, destination, 0o644,
-			preparation.resolved.projectRoot, suffix, current,
+			mutationReplace, label, policySetFileContent(preparation.coordinates, file), destination, 0o644,
+			root, suffix, current,
 		)
 		if err != nil {
 			return mutationAction{}, nil, nil, "", err
 		}
 		wanted[filepath.Clean(destination)] = struct{}{}
-		records = append(records, policyFileRecord{path: destination, checksum: checksumBytes(file.Content)})
+		records = append(records, policyFileRecord{path: destination, checksum: checksumBytes(policySetFileContent(preparation.coordinates, file))})
 		if file.Path == "POLICY.md" {
 			primary = action
 		} else {
@@ -152,7 +154,11 @@ func prepareUpdatePolicyActions(
 		if _, keep := wanted[path]; keep {
 			continue
 		}
-		relative, err := stateActionRelativeSuffix(preparation.resolved.projectRoot, path)
+		root := preparation.resolved.projectRoot
+		if preparation.resolved.scope == "user" {
+			root = preparation.coordinates.environment.ConfigHome
+		}
+		relative, err := stateActionRelativeSuffix(root, path)
 		if err != nil {
 			return mutationAction{}, nil, nil, "", err
 		}
@@ -162,7 +168,7 @@ func prepareUpdatePolicyActions(
 		}
 		action, err := newMutationAction(
 			mutationRemove, "policy/obsolete", nil, path, 0,
-			preparation.resolved.projectRoot, relative, current,
+			root, relative, current,
 		)
 		if err != nil {
 			return mutationAction{}, nil, nil, "", err
@@ -170,7 +176,7 @@ func prepareUpdatePolicyActions(
 		extras = append(extras, action)
 	}
 	if primary.destination == "" {
-		return mutationAction{}, nil, nil, "", compatibilityError("project Policy Set is missing POLICY.md")
+		return mutationAction{}, nil, nil, "", compatibilityError("managed Policy Set is missing POLICY.md")
 	}
 	return primary, extras, records, checksumBytes(primary.data), nil
 }

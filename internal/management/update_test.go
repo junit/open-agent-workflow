@@ -11,7 +11,7 @@ import (
 	oaw "github.com/wifibaby4u/open-agent-workflow"
 )
 
-func projectPolicySetSource(t *testing.T, version, policySuffix string) Source {
+func managedPolicySetSource(t *testing.T, version, policySuffix string) Source {
 	t.Helper()
 	files := oaw.CanonicalPolicySet()
 	for index := range files {
@@ -38,12 +38,12 @@ func TestProjectUpdateChangesOnlyManagedPolicySetContent(t *testing.T) {
 	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
 	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
 
-	installed := projectPolicySetSource(t, "0.1.0", "\nold revision\n")
+	installed := managedPolicySetSource(t, "0.1.0", "\nold revision\n")
 	request := InstallRequest{Project: project, Targets: "codex"}
 	if _, err := Install(installed, fixture.environment, request); err != nil {
 		t.Fatal(err)
 	}
-	updated := projectPolicySetSource(t, "0.2.0", "\nnew revision\n")
+	updated := managedPolicySetSource(t, "0.2.0", "\nnew revision\n")
 	if _, err := Update(updated, fixture.environment, UpdateRequest{Project: project, Targets: "codex"}); err != nil {
 		t.Fatal(err)
 	}
@@ -65,6 +65,58 @@ func TestProjectUpdateChangesOnlyManagedPolicySetContent(t *testing.T) {
 	gotAgents, err := os.ReadFile(agents)
 	if err != nil || !bytes.HasPrefix(gotAgents, []byte("user instructions\n")) {
 		t.Fatalf("update changed surrounding Host instructions: content=%q error=%v", gotAgents, err)
+	}
+}
+
+func TestUserUpdateChangesOnlyManagedPolicySetContent(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	customProfile := filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "team-delivery.md")
+	agents := filepath.Join(fixture.environment.Home, ".codex", "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(customProfile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
+	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
+	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
+
+	installed := managedPolicySetSource(t, "0.1.0", "\nold revision\n")
+	request := InstallRequest{Targets: "codex"}
+	if _, err := Install(installed, fixture.environment, request); err != nil {
+		t.Fatal(err)
+	}
+	updated := managedPolicySetSource(t, "0.2.0", "\nnew revision\n")
+	if _, err := Update(updated, fixture.environment, UpdateRequest{Targets: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := resolve(CheckRequest{Targets: "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	coords, err := initializePolicySetCoordinates(fixture.environment, resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range updated.policySet {
+		path, _, _, err := policySetDestination(coords, resolved, file.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read updated user Policy Set file %q: %v", file.Path, err)
+		}
+		if want := policySetFileContent(coords, file); !bytes.Equal(got, want) {
+			t.Errorf("updated user Policy Set file %q differs from mapped source", file.Path)
+		}
+	}
+	gotCustom, err := os.ReadFile(customProfile)
+	if err != nil || string(gotCustom) != customContent {
+		t.Fatalf("update changed user Custom Profile: content=%q error=%v", gotCustom, err)
+	}
+	gotAgents, err := os.ReadFile(agents)
+	if err != nil || !bytes.HasPrefix(gotAgents, []byte("user instructions\n")) {
+		t.Fatalf("update changed surrounding user Host instructions: content=%q error=%v", gotAgents, err)
 	}
 }
 

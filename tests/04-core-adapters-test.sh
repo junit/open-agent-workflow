@@ -9,7 +9,7 @@ TEST_DIR=$(CDPATH='' cd -P -- "$(dirname -- "$0")" && pwd)
 trap cleanup_sandbox EXIT HUP INT TERM
 
 render_expected_activation_router() {
-  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
+  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `%s` as the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
 }
 
 write_expected_router_block() {
@@ -31,8 +31,10 @@ assert_lazy_router_file() {
     fail "$router_description is missing opt-in activation"
   grep -F 'behave as the native Host' "$router_file" >/dev/null ||
     fail "$router_description does not preserve Native Host behavior"
-  grep -F "On explicit activation, read \`$router_policy\`" "$router_file" >/dev/null ||
-    fail "$router_description does not retain the canonical policy path"
+  grep -F 'if the current project contains `.oaw/policy/POLICY.md`' "$router_file" >/dev/null ||
+    fail "$router_description does not prefer the Project Policy Set"
+  grep -F "otherwise read \`$router_policy\` as the User Policy Set" "$router_file" >/dev/null ||
+    fail "$router_description does not retain the User Policy Set path"
   grep -F 'ordinary Skill invocation do not activate OAW' "$router_file" >/dev/null ||
     fail "$router_description incorrectly governs normal Skill routing"
   if grep -F "@$router_policy" "$router_file" >/dev/null ||
@@ -88,7 +90,7 @@ printf 'personal instruction\n' >"$OAW_HOME/.codex/AGENTS.md"
 run_oaw install --target codex
 assert_status 0 "fresh Codex install"
 
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_CODEX=$OAW_HOME/.codex/AGENTS.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-codex-block
@@ -145,7 +147,7 @@ printf 'personal instruction\n' >"$OAW_HOME/.gemini/GEMINI.md"
 run_oaw install --target gemini
 assert_status 0 "fresh Gemini install"
 
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_GEMINI=$OAW_HOME/.gemini/GEMINI.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-gemini-block
@@ -202,7 +204,7 @@ printf 'personal instruction\n' >"$OAW_CONFIG/opencode/AGENTS.md"
 run_oaw install --target opencode
 assert_status 0 "fresh OpenCode install"
 
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_OPENCODE=$OAW_CONFIG/opencode/AGENTS.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_EXPECTED_BLOCK=$OAW_SANDBOX/expected-opencode-block
@@ -264,7 +266,7 @@ OAW_OPENCODE_BEFORE=$(cksum <"$OAW_CONFIG/opencode/AGENTS.md")
 run_oaw install --target claude,codex
 assert_status 0 "fresh multi-target install"
 
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
 OAW_CODEX=$OAW_HOME/.codex/AGENTS.md
 OAW_GEMINI=$OAW_HOME/.gemini/GEMINI.md
@@ -371,21 +373,21 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
     "$OAW_MATRIX_TARGET install dry run reports its destination"
   [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
     fail "$OAW_MATRIX_TARGET install dry run changed user instructions"
-  [ ! -e "$OAW_CONFIG/open-agent-workflow/ENGINEERING.md" ] ||
+  [ ! -e "$OAW_CONFIG/open-agent-workflow/POLICY.md" ] ||
     fail "$OAW_MATRIX_TARGET install dry run created the canonical policy"
   [ ! -e "$OAW_STATE/open-agent-workflow/installations/user.state" ] ||
     fail "$OAW_MATRIX_TARGET install dry run created installation state"
 
   run_oaw install --target "$OAW_MATRIX_TARGET"
   assert_status 0 "$OAW_MATRIX_TARGET install before lifecycle update"
-  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+  OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
   OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 
   OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-$OAW_MATRIX_TARGET
   cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
   printf '0.1.1-%s\n' "$OAW_MATRIX_TARGET" >"$OAW_UPDATE_CHECKOUT/VERSION"
   printf '\nTASK 3 %s UPDATE SENTINEL\n' "$OAW_MATRIX_TARGET" \
-    >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+    >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
   build_checkout_installer "$OAW_UPDATE_CHECKOUT"
   OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
@@ -447,7 +449,7 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
 done
 run_oaw install --dry-run
 assert_status 0 "default install dry run"
-[ ! -e "$OAW_CONFIG/open-agent-workflow/ENGINEERING.md" ] ||
+[ ! -e "$OAW_CONFIG/open-agent-workflow/POLICY.md" ] ||
   fail "default install dry run created the canonical policy"
 [ ! -e "$OAW_STATE/open-agent-workflow/installations/user.state" ] ||
   fail "default install dry run created installation state"
@@ -460,12 +462,12 @@ done
 
 run_oaw install
 assert_status 0 "default install before lifecycle matrix"
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-default
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-default\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
-printf '\nTASK 3 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+printf '\nTASK 3 DEFAULT UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
 build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
@@ -555,7 +557,7 @@ setup_sandbox
 OAW_INSTALLER=$OAW_BASE_INSTALLER
 run_oaw install
 assert_status 0 "default install before health diagnostics"
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 for OAW_HEALTH_TARGET in claude codex gemini opencode; do
   OAW_HEALTH_PATH=$(target_path_for_test "$OAW_HEALTH_TARGET")

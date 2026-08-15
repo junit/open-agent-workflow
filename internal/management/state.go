@@ -194,14 +194,14 @@ func validatePolicyFileRecords(records []policyFileRecord) error {
 	return nil
 }
 
-func validateProjectPolicySetFiles(state installationState, coords coordinates) error {
-	if !coords.projectPolicySet {
+func validateManagedPolicySetFiles(state installationState, coords coordinates) error {
+	if !coords.managedPolicySet {
 		return nil
 	}
 	if len(state.policyFiles) == 0 {
 		return compatibilityError("managed Policy Set state is missing")
 	}
-	if err := validateProjectPolicySetTree(state, coords); err != nil {
+	if err := validateManagedPolicySetTree(state, coords); err != nil {
 		return err
 	}
 	mainFound := false
@@ -214,6 +214,9 @@ func validateProjectPolicySetFiles(state installationState, coords coordinates) 
 		rebuilt, err := validatedDestinationPath(coords.policyDir, filepath.ToSlash(relative))
 		if err != nil || rebuilt != record.path {
 			return compatibilityError("managed Policy Set file path is invalid")
+		}
+		if coords.currentScope == "user" && userCustomProfilePath(coords, record.path) {
+			return compatibilityError("managed Policy Set file claims user Custom Profile: " + record.path)
 		}
 		current, err := inspectInstallPath(record.path)
 		if err != nil || current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
@@ -229,7 +232,7 @@ func validateProjectPolicySetFiles(state installationState, coords coordinates) 
 	return nil
 }
 
-func validateProjectPolicySetTree(state installationState, coords coordinates) error {
+func validateManagedPolicySetTree(state installationState, coords coordinates) error {
 	expected := map[string]bool{filepath.Clean(coords.policyDir): true}
 	for _, record := range state.policyFiles {
 		current := filepath.Clean(record.path)
@@ -242,7 +245,17 @@ func validateProjectPolicySetTree(state installationState, coords coordinates) e
 		if walkErr != nil {
 			return walkErr
 		}
-		wantDirectory, exists := expected[filepath.Clean(path)]
+		cleanPath := filepath.Clean(path)
+		if coords.currentScope == "user" && containedStrictly(coords.customProfilesDir, cleanPath) {
+			builtin := filepath.Join(coords.customProfilesDir, "builtin")
+			if cleanPath != builtin && !containedStrictly(builtin, cleanPath) {
+				if entry.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
+		}
+		wantDirectory, exists := expected[cleanPath]
 		if !exists || wantDirectory != entry.IsDir() {
 			return fmt.Errorf("unexpected managed Policy Set entry: %s", path)
 		}
@@ -307,9 +320,7 @@ func validateTargetRecords(state installationState) error {
 
 func validateOwnedDirectories(state installationState, coords coordinates) error {
 	for _, directory := range state.directories {
-		if coords.projectPolicySet && containedStrictly(state.project, directory) &&
-			(directory == coords.policyDir || containedStrictly(directory, coords.policyDir) ||
-				containedStrictly(coords.policyDir, directory)) {
+		if coords.managedPolicySet && isManagedPolicySetDirectory(coords, state.project, directory) {
 			continue
 		}
 		if directory == coords.configDir || directory == coords.stateDir || directory == coords.installations || directory == coords.projects {
@@ -357,6 +368,16 @@ func recordedCoordinateMatches(root, candidate string) bool {
 func containedStrictly(root, candidate string) bool {
 	relation, err := filepath.Rel(root, candidate)
 	return err == nil && relation != "." && relation != ".." && !strings.HasPrefix(relation, ".."+string(filepath.Separator)) && !filepath.IsAbs(relation)
+}
+
+func userCustomProfilePath(coords coordinates, candidate string) bool {
+	candidate = filepath.Clean(candidate)
+	customProfilesDir := filepath.Clean(coords.customProfilesDir)
+	if candidate != customProfilesDir && !containedStrictly(customProfilesDir, candidate) {
+		return false
+	}
+	builtin := filepath.Join(customProfilesDir, "builtin")
+	return candidate != builtin && !containedStrictly(builtin, candidate)
 }
 
 func targetPosition(id string) int {

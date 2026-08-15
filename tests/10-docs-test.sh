@@ -1189,7 +1189,8 @@ done
 
 for architecture_file in docs/en/architecture.md docs/zh/architecture.md; do
   for architecture_contract in \
-    '${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md' \
+    '${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/' \
+    'open-agent-workflow/profiles/builtin/' \
     '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state' \
     '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/projects/<crc>-<bytes>.state' \
     '${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/backups' \

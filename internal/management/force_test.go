@@ -110,6 +110,61 @@ func TestPrepareUpdateForceAmbiguousMarkerCreatesTerminalRecoveryPlan(t *testing
 	}
 }
 
+func TestPrepareUpdateForceManualRecoveryUsesManagedPolicySetCoordinates(t *testing.T) {
+	for _, tt := range []struct {
+		name          string
+		projectScoped bool
+		wantSuffix    string
+	}{
+		{name: "user", wantSuffix: "open-agent-workflow/POLICY.md"},
+		{name: "project", projectScoped: true, wantSuffix: ".oaw/policy/POLICY.md"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newPrepareFixture(t)
+			source := managedPolicySetSource(t, "0.1.0", "")
+			project := ""
+			if tt.projectScoped {
+				project = filepath.Join(fixture.root, "project")
+				if err := os.Mkdir(project, 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			installed, err := PrepareInstall(source, fixture.environment, InstallRequest{
+				Project: project, Targets: "claude",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyInstall(installed); err != nil {
+				t.Fatal(err)
+			}
+			corrupt := []byte("personal\n" + endMarker + "\nambiguous\n" + endMarker + "\n")
+			if err := os.WriteFile(installed.targetActions[0].destination, corrupt, 0o640); err != nil {
+				t.Fatal(err)
+			}
+
+			prepared, err := prepareUpdateWithoutWrites(
+				t, fixture.root, source, fixture.environment,
+				UpdateRequest{Project: project, Targets: "claude", Force: true},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if prepared.plan.terminal.status != 65 {
+				t.Fatalf("terminal = %#v", prepared.plan.terminal)
+			}
+			policyCandidate := backupCandidateForDestination(t, prepared.plan.backup, installed.coordinates.policyPath)
+			wantRoot := fixture.environment.ConfigHome
+			if tt.projectScoped {
+				wantRoot = installed.resolved.projectRoot
+			}
+			if policyCandidate.allowedRoot != wantRoot || policyCandidate.relativeSuffix != tt.wantSuffix {
+				t.Fatalf("policy candidate = %#v, want root %q suffix %q", policyCandidate, wantRoot, tt.wantSuffix)
+			}
+		})
+	}
+}
+
 func TestPrepareUpdateForcePolicyDriftAndCleanForce(t *testing.T) {
 	t.Run("policy drift", func(t *testing.T) {
 		fixture := newPrepareFixture(t)
@@ -147,7 +202,7 @@ func TestPrepareUpdateForceHandlesProjectPolicySetOwnership(t *testing.T) {
 		if err := os.Mkdir(project, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		source := projectPolicySetSource(t, "0.1.0", "")
+		source := managedPolicySetSource(t, "0.1.0", "")
 		installed, err := PrepareInstall(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"})
 		if err != nil {
 			t.Fatal(err)
@@ -184,7 +239,7 @@ func TestPrepareUpdateForceHandlesProjectPolicySetOwnership(t *testing.T) {
 		if err := os.Mkdir(project, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		source := projectPolicySetSource(t, "0.1.0", "")
+		source := managedPolicySetSource(t, "0.1.0", "")
 		if _, err := Install(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"}); err != nil {
 			t.Fatal(err)
 		}
@@ -473,7 +528,7 @@ func TestPrepareManualRecoveryPlanRejectsInvalidBackupInputs(t *testing.T) {
 			installed.resolved, installed.coordinates, policy, recovery,
 			filepath.Join(installed.coordinates.backupRoot, "operation"),
 		)
-		if err == nil || !strings.Contains(err.Error(), "does not match") {
+		if err == nil || !strings.Contains(err.Error(), "escapes its allowed root") {
 			t.Fatalf("error = %v", err)
 		}
 	})

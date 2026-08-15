@@ -87,7 +87,9 @@ defaults:
 
 | Artifact | Canonical path |
 | --- | --- |
-| User installed Policy | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md` |
+| User Policy Set | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/` |
+| User Built-in Profiles (managed) | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/builtin/` |
+| User Custom Profiles (user-owned) | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/` excluding `builtin/` |
 | Project Policy Set | `<project>/.oaw/policy/` |
 | Project Custom Profiles (user-owned) | `<project>/.oaw/profiles/` |
 | User installation state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
@@ -102,6 +104,11 @@ placing that metadata inside the repository.
 
 Project Workflow documents are one-way, non-authoritative projections of
 committed Workflow State. They are never parsed back into authority.
+
+When `<project>/.oaw/policy/POLICY.md` exists, the Project Policy Set is selected
+as a whole. Otherwise the User Policy Set is selected. Core Policy files are
+never merged; project and user Custom Profiles remain separately discoverable
+with their source identity.
 
 ## Distribution Data Flow
 

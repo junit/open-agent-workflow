@@ -68,9 +68,10 @@ environment observation。Receipt 只是 Host attested outcome 的 evidence，�
 
 ## OAW 路径
 
-Canonical OAW policy 安装在
-`$XDG_CONFIG_HOME/open-agent-workflow/ENGINEERING.md`；未设置 `XDG_CONFIG_HOME` 时使用
-`~/.config/open-agent-workflow/ENGINEERING.md`。User-scope state 位于
+User Policy Set 安装在 `$XDG_CONFIG_HOME/open-agent-workflow/`；未设置
+`XDG_CONFIG_HOME` 时使用 `~/.config/open-agent-workflow/`。入口为 `POLICY.md`，受管 Built-in
+Profile 位于 `profiles/builtin/`，用户拥有的 Custom Profile 是 `profiles/` 下的直接 Markdown
+文件。Project Policy Set 位于 `.oaw/policy/` 并整套优先；两套 core 文件绝不合并。User-scope state 位于
 `$XDG_STATE_HOME/open-agent-workflow/installations/user.state`，未设置 `XDG_STATE_HOME`
 时使用 `~/.local/state/open-agent-workflow/installations/user.state`。Project-scope state
 位于 `$XDG_STATE_HOME/open-agent-workflow/installations/projects/<project-id>.state`。

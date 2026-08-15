@@ -206,6 +206,97 @@ func TestProjectInstallWritesSelfContainedPolicySet(t *testing.T) {
 	}
 }
 
+func TestUserInstallWritesCompletePolicySetWithProjectPrecedence(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	config := filepath.Join(root, "config")
+	state := filepath.Join(root, "state")
+	userPolicyRoot := filepath.Join(config, "open-agent-workflow")
+	customProfile := filepath.Join(userPolicyRoot, "profiles", "team-delivery.md")
+	for _, directory := range []string{home, state, filepath.Dir(customProfile)} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
+	if err := os.WriteFile(customProfile, []byte(customContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("XDG_STATE_HOME", state)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{"install", "--target", "codex"}
+	if status := Run(args, &stdout, &stderr); status != 0 {
+		t.Fatalf("Run(%v)=%d stdout=%q stderr=%q", args, status, stdout.String(), stderr.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("Run(%v) stderr=%q", args, stderr.String())
+	}
+
+	for _, file := range oaw.CanonicalPolicySet() {
+		relative := file.Path
+		if strings.HasPrefix(relative, "profiles/") {
+			relative = filepath.ToSlash(filepath.Join("profiles", "builtin", strings.TrimPrefix(relative, "profiles/")))
+		}
+		installed := filepath.Join(userPolicyRoot, filepath.FromSlash(relative))
+		content, err := os.ReadFile(installed)
+		if err != nil {
+			t.Fatalf("read installed user Policy Set file %q: %v", relative, err)
+		}
+		if len(bytes.TrimSpace(content)) == 0 {
+			t.Errorf("installed user Policy Set file %q is empty", relative)
+		}
+	}
+
+	policy, err := os.ReadFile(filepath.Join(userPolicyRoot, "POLICY.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(policy, []byte("profiles/builtin/SP-FULL.md")) {
+		t.Fatalf("user Policy links do not match the builtin Profile layout: %q", policy)
+	}
+	adapter, err := os.ReadFile(filepath.Join(userPolicyRoot, "adapters", "codex-policy.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{".oaw/profiles/", "open-agent-workflow/profiles/"} {
+		if !bytes.Contains(adapter, []byte(path)) {
+			t.Fatalf("Codex Adapter omits source-qualified Custom Profile path %q", path)
+		}
+	}
+
+	router, err := os.ReadFile(filepath.Join(home, ".codex", "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		".oaw/policy/POLICY.md",
+		filepath.Join(userPolicyRoot, "POLICY.md"),
+		"do not read or merge the User Policy Set",
+	} {
+		if !bytes.Contains(router, []byte(required)) {
+			t.Fatalf("user Activation Router omits %q: %q", required, router)
+		}
+	}
+
+	gotCustom, err := os.ReadFile(customProfile)
+	if err != nil || string(gotCustom) != customContent {
+		t.Fatalf("user install changed Custom Profile: content=%q error=%v", gotCustom, err)
+	}
+	if _, err := os.Stat(filepath.Join(userPolicyRoot, "ENGINEERING.md")); !os.IsNotExist(err) {
+		t.Fatalf("user install retained legacy ENGINEERING.md: %v", err)
+	}
+	stateContent, err := os.ReadFile(filepath.Join(state, "open-agent-workflow", "installations", "user.state"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := bytes.Count(stateContent, []byte("policy-file\t")), len(oaw.CanonicalPolicySet()); got != want {
+		t.Fatalf("user state Policy Set records=%d want=%d\n%s", got, want, stateContent)
+	}
+}
+
 func TestInstalledProjectPolicySetWorksWithoutOAWExecutable(t *testing.T) {
 	root := t.TempDir()
 	home := filepath.Join(root, "home")

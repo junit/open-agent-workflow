@@ -80,26 +80,20 @@ func prepareMutationInputs(environment Environment, request mutationRequest) (mu
 			return mutationPreparation{}, err
 		}
 	}
-	policy, err := inspectInstallPath(coords.policyPath)
-	if err != nil {
-		return mutationPreparation{}, err
-	}
 	state, exists, err := readInstallationState(coords.stateFile)
 	if err != nil {
 		return mutationPreparation{}, installError(err)
 	}
-	if exists && resolved.scope == "project" {
-		projectCoords, projectErr := initializeProjectPolicySetCoordinates(environment, resolved)
-		if projectErr != nil {
-			return mutationPreparation{}, projectErr
-		}
-		if state.policyPath == projectCoords.policyPath {
-			coords = projectCoords
-			policy, err = inspectInstallPath(coords.policyPath)
-			if err != nil {
-				return mutationPreparation{}, err
-			}
-		}
+	policySetCoords, policySetErr := initializePolicySetCoordinates(environment, resolved)
+	if policySetErr != nil {
+		return mutationPreparation{}, policySetErr
+	}
+	if !exists || state.policyPath == policySetCoords.policyPath {
+		coords = policySetCoords
+	}
+	policy, err := inspectInstallPath(coords.policyPath)
+	if err != nil {
+		return mutationPreparation{}, err
 	}
 	return mutationPreparation{
 		resolved: cloneResolvedRequest(resolved), coordinates: coords,
@@ -153,7 +147,7 @@ func validateCleanMutationState(state installationState, coords coordinates, res
 	if checksumBytes(policy.data) != state.policyChecksum {
 		return compatibilityError("managed policy has drifted")
 	}
-	if err := validateProjectPolicySetFiles(state, coords); err != nil {
+	if err := validateManagedPolicySetFiles(state, coords); err != nil {
 		return err
 	}
 	if err := validateLiveTargetRecords(state.targets, coords, state.scope, state.project); err != nil {

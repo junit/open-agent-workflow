@@ -8,29 +8,35 @@ import (
 type scope string
 type targetID string
 
-const activationRouterFormat = "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+const activationRouterPrefix = "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. "
+
+const activationRouterSuffix = " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
 
 func renderTarget(id targetID, operationScope scope, policyPath string) ([]byte, error) {
 	var rendered string
 	switch string(operationScope) + ":" + string(id) {
 	case "user:claude", "project:claude", "user:codex", "user:gemini", "project:gemini", "user:opencode":
-		rendered = renderActivationRouter(policyPath)
+		rendered = renderActivationRouter(operationScope, policyPath)
 	case "project:codex", "project:opencode", "project:cline", "project:roo":
-		rendered = renderActivationRouter(policyPath)
+		rendered = renderActivationRouter(operationScope, policyPath)
 	case "project:cursor":
-		rendered = "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + renderActivationRouter(policyPath)
+		rendered = "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + renderActivationRouter(operationScope, policyPath)
 	case "project:windsurf":
-		rendered = "---\ntrigger: always_on\n---\n\n" + renderActivationRouter(policyPath)
+		rendered = "---\ntrigger: always_on\n---\n\n" + renderActivationRouter(operationScope, policyPath)
 	case "project:copilot":
-		rendered = "---\napplyTo: \"**\"\n---\n\n" + renderActivationRouter(policyPath)
+		rendered = "---\napplyTo: \"**\"\n---\n\n" + renderActivationRouter(operationScope, policyPath)
 	default:
 		return nil, &Error{Status: 69, Message: fmt.Sprintf("no renderer for %s target '%s'", operationScope, id)}
 	}
 	return []byte(rendered), nil
 }
 
-func renderActivationRouter(policyPath string) string {
-	return fmt.Sprintf(activationRouterFormat, policyPath)
+func renderActivationRouter(operationScope scope, policyPath string) string {
+	selection := fmt.Sprintf("On explicit activation, read `%s` as the Project Policy Set and do not read or merge the User Policy Set.", policyPath)
+	if operationScope == "user" {
+		selection = fmt.Sprintf("On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `%s` as the User Policy Set.", policyPath)
+	}
+	return activationRouterPrefix + selection + activationRouterSuffix
 }
 
 func renderManagedBlock(id targetID, operationScope scope, policyPath string) ([]byte, error) {

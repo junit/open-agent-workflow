@@ -17,7 +17,7 @@ printf 'personal instruction before\npersonal instruction after\n' >"$OAW_EXPECT
 run_oaw install --target claude
 assert_status 0 "fresh Claude install"
 
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 
@@ -33,8 +33,10 @@ grep -F 'Open Agent Workflow is opt-in.' "$OAW_CLAUDE" >/dev/null ||
   fail "Claude entrypoint is missing opt-in activation"
 grep -F 'behave as the native Host' "$OAW_CLAUDE" >/dev/null ||
   fail "Claude entrypoint does not preserve Native Host behavior"
-grep -F "On explicit activation, read \`$OAW_POLICY\`" "$OAW_CLAUDE" >/dev/null ||
-  fail "Claude entrypoint does not retain the canonical policy path"
+grep -F 'if the current project contains `.oaw/policy/POLICY.md`' "$OAW_CLAUDE" >/dev/null ||
+  fail "Claude entrypoint does not prefer the Project Policy Set"
+grep -F "otherwise read \`$OAW_POLICY\` as the User Policy Set" "$OAW_CLAUDE" >/dev/null ||
+  fail "Claude entrypoint does not retain the User Policy Set path"
 grep -F 'ordinary Skill invocation do not activate OAW' "$OAW_CLAUDE" >/dev/null ||
   fail "Claude entrypoint incorrectly governs normal Skill routing"
 if grep -F "@$OAW_POLICY" "$OAW_CLAUDE" >/dev/null; then
@@ -63,7 +65,7 @@ pass "repeated Claude install is idempotent"
 OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-checkout
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-local\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
-printf '\nLOCAL UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+printf '\nLOCAL UPDATE SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
 build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_INSTALLER=$OAW_UPDATE_CHECKOUT/install.sh
 
@@ -78,7 +80,7 @@ pass "update uses only current checkout artifacts"
 printf 'personal instruction after\n' >>"$OAW_CLAUDE"
 
 printf '0.1.2-dry-run\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
-printf '\nDRY RUN SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/ENGINEERING.md"
+printf '\nDRY RUN SENTINEL\n' >>"$OAW_UPDATE_CHECKOUT/policy/POLICY.md"
 build_checkout_installer "$OAW_UPDATE_CHECKOUT"
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
@@ -161,7 +163,7 @@ setup_sandbox
 OAW_INSTALLER=$OAW_BASE_INSTALLER
 run_oaw install --target claude
 assert_status 0 "install before shared policy reference test"
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_OTHER_PROJECT="$OAW_SANDBOX/other project"

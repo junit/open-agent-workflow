@@ -16,6 +16,21 @@ The OAW Managed Block in `AGENTS.md` is an Activation Router. It keeps Native
 Host behavior as the default and points an explicitly activated deliverable to
 the selected Policy Set. It should not embed the complete Policy.
 
+For Profile discovery, use these source-qualified locations:
+
+- Project Built-in Profiles: `.oaw/policy/profiles/*.md`;
+- User Built-in Profiles:
+  `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/builtin/*.md`;
+- Project Custom Profiles: `.oaw/profiles/*.md`, with source `project`;
+- User Custom Profiles:
+  `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/*.md`, with
+  source `user` and excluding the managed `builtin/` directory.
+
+Use Built-in Profiles only from the selected Policy Set. Project and user
+Custom Profiles remain candidates in either case, with their source identity
+preserved. Never merge same-ID Profiles or let a Custom Profile shadow a
+Built-in ID.
+
 ## Skill Discovery
 
 Use Codex's current Skill index first, but treat it as an optimization rather

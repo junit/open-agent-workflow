@@ -36,8 +36,8 @@ func prepareMutationForce(
 		return forcePreparation{}, err
 	}
 	result := forcePreparation{repaired: make(map[string]installPathSnapshot)}
-	if coords.projectPolicySet {
-		changed, err := projectPolicySetNeedsBackup(state, coords)
+	if coords.managedPolicySet {
+		changed, err := managedPolicySetNeedsBackup(state, coords)
 		if err != nil {
 			return forcePreparation{}, err
 		}
@@ -60,14 +60,14 @@ func prepareMutationForce(
 	return result, nil
 }
 
-func projectPolicySetNeedsBackup(state installationState, coords coordinates) (bool, error) {
+func managedPolicySetNeedsBackup(state installationState, coords coordinates) (bool, error) {
 	if err := validatePolicyFileRecords(state.policyFiles); err != nil {
 		return false, compatibilityError(err.Error())
 	}
 	if len(state.policyFiles) == 0 {
 		return false, compatibilityError("managed Policy Set state is missing")
 	}
-	if err := validateProjectPolicySetTree(state, coords); err != nil {
+	if err := validateManagedPolicySetTree(state, coords); err != nil {
 		return false, err
 	}
 	changed := false
@@ -329,9 +329,17 @@ func prepareManualRecoveryBackup(
 		return backupPlan{}, err
 	}
 	if policy.kind == installPathRegular {
+		policyRoot := environment.ConfigHome
+		if coords.managedPolicySet && resolved.scope == "project" {
+			policyRoot = resolved.projectRoot
+		}
+		policySuffix, suffixErr := stateActionRelativeSuffix(policyRoot, coords.policyPath)
+		if suffixErr != nil {
+			return backupPlan{}, suffixErr
+		}
 		backup.candidates, err = addBackupCandidate(
-			backup.candidates, coords.policyPath, environment.ConfigHome,
-			"open-agent-workflow/ENGINEERING.md", policy, backup.path,
+			backup.candidates, coords.policyPath, policyRoot,
+			policySuffix, policy, backup.path,
 		)
 		if err != nil {
 			return backupPlan{}, err

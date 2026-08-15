@@ -8,26 +8,29 @@ import (
 
 func TestRenderTargetMatchesBashBytes(t *testing.T) {
 	policyPath := "/config path/`policy`/ENGINEERING.md"
-	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `" + policyPath + "` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+	prefix := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. "
+	suffix := " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+	userRouter := prefix + "On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `" + policyPath + "` as the User Policy Set." + suffix
+	projectRouter := prefix + "On explicit activation, read `" + policyPath + "` as the Project Policy Set and do not read or merge the User Policy Set." + suffix
 	tests := []struct {
 		name  string
 		scope scope
 		id    targetID
 		want  string
 	}{
-		{name: "user claude", scope: "user", id: "claude", want: router},
-		{name: "user codex", scope: "user", id: "codex", want: router},
-		{name: "user gemini", scope: "user", id: "gemini", want: router},
-		{name: "user opencode", scope: "user", id: "opencode", want: router},
-		{name: "project claude", scope: "project", id: "claude", want: router},
-		{name: "project codex", scope: "project", id: "codex", want: router},
-		{name: "project gemini", scope: "project", id: "gemini", want: router},
-		{name: "project opencode", scope: "project", id: "opencode", want: router},
-		{name: "project cursor", scope: "project", id: "cursor", want: "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + router},
-		{name: "project windsurf", scope: "project", id: "windsurf", want: "---\ntrigger: always_on\n---\n\n" + router},
-		{name: "project cline", scope: "project", id: "cline", want: router},
-		{name: "project roo", scope: "project", id: "roo", want: router},
-		{name: "project copilot", scope: "project", id: "copilot", want: "---\napplyTo: \"**\"\n---\n\n" + router},
+		{name: "user claude", scope: "user", id: "claude", want: userRouter},
+		{name: "user codex", scope: "user", id: "codex", want: userRouter},
+		{name: "user gemini", scope: "user", id: "gemini", want: userRouter},
+		{name: "user opencode", scope: "user", id: "opencode", want: userRouter},
+		{name: "project claude", scope: "project", id: "claude", want: projectRouter},
+		{name: "project codex", scope: "project", id: "codex", want: projectRouter},
+		{name: "project gemini", scope: "project", id: "gemini", want: projectRouter},
+		{name: "project opencode", scope: "project", id: "opencode", want: projectRouter},
+		{name: "project cursor", scope: "project", id: "cursor", want: "---\ndescription: Open Agent Workflow lifecycle policy\nglobs: \"**/*\"\nalwaysApply: true\n---\n\n" + projectRouter},
+		{name: "project windsurf", scope: "project", id: "windsurf", want: "---\ntrigger: always_on\n---\n\n" + projectRouter},
+		{name: "project cline", scope: "project", id: "cline", want: projectRouter},
+		{name: "project roo", scope: "project", id: "roo", want: projectRouter},
+		{name: "project copilot", scope: "project", id: "copilot", want: "---\napplyTo: \"**\"\n---\n\n" + projectRouter},
 	}
 
 	for _, tt := range tests {
@@ -66,13 +69,25 @@ func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
 				"behave as the native Host",
 				"do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state",
 				"ordinary Skill invocation do not activate OAW",
-				"On explicit activation, read `" + policyPath + "`",
-				"apply it only to that deliverable",
+				"Apply the selected Policy Set only to that deliverable",
 				"Related follow-ups inherit activation; unrelated requests remain native",
 				"explicit exit closes the OAW Engagement",
 			} {
 				if !strings.Contains(text, required) {
 					t.Fatalf("%s/%s omits %q: %q", target.scope, target.id, required, text)
+				}
+			}
+			if target.scope == "user" {
+				for _, required := range []string{"current project contains `.oaw/policy/POLICY.md`", "otherwise read `" + policyPath + "` as the User Policy Set"} {
+					if !strings.Contains(text, required) {
+						t.Fatalf("%s/%s omits %q: %q", target.scope, target.id, required, text)
+					}
+				}
+			} else {
+				for _, required := range []string{"read `" + policyPath + "` as the Project Policy Set", "do not read or merge the User Policy Set"} {
+					if !strings.Contains(text, required) {
+						t.Fatalf("%s/%s omits %q: %q", target.scope, target.id, required, text)
+					}
 				}
 			}
 			for _, forbidden := range []string{
@@ -96,7 +111,7 @@ func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `/config/ENGINEERING.md` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `/config/ENGINEERING.md` as the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
 	want := "<!-- BEGIN OPEN AGENT WORKFLOW -->\n" +
 		router +
 		"<!-- END OPEN AGENT WORKFLOW -->\n"

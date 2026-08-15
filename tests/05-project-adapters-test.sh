@@ -11,7 +11,7 @@ trap cleanup_sandbox EXIT HUP INT TERM
 OAW_PROJECT_POLICY_REFERENCE=.oaw/policy/POLICY.md
 
 render_expected_activation_router() {
-  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` and apply it only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
+  printf 'Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, read `%s` as the Project Policy Set and do not read or merge the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n' "$1"
 }
 
 write_expected_router_block() {
@@ -33,8 +33,10 @@ assert_lazy_router_file() {
     fail "$router_description is missing opt-in activation"
   grep -F 'behave as the native Host' "$router_file" >/dev/null ||
     fail "$router_description does not preserve Native Host behavior"
-  grep -F "On explicit activation, read \`$router_policy\`" "$router_file" >/dev/null ||
-    fail "$router_description does not retain the canonical policy path"
+  grep -F "On explicit activation, read \`$router_policy\` as the Project Policy Set" "$router_file" >/dev/null ||
+    fail "$router_description does not retain the Project Policy Set path"
+  grep -F 'do not read or merge the User Policy Set' "$router_file" >/dev/null ||
+    fail "$router_description does not preserve whole-set project precedence"
   grep -F 'ordinary Skill invocation do not activate OAW' "$router_file" >/dev/null ||
     fail "$router_description incorrectly governs normal Skill routing"
   if grep -F "@$router_policy" "$router_file" >/dev/null ||

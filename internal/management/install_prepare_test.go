@@ -167,7 +167,7 @@ func TestProjectInstallRejectsUntrackedPolicySetContentWithoutWrites(t *testing.
 	before := snapshotPrepareTree(t, fixture.root)
 
 	_, err := Install(
-		projectPolicySetSource(t, "0.1.0", ""), fixture.environment,
+		managedPolicySetSource(t, "0.1.0", ""), fixture.environment,
 		InstallRequest{Project: project, Targets: "codex"},
 	)
 	if err == nil {

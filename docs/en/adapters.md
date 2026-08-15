@@ -78,9 +78,13 @@ attested; it is not a claim that OAW physically contained the Host.
 
 ## OAW Paths
 
-The canonical OAW policy is installed at
-`$XDG_CONFIG_HOME/open-agent-workflow/ENGINEERING.md`, or
-`~/.config/open-agent-workflow/ENGINEERING.md` when `XDG_CONFIG_HOME` is unset.
+The User Policy Set is installed under
+`$XDG_CONFIG_HOME/open-agent-workflow/`, or
+`~/.config/open-agent-workflow/` when `XDG_CONFIG_HOME` is unset. Its entry is
+`POLICY.md`, its managed Built-in Profiles are under `profiles/builtin/`, and
+user-owned Custom Profiles are direct Markdown files under `profiles/`.
+Project Policy Sets live under `.oaw/policy/` and take precedence as a whole;
+the two core sets are never merged.
 User-scope state is stored under
 `$XDG_STATE_HOME/open-agent-workflow/installations/user.state`, or
 `~/.local/state/open-agent-workflow/installations/user.state` when

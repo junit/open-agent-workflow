@@ -208,17 +208,21 @@ func prepareUninstallPolicyActions(
 ) (mutationAction, []mutationAction, error) {
 	effect := mutationRetain
 	if len(remaining) == 0 {
-		references, err := collectPolicyStateReferencesForRetention(
-			preparation.coordinates, preparation.coordinates.stateFile, preparation.policy,
-		)
-		if err != nil {
-			return mutationAction{}, nil, err
-		}
-		if len(references) == 0 {
+		if preparation.coordinates.managedPolicySet {
 			effect = mutationRemove
+		} else {
+			references, err := collectPolicyStateReferencesForRetention(
+				preparation.coordinates, preparation.coordinates.stateFile, preparation.policy,
+			)
+			if err != nil {
+				return mutationAction{}, nil, err
+			}
+			if len(references) == 0 {
+				effect = mutationRemove
+			}
 		}
 	}
-	if !preparation.coordinates.projectPolicySet {
+	if !preparation.coordinates.managedPolicySet {
 		action, err := newMutationAction(
 			effect, "policy", nil, preparation.coordinates.policyPath, 0,
 			preparation.coordinates.environment.ConfigHome,
@@ -230,7 +234,11 @@ func prepareUninstallPolicyActions(
 	var primary mutationAction
 	extras := make([]mutationAction, 0, len(preparation.state.policyFiles)-1)
 	for _, record := range preparation.state.policyFiles {
-		relative, err := stateActionRelativeSuffix(preparation.resolved.projectRoot, record.path)
+		root := preparation.resolved.projectRoot
+		if preparation.resolved.scope == "user" {
+			root = preparation.coordinates.environment.ConfigHome
+		}
+		relative, err := stateActionRelativeSuffix(root, record.path)
 		if err != nil {
 			return mutationAction{}, nil, err
 		}
@@ -244,7 +252,7 @@ func prepareUninstallPolicyActions(
 		}
 		action, err := newMutationAction(
 			effect, label, nil, record.path, 0,
-			preparation.resolved.projectRoot, relative, current,
+			root, relative, current,
 		)
 		if err != nil {
 			return mutationAction{}, nil, err
@@ -346,7 +354,10 @@ func directoryMatchesTargetRecords(directory string, records []targetRecord, sta
 }
 
 func ownedDirectoryMutationRoot(directory string, state installationState, coords coordinates) (string, error) {
-	if coords.projectPolicySet && isProjectPolicySetDirectory(coords, state.project, directory) {
+	if coords.managedPolicySet && isManagedPolicySetDirectory(coords, state.project, directory) {
+		if state.scope == "user" {
+			return coords.environment.ConfigHome, nil
+		}
 		return state.project, nil
 	}
 	if directory == coords.configDir {

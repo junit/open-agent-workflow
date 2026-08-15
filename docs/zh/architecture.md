@@ -75,7 +75,9 @@ OAW 遵循 XDG base-directory 约定，并保留明确默认值：
 
 | 构件 | Canonical 路径 |
 | --- | --- |
-| User 已安装 Policy | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/ENGINEERING.md` |
+| User Policy Set | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/` |
+| User Built-in Profile（受管） | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/builtin/` |
+| User Custom Profile（用户拥有） | `${XDG_CONFIG_HOME:-$HOME/.config}/open-agent-workflow/profiles/`，不含 `builtin/` |
 | Project Policy Set | `<project>/.oaw/policy/` |
 | Project Custom Profile（用户拥有） | `<project>/.oaw/profiles/` |
 | User 安装 state | `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/installations/user.state` |
@@ -89,6 +91,10 @@ Install State 与 Workflow State 使用相互独立的 namespace；二者之间�
 
 项目 Workflow 文档是 committed Workflow State 的单向、非权威 projection，绝不会被
 解析回权限来源。
+
+当 `<project>/.oaw/policy/POLICY.md` 存在时，整套选择 Project Policy Set；否则选择
+User Policy Set。Core Policy 文件绝不合并；project 与 user Custom Profile 仍可分别发现，
+并保留各自 source identity。
 
 ## Distribution 数据流
 

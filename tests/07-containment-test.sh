@@ -53,7 +53,7 @@ assert_read_only_roots
 run_oaw install --target claude,codex
 assert_status 0 "multi-target user install"
 
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_STATE_FILE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
 OAW_CODEX=$OAW_HOME/.codex/AGENTS.md
@@ -130,7 +130,7 @@ run_oaw install --target claude
   fail "symlinked state root created an outside artifact"
 grep -F 'outside sentinel' "$OAW_OUTSIDE/sentinel" >/dev/null ||
   fail "symlinked state root changed the outside sentinel"
-[ ! -e "$OAW_CONFIG/open-agent-workflow/ENGINEERING.md" ] ||
+[ ! -e "$OAW_CONFIG/open-agent-workflow/POLICY.md" ] ||
   fail "rejected symlinked state install created canonical policy"
 [ ! -e "$OAW_HOME/.claude/CLAUDE.md" ] ||
   fail "rejected symlinked state install created a target"
@@ -149,7 +149,7 @@ OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
 OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/open-agent-workflow.mdc
 cp "$OAW_PROJECT_TARGET" "$OAW_OUTSIDE_TARGET"
 rm -- "$OAW_PROJECT_TARGET"
@@ -194,7 +194,7 @@ OAW_PROJECT_PHYSICAL=$(CDPATH='' cd -P -- "$OAW_PROJECT" && pwd -P)
 OAW_PROJECT_ID=$(printf '%s' "$OAW_PROJECT_PHYSICAL" | cksum | awk '{ print $1 "-" $2 }')
 OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PROJECT_ID.state
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_PROJECT_PHYSICAL/.oaw/policy/POLICY.md
 OAW_ORIGINAL_CURSOR=$OAW_SANDBOX/original-cursor
 mv "$OAW_PROJECT_PHYSICAL/.cursor" "$OAW_ORIGINAL_CURSOR"
 cp "$OAW_ORIGINAL_CURSOR/rules/open-agent-workflow.mdc" \
@@ -246,7 +246,7 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 OAW_PROJECT_TARGET=$OAW_PROJECT_PHYSICAL/.cursor/rules/open-agent-workflow.mdc
 OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_OUTSIDE_STATE=$OAW_SANDBOX/outside-candidate.state
 cp "$OAW_PROJECT_STATE" "$OAW_OUTSIDE_STATE"
 rm -- "$OAW_PROJECT_STATE"
@@ -258,18 +258,18 @@ OAW_USER_TARGET_BEFORE=$(artifact_snapshot "$OAW_USER_TARGET")
 OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
 
 run_oaw update --target codex
-[ "$OAW_STATUS" -ne 0 ] || fail "cross-scope update accepted a symlinked candidate state"
-assert_contains "$OAW_PROJECT_STATE" "cross-scope update identifies the symlinked candidate state"
-[ -L "$OAW_PROJECT_STATE" ] || fail "cross-scope update replaced the candidate state symlink"
+assert_status 0 "scope-independent user update"
+assert_contains "unchanged: codex" "scope-independent update keeps the user adapter unchanged"
+[ -L "$OAW_PROJECT_STATE" ] || fail "scope-independent update replaced the unrelated project state symlink"
 assert_artifact_snapshot "$OAW_OUTSIDE_STATE" "$OAW_OUTSIDE_STATE_BEFORE" \
-  "cross-scope update with symlinked candidate state"
+  "scope-independent update with unrelated project state"
 assert_artifact_snapshot "$OAW_PROJECT_TARGET" "$OAW_PROJECT_TARGET_BEFORE" \
-  "cross-scope update with symlinked candidate state"
+  "scope-independent update with unrelated project state"
 assert_artifact_snapshot "$OAW_USER_STATE" "$OAW_USER_STATE_BEFORE" \
-  "cross-scope update with symlinked candidate state"
+  "scope-independent update with unrelated project state"
 assert_artifact_snapshot "$OAW_USER_TARGET" "$OAW_USER_TARGET_BEFORE" \
-  "cross-scope update with symlinked candidate state"
+  "scope-independent update with unrelated project state"
 assert_artifact_snapshot "$OAW_POLICY" "$OAW_POLICY_BEFORE" \
-  "cross-scope update with symlinked candidate state"
+  "scope-independent update with unrelated project state"
 
-pass "cross-scope candidate state symlinks fail before mutation"
+pass "unrelated scope state cannot veto a managed Policy Set update"

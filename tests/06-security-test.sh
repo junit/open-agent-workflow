@@ -580,7 +580,7 @@ printf 'outside user sentinel\n' >"$OAW_OUTSIDE/sentinel"
 OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
 ln -s "$OAW_OUTSIDE" "$OAW_HOME/.codex"
 OAW_OUTSIDE_TARGET=$OAW_OUTSIDE/AGENTS.md
-OAW_POLICY=$OAW_CONFIG/open-agent-workflow/ENGINEERING.md
+OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 
 run_oaw install --target codex
@@ -603,7 +603,7 @@ mkdir -p "$OAW_OUTSIDE"
 printf 'outside policy sentinel\n' >"$OAW_OUTSIDE/sentinel"
 OAW_OUTSIDE_SENTINEL_BEFORE=$(artifact_snapshot "$OAW_OUTSIDE/sentinel")
 ln -s "$OAW_OUTSIDE" "$OAW_CONFIG/open-agent-workflow"
-OAW_OUTSIDE_POLICY=$OAW_OUTSIDE/ENGINEERING.md
+OAW_OUTSIDE_POLICY=$OAW_OUTSIDE/POLICY.md
 OAW_USER_TARGET=$OAW_HOME/.codex/AGENTS.md
 OAW_USER_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 

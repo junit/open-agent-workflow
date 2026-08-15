@@ -30,7 +30,7 @@ func TestProjectUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
 	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
 	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
 	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
-	source := projectPolicySetSource(t, "0.1.0", "")
+	source := managedPolicySetSource(t, "0.1.0", "")
 	if _, err := Install(source, fixture.environment, InstallRequest{Project: project, Targets: "codex"}); err != nil {
 		t.Fatal(err)
 	}
@@ -48,6 +48,104 @@ func TestProjectUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
 	gotAgents, err := os.ReadFile(agents)
 	if err != nil || string(gotAgents) != "user instructions\n" {
 		t.Fatalf("uninstall changed surrounding Host instructions: content=%q error=%v", gotAgents, err)
+	}
+}
+
+func TestUserUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	policyRoot := filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow")
+	customProfile := filepath.Join(policyRoot, "profiles", "team-delivery.md")
+	agents := filepath.Join(fixture.environment.Home, ".codex", "AGENTS.md")
+	if err := os.MkdirAll(filepath.Dir(customProfile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const customContent = "---\nid: team-delivery\nname: Team Delivery\n---\n"
+	writePrepareFile(t, customProfile, []byte(customContent), 0o644)
+	writePrepareFile(t, agents, []byte("user instructions\n"), 0o644)
+	source := managedPolicySetSource(t, "0.1.0", "")
+	if _, err := Install(source, fixture.environment, InstallRequest{Targets: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Uninstall(fixture.environment, UninstallRequest{Targets: "codex"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, managed := range []string{
+		filepath.Join(policyRoot, "POLICY.md"),
+		filepath.Join(policyRoot, "cooperative-protocol.md"),
+		filepath.Join(policyRoot, "adapters"),
+		filepath.Join(policyRoot, "profiles", "builtin"),
+	} {
+		if _, err := os.Stat(managed); !os.IsNotExist(err) {
+			t.Fatalf("uninstall retained managed user Policy Set content %q: %v", managed, err)
+		}
+	}
+	gotCustom, err := os.ReadFile(customProfile)
+	if err != nil || string(gotCustom) != customContent {
+		t.Fatalf("uninstall changed user Custom Profile: content=%q error=%v", gotCustom, err)
+	}
+	gotAgents, err := os.ReadFile(agents)
+	if err != nil || string(gotAgents) != "user instructions\n" {
+		t.Fatalf("uninstall changed surrounding user Host instructions: content=%q error=%v", gotAgents, err)
+	}
+}
+
+func TestUserUninstallRejectsStateClaimsOnCustomProfileContent(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		mutate func(installationState, string) installationState
+	}{
+		{
+			name: "profile file",
+			mutate: func(state installationState, customProfile string) installationState {
+				content, err := os.ReadFile(customProfile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				state.policyFiles = append(state.policyFiles, policyFileRecord{
+					path: customProfile, checksum: checksumBytes(content),
+				})
+				return state
+			},
+		},
+		{
+			name: "profile directory",
+			mutate: func(state installationState, customProfile string) installationState {
+				state.directories = append(state.directories, filepath.Dir(customProfile))
+				return state
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newPrepareFixture(t)
+			source := managedPolicySetSource(t, "0.1.0", "")
+			installed, err := PrepareInstall(source, fixture.environment, InstallRequest{Targets: "codex"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ApplyInstall(installed); err != nil {
+				t.Fatal(err)
+			}
+			customProfile := filepath.Join(
+				fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "team", "delivery.md",
+			)
+			writePrepareFile(t, customProfile, []byte("user-owned\n"), 0o644)
+			state := parsePreparedState(t, installed.stateActions[0])
+			state = tt.mutate(state, customProfile)
+			rendered, err := serializeInstallState(state)
+			if err != nil {
+				t.Fatal(err)
+			}
+			writePrepareFile(t, installed.coordinates.stateFile, rendered, 0o600)
+
+			if _, err := Uninstall(fixture.environment, UninstallRequest{Targets: "codex"}); err == nil {
+				t.Fatal("uninstall accepted a state claim on user Custom Profile content")
+			}
+			content, err := os.ReadFile(customProfile)
+			if err != nil || string(content) != "user-owned\n" {
+				t.Fatalf("uninstall changed Custom Profile content: content=%q error=%v", content, err)
+			}
+		})
 	}
 }
 
