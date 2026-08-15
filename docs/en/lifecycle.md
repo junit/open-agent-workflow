@@ -32,6 +32,30 @@ When a Skill is unavailable, use an alternative explicitly named by the
 Profile or the Policy default, or state the limitation and ask the user.
 Do not invent a provider, route, result, or recovery owner.
 
+## Natural-Language Examples
+
+Profile work stays in the conversation rather than moving into a command or a
+machine gate:
+
+```text
+Use OAW to create a project Profile named release-readiness from the Skills I
+already have, then use it for this release checklist.
+
+Use OAW with project:release-readiness to deliver this change.
+
+Switch this deliverable to SP-FULL at the next stable boundary and preserve
+the completed specification and tests.
+
+The `ecc:delivery-gate` Skill is unavailable. Use the Policy verification
+default, state that fallback, and continue only with the same Responsibility.
+```
+
+When a project and user Profile share an ID, select the source explicitly with
+`project:<id>` or `user:<id>`. A switch changes the method for the remaining
+work; it does not rewrite completed ownership or silently merge the two
+sources. A fallback preserves the Responsibility and names the replacement
+method before it is used.
+
 ## Progress and Completion
 
 Conversation is the primary progress record. A project may keep an optional

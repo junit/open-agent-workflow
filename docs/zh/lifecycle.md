@@ -23,6 +23,26 @@ negative test 和 verification 强度。二者都不选择 Profile、不激活 O
 Skill 不可用时，使用 Profile 或 Policy 明确的替代方案，或说明限制并询问用户。不要臆造 Provider、
 route、结果或 recovery owner。
 
+## 自然语言示例
+
+Profile 工作留在对话中，不需要额外命令或机器 gate：
+
+```text
+使用 OAW，从我已经安装的 Skill 创建一个名为 release-readiness 的项目 Profile，
+然后用它完成这份发布检查清单。
+
+使用 OAW 和 project:release-readiness 交付这项变更。
+
+在下一个稳定边界把这个交付物切换到 SP-FULL，并保留已经完成的 specification 和测试。
+
+`ecc:delivery-gate` Skill 当前不可用。使用 Policy 的 verification 默认行为，明确说明这次
+fallback，并且只继续完成同一个 Responsibility。
+```
+
+项目和 User Profile 使用相同 ID 时，必须用 `project:<id>` 或 `user:<id>` 明确来源。切换只改变剩余
+工作的工程方法，不会重写已完成的 ownership，也不会静默合并两个来源。Skill 不可用时，必须先说明
+fallback，保留原 Responsibility，并明确将要使用的替代方法。
+
 ## 进度与完成
 
 对话是主要进度记录。项目可以保留可选 Markdown Progress Note，记录选中的 Profile、完成的

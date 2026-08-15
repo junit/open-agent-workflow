@@ -178,8 +178,8 @@ An exact Skill marked mandatory by the Profile is never silently replaced.
 
 ## Complexity and Risk
 
-Complexity and Risk are qualitative model judgments, not request modes, CLI
-fields, Profile selectors, or execution gates.
+Complexity and Risk are qualitative model judgments. They do not activate OAW,
+select a Profile, create CLI state, or grant permissions.
 
 - **Complexity** increases decomposition, written planning, coordination, and
   continuity detail as interactions and uncertainty grow.

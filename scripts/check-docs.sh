@@ -124,6 +124,10 @@ done
 
 require_text docs/en/architecture.md "static"
 require_text docs/zh/architecture.md "静态"
+require_text docs/en/lifecycle.md "Switch this deliverable to SP-FULL"
+require_text docs/zh/lifecycle.md "切换只改变剩余"
+require_text docs/en/lifecycle.md "Use the Policy verification"
+require_text docs/zh/lifecycle.md "fallback"
 require_text docs/en/extending-adapters.md "Custom"
 require_text docs/zh/extending-adapters.md "Custom"
 require_text docs/en/codex-bridge.md "optional"
