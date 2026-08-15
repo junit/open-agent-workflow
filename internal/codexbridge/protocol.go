@@ -1,21 +1,23 @@
 package codexbridge
 
-import "errors"
+import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"path/filepath"
+	"strings"
+	"unicode"
+	"unicode/utf8"
+)
 
 const (
-	BridgeProtocolVersion = "oaw.codex-bridge/v2"
-	HookContextSchemaV2   = "oaw.codex-hook-context/v2"
-	EvidenceHandleVersion = "oaw.host-evidence-handle/v2"
+	BridgeProtocolVersion = "oaw.codex-bridge/v3"
+	HookContextSchemaV3   = "oaw.codex-hook-context/v3"
 )
 
 type Operation string
 
-const (
-	OperationObserveCurrent   Operation = "observe_current"
-	OperationCoreInspect      Operation = "core.inspect"
-	OperationCoreCompile      Operation = "core.compile"
-	OperationWorkflowExchange Operation = "workflow_exchange"
-)
+const OperationObserveProfile Operation = "observe_profile"
 
 type HookContext struct {
 	SchemaVersion         string `json:"schema_version"`
@@ -26,31 +28,6 @@ type HookContext struct {
 	CWD                   string `json:"cwd"`
 	Model                 string `json:"model"`
 	PermissionMode        string `json:"permission_mode"`
-}
-
-type HostEvidenceHandle struct {
-	Version       string `json:"version"`
-	SessionDigest string `json:"session_digest"`
-	CWDDigest     string `json:"cwd_digest"`
-	Token         string `json:"token"`
-}
-
-type FactDigests struct {
-	Session       string `json:"session"`
-	Reporter      string `json:"reporter_identity"`
-	Inventory     string `json:"inventory"`
-	Environment   string `json:"environment"`
-	Features      string `json:"features"`
-	Actions       string `json:"actions"`
-	Configuration string `json:"configuration"`
-	Discovery     string `json:"discovery"`
-	Resolution    string `json:"resolution"`
-	Registry      string `json:"registry"`
-	Version       string `json:"version_evidence"`
-}
-
-type OperationRequest struct {
-	Handle HostEvidenceHandle `json:"host_evidence_handle"`
 }
 
 type Error struct {
@@ -81,19 +58,60 @@ func Code(err error) string {
 	if errors.As(err, &value) {
 		return value.Code
 	}
-	var external interface{ ErrorCode() string }
-	if errors.As(err, &external) {
-		return external.ErrorCode()
-	}
 	return ""
 }
 
 func ParseOperation(value string) (Operation, error) {
 	operation := Operation(value)
-	switch operation {
-	case OperationObserveCurrent, OperationCoreInspect, OperationCoreCompile, OperationWorkflowExchange:
-		return operation, nil
-	default:
-		return "", NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "operation is not in the v2 allowlist", nil)
+	if operation != OperationObserveProfile {
+		return "", NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "operation is not in the v3 allowlist", nil)
 	}
+	return operation, nil
+}
+
+func ValidateHookContext(context HookContext) error {
+	if context.SchemaVersion != HookContextSchemaV3 || context.BridgeProtocolVersion != BridgeProtocolVersion {
+		return NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "Hook context schema or Bridge protocol is unsupported", nil)
+	}
+	if _, _, err := ContextDigestHeaders(context); err != nil {
+		return err
+	}
+	for _, field := range []string{context.TurnID, context.ToolUseID, context.Model, context.PermissionMode} {
+		if !validContextText(field, 4096) {
+			return NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "Hook context identity is incomplete or invalid", nil)
+		}
+	}
+	return nil
+}
+
+func ContextDigestHeaders(context HookContext) (string, string, error) {
+	if !validContextText(context.SessionID, 512) {
+		return "", "", NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "invalid Codex session identity", nil)
+	}
+	cwd, err := canonicalCWD(context.CWD)
+	if err != nil {
+		return "", "", err
+	}
+	return digestHeader("session", context.SessionID), digestHeader("cwd", cwd), nil
+}
+
+func digestHeader(kind, value string) string {
+	digest := sha256.Sum256([]byte(BridgeProtocolVersion + "\x00" + kind + "\x00" + value))
+	return hex.EncodeToString(digest[:])
+}
+
+func canonicalCWD(value string) (string, error) {
+	if !utf8.ValidString(value) || value == "" || strings.IndexFunc(value, unicode.IsControl) >= 0 || !filepath.IsAbs(value) {
+		return "", NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "cwd must be an absolute path without controls", nil)
+	}
+	absolute, err := filepath.Abs(value)
+	if err != nil {
+		return "", NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "canonicalize cwd", err)
+	}
+	return filepath.Clean(absolute), nil
+}
+
+func validContextText(value string, maximum int) bool {
+	return value != "" && utf8.ValidString(value) && len(value) <= maximum &&
+		strings.TrimSpace(value) == value && strings.IndexFunc(value, unicode.IsControl) < 0
 }

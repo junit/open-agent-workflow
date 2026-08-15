@@ -93,7 +93,7 @@ README.md|Release archives contain precompiled binaries and perform no runtime e
 README.md|Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.
 README.md|The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.
 README.md|The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
-README.md|Codex has a policy integration by default and a separate audited host-native Bridge
+README.md|The separately built `oaw-bridge` is an optional Assurance integration
 README.md|Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.
 README-zh.md|公开安装管理以 Go 为权威实现。
 README-zh.md|`install.sh` 是离线的同目录二进制兼容包装器。
@@ -101,7 +101,7 @@ README-zh.md|发布归档包含预编译二进制，运行时不会下载可执�
 README-zh.md|安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。
 README-zh.md|协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存
 README-zh.md|Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、
-README-zh.md|Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge
+README-zh.md|`oaw-bridge` 是可选 Assurance integration
 README-zh.md|可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。
 EOF
 while IFS='|' read -r boundary_document boundary_text; do
@@ -109,12 +109,18 @@ while IFS='|' read -r boundary_document boundary_text; do
 done <"$CHECK_TEMP/release-boundaries"
 
 cat >"$CHECK_TEMP/bridge-boundaries" <<'EOF'
-docs/en/architecture.md|oaw/codex-host
-docs/zh/architecture.md|oaw/codex-host
-docs/en/lifecycle.md|observe_current
-docs/zh/lifecycle.md|observe_current
+README.md|It does not select or run a Profile, attest delegation, call Core or the Coordinator, or change the no-Bridge Policy path.
+README-zh.md|它不选择或执行
+docs/en/architecture.md|Codex has only `oaw/codex-policy` in the default Integration set.
+docs/zh/architecture.md|Codex 的默认 Integration set 只包含 `oaw/codex-policy`。
+docs/en/lifecycle.md|Bridge absence or failure removes only the Overlay.
+docs/zh/lifecycle.md|Bridge 缺失或失败只会移除 Overlay。
+docs/en/troubleshooting.md|oaw-bridge check codex --format json
+docs/zh/troubleshooting.md|oaw-bridge check codex --format json
 docs/en/troubleshooting.md|HOST_BRIDGE_PROTOCOL_MISMATCH
 docs/zh/troubleshooting.md|HOST_BRIDGE_PROTOCOL_MISMATCH
+SECURITY.md|The default `oaw` executable and installer do not build, install, manage, or
+SECURITY-zh.md|默认 `oaw` 可执行文件与安装器不会构建、安装、管理或依赖 Bridge。
 EOF
 while IFS='|' read -r boundary_document boundary_text; do
   require_literal "$boundary_document" "$boundary_text"
@@ -319,13 +325,12 @@ for diagnostic_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md
     HOST_BRIDGE_UNAVAILABLE \
     HOST_BRIDGE_CONTEXT_REQUIRED \
     HOST_BRIDGE_PROTOCOL_MISMATCH \
-    HOST_EVIDENCE_HANDLE_REQUIRED \
-    HOST_EVIDENCE_HANDLE_INVALID \
-    HOST_EVIDENCE_EXPIRED \
-    HOST_EVIDENCE_SESSION_MISMATCH \
     HOST_OBSERVATION_FAILED \
     HOST_OBSERVATION_PARTIAL \
-    HOST_SESSION_CHANGED; do
+    PROFILE_SELECTION_INVALID \
+    PROFILE_NOT_FOUND \
+    PROFILE_AMBIGUOUS \
+    ASSURANCE_BINDING_UNAVAILABLE; do
     require_literal "$diagnostic_document" "$bridge_reason"
   done
 done
@@ -372,38 +377,31 @@ for comparison_document in docs/en/comparison.md docs/zh/comparison.md; do
   require_literal "$comparison_document" 'superpowers-codex'
 done
 
-cat >"$CHECK_TEMP/provider-surface-version-tuple" <<'EOF'
-oaw.provider-descriptor/v4
-oaw.profile-recipe/v3
-oaw.host-manifest/v3
-oaw.host-session/v3
-oaw.host-binding-inventory/v3
-oaw.host-environment-report/v2
-oaw.host-invocation-receipt/v3
-oaw.host-conformance-transcript/v4
-oaw.host-conformance-report/v4
-oaw.execution-graph/v4
-oaw.lifecycle-bundle/v4
-oaw.capability-grant/v3
-oaw.dispatch-packet/v2
-oaw.workflow-command/v2
-oaw.workflow-result/v2
-oaw.workflow-snapshot/v2
-oaw.workflow-revision/v2
-oaw.codex-bridge/v2
-oaw.codex-hook-context/v2
-oaw.host-evidence-handle/v2
+cat >"$CHECK_TEMP/bridge-assurance-contract" <<'EOF'
+oaw-bridge
+bin/oaw-bridge
+oaw-codex-assurance
+observe_profile
+skills/list
+oaw.codex-bridge/v3
+oaw.codex-hook-context/v3
+oaw.assurance-overlay/v1
+source-qualified
 EOF
 for bridge_document in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
   while IFS= read -r contract_version; do
     require_literal "$bridge_document" "$contract_version"
-  done <"$CHECK_TEMP/provider-surface-version-tuple"
-  require_literal "$bridge_document" '2.0.0'
+  done <"$CHECK_TEMP/bridge-assurance-contract"
   require_literal "$bridge_document" 'proof_scope: installation-integrity'
   require_literal "$bridge_document" 'live_protocol_proof: false'
-  require_literal "$bridge_document" 'SubagentStart'
-  require_literal "$bridge_document" 'child-delegation'
-  require_literal "$bridge_document" 'agents.enabled'
+  case "$bridge_document" in
+    docs/en/*)
+      require_literal "$bridge_document" 'does not call OAW Core or the Workflow Coordinator'
+      ;;
+    docs/zh/*)
+      require_literal "$bridge_document" '它不调用 OAW Core 或 Workflow'
+      ;;
+  esac
 done
 
 for lifecycle_document in policy/ENGINEERING.md docs/en/lifecycle.md docs/zh/lifecycle.md; do
@@ -438,13 +436,35 @@ for binding_document in \
   require_literal "$binding_document" 'tools'
 done
 
-require_literal README.md 'after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation`'
-require_literal README-zh.md '在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`'
-require_literal docs/en/architecture.md '`SubagentStart` event can additionally prove `child-delegation` for the exact'
-require_literal docs/zh/architecture.md '有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`'
 require_literal policy/ENGINEERING.md 'Startup Gate Host capability probe'
 require_literal policy/ENGINEERING.md 'explicitly requested a Profile and topology'
 require_literal policy/ENGINEERING.md 'Governance observation'
+
+cat >"$CHECK_TEMP/stale-bridge-contract" <<'EOF'
+observe_current
+core_inspect
+core_compile
+workflow_exchange
+HOST_EVIDENCE_HANDLE_REQUIRED
+HOST_EVIDENCE_HANDLE_INVALID
+HOST_EVIDENCE_EXPIRED
+HOST_EVIDENCE_SESSION_MISMATCH
+oaw.codex-bridge/v2
+oaw.codex-hook-context/v2
+oaw.host-evidence-handle/v2
+SubagentStart
+child-delegation
+agents.enabled
+hooks/list
+config/read
+EOF
+for bridge_document in \
+  docs/en/codex-bridge.md docs/zh/codex-bridge.md \
+  docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
+  while IFS= read -r stale_bridge_literal; do
+    reject_literal "$bridge_document" "$stale_bridge_literal"
+  done <"$CHECK_TEMP/stale-bridge-contract"
+done
 
 cat >"$CHECK_TEMP/activation-policy-contract" <<'EOF'
 Native Host is the default. It is not an OAW Request Mode.
@@ -530,7 +550,7 @@ docs/en/comparison.md|Normal Host Skill routing
 docs/zh/comparison.md|显式激活后
 docs/zh/comparison.md|原生 Host Skill routing
 docs/en/codex-bridge.md|Bridge installation does not activate OAW
-docs/en/codex-bridge.md|active OAW Engagement
+docs/en/codex-bridge.md|active OAW
 docs/zh/codex-bridge.md|安装 Bridge 不会激活 OAW
 docs/zh/codex-bridge.md|活跃 OAW Engagement
 docs/en/security.md|current top-level user instruction
@@ -622,18 +642,12 @@ done
 
 for troubleshooting_document in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
   for provider_surface_reason in \
-    PROVIDER_BINDING_CONTENT_MISMATCH \
-    BINDING_EXPLICIT_INVOCATION_REQUIRED \
-    HOST_FEATURE_UNATTESTED \
-    HOST_ACTION_UNAVAILABLE \
     MACRO_INTERNAL_CONFLICT \
     PROFILE_TOPOLOGY_UNAVAILABLE \
     WORKFLOW_STATE_UNSUPPORTED; do
     require_literal "$troubleshooting_document" "$provider_surface_reason"
   done
-  require_literal "$troubleshooting_document" 'bounded native child probe'
   require_literal "$troubleshooting_document" 'Startup Gate'
-  require_literal "$troubleshooting_document" 'observe_current'
 done
 
 require_literal internal/assets/providers/oaw-matt.json '"id":"oaw/matt"'

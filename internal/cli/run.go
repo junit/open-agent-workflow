@@ -37,7 +37,8 @@ func RunWithContext(ctx context.Context, args []string, stdin io.Reader, stdout 
 		case "profiles", "use", "status", "complete", "review", "approve", "satisfy", "incident", "switch", "stop", "uncertain":
 			return runPolicySimple(args, stdout, stderr)
 		case "bridge":
-			return runBridge(ctx, args[1:], stdin, stdout, stderr)
+			fmt.Fprintln(stderr, "oaw: INVALID_ARGUMENT: Bridge is a separate optional executable; use oaw-bridge")
+			return 64
 		case "workflow":
 			return runWorkflowExchange(args[1:], stdin, stdout, stderr)
 		case "runtime", "run":
@@ -150,5 +151,5 @@ func usage() string {
 }
 
 func rootUsage() string {
-	return installerUsage() + "\n" + profileUsage() + "\n" + bridgeUsage() + "\n" + usage()
+	return installerUsage() + "\n" + profileUsage() + "\n" + usage()
 }

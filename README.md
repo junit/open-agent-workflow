@@ -174,7 +174,7 @@ The cooperative Policy path does not require OAW Core. On machine-backed paths, 
 
 The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.
 
-`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default and a separate audited host-native Bridge that must be explicitly installed and trusted. Current Codex proves `skill` bindings and `CURRENT` topology; after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation` for that exact session and CWD. Role, instruction, agent, tool, parallel/nested delegation, and Host-action availability remain unknown or unavailable.
+`CURRENT` uses the active session unchanged. `SUBAGENT` is eligible only when the active Host provides a native Subagent facility; there is no process fallback. Codex has a policy integration by default. The separately built `oaw-bridge` is an optional Assurance integration: its only MCP operation, `observe_profile`, can attach current exact Skill Binding identities to a source-qualified Markdown Profile. It does not select or run a Profile, attest delegation, call Core or the Coordinator, or change the no-Bridge Policy path.
 
 Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness. On macOS, use `scripts/smoke-docker.sh` for the native Linux archive when Docker Desktop is available. WSL-specific checks are optional and a `SKIP` is recorded, never reported as a pass.
 
@@ -398,7 +398,7 @@ guides are being completed as part of the local v0.1 documentation ticket:
 | Architecture | [English](docs/en/architecture.md) | [中文](docs/zh/architecture.md) |
 | Installer | [English](docs/en/installer.md) | [中文](docs/zh/installer.md) |
 | Machine Assurance | [English](docs/en/machine-assurance.md) | [中文](docs/zh/machine-assurance.md) |
-| Codex Host Bridge | [English](docs/en/codex-bridge.md) | [中文](docs/zh/codex-bridge.md) |
+| Codex Assurance Bridge | [English](docs/en/codex-bridge.md) | [中文](docs/zh/codex-bridge.md) |
 | Adapters | [English](docs/en/adapters.md) | [中文](docs/zh/adapters.md) |
 | Extending adapters | [English](docs/en/extending-adapters.md) | [中文](docs/zh/extending-adapters.md) |
 | Security model | [English](docs/en/security.md) | [中文](docs/zh/security.md) |

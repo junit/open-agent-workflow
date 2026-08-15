@@ -42,19 +42,17 @@ func TestClientInitializesOnceAndBindsCWD(t *testing.T) {
 	}
 }
 
-func TestClientCallUsesAllowlistAndMonotonicRequestIDs(t *testing.T) {
+func TestClientCallUsesSkillOnlyAllowlistAndMonotonicRequestIDs(t *testing.T) {
 	transport := newRecordingTransport()
 	client := NewClient(ClientOptions{Transport: transport, MaximumMessageBytes: 8 << 20, RequestTimeout: time.Second})
 	if err := client.initialize(context.Background(), "/repo"); err != nil {
 		t.Fatal(err)
 	}
-	for _, method := range []string{"skills/list", "hooks/list", "config/read"} {
-		if _, err := client.Call(context.Background(), method, map[string]string{"cwd": "/repo"}); err != nil {
-			t.Fatalf("%s: %v", method, err)
-		}
+	if _, err := client.Call(context.Background(), "skills/list", map[string]string{"cwd": "/repo"}); err != nil {
+		t.Fatal(err)
 	}
 	requests := transport.Requests()
-	if got := requestMethods(requests); !slices.Equal(got, []string{"initialize", "skills/list", "hooks/list", "config/read"}) {
+	if got := requestMethods(requests); !slices.Equal(got, []string{"initialize", "skills/list"}) {
 		t.Fatalf("methods = %#v", got)
 	}
 	for index, request := range requests {
@@ -117,8 +115,8 @@ func TestClientNormalizesRemoteMethodErrors(t *testing.T) {
 	if _, err := client.Call(context.Background(), "skills/list", nil); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
 		t.Fatalf("required method error = %v", err)
 	}
-	if _, err := client.Call(context.Background(), "hooks/list", nil); Code(err) != "HOST_OBSERVATION_FAILED" {
-		t.Fatalf("optional method error = %v", err)
+	if _, err := client.Call(context.Background(), "hooks/list", nil); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
+		t.Fatalf("forbidden method error = %v", err)
 	}
 }
 

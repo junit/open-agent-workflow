@@ -132,13 +132,11 @@ Evidence。foreign-Host diagnostics 绝不会进入 pin matching、Profile compi
 Lifecycle Bundle。active schema 会拒绝 `oaw.provider-descriptor/v1` 和
 `oaw.user-config/v1`，不会静默升级。
 
-Codex 默认提供 policy integration，并在 `oaw/codex-host` 提供独立的 audited
-host-native Bridge。Bridge 必须显式安装并信任。当前 Codex 证明 `skill` binding 与 `CURRENT`
-topology；有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`。
-`oaw/codex-policy` policy surface 不会因 filesystem detection 被
-提升。Role、instruction、agent、tool、parallel/nested delegation、invocation、
-`workspace.prepare-or-confirm`、`verification.execute` 与 `closeout.execute` 只有在稳定
-live API attestation 后才可用，否则保持 unknown 或 unavailable。
+Codex 的默认 Integration set 只包含 `oaw/codex-policy`。独立构建的 `oaw-bridge` 是可选
+Assurance adapter，不是 host-native workflow surface。它的 `observe_profile` operation
+可以把当前精确 `skill` Binding 身份附着到一份 source-qualified Markdown Profile。它不证明
+topology、delegation、invocation、Host action、Receipt 或 completion，也不能通过
+filesystem detection 提升 Policy surface。
 
 v4 Provider 模型严格区分 Skill、Claude custom Agent、Codex Role、Instruction、Hooks 与
 tools。Binding kind 为 `skill`、`agent`、`role`、`instruction`；完整 Binding tree evidence
@@ -182,19 +180,22 @@ Subagent 不可用时，没有 process 或 container fallback。可用集合取 
 所有 active Capability binding、integration metadata 与当前 Host session fact 的交集。
 用户在 Workflow Startup Gate 中选择 topology。
 
-Codex 默认暴露 `oaw/codex-policy`，并提供 opt-in 的 `oaw/codex-host` host-native
-surface。Bridge 只支持 `CURRENT` 与 `skill` binding，session-dependent evidence 来自
-trusted Hook 与 allowlisted Host metadata。其他内置 integration 仍是 policy surface，
-除非它们各自的 Host-native integration 被显式安装并验证。任何 integration 都不会向 OAW
-转交 model command、credential、private Hook payload 或 private MCP、Skill、Plugin 配置。
+Codex 默认暴露 `oaw/codex-policy`。`oaw-bridge` 需要独立构建、安装和测试；默认 `oaw`
+安装器不会安装或管理它。Bridge 只读取当前 `skills/list` metadata 并返回可选 Assurance
+Overlay。其他内置 integration 仍是 Policy surface，除非另一个 Host-native workflow
+contract 被显式安装并验证。任何 integration 都不会向 OAW 转交 model command、
+credential、private Hook payload 或 private MCP、Skill、Plugin 配置。
 
-Codex Bridge 路径为：
+可选 Codex Assurance 路径为：
 
 ```text
-observe_current -> Core inspect -> explicit Startup Gate
-                -> Core compile / Coordinator START
-                -> current Codex session 执行 Skill 与 tool
+Markdown Profile -> Policy 选择与规则驱动执行
+       |
+       +-> observe_profile -> 当前 Skill Binding evidence
+                           -> 绑定同一 Profile 的 Assurance Overlay
 ```
+
+Bridge 失败只会移除下方可选分支，绝不会改变 Policy Profile 或控制规则驱动分支。
 
 Agent Host 拥有物理执行权限。Lifecycle Bundle、Capability Grant 与 Resource Lease 为
 合作客户端表达 logical workflow authority。Grant 可以比 Host sandbox and approvals

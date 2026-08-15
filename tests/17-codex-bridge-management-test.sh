@@ -18,11 +18,11 @@ trap cleanup EXIT HUP INT TERM
 
 setup_sandbox
 BRIDGE_RELEASE=$(mktemp -d "${TMPDIR:-/tmp}/oaw-bridge-release.XXXXXX")
-cp "$OAW_REPOSITORY/install.sh" "$BRIDGE_RELEASE/install.sh"
-chmod 755 "$BRIDGE_RELEASE/install.sh"
 (cd "$OAW_REPOSITORY" && go build -o "$BRIDGE_RELEASE/oaw" ./cmd/oaw) ||
-  fail 'cannot build Codex Bridge test binary'
-OAW_INSTALLER=$BRIDGE_RELEASE/install.sh
+  fail 'cannot build default oaw binary'
+(cd "$OAW_REPOSITORY" && go build -o "$BRIDGE_RELEASE/oaw-bridge" ./cmd/oaw-bridge) ||
+  fail 'cannot build standalone oaw-bridge binary'
+
 OAW_DATA=$OAW_SANDBOX/data
 OAW_BIN=$OAW_SANDBOX/bin
 OAW_CODEX_LOG=$OAW_SANDBOX/codex.argv
@@ -47,11 +47,12 @@ esac
 EOF
 chmod 755 "$OAW_BIN/codex"
 
-run_bridge() {
+run_command() {
   name=$1
   expected_status=$2
   input=$3
-  shift 3
+  binary=$4
+  shift 4
   output=$OAW_SANDBOX/$name.stdout
   error_output=$OAW_SANDBOX/$name.stderr
   set +e
@@ -63,7 +64,7 @@ run_bridge() {
       XDG_DATA_HOME="$OAW_DATA" \
       OAW_CODEX_LOG="$OAW_CODEX_LOG" \
       PATH="$OAW_BIN:$OAW_PATH" \
-      bash "$OAW_INSTALLER" "$@" <"$input" >"$output" 2>"$error_output"
+      "$binary" "$@" <"$input" >"$output" 2>"$error_output"
   )
   status=$?
   set -e
@@ -72,17 +73,22 @@ run_bridge() {
   fi
 }
 
-run_bridge help 0 /dev/null bridge --help
-grep -F 'oaw bridge serve codex' "$OAW_SANDBOX/help.stdout" >/dev/null ||
-  fail 'Bridge help omits serve codex'
-grep -F 'oaw bridge install codex' "$OAW_SANDBOX/help.stdout" >/dev/null ||
-  fail 'Bridge help omits install codex'
+run_command bridge-help 0 /dev/null "$BRIDGE_RELEASE/oaw-bridge" --help
+grep -F 'oaw-bridge serve codex' "$OAW_SANDBOX/bridge-help.stdout" >/dev/null ||
+  fail 'standalone Bridge help omits serve codex'
+grep -F 'oaw-bridge install codex' "$OAW_SANDBOX/bridge-help.stdout" >/dev/null ||
+  fail 'standalone Bridge help omits install codex'
 
-run_bridge unknown-host 64 /dev/null bridge serve claude
-run_bridge removed-runtime 64 /dev/null runtime
-run_bridge removed-run 64 /dev/null run
+run_command default-help 0 /dev/null "$BRIDGE_RELEASE/oaw" help
+if grep -F 'bridge install' "$OAW_SANDBOX/default-help.stdout" >/dev/null; then
+  fail 'default oaw help still advertises Bridge management'
+fi
+run_command default-rejects-bridge 64 /dev/null "$BRIDGE_RELEASE/oaw" bridge check codex
+grep -F 'use oaw-bridge' "$OAW_SANDBOX/default-rejects-bridge.stderr" >/dev/null ||
+  fail 'default oaw does not direct explicit Bridge users to the standalone executable'
 
-run_bridge check 0 /dev/null bridge check codex --format json
+run_command unknown-host 64 /dev/null "$BRIDGE_RELEASE/oaw-bridge" serve claude
+run_command check 0 /dev/null "$BRIDGE_RELEASE/oaw-bridge" check codex --format json
 grep -F '"current_session_loaded":false' "$OAW_SANDBOX/check.stdout" >/dev/null ||
   fail 'Bridge check inferred a loaded current session'
 grep -F '"code":"BRIDGE_INSTALL_NOT_INSTALLED"' "$OAW_SANDBOX/check.stdout" >/dev/null ||
@@ -95,7 +101,7 @@ actual_codex_commands=$(cat "$OAW_CODEX_LOG")
   fail "Bridge check used unexpected Codex argv: $actual_codex_commands"
 
 : >"$OAW_CODEX_LOG"
-run_bridge dry-run 0 /dev/null bridge install codex --dry-run --format json
+run_command dry-run 0 /dev/null "$BRIDGE_RELEASE/oaw-bridge" install codex --dry-run --format json
 grep -F '"operation":"install"' "$OAW_SANDBOX/dry-run.stdout" >/dev/null ||
   fail 'Bridge dry-run omitted install operation'
 grep -F '"changed":false' "$OAW_SANDBOX/dry-run.stdout" >/dev/null ||
@@ -103,7 +109,7 @@ grep -F '"changed":false' "$OAW_SANDBOX/dry-run.stdout" >/dev/null ||
 [ ! -s "$OAW_CODEX_LOG" ] || fail 'Bridge dry-run invoked Codex'
 
 printf '%s\n' '{"hook_event_name":"wrong"}' >"$OAW_SANDBOX/malformed-hook.json"
-run_bridge malformed-hook 0 "$OAW_SANDBOX/malformed-hook.json" bridge hook codex
+run_command malformed-hook 0 "$OAW_SANDBOX/malformed-hook.json" "$BRIDGE_RELEASE/oaw-bridge" hook codex
 grep -F '"permissionDecision":"deny"' "$OAW_SANDBOX/malformed-hook.stdout" >/dev/null ||
   fail 'malformed matched Hook did not fail closed'
 if grep -F 'updatedInput' "$OAW_SANDBOX/malformed-hook.stdout" >/dev/null; then
@@ -115,4 +121,4 @@ assert_empty_dir "$OAW_CONFIG" 'Bridge management must not write XDG_CONFIG_HOME
 assert_empty_dir "$OAW_STATE" 'read-only and dry-run Bridge commands must not write XDG_STATE_HOME'
 assert_empty_dir "$OAW_DATA" 'read-only and dry-run Bridge commands must not write XDG_DATA_HOME'
 
-printf 'PASS: Codex Bridge management uses isolated roots and official argv only\n'
+printf 'PASS: standalone Codex Assurance Bridge management is isolated from default oaw\n'

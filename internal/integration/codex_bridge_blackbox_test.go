@@ -4,306 +4,139 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
-	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
-	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
-	"github.com/wifibaby4u/open-agent-workflow/internal/classification"
-	"github.com/wifibaby4u/open-agent-workflow/internal/cli"
+	"github.com/wifibaby4u/open-agent-workflow/internal/assurance"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
-	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
-	"github.com/wifibaby4u/open-agent-workflow/internal/core"
-	"github.com/wifibaby4u/open-agent-workflow/internal/execution"
-	"github.com/wifibaby4u/open-agent-workflow/internal/integrity"
+	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/hook"
+	"github.com/wifibaby4u/open-agent-workflow/internal/hosttest"
+	"github.com/wifibaby4u/open-agent-workflow/internal/profileinspect"
 )
 
-func TestCodexBridgeCurrentWorkflowTranscript(t *testing.T) {
-	fixture := newCodexBridgeFixture(t)
-	observed := callObserveThroughMCP(t, fixture)
-	inspection := callInspectThroughMCP(t, fixture, observed.HostEvidenceHandle)
-	if inspection.Compilation == nil || len(inspection.Compilation.EligibleProfiles) == 0 || inspection.HostSummary.SessionDigest == "" {
-		t.Fatalf("inspection=%#v", inspection)
-	}
-	compiled := callCompileThroughMCP(t, fixture, observed.HostEvidenceHandle, explicitCurrentSelection(t, inspection))
-	started := callWorkflowStartThroughMCP(t, fixture, observed.HostEvidenceHandle, compiled)
-	if started.Snapshot == nil || len(started.Snapshot.Bundles) != 1 ||
-		started.Snapshot.Bundles[0].HostSessionDigest[:16] != inspection.HostSummary.SessionDigest {
-		t.Fatalf("started=%#v", started)
-	}
-}
-
-func TestSPFullCurrentConfirmationRequiresLiveChildDelegation(t *testing.T) {
-	fixture := newCodexBridgeFixtureWithDelegation(t, true)
-
-	assertUserDefinedCurrentUnavailable(t, callInspectThroughMCP(
-		t, fixture, callObserveThroughMCP(t, fixture).HostEvidenceHandle,
-	))
-
-	foreignContext := fixture.hostContext
-	foreignContext.SessionID = "bridge-blackbox-foreign-session"
-	recordSubagentStartThroughCLI(t, foreignContext)
-	assertUserDefinedCurrentUnavailable(t, callInspectThroughMCP(
-		t, fixture, callObserveThroughMCP(t, fixture).HostEvidenceHandle,
-	))
-
-	recordSubagentStartThroughCLI(t, fixture.hostContext)
-	inspection := callInspectThroughMCP(t, fixture, callObserveThroughMCP(t, fixture).HostEvidenceHandle)
-	eligibility := userDefinedCurrentEligibility(t, inspection)
-	if !eligibility.Eligible || eligibility.Preview.Graph == nil || eligibility.Preview.Selection.ConfirmationDigest == "" || len(eligibility.Diagnostics) != 0 {
-		t.Fatalf("exact SubagentStart evidence did not make CURRENT eligible: %#v", eligibility)
-	}
-}
-
-func assertUserDefinedCurrentUnavailable(t *testing.T, inspection codexbridge.CoreInspectOutput) {
-	t.Helper()
-	eligibility := userDefinedCurrentEligibility(t, inspection)
-	if eligibility.Eligible || eligibility.Preview.Graph != nil || eligibility.Preview.Selection.ConfirmationDigest != "" {
-		t.Fatalf("CURRENT became eligible without exact SubagentStart evidence: %#v", eligibility)
-	}
-	for _, diagnostic := range eligibility.Diagnostics {
-		if diagnostic.Code == "HOST_FEATURE_UNATTESTED" && diagnostic.BindingID == "codex-delivery" {
-			return
-		}
-	}
-	t.Fatalf("CURRENT did not retain its child-delegation diagnostic: %#v", eligibility)
-}
-
-func userDefinedCurrentEligibility(t *testing.T, inspection codexbridge.CoreInspectOutput) core.ProfileEligibility {
-	t.Helper()
-	if inspection.Compilation == nil {
-		t.Fatalf("inspection omitted Workflow compilation: %#v", inspection)
-	}
-	for _, eligibility := range inspection.Compilation.EligibleProfiles {
-		if eligibility.Profile == core.UserDefinedProfile && eligibility.Topology == execution.TopologyCurrent {
-			return eligibility
-		}
-	}
-	t.Fatalf("USER-DEFINED / CURRENT eligibility missing: %#v", inspection.Compilation.EligibleProfiles)
-	return core.ProfileEligibility{}
-}
-
-func recordSubagentStartThroughCLI(t *testing.T, hostContext codexbridge.HookContext) {
-	t.Helper()
-	raw, err := json.Marshal(map[string]any{
-		"session_id": hostContext.SessionID, "transcript_path": "/private/transcript.jsonl",
-		"turn_id": hostContext.TurnID, "cwd": hostContext.CWD, "hook_event_name": "SubagentStart",
-		"model": hostContext.Model, "permission_mode": hostContext.PermissionMode,
-		"agent_id": "agent-private", "agent_type": "reviewer",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	var stderr bytes.Buffer
-	if status := cli.RunWithInput([]string{"bridge", "hook", "codex"}, bytes.NewReader(raw), io.Discard, &stderr); status != 0 || stderr.Len() != 0 {
-		t.Fatalf("SubagentStart Hook status=%d stderr=%q", status, stderr.String())
-	}
-}
-
-func TestDirectPathDoesNotRequireBridge(t *testing.T) {
-	var stdout, stderr bytes.Buffer
-	status := cli.RunWithInput([]string{"catalog", "validate"}, strings.NewReader(""), &stdout, &stderr)
-	if status != 0 {
-		t.Fatalf("status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
-	}
-	if strings.Contains(stdout.String()+stderr.String(), "HOST_BRIDGE") {
-		t.Fatalf("direct path unexpectedly consulted Bridge: stdout=%q stderr=%q", stdout.String(), stderr.String())
-	}
-}
-
-type codexBridgeFixture struct {
-	client        *mcp.ClientSession
-	hostContext   codexbridge.HookContext
-	proposal      classification.ClassificationProposal
-	deliverableID string
-	inputDigest   string
-}
-
-type codexBridgeObserver struct {
+type assuranceBridgeObserver struct {
 	metadata appserver.MetadataObservation
+	err      error
 }
 
-func (observer codexBridgeObserver) Observe(_ context.Context, cwd string) (appserver.MetadataObservation, error) {
+func (observer assuranceBridgeObserver) Observe(_ context.Context, cwd string) (appserver.MetadataObservation, error) {
 	value := observer.metadata
 	value.Skills.CWD = cwd
-	value.Skills.Errors = append([]appserver.MetadataError{}, value.Skills.Errors...)
-	value.Skills.Skills = append([]appserver.SkillMetadata{}, value.Skills.Skills...)
-	value.Hooks.CWD = cwd
-	value.Hooks.Errors = append([]appserver.MetadataError{}, value.Hooks.Errors...)
-	value.Hooks.Warnings = append([]string{}, value.Hooks.Warnings...)
-	value.Hooks.Hooks = append([]appserver.HookMetadata{}, value.Hooks.Hooks...)
-	value.Methods = append([]string{}, value.Methods...)
-	value.Diagnostics = append([]appserver.ObservationDiagnostic{}, value.Diagnostics...)
-	return value, nil
+	value.Skills.Errors = append([]appserver.MetadataError(nil), observer.metadata.Skills.Errors...)
+	value.Skills.Skills = append([]appserver.SkillMetadata(nil), observer.metadata.Skills.Skills...)
+	return value, observer.err
 }
 
-func newCodexBridgeFixture(t *testing.T) codexBridgeFixture {
-	return newCodexBridgeFixtureWithDelegation(t, false)
-}
-
-func newCodexBridgeFixtureWithDelegation(t *testing.T, requireChild bool) codexBridgeFixture {
-	t.Helper()
+func TestStandaloneCodexBridgeIssuesProfileBoundOverlayThroughHookAndMCP(t *testing.T) {
+	fixture := hosttest.BuildProviderFixture(t)
 	projectRoot := t.TempDir()
-	userHome := t.TempDir()
-	userConfigRoot := t.TempDir()
-	stateHome := t.TempDir()
-	dataHome := t.TempDir()
-	t.Setenv("HOME", userHome)
-	t.Setenv("XDG_STATE_HOME", stateHome)
-	t.Setenv("XDG_DATA_HOME", dataHome)
-	t.Chdir(projectRoot)
-	metadata := appserver.MetadataObservation{
-		Skills: appserver.SkillsEntry{Errors: []appserver.MetadataError{}, Skills: installUserDefinedSkillFixture(t, userHome, userConfigRoot, requireChild)},
-		Hooks:  appserver.HooksEntry{Errors: []appserver.MetadataError{}, Warnings: []string{}, Hooks: []appserver.HookMetadata{}},
-		Config: appserver.ConfigProjection{
-			CWDObserved: true, SandboxDisposition: "host-configured", MCPDisposition: "host-configured",
-			HookDisposition: "host-configured", ApprovalDisposition: "host-configured",
-		},
-		Methods: []string{"config/read", "hooks/list", "skills/list"}, CodexVersion: "codex-cli/0.146.1",
-	}
-	hostContext := codexbridge.HookContext{
-		SchemaVersion: codexbridge.HookContextSchemaV2, BridgeProtocolVersion: codexbridge.BridgeProtocolVersion,
-		SessionID: "bridge-blackbox-session", TurnID: "turn-1", ToolUseID: "tool-1", CWD: projectRoot,
-		Model: "gpt-test", PermissionMode: "workspace-write",
-	}
-	observer := codexBridgeObserver{metadata: metadata}
-	featureStore, err := codexbridge.NewSessionFeatureEvidenceStore(codexbridge.SessionFeatureEvidenceOptions{
-		Root: filepath.Join(stateHome, "open-agent-workflow", "codex-bridge", "features"),
-		TTL:  codexbridge.SessionFeatureEvidenceTTL,
-	})
+	configHome := t.TempDir()
+	configRoot := filepath.Join(configHome, "open-agent-workflow")
+	profilePath := filepath.Join(projectRoot, ".oaw", "profiles", "team-review.md")
+	writeAssuranceBridgeFixture(t, profilePath,
+		"---\nid: team-review\nname: Team Review\n---\n\n"+
+			"## Responsibilities\n\n"+
+			"| Responsibility | Skill or action |\n| --- | --- |\n"+
+			"| Review and remediation | `acme:review` |\n\n"+
+			"## Rules\n\nThe Markdown Profile remains normative.\n")
+	before, err := os.ReadFile(profilePath)
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	descriptor := fixture.Catalog.Providers()[0]
+	descriptorRaw, err := json.Marshal(descriptor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeAssuranceBridgeFixture(t, filepath.Join(configRoot, "providers", "acme.json"), string(descriptorRaw))
+	writeAssuranceBridgeFixture(t, filepath.Join(configRoot, "config.toml"),
+		"schema_version = \"oaw.user-config/v3\"\n[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n")
+
+	skillPath := filepath.Join(fixture.Candidate.DiagnosticLocation, "skills", "review", "SKILL.md")
 	service, err := codexbridge.NewService(codexbridge.ServiceOptions{
-		Observer: observer, FeatureObserver: featureStore,
-		Store:     codexbridge.NewEvidenceStore(codexbridge.CacheOptions{MaximumEntries: 8}),
-		StateRoot: t.TempDir(), ProjectRoot: projectRoot, UserConfigRoot: userConfigRoot,
-		UserHome: userHome, BridgeVersion: "1.2.3",
+		Observer: assuranceBridgeObserver{metadata: appserver.MetadataObservation{
+			Skills: appserver.SkillsEntry{
+				Errors: []appserver.MetadataError{},
+				Skills: []appserver.SkillMetadata{{
+					Name: "acme:review", Enabled: true, Path: skillPath, Scope: "user",
+				}},
+			},
+			CodexVersion: "codex-cli/test",
+		}},
+		UserConfigRoot: configRoot, ProfileConfigHome: configHome, UserHome: fixture.Home,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return codexBridgeFixture{
-		client: connectCodexBridgeMCP(t, service), hostContext: hostContext,
-		proposal:      classification.ClassificationProposal{SchemaVersion: classification.ProposalSchemaV1},
-		deliverableID: "codex-bridge-blackbox", inputDigest: canonicaljson.DigestBytes([]byte("codex-bridge-blackbox-input")),
+
+	arguments := bridgeArgumentsThroughHook(t, projectRoot, "project:team-review")
+	client := connectAssuranceBridgeMCP(t, service)
+	result, err := client.CallTool(context.Background(), &mcp.CallToolParams{Name: "observe_profile", Arguments: arguments})
+	if err != nil || result.IsError {
+		t.Fatalf("observe_profile result=%#v error=%v", result, err)
+	}
+	resultRaw, err := json.Marshal(result.StructuredContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var output codexbridge.ObserveProfileOutput
+	if err := json.Unmarshal(resultRaw, &output); err != nil {
+		t.Fatal(err)
+	}
+	if output.Overlay.Profile.ID != "team-review" || output.Overlay.Issuer != codexbridge.BridgeIntegrationID || len(output.Overlay.Claims) != 1 {
+		t.Fatalf("Overlay = %#v", output.Overlay)
+	}
+
+	profiles, err := profileinspect.Discover(profileinspect.Environment{
+		WorkingDir: projectRoot, Home: fixture.Home, ConfigHome: configHome,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	profile, err := profileinspect.Resolve(profiles, "project:team-review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := assurance.Verify(profile, output.Overlay); err != nil {
+		t.Fatalf("issued Overlay does not verify: %v", err)
+	}
+	after, err := os.ReadFile(profilePath)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("Bridge modified the Markdown Profile: %v", err)
 	}
 }
 
-func installUserDefinedSkillFixture(t *testing.T, userHome, userConfigRoot string, requireChild bool) []appserver.SkillMetadata {
+func bridgeArgumentsThroughHook(t *testing.T, projectRoot, selector string) map[string]any {
 	t.Helper()
-	installRoot := filepath.Join(userHome, ".codex", "plugins", "acme")
-	skillRoot := filepath.Join(installRoot, "skills", "delivery")
-	skillPath := filepath.Join(skillRoot, "SKILL.md")
-	writeCodexBridgeFixture(t, skillPath, "---\nname: acme:delivery\n---\n")
-	bindingTree, err := integrity.DigestTree(skillRoot)
+	raw, err := json.Marshal(map[string]any{
+		"session_id": "bridge-blackbox-session", "transcript_path": nil,
+		"turn_id": "turn-1", "tool_use_id": "tool-1", "cwd": projectRoot,
+		"hook_event_name": "PreToolUse", "model": "gpt-test", "permission_mode": "workspace-write",
+		"tool_name": "mcp__oaw_codex_bridge__observe_profile", "tool_input": map[string]any{"profile": selector},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	distributionTree, err := integrity.DigestTree(installRoot)
+	output, err := hook.ProcessPreToolUse(raw)
+	if err != nil || output.HookSpecificOutput == nil || output.HookSpecificOutput.PermissionDecision != "allow" {
+		t.Fatalf("Hook output=%#v error=%v", output, err)
+	}
+	projected, err := json.Marshal(output.HookSpecificOutput.UpdatedInput)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	definitions := catalog.CanonicalSlots()
-	claims := make([]catalog.ResponsibilityClaim, 0, len(definitions))
-	stageSpan := make([]catalog.SlotID, 0, len(definitions))
-	for _, definition := range definitions {
-		claims = append(claims, catalog.ResponsibilityClaim{
-			Namespace: catalog.OwnershipStage, Name: string(definition.ID), SlotID: definition.ID, OutcomeOwner: true,
-		})
-		stageSpan = append(stageSpan, definition.ID)
-	}
-	descriptor := catalog.ProviderDescriptorRecord{
-		SchemaVersion: catalog.ProviderDescriptorSchemaV4, DescriptorVersion: "4.0.0", ID: "acme/suite", DisplayName: "Acme Suite",
-		Distributions: []catalog.DistributionRecord{{
-			ID: "acme", SourceURI: "https://example.test/acme/suite", Revision: strings.Repeat("a", 40), TreeDigest: distributionTree.RootDigest,
-		}},
-		Discovery: []catalog.DiscoveryProbe{{
-			ID: "codex", Hosts: []string{"codex"}, Surface: "codex-plugin", DistributionID: "acme", Kind: "path-exists",
-			Root: "user-home", CandidatePath: ".codex/plugins/acme", EvidencePath: "skills/delivery/SKILL.md",
-		}},
-		Bindings: []catalog.BindingRecord{{
-			ID: "codex-delivery", DistributionID: "acme", ContentRoot: "skills/delivery", InstallRoot: "skills/delivery", TreeDigest: bindingTree.RootDigest,
-			Host: "codex", Surface: "codex-plugin", Kind: catalog.BindingSkill, Reference: "acme:delivery", Invocation: catalog.InvocationModel,
-			Responsibilities: claims, InputArtifact: "oaw.workflow-artifact/v1", OutputArtifact: "oaw.workflow-artifact/v1",
-			MaximumEffects: []string{"git-local", "read-project", "run-process", "write-project"}, Resources: []string{"git-repository", "project-worktree"},
-			SupportedTopologies: []execution.Topology{execution.TopologyCurrent}, Delegation: catalog.DelegationRequirements{Child: requireChild}, StageSpan: stageSpan,
-			InternalCalls: []catalog.InternalCall{}, Alternatives: []string{}, Conflicts: []string{},
-		}},
-		Capabilities: []catalog.CapabilityRecord{{
-			ID: "delivery", InputSchema: "oaw.capability-input/v1", OutcomeSchema: "oaw.capability-outcome/v1",
-			RequestModes: []catalog.RequestMode{catalog.RequestModeWorkflow}, BindingRefs: []string{"codex-delivery"},
-		}},
-	}
-	available, err := builtin.Load()
-	if err != nil {
+	var arguments map[string]any
+	if err := json.Unmarshal(projected, &arguments); err != nil {
 		t.Fatal(err)
 	}
-	var recipe catalog.ProfileRecipeRecord
-	for _, candidate := range available.Recipes() {
-		if candidate.ID == "oaw/delivery" {
-			recipe = candidate
-			break
-		}
-	}
-	if recipe.ID == "" {
-		t.Fatal("built-in delivery Recipe missing")
-	}
-	recipe.ID = "acme/current-delivery"
-	recipe.DisplayName = "Acme Current Delivery"
-	recipe.Family = "user-defined"
-	recipe.Template = ""
-	recipe.AddOns = []catalog.AddOnRecord{}
-	recipe.IncidentRoutes = []catalog.IncidentRoute{}
-	recipe.Overlays = []catalog.OverlayRecord{}
-	for index := range recipe.Slots {
-		slotID := recipe.Slots[index].SlotID
-		stepID := "acme-" + string(slotID)
-		recipe.Slots[index].Pipeline = []catalog.PipelineStep{{
-			ID: stepID, Selector: catalog.BindingSelector{ProviderID: descriptor.ID, BindingID: "codex-delivery"}, StageSpan: []catalog.SlotID{slotID},
-			RequiredInputArtifact: "oaw.workflow-artifact/v1", ProducedOutputArtifact: "oaw.workflow-artifact/v1",
-		}}
-		recipe.Slots[index].OutcomeOwner = catalog.OutcomeOwner{Kind: catalog.OwnerProviderBinding, StepID: stepID}
-		recipe.Slots[index].HostAction = nil
-	}
-
-	providerPath := filepath.Join(userConfigRoot, "providers", "acme.json")
-	recipePath := filepath.Join(userConfigRoot, "recipes", "acme.json")
-	descriptorJSON, err := json.Marshal(descriptor)
-	if err != nil {
-		t.Fatal(err)
-	}
-	recipeJSON, err := json.Marshal(recipe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	writeCodexBridgeFixture(t, providerPath, string(descriptorJSON))
-	writeCodexBridgeFixture(t, recipePath, string(recipeJSON))
-	writeCodexBridgeFixture(t, filepath.Join(userConfigRoot, "config.toml"),
-		"schema_version = \"oaw.user-config/v3\"\n"+
-			"[[provider_descriptors]]\nid = \"acme/suite\"\npath = \"providers/acme.json\"\n"+
-			"[[profile_recipes]]\nid = \"acme/current-delivery\"\npath = \"recipes/acme.json\"\n")
-	return []appserver.SkillMetadata{{Name: "acme:delivery", Enabled: true, Path: skillPath, Scope: "user"}}
+	return arguments
 }
 
-func writeCodexBridgeFixture(t *testing.T, path, contents string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func connectCodexBridgeMCP(t *testing.T, service *codexbridge.Service) *mcp.ClientSession {
+func connectAssuranceBridgeMCP(t *testing.T, service *codexbridge.Service) *mcp.ClientSession {
 	t.Helper()
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	ctx, cancel := context.WithCancel(context.Background())
@@ -323,89 +156,12 @@ func connectCodexBridgeMCP(t *testing.T, service *codexbridge.Service) *mcp.Clie
 	return session
 }
 
-func callObserveThroughMCP(t *testing.T, fixture codexBridgeFixture) codexbridge.ObserveCurrentOutput {
+func writeAssuranceBridgeFixture(t *testing.T, path, content string) {
 	t.Helper()
-	return callCodexBridgeTool[codexbridge.ObserveCurrentOutput](t, fixture.client, "observe_current", map[string]any{
-		"_oaw_host_context": fixture.hostContext,
-	})
-}
-
-func callInspectThroughMCP(t *testing.T, fixture codexBridgeFixture, handle codexbridge.HostEvidenceHandle) codexbridge.CoreInspectOutput {
-	t.Helper()
-	return callCodexBridgeTool[codexbridge.CoreInspectOutput](t, fixture.client, "core_inspect", codexbridge.CoreInspectInput{
-		HostEvidenceHandle: handle, DeliverableID: fixture.deliverableID,
-		InputDigest: fixture.inputDigest, Proposal: fixture.proposal,
-	})
-}
-
-func callCompileThroughMCP(
-	t *testing.T,
-	fixture codexBridgeFixture,
-	handle codexbridge.HostEvidenceHandle,
-	selection core.Selection,
-) core.LifecycleBundle {
-	t.Helper()
-	result := callCodexBridgeTool[core.LifecycleBundle](t, fixture.client, "core_compile", codexbridge.CoreCompileInput{
-		HostEvidenceHandle: handle, DeliverableID: fixture.deliverableID,
-		InputDigest: fixture.inputDigest, Proposal: fixture.proposal, Selection: selection,
-	})
-	if result.SchemaVersion != core.LifecycleBundleSchemaV4 {
-		t.Fatalf("compiled=%#v", result)
-	}
-	return result
-}
-
-func explicitCurrentSelection(t *testing.T, inspection codexbridge.CoreInspectOutput) core.Selection {
-	t.Helper()
-	for _, candidate := range inspection.Compilation.EligibleProfiles {
-		if candidate.Profile == core.UserDefinedProfile && candidate.Eligible && candidate.Topology == execution.TopologyCurrent {
-			selection := candidate.Preview.Selection
-			selection.ProfileSource = core.SelectionUser
-			selection.TopologySource = core.SelectionUser
-			return selection
-		}
-	}
-	t.Fatalf("USER-DEFINED CURRENT unavailable: %#v", inspection.Compilation.EligibleProfiles)
-	return core.Selection{}
-}
-
-func callWorkflowStartThroughMCP(
-	t *testing.T,
-	fixture codexBridgeFixture,
-	handle codexbridge.HostEvidenceHandle,
-	compiled core.LifecycleBundle,
-) coordinator.Result {
-	t.Helper()
-	command := codexbridge.WorkflowCommandInput{
-		SchemaVersion: coordinator.WorkflowCommandSchemaV2, Kind: coordinator.CommandStart,
-		MessageID: "message-start", IdempotencyKey: "codex-bridge-blackbox-start",
-		Start: &codexbridge.WorkflowStartInput{
-			RequestID: "request-codex-bridge-blackbox", DeliverableID: fixture.deliverableID,
-			InputDigest: fixture.inputDigest, Proposal: fixture.proposal, Selection: compiled.Selection,
-		},
-	}
-	result := callCodexBridgeTool[coordinator.Result](t, fixture.client, "workflow_exchange", codexbridge.WorkflowExchangeInput{
-		HostEvidenceHandle: handle, Command: command,
-	})
-	if result.Snapshot == nil || len(result.Snapshot.Bundles) != 1 || result.Snapshot.Bundles[0].Digest != compiled.Digest {
-		t.Fatalf("compiled=%#v started=%#v", compiled, result)
-	}
-	return result
-}
-
-func callCodexBridgeTool[T any](t *testing.T, client *mcp.ClientSession, name string, arguments any) T {
-	t.Helper()
-	result, err := client.CallTool(context.Background(), &mcp.CallToolParams{Name: name, Arguments: arguments})
-	if err != nil || result.IsError {
-		t.Fatalf("%s result=%#v err=%v", name, result, err)
-	}
-	raw, err := json.Marshal(result.StructuredContent)
-	if err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	var output T
-	if err := json.Unmarshal(raw, &output); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return output
 }

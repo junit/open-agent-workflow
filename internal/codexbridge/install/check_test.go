@@ -59,7 +59,7 @@ func TestCodexStatusProjectionRejectsDuplicateAuthority(t *testing.T) {
 func TestCheckReportsFilesAndExactCodexIdentity(t *testing.T) {
 	environment, runner, state := installedFixture(t)
 	runner.Results = map[string]CLIResult{
-		"plugin list":        {Stdout: []byte(`{"installed":[{"pluginId":"oaw-codex-host@oaw-local","name":"oaw-codex-host","marketplaceName":"oaw-local","version":"1.0.0","installed":true,"enabled":true}]}`)},
+		"plugin list":        {Stdout: []byte(`{"installed":[{"pluginId":"oaw-codex-assurance@oaw-local","name":"oaw-codex-assurance","marketplaceName":"oaw-local","version":"1.0.0","installed":true,"enabled":true}]}`)},
 		"plugin marketplace": {Stdout: []byte(`{"marketplaces":[{"name":"oaw-local","root":"` + state.MarketplacePath + `","marketplaceSource":{"sourceType":"local","source":"` + state.MarketplacePath + `"}}]}`)},
 	}
 	result, err := Check(context.Background(), environment, runner)

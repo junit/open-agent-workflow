@@ -158,81 +158,44 @@ Host session changes invalidate stale Dispatch Packets. OAW requires a fresh
 Host report and Bundle eligibility check before continuing. It never reconstructs
 a missing child environment or silently falls back to a new process.
 
-## Codex Host Bridge Boundary
+## Codex Assurance Bridge Boundary
 
-Codex has a policy integration by default and a separate audited host-native
-Bridge that must be explicitly installed and trusted. Bridge v2 supports
-`CURRENT`; its default binding observation proves only `skill` bindings, while
-the cooperative `SubagentStart` callback path below may additionally report
-`child-delegation`. It does not create a child session or promise inherited MCP,
-Hook, Skill, Plugin, model, authentication, sandbox, or approval behavior beyond
-stable Host observations.
+Codex has a Policy integration by default. The separately built `oaw-bridge`
+is an optional Assurance adapter, not a host-native workflow integration.
+Missing, revoked, failed, or incomplete Bridge evidence cannot veto a Policy
+Offer or make a Markdown Profile unusable.
 
-Trusted `PreToolUse` Hook input is the only current-session identity source.
-The Agent cannot author or replace reserved `_oaw_host_context`.
-`observe_current` remains the only operation that creates current-session
-evidence and issues a handle. `core_inspect` and `core_compile` retain normal
-Host approval behavior. `workflow_exchange` also retains normal approval: its
-Hook validates the handle/session/CWD and emits no output, so it never rewrites
-or automatically allows the mutable Coordinator call. Every operation fails
-closed on a session or working-directory mismatch.
+Bridge v3 accepts exactly one MCP operation, `observe_profile`. Its trusted
+`PreToolUse` Hook matcher injects reserved `_oaw_host_context`; callers cannot
+author or replace that field. The Hook and MCP service reject another tool,
+another event, malformed input, a protocol mismatch, or a session/CWD mismatch.
+This context is cooperative Host input, not a signature or proof of provenance.
 
-`SubagentStart` feature evidence has a narrower cooperative trust contract. The
-documented Hook payload contains no signature, Host-issued nonce, or parent
-tool-use correlation identifier. A hand-authored `SubagentStart` JSON object
-with copied Host fields is indistinguishable from a genuine callback to the
-Bridge CLI and can create the same short-lived record. Closed parsing, exact
-session/CWD binding, bounded TTL, mode `600`, and record validation remain in
-force, but they do not authenticate provenance or resist a malicious same-user
-process.
+The App Server allowlist contains only `skills/list`. Bridge does not read Hook
+inventory, Host configuration, Plugin inventory, prompts, transcripts, tools,
+Roles, Agents, delegation, approvals, or sandbox state. Management commands use
+official Codex Plugin inventory only to install, update, check, or uninstall
+their separately owned payload; that inventory is not Binding evidence.
 
-Workflow recovery separates authority freshness from Dispatch convergence.
-The opaque handle's bounded process-local entry stores the trusted session ID
-and exact CWD, but not turn, tool-use, model, or permission metadata. `PREPARE`
-uses those internal coordinates to re-observe and revalidate the stable
-reporter identity, current authority facts, and features required by the
-current unit before issuing a new Grant. Recovery
-commands remain reachable after short-lived feature drift. A Receipt for an
-already issued Dispatch must retain its original pins and come from the same
-stable reporter identity; a caller-provided cancellation boolean cannot release
-an active Grant or Resource Lease.
+Binding observation covers the exact enabled Skill and complete Binding tree
+below one exact Host Installation, compared with the independently pinned
+Distribution tree. Same-name, shared-ancestor, disabled, orphan, ambiguous,
+symlinked, partial-hash, or drifting evidence fails closed. Skills, Claude
+custom Agents, Codex Roles, Instructions, Hooks, and tools remain separate
+surfaces.
 
-`skills/list` is the required v2 Skill-observation authority. `hooks/list` and
-the allowlisted `config/read` projection are optional environment observations;
-these three methods are the closed metadata allowlist. `plugin/list` is not a
-production dependency. Filesystem detection, Descriptor declarations, user
-configuration, prompts, and Skill self-reports cannot create Host Binding
-Evidence.
+The result is a secret-free `oaw.assurance-overlay/v1` artifact bound to the
+full Markdown Profile digest and its exact Binding occurrences. It is not a
+signature, Capability Grant, Receipt, invocation attestation, completion proof,
+Host permission, or sandbox. Bridge does not persist Hook context, raw App
+Server output, credentials, headers, tokens, arbitrary Plugin settings, or full
+Host configuration.
 
-Verification covers both the exact enabled Skill file and the complete Binding
-tree below the exact Host Installation, compared with the independently pinned
-Distribution content tree. Same-name, shared-ancestor, disabled, orphan,
-ambiguous, symlinked, partial-hash, or drifting evidence fails closed. Skills,
-Claude custom Agents, Codex Roles, Instructions, Hooks, and tools remain
-separate surfaces.
-
-The Bridge stores an opaque session-bound handle in bounded process memory and
-returns only secret-free summaries. It does not retain raw Hook commands,
-credentials, MCP environment values, headers, tokens, arbitrary Plugin
-settings, or full App Server configuration. Handles must not enter Workflow
-State, evidence artifacts, logs, tickets, or screenshots, and cannot be reused
-after a Bridge restart, session change, CWD change, expiry, or eviction.
-
-Public Bridge inputs exclude user authorization, explicit invocation
-attestation, and gate attestation. Only current Host evidence can supply those
-facts. Unattested delegation or `workspace.prepare-or-confirm`,
-`verification.execute`, and `closeout.execute` actions remain unavailable.
-`PREPARE` compares the active Bundle's pinned authority facts and current-unit
-features before issuing executable state. `RECEIPT` preserves Dispatch
-convergence through the stable reporter identity, while recovery commands
-remain reachable after short-lived drift. Old Workflow records, edited handles,
-unknown fields, trailing values, and caller-forged authority are rejected
-before effects.
-
-This is a cooperation boundary, not operating-system isolation. A process with
-the same user authority can interfere with local programs, files, or process
-I/O. OAW validates protocol records but cannot authenticate or contain every
-same-user process.
+Bridge does not call Core or the Workflow Coordinator and has no Profile,
+topology, delegation, Dispatch, Lease, recovery, or lifecycle authority. This
+is a cooperation boundary, not operating-system isolation. A process with the
+same user authority can interfere with local programs, files, or process I/O;
+OAW cannot authenticate or contain every same-user process.
 
 ## Out of Scope
 

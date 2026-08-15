@@ -1,13 +1,13 @@
 {
-  "name": "oaw-codex-host",
+  "name": "oaw-codex-assurance",
   "version": "{{BRIDGE_VERSION}}",
-  "description": "Open Agent Workflow Host Bridge for Codex",
+  "description": "Open Agent Workflow Assurance Bridge for Codex",
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "hooks": "./hooks/hooks.json",
   "interface": {
-    "displayName": "OAW Codex Host Bridge",
-    "shortDescription": "Current-session Host evidence and Workflow coordination",
+    "displayName": "OAW Codex Assurance Bridge",
+    "shortDescription": "Current Codex Binding evidence for optional Assurance",
     "category": "Developer Tools"
   }
 }

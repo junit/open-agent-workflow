@@ -46,6 +46,20 @@ network、destructive filesystem、credential、deployment、data mutation 或 G
 authority，也不能冒充 Core 或 Coordinator record。物理 effect 仍受 Host 正常控制与用户
 批准约束。
 
+## 可选 Assurance Bridge 边界
+
+默认 `oaw` 可执行文件与安装器不会构建、安装、管理或依赖 Bridge。
+`oaw-bridge` 是独立构建的可选 Codex 组件，其 v3 协议只暴露
+`observe_profile`。Bridge 缺失、被撤销、失败或不完整时，缺少的只是
+可选 Assurance Overlay，不能 veto Markdown Policy Profile 的选择或规则驱动使用。
+
+Bridge 只读取匹配精确 Skill Binding 所需的当前 Codex `skills/list` metadata，
+并请求独立 Assurance 模块签发不含 secret 的 content-addressed Overlay。
+它不调用 Core 或 Workflow Coordinator，不调用 Skill，不 attest completion 或
+delegation，不授予 Host permission，也不强制 sandbox。PreToolUse context 是合作式
+Host input，不是密码学签名。Agent Host 仍可按自身 security policy 独立拒绝
+物理 invocation。
+
 ## 报告处理
 
 维护者应在隔离根目录中复现，避免泄露报告者数据，记录可利用性和严重性，在合适时

@@ -101,7 +101,8 @@ EOF
     'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
     'The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
     'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
-    'Codex has a policy integration by default and a separate audited host-native Bridge' \
+    'The separately built `oaw-bridge` is an optional Assurance integration' \
+    'It does not select or run a Profile, attest delegation, call Core or the Coordinator, or change the no-Bridge Policy path.' \
     'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.' \
     '## No-Bridge Policy Workflow' \
     'policy_selectable' \
@@ -115,7 +116,8 @@ EOF
     '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
     '协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
     'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
-    'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
+    '`oaw-bridge` 是可选 Assurance integration' \
+    '它不选择或执行' \
     '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。' \
     '## 无 Bridge Policy Workflow' \
     'policy_selectable' \
@@ -139,9 +141,9 @@ EOF
       'Verified Provider Instance' \
       >>"$fixture_root/$document_path"
   done
-  printf '%s\n' 'oaw/codex-host' \
+  printf '%s\n' 'Codex has only `oaw/codex-policy` in the default Integration set.' \
     >>"$fixture_root/docs/en/architecture.md"
-  printf '%s\n' 'oaw/codex-host' \
+  printf '%s\n' 'Codex 的默认 Integration set 只包含 `oaw/codex-policy`。' \
     >>"$fixture_root/docs/zh/architecture.md"
   printf '%s\n' \
     '## Policy and Machine Profile Projections' \
@@ -151,9 +153,9 @@ EOF
     '## Policy 与 Machine Profile Projection' \
     'machine attestation 可以提高 assurance，但不能 veto' \
     >>"$fixture_root/docs/zh/architecture.md"
-  printf '%s\n' 'observe_current' \
+  printf '%s\n' 'Bridge absence or failure removes only the Overlay.' \
     >>"$fixture_root/docs/en/lifecycle.md"
-  printf '%s\n' 'observe_current' \
+  printf '%s\n' 'Bridge 缺失或失败只会移除 Overlay。' \
     >>"$fixture_root/docs/zh/lifecycle.md"
   for document_path in docs/en/lifecycle.md docs/zh/lifecycle.md; do
     printf '%s\n' policy_selectable host_routable incident_routes \
@@ -199,17 +201,12 @@ EOF
       HOST_BRIDGE_UNAVAILABLE \
       HOST_BRIDGE_CONTEXT_REQUIRED \
       HOST_BRIDGE_PROTOCOL_MISMATCH \
-      HOST_EVIDENCE_HANDLE_REQUIRED \
-      HOST_EVIDENCE_HANDLE_INVALID \
-      HOST_EVIDENCE_EXPIRED \
-      HOST_EVIDENCE_SESSION_MISMATCH \
       HOST_OBSERVATION_FAILED \
       HOST_OBSERVATION_PARTIAL \
-      HOST_SESSION_CHANGED \
-      PROVIDER_BINDING_CONTENT_MISMATCH \
-      BINDING_EXPLICIT_INVOCATION_REQUIRED \
-      HOST_FEATURE_UNATTESTED \
-      HOST_ACTION_UNAVAILABLE \
+      PROFILE_SELECTION_INVALID \
+      PROFILE_NOT_FOUND \
+      PROFILE_AMBIGUOUS \
+      ASSURANCE_BINDING_UNAVAILABLE \
       MACRO_INTERNAL_CONFLICT \
       PROFILE_TOPOLOGY_UNAVAILABLE \
       WORKFLOW_STATE_UNSUPPORTED \
@@ -249,38 +246,27 @@ EOF
   done
   for document_path in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
     printf '%s\n' \
-      oaw.provider-descriptor/v4 \
-      oaw.profile-recipe/v3 \
-      oaw.host-manifest/v3 \
-      oaw.host-session/v3 \
-      oaw.host-binding-inventory/v3 \
-      oaw.host-environment-report/v2 \
-      oaw.host-invocation-receipt/v3 \
-      oaw.host-conformance-transcript/v4 \
-      oaw.host-conformance-report/v4 \
-      oaw.execution-graph/v4 \
-      oaw.lifecycle-bundle/v4 \
-      oaw.capability-grant/v3 \
-      oaw.dispatch-packet/v2 \
-      oaw.workflow-command/v2 \
-      oaw.workflow-result/v2 \
-      oaw.workflow-snapshot/v2 \
-      oaw.workflow-revision/v2 \
-      oaw.codex-bridge/v2 \
-      oaw.codex-hook-context/v2 \
-      oaw.host-evidence-handle/v2 \
-      2.0.0 \
+      oaw-bridge \
+      bin/oaw-bridge \
+      oaw-codex-assurance \
+      observe_profile \
+      skills/list \
+      oaw.codex-bridge/v3 \
+      oaw.codex-hook-context/v3 \
+      oaw.assurance-overlay/v1 \
+      source-qualified \
       'proof_scope: installation-integrity' \
       'live_protocol_proof: false' \
-      SubagentStart \
-      child-delegation \
-      agents.enabled \
       >>"$fixture_root/$document_path"
   done
-  for document_path in docs/en/troubleshooting.md docs/zh/troubleshooting.md; do
-    printf '%s\n' 'bounded native child probe' 'Startup Gate' observe_current \
-      >>"$fixture_root/$document_path"
-  done
+  printf '%s\n' 'does not call OAW Core or the Workflow Coordinator' \
+    >>"$fixture_root/docs/en/codex-bridge.md"
+  printf '%s\n' '它不调用 OAW Core 或 Workflow' \
+    >>"$fixture_root/docs/zh/codex-bridge.md"
+  printf '%s\n' 'oaw-bridge check codex --format json' 'Startup Gate' \
+    >>"$fixture_root/docs/en/troubleshooting.md"
+  printf '%s\n' 'oaw-bridge check codex --format json' 'Startup Gate' \
+    >>"$fixture_root/docs/zh/troubleshooting.md"
   printf '%s\n' \
     'Startup Gate Host capability probe' \
     'explicitly requested a Profile and topology' \
@@ -363,6 +349,10 @@ EOF
     printf '%s\n' '当前顶层用户指令' 'Policy Workflow Plan 不能授予' \
       >>"$fixture_root/$document_path"
   done
+  printf '%s\n' 'The default `oaw` executable and installer do not build, install, manage, or' \
+    >>"$fixture_root/SECURITY.md"
+  printf '%s\n' '默认 `oaw` 可执行文件与安装器不会构建、安装、管理或依赖 Bridge。' \
+    >>"$fixture_root/SECURITY-zh.md"
   printf '%s\n' 'Install State is not a Progress Tracker or Workflow State' \
     >>"$fixture_root/docs/en/troubleshooting.md"
   printf '%s\n' 'Install State 不是 Progress Tracker 或 Workflow State' \
@@ -406,14 +396,6 @@ EOF
     printf '%s\n' skill agent role instruction Hooks tools \
       >>"$fixture_root/$document_path"
   done
-  printf '%s\n' 'after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation`' \
-    >>"$fixture_root/README.md"
-  printf '%s\n' '在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`' \
-    >>"$fixture_root/README-zh.md"
-  printf '%s\n' '`SubagentStart` event can additionally prove `child-delegation` for the exact' \
-    >>"$fixture_root/docs/en/architecture.md"
-  printf '%s\n' '有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`' \
-    >>"$fixture_root/docs/zh/architecture.md"
   mkdir -p "$fixture_root/internal/assets/providers"
   printf '%s\n' '{"id":"oaw/matt"}' \
     >"$fixture_root/internal/assets/providers/oaw-matt.json"
@@ -611,8 +593,9 @@ assert_contains scripts/check-docs.sh "PROVIDER_FOREIGN_HOST_ONLY"
 assert_contains scripts/check-docs.sh "HOST_BRIDGE_PROTOCOL_MISMATCH"
 assert_contains scripts/check-docs.sh "forbidden positive authority claim"
 assert_contains scripts/check-docs.sh "provider-surface-matrix-documents"
-assert_contains scripts/check-docs.sh "oaw.provider-descriptor/v4"
-assert_contains scripts/check-docs.sh "oaw.codex-bridge/v2"
+assert_contains scripts/check-docs.sh "oaw.codex-bridge/v3"
+assert_contains scripts/check-docs.sh "oaw.assurance-overlay/v1"
+assert_contains scripts/check-docs.sh "stale-bridge-contract"
 assert_contains scripts/check-docs.sh "84fdeffd12f2ee307994d1eb6feb48173b6e0502"
 assert_contains scripts/check-docs.sh "44c9b2d6e889982ac18c27d05a19fefe335194e1"
 assert_contains scripts/check-docs.sh "11c74d6ba24d3a6d48f54a194cd00ef3beea18f9"
@@ -797,7 +780,7 @@ for release_boundary in \
   'Installation management distributes the canonical Policy and target-native instruction entrypoints; it does not execute engineering work.' \
   'The cooperative Policy path does not require OAW Core. On machine-backed paths, OAW Core is required and stateless. The Workflow Coordinator is optional and stores only Workflow State for `WORKFLOW`; Install State and Workflow State are disjoint, with no migration or implicit adoption.' \
   'The Agent Host owns Agents, model calls, MCP, Hooks, Skills, Plugins, authentication, tools, sandbox, approvals, and every physical effect. OAW never starts a model process.' \
-  'Codex has a policy integration by default and a separate audited host-native Bridge' \
+  'The separately built `oaw-bridge` is an optional Assurance integration' \
   'Available native and Docker smoke tests must pass; unavailable platform checks return 77 and do not block release readiness.'; do
   assert_contains README.md "$release_boundary"
 done
@@ -808,7 +791,7 @@ for release_boundary in \
   '安装管理只分发 canonical Policy 和 target-native 指令入口，不执行工程工作。' \
   '协作式 Policy 路径不需要 OAW Core。只有机器支撑路径才要求无状态的 OAW Core。Workflow Coordinator 是可选的，只为 `WORKFLOW` 保存' \
   'Agent Host 拥有 Agent、model call、MCP、Hook、Skill、Plugin、认证、工具、sandbox、' \
-  'Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge' \
+  '`oaw-bridge` 是可选 Assurance integration' \
   '可用的原生和 Docker smoke test 必须通过；不可用的平台检查返回 77，且不阻塞 release readiness。'; do
   assert_contains README-zh.md "$release_boundary"
 done
@@ -1051,27 +1034,41 @@ for comparison_document in docs/en/comparison.md docs/zh/comparison.md; do
 done
 assert_not_contains internal/assets/providers/oaw-matt.json '"reference":"requirements"'
 assert_not_contains internal/assets/providers/oaw-matt.json '"reference":"verification-loop"'
-assert_contains README.md 'after a valid `SubagentStart` event, the next observation may additionally prove `child-delegation`'
-assert_contains README-zh.md '在有效 `SubagentStart` event 后，下一次 observation 还可以为精确 session/CWD 证明 `child-delegation`'
-assert_contains docs/en/architecture.md '`SubagentStart` event can additionally prove `child-delegation` for the exact'
-assert_contains docs/zh/architecture.md '有效 `SubagentStart` event 可以为精确 session/CWD 额外证明 `child-delegation`'
-assert_contains docs/en/codex-bridge.md '`SubagentStart` Hook is the only live callback path the Bridge currently'
-assert_contains docs/zh/codex-bridge.md '`SubagentStart` Hook 是 Bridge 当前用于记录 `child-delegation` 的唯一 live callback path'
-assert_contains docs/en/codex-bridge.md 'cooperative same-user'
-assert_contains docs/en/codex-bridge.md 'evidence, not authenticated proof of Hook provenance'
-assert_contains docs/zh/codex-bridge.md 'cooperative same-user evidence，而不是经过认证的 Hook provenance proof'
-assert_contains docs/en/security.md 'A hand-authored `SubagentStart` JSON object'
-assert_contains docs/en/security.md 'with copied Host fields is indistinguishable from a genuine callback'
-assert_contains docs/zh/security.md '构造且复制 Host field 的 `SubagentStart` JSON object 无法与真实 callback 区分'
-assert_not_contains docs/en/codex-bridge.md 'or synthetic event'
-assert_not_contains docs/zh/codex-bridge.md 'synthetic event 都必须保持'
-assert_contains docs/en/codex-bridge.md 'A successful `observe_current` response with canonical'
-assert_contains docs/en/codex-bridge.md 'authoritative for the active session; management-only `requires_new_session`'
-assert_contains docs/en/troubleshooting.md '`requires_new_session` value is operator advice and does not block a fresh'
-assert_contains docs/zh/codex-bridge.md '成功且带 canonical VersionEvidence 的 `observe_current` response 是 active session 的'
-assert_contains docs/zh/troubleshooting.md 'Management-only `requires_new_session` 只是 operator advice，不阻止在同一'
-assert_not_contains docs/en/codex-bridge.md 'reports drift, version mismatch, or a required new'
-assert_not_contains docs/zh/codex-bridge.md 'drift、version mismatch 或需要新 session'
+for bridge_document in docs/en/codex-bridge.md docs/zh/codex-bridge.md; do
+  for bridge_contract in \
+    oaw-bridge \
+    bin/oaw-bridge \
+    oaw-codex-assurance \
+    observe_profile \
+    skills/list \
+    oaw.codex-bridge/v3 \
+    oaw.codex-hook-context/v3 \
+    oaw.assurance-overlay/v1 \
+    source-qualified; do
+    assert_contains "$bridge_document" "$bridge_contract"
+  done
+  for stale_bridge_contract in \
+    observe_current \
+    core_inspect \
+    core_compile \
+    workflow_exchange \
+    HOST_EVIDENCE_HANDLE_REQUIRED \
+    oaw.codex-bridge/v2 \
+    oaw.host-evidence-handle/v2 \
+    SubagentStart \
+    child-delegation \
+    agents.enabled \
+    hooks/list \
+    config/read; do
+    assert_not_contains "$bridge_document" "$stale_bridge_contract"
+  done
+done
+assert_contains docs/en/codex-bridge.md 'does not call OAW Core or the Workflow Coordinator'
+assert_contains docs/zh/codex-bridge.md '它不调用 OAW Core 或 Workflow'
+assert_contains docs/en/troubleshooting.md 'A missing or failed Overlay cannot veto the Policy Offer'
+assert_contains docs/zh/troubleshooting.md 'Overlay 缺失或失败不能 veto Policy Offer'
+assert_contains SECURITY.md 'The default `oaw` executable and installer do not build, install, manage, or'
+assert_contains SECURITY-zh.md '默认 `oaw` 可执行文件与安装器不会构建、安装、管理或依赖 Bridge。'
 assert_contains docs/superpowers/plans/2026-08-10-oaw-provider-surface-v4-04-builtins-profile-matrix.md '--openai-plugins-root'
 assert_not_contains docs/superpowers/plans/2026-08-10-oaw-provider-surface-v4-04-builtins-profile-matrix.md '--superpowers-codex-root'
 pass "provider surface v4 docs pin real sources, canonical slots, and conservative Codex facts"

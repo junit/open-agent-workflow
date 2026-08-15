@@ -130,58 +130,37 @@ inheritance 到 `SUBAGENT`；active Host 报告各 surface 为 `inherited`、`ho
 Host session 变化会使 stale Dispatch Packet 失效。继续前需要 fresh Host report 与 Bundle
 eligibility check。OAW 不重建缺失 child environment，也不静默 fallback 到新 process。
 
-## Codex Host Bridge 边界
+## Codex Assurance Bridge 边界
 
-Codex 默认提供 policy integration，并另有独立且经过审计的 host-native Bridge，必须显式
-安装并信任。Bridge v2 支持 `CURRENT`；默认 binding observation 只证明 `skill` binding，
-而下文的 cooperative `SubagentStart` callback path 还可以报告 `child-delegation`。它不创建
-child session，也不保证继承 MCP、Hook、Skill、Plugin、model、authentication、sandbox 或
-approval behavior，除非 Host 提供稳定 observation。
+Codex 默认提供 Policy integration。独立构建的 `oaw-bridge` 是可选 Assurance adapter，
+不是 host-native workflow integration。Bridge evidence 缺失、被撤销、失败或不完整时，
+不能 veto Policy Offer，也不能让 Markdown Profile 变得不可用。
 
-Trusted `PreToolUse` Hook input 是唯一的 current-session identity source。Agent 不能自行
-填写或替换 reserved `_oaw_host_context`。`observe_current` 仍是唯一创建 current-session
-evidence 并签发 handle 的 operation。`core_inspect` 与 `core_compile` 保留正常 Host approval
-behavior。`workflow_exchange` 也保留正常 approval：其 Hook 验证 handle/session/CWD 后输出
-零字节，因此不会 rewrite 或自动 allow 可变更的 Coordinator call。所有 operation 在
-session 或 working-directory 不匹配时 fail closed。
+Bridge v3 只接受一个 MCP operation：`observe_profile`。其 trusted `PreToolUse` Hook
+matcher 注入 reserved `_oaw_host_context`；调用方不能自行填写或替换该字段。Hook 与 MCP
+service 会拒绝其他 tool、其他 event、malformed input、protocol mismatch 或 session/CWD
+mismatch。该 context 是合作式 Host input，不是 signature 或 provenance proof。
 
-`SubagentStart` feature evidence 使用更窄的 cooperative trust contract。Codex 文档中的 Hook
-payload 不包含 signature、Host-issued nonce 或 parent tool-use correlation identifier。手工
-构造且复制 Host field 的 `SubagentStart` JSON object 无法与真实 callback 区分，并可通过
-Bridge CLI 创建相同的短期 record。Closed parsing、精确 session/CWD binding、bounded TTL、
-mode `600` 与 record validation 仍然有效，但它们不能认证 provenance，也不能抵抗同一用户权限下的伪造
+App Server allowlist 只包含 `skills/list`。Bridge 不读取 Hook inventory、Host
+configuration、Plugin inventory、prompt、transcript、tool、Role、Agent、delegation、approval
+或 sandbox state。Management command 只为安装、更新、检查或卸载独立 owned payload 而使用
+官方 Codex Plugin inventory；该 inventory 不是 Binding evidence。
 
-`skills/list` 是 required v2 Skill-observation authority。`hooks/list` 与 allowlisted
-`config/read` projection 是 optional environment observation；这三个 method 构成 closed
-metadata allowlist。`plugin/list` 不是 production dependency。Filesystem detection、
-Descriptor declaration、user configuration、prompt 与 Skill self-report 都不能创建 Host
-Binding Evidence。
-
-验证同时覆盖 exact enabled Skill file 与精确 Host Installation 下的完整 Binding tree，并
-与独立 pinned Distribution content tree 比较。Same-name、shared-ancestor、disabled、
+Binding observation 覆盖一个精确 Host Installation 下 exact enabled Skill 与完整 Binding
+tree，并与独立 pinned Distribution tree 比较。Same-name、shared-ancestor、disabled、
 orphan、ambiguous、symlinked、partial-hash 或 drifting evidence 均 fail closed。Skill、
 Claude custom Agent、Codex Role、Instruction、Hooks 与 tools 保持独立 surface。
 
-Bridge 在 bounded process memory 中保存 opaque session-bound handle，只返回 secret-free
-summary。它不保存 raw Hook command、credential、MCP environment value、header、token、
-arbitrary Plugin setting 或完整 App Server configuration。Handle 不能进入 Workflow State、
-evidence artifact、log、ticket 或 screenshot，也不能在 Bridge restart、session change、
-CWD change、expiry 或 eviction 后复用。
+结果是一个不含 secret 的 `oaw.assurance-overlay/v1` artifact，绑定完整 Markdown Profile
+digest 及其精确 Binding occurrence。它不是 signature、Capability Grant、Receipt、
+invocation attestation、completion proof、Host permission 或 sandbox。Bridge 不持久化 Hook
+context、raw App Server output、credential、header、token、arbitrary Plugin setting 或完整
+Host configuration。
 
-Public Bridge input 排除 user authorization、explicit invocation attestation 与 gate
-attestation；只有当前 Host evidence 能提供这些 fact。未 attested 的 delegation 或
-`workspace.prepare-or-confirm`、`verification.execute`、`closeout.execute` action 保持
-unavailable。Opaque handle 的 bounded process-local entry 只保存可信 session ID 与 exact CWD，不保存
-turn、tool-use、model 或 permission metadata。`PREPARE` 使用这些内部坐标重新观测并重检
-稳定 reporter identity、当前 authority fact 与当前 unit 所需 feature；Recovery command
-不会因短期 feature drift 而失联。已签发
-Dispatch 的 Receipt 必须匹配原 reporter 与原 Dispatch pin。caller 的裸 cancellation flag
-不能释放 active Grant/Lease。旧 Workflow record、edited handle、unknown field、trailing
-value 与 caller-forged authority 都会在 effect 前被拒绝。
-
-这是 cooperation boundary，不是 operating-system isolation。具有相同用户权限的 process
-可以干扰本地 program、file 或 process I/O。OAW 可以验证 protocol record，但不能认证或
-contain 每个 same-user process。
+Bridge 不调用 Core 或 Workflow Coordinator，也没有 Profile、topology、delegation、
+Dispatch、Lease、recovery 或 lifecycle authority。这是 cooperation boundary，不是
+operating-system isolation。同一用户权限下的 process 可以干扰本地 program、file 或
+process I/O；OAW 不能认证或 contain 每个 same-user process。
 
 ## 范围之外
 

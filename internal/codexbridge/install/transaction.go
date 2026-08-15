@@ -196,7 +196,7 @@ func preparePayload(environment Environment, request InstallRequest) (payload, e
 	if err != nil {
 		return payload{}, err
 	}
-	destinationBinary := filepath.Join(environment.DataRoot, "bin", "oaw")
+	destinationBinary := filepath.Join(environment.DataRoot, "bin", "oaw-bridge")
 	rendered, err := Render(RenderOptions{
 		Binary: destinationBinary, Version: request.Version, Marketplace: MarketplaceName, Plugin: PluginName,
 	})
@@ -204,8 +204,8 @@ func preparePayload(environment Environment, request InstallRequest) (payload, e
 		return payload{}, err
 	}
 	files := make(map[string]payloadFile, len(rendered)+1)
-	files["bin/oaw"] = payloadFile{content: binary, mode: binaryMode}
-	owned := []OwnedFile{{Path: "bin/oaw", Digest: binaryDigest, Mode: uint32(binaryMode)}}
+	files["bin/oaw-bridge"] = payloadFile{content: binary, mode: binaryMode}
+	owned := []OwnedFile{{Path: "bin/oaw-bridge", Digest: binaryDigest, Mode: uint32(binaryMode)}}
 	for relative, content := range rendered {
 		target := path.Join("marketplace", relative)
 		digest := sha256.Sum256(content)

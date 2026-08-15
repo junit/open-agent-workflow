@@ -208,49 +208,43 @@ Git、network 或 destructive work 已完成。
 | `POLICY_ONLY_EXECUTION_UNCERTAIN` | 不得重试结果未知的外部或破坏性 effect。先核对实际结果，再记录 Execution Note 或要求 operator recovery。 |
 | `POLICY_ONLY_CONTEXT_UNCERTAIN` | 要求用户重新确认 activation、selection 与已知 progress；不能从 stale conversation 或 Markdown 重建。 |
 
-## Codex Host Bridge 诊断
+## Codex Assurance Bridge 诊断
 
-先运行只读 management projection：
+Assurance Bridge 是可选的独立组件。先运行它的只读安装检查：
 
 ```bash
-oaw bridge check codex --format json
+oaw-bridge check codex --format json
 ```
 
-Management check 只证明 file 与 registration state，并始终报告
-`current_session_loaded: false`。这表示 management command 没有观察 active session，
-并不表示 active session 未加载 Bridge。只有 trusted `observe_current` Hook input 能建立
-current-session evidence。
+默认 `oaw` 可执行文件不管理 Bridge。上述 check 只证明 owned file 与
+Codex Plugin registration state。它始终报告 `current_session_loaded: false`，
+因为 management command 不检查 active Agent session。Text mode 同样报告
+`proof_scope: installation-integrity` 与 `live_protocol_proof: false`；两者都不是
+当前 Binding claim。
 
-Text mode 会写出 `proof_scope: installation-integrity` 与
-`live_protocol_proof: false`。绝不能把它当作 live Bridge proof。若报告 installation
-drift、真实 installed-version mismatch 或 installation-authority mismatch，必须停止
-START。Management-only `requires_new_session` 只是 operator advice，不阻止在同一
-active session 中 fresh 调用 `observe_current`。成功且带 canonical VersionEvidence 的
-`observe_current` response 是 active session 的权威证据。若 live observation 返回
-`HOST_BRIDGE_PROTOCOL_MISMATCH` 或其他 version/authority diagnostic，则停止。
+Bridge v3 只暴露 `observe_profile`。它的 PreToolUse Hook 只为精确
+`mcp__oaw_codex_bridge__observe_profile` 调用注入 private
+`oaw.codex-hook-context/v3` context。成功调用为一份 source-qualified
+Markdown Profile 返回 `oaw.assurance-overlay/v1` artifact。该结果不包含
+evidence handle、Core operation、Coordinator operation、delegation attestation 或
+Workflow runtime。
 
 | Reason | 诊断与恢复 |
 | --- | --- |
-| `HOST_BRIDGE_UNAVAILABLE` | Plugin 或 MCP Bridge 不可用。安装或启用它，检查 Codex `/hooks`，然后启动新 session。 |
-| `HOST_BRIDGE_CONTEXT_REQUIRED` | `observe_current` call 缺少 trusted `PreToolUse` Hook context。检查它的精确 tool matcher 与 `SubagentStart`，信任后启动新 session。后续 operation 只使用 opaque evidence handle，不接受 public Hook context。 |
-| `HOST_BRIDGE_PROTOCOL_MISMATCH` | 完整 v4/v3/v2 VersionEvidence tuple 不一致。停止；得到 operator 显式授权后更新 Bridge、复核 Hook、启动新 session 并重新 observe。 |
-| `HOST_EVIDENCE_HANDLE_REQUIRED` | 后续 operation 缺少当前 handle。调用 `observe_current`，使用返回的 handle 重试。 |
-| `HOST_EVIDENCE_HANDLE_INVALID` | Handle malformed、edited、unknown、evicted 或来自重启后的 Bridge。丢弃它并重新调用 `observe_current`。 |
-| `HOST_EVIDENCE_EXPIRED` | Handle 超过 bounded TTL。重试 `core_inspect` 或 `core_compile` 前调用 `observe_current`。 |
-| `HOST_EVIDENCE_SESSION_MISMATCH` | Handle 属于另一 session 或 working directory。在 mutation 前停止，并在当前 session 重新 observe。 |
-| `HOST_OBSERVATION_FAILED` | 必需 stable metadata，尤其 `skills/list`，获取失败。修复本地 Codex/App Server capability；受影响 Provider 保持 unverified。 |
-| `HOST_OBSERVATION_PARTIAL` | 可选 Hook 或 configuration metadata 不完整。不可用 field 保持 `unknown`，不得推断 inheritance。 |
-| `HOST_SESSION_CHANGED` | 稳定 reporter identity 已变化，或刷新后的 authority fact 无法签发下一 Dispatch。Recovery command 仍可用。已签发 Dispatch 可由原 reporter 提交匹配 Receipt 收敛；否则重新 observe，并在 `PREPARE` 前编译新 generation。 |
-| `PROVIDER_BINDING_CONTENT_MISMATCH` | Exact enabled Skill 或完整 Binding tree 与 pinned Distribution evidence 不同。修复或选择精确可信 installation；不能接受 same-name 或 partial-tree match。 |
-| `BINDING_EXPLICIT_INVOCATION_REQUIRED` | human-explicit Binding 缺少当前 Host/user invocation attestation。取得精确 invocation 或停止；prompt text 不是 attestation。 |
-| `HOST_FEATURE_UNATTESTED` | Recipe 需要 child、nested-child 或其他 live feature，但当前 Host 未 attest。如果用户已显式请求 Profile/topology，且唯一阻断是 child-only reviewer requirement，Startup Gate 可将一次零项目副作用的 bounded native child probe 作为 Governance observation，再次 `observe_current` 并重新 inspect；其他情况使用 eligible Recipe/topology，或修复稳定 Host evidence。仅新建 session 不会 attest delegation。 |
-| `HOST_ACTION_UNAVAILABLE` | 必需的 `workspace.prepare-or-confirm`、`verification.execute` 或 `closeout.execute` action 不可用。提供精确 verified Host procedure，或选择其他 eligible Recipe。 |
+| `HOST_BRIDGE_UNAVAILABLE` | 独立可执行文件、Plugin、MCP service 或本地 Codex App Server 不可用。修复可选安装，或继续通过正常 Policy Profile 路径工作且不附加 Overlay。 |
+| `HOST_BRIDGE_CONTEXT_REQUIRED` | `observe_profile` 缺少用于精确 matcher 的有效 trusted PreToolUse context。复核已安装 Hook，并新建已加载 Plugin 的 Codex session；不得手写 reserved context。 |
+| `HOST_BRIDGE_PROTOCOL_MISMATCH` | Caller、Hook、App Server projection 或 Bridge 不满足 `oaw.codex-bridge/v3` 与 `oaw.codex-hook-context/v3`。更新独立组件并重新加载 Codex；不得转换旧 record。 |
+| `HOST_OBSERVATION_FAILED` | 必需的只读 `skills/list` observation 或精确 Binding resolution 失败。修复当前 Codex metadata 访问，或在没有可选 machine claim 的情况下继续。 |
+| `HOST_OBSERVATION_PARTIAL` | 一项或多项当前 Binding observation 不完整。只把受影响 claim 视为 unavailable，修复 metadata 后重新调用 `observe_profile`。 |
+| `PROFILE_SELECTION_INVALID` | 提供一个语法有效的 source-qualified selector，例如 `project:<id>` 或 `user:<id>`。 |
+| `PROFILE_NOT_FOUND` | 所选 source 中没有该 ID 的 Profile。检查当前 Profile inventory，并选择已存在的 source-qualified ID。 |
+| `PROFILE_AMBIGUOUS` | 所选 source 中存在重复 Profile ID。请先删除重复项或重命名，再请求 Overlay。 |
+| `ASSURANCE_BINDING_UNAVAILABLE` | 所选 Profile 声明了当前 Codex observation 未精确安装并启用的 Skill Binding。修复该 Binding，或不附加可选 Overlay 直接使用 Profile。 |
 
-`skills/list` 是 required v2 Skill-observation authority；optional `hooks/list` 与
-`config/read` 构成完整 metadata allowlist。`plugin/list` 不是 production dependency。
-不得通过编辑 handle、虚构 binding、复制 Host configuration 或启动另一
-process 修复这些 reason。[Codex Host Bridge 指南](codex-bridge.md)定义 install、Hook 与
-rollback 行为。
+不得编辑 Overlay、Hook context 或 installation state 来绕过 diagnostic。
+Overlay 缺失或失败不能 veto Policy Offer、Profile 选择或规则驱动执行路径。
+Agent Host security policy 仍可独立拒绝物理 Skill invocation。
+[Codex Assurance Bridge 指南](codex-bridge.md)定义协议、安全边界、安装与回滚行为。
 
 ## Workflow Coordination 错误
 

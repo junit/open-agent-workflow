@@ -5,7 +5,7 @@
       "name": "{{PLUGIN_NAME}}",
       "source": {
         "source": "local",
-        "path": "./plugins/oaw-codex-host"
+        "path": "./plugins/oaw-codex-assurance"
       },
       "version": "{{BRIDGE_VERSION}}"
     }

@@ -63,6 +63,25 @@ type Inventory struct {
 	Diagnostics []Diagnostic
 }
 
+type SelectionError struct {
+	Code    string
+	Message string
+}
+
+func (err *SelectionError) Error() string { return err.Message }
+
+func SelectionErrorCode(err error) string {
+	var value *SelectionError
+	if errors.As(err, &value) {
+		return value.Code
+	}
+	return ""
+}
+
+func selectionError(code, format string, arguments ...any) error {
+	return &SelectionError{Code: code, Message: fmt.Sprintf(format, arguments...)}
+}
+
 func (inventory Inventory) HasErrors() bool {
 	for _, diagnostic := range inventory.Diagnostics {
 		if diagnostic.Severity == SeverityError {
@@ -165,15 +184,29 @@ func Resolve(inventory Inventory, selector string) (Profile, error) {
 		matches = append(matches, profile)
 	}
 	if len(matches) == 0 {
-		return Profile{}, fmt.Errorf("Profile %q was not found", selector)
+		return Profile{}, selectionError("PROFILE_NOT_FOUND", "Profile %q was not found", selector)
 	}
 	if len(matches) != 1 {
-		return Profile{}, fmt.Errorf("Profile %q is ambiguous; use a source qualifier", id)
+		if qualified {
+			return Profile{}, selectionError("PROFILE_AMBIGUOUS", "Profile %q is ambiguous within its source", selector)
+		}
+		return Profile{}, selectionError("PROFILE_AMBIGUOUS", "Profile %q is ambiguous; use a source qualifier", id)
 	}
 	if matches[0].Source != SourceBuiltIn && builtInID(id) {
-		return Profile{}, fmt.Errorf("Custom Profile ID %q is reserved by a built-in Profile", id)
+		return Profile{}, selectionError("PROFILE_SELECTION_INVALID", "Custom Profile ID %q is reserved by a built-in Profile", id)
 	}
 	return cloneProfile(matches[0]), nil
+}
+
+func ResolveQualified(inventory Inventory, selector string) (Profile, error) {
+	_, _, qualified, err := parseSelector(selector)
+	if err != nil {
+		return Profile{}, err
+	}
+	if !qualified {
+		return Profile{}, selectionError("PROFILE_SELECTION_INVALID", "Profile selector %q requires a source qualifier", strings.TrimSpace(selector))
+	}
+	return Resolve(inventory, selector)
 }
 
 func discoverDirectory(source Source, root, directory string) ([]Profile, []Diagnostic, error) {
@@ -314,14 +347,14 @@ func warningDiagnostics(profile Profile) []Diagnostic {
 func parseSelector(selector string) (Source, string, bool, error) {
 	selector = strings.TrimSpace(selector)
 	if selector == "" {
-		return "", "", false, errors.New("Profile selector is empty")
+		return "", "", false, selectionError("PROFILE_SELECTION_INVALID", "Profile selector is empty")
 	}
 	for _, source := range []Source{SourceBuiltIn, SourceProject, SourceUser} {
 		prefix := string(source) + ":"
 		if strings.HasPrefix(selector, prefix) {
 			id := strings.TrimSpace(strings.TrimPrefix(selector, prefix))
 			if id == "" {
-				return "", "", false, fmt.Errorf("Profile selector %q has no ID", selector)
+				return "", "", false, selectionError("PROFILE_SELECTION_INVALID", "Profile selector %q has no ID", selector)
 			}
 			return source, id, true, nil
 		}

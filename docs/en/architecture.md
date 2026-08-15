@@ -151,15 +151,12 @@ Foreign-Host diagnostics never enter pin matching, Profile compilation, or a
 Lifecycle Bundle. Active schemas reject `oaw.provider-descriptor/v1` and
 `oaw.user-config/v1` instead of silently upgrading them.
 
-Codex has a policy integration by default and a separate audited host-native
-Bridge at `oaw/codex-host`. The Bridge must be explicitly installed and trusted;
-Current Codex proves `skill` bindings and `CURRENT` topology; a valid
-`SubagentStart` event can additionally prove `child-delegation` for the exact
-session/CWD. The policy surface remains `oaw/codex-policy` and is never promoted
-by filesystem detection. Role, instruction, agent, tool, parallel/nested
-delegation, invocation,
-`workspace.prepare-or-confirm`, `verification.execute`, and `closeout.execute`
-remain unknown or unavailable unless a stable live API attests them.
+Codex has only `oaw/codex-policy` in the default Integration set. The separately
+built `oaw-bridge` is an optional Assurance adapter, not a host-native workflow
+surface. Its `observe_profile` operation can attach exact current `skill`
+Binding identities to one source-qualified Markdown Profile. It does not attest
+topology, delegation, invocation, Host actions, Receipts, or completion, and it
+cannot promote the Policy surface through filesystem detection.
 
 The v4 Provider model keeps Skills, Claude custom Agents, Codex Roles,
 Instructions, Hooks, and tools distinct. Binding kinds are `skill`, `agent`,
@@ -209,21 +206,25 @@ eligible set is the intersection of the selected Profile, every active
 Capability binding, integration metadata, and current Host session facts. The
 user selects a topology during the Workflow Startup Gate.
 
-Codex exposes `oaw/codex-policy` by default and the opt-in `oaw/codex-host`
-host-native surface. The Bridge supports `CURRENT` and `skill` bindings only;
-its session-dependent evidence comes from the trusted Hook and allowlisted Host
-metadata. Other built-in integrations remain policy surfaces unless their own
-Host-native integration is explicitly installed and verified. No integration
-transfers a model command, credential, private Hook payload, or private MCP,
-Skill, or Plugin configuration to OAW.
+Codex exposes `oaw/codex-policy` by default. `oaw-bridge` is separately built,
+installed, and tested; the default `oaw` installer neither installs nor manages
+it. Bridge reads only current `skills/list` metadata and returns an optional
+Assurance Overlay. Other built-in integrations remain Policy surfaces unless a
+separate Host-native workflow contract is explicitly installed and verified.
+No integration transfers a model command, credential, private Hook payload, or
+private MCP, Skill, or Plugin configuration to OAW.
 
-The Codex Bridge path is:
+The optional Codex Assurance path is:
 
 ```text
-observe_current -> Core inspect -> explicit Startup Gate
-                -> Core compile / Coordinator START
-                -> current Codex session executes Skills and tools
+Markdown Profile -> Policy selection and rule-driven execution
+       |
+       +-> observe_profile -> current Skill Binding evidence
+                           -> Assurance Overlay bound to the same Profile
 ```
+
+Bridge failure removes the lower optional branch only. It never changes the
+Policy Profile or controls the rule-driven branch.
 
 The Agent Host owns physical execution authority. Lifecycle Bundles,
 Capability Grants, and Resource Leases express logical workflow authority for

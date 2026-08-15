@@ -203,26 +203,27 @@ operation-scoped backup。每个 destination 使用 atomic replacement；后续 
 会触发 Go mutation journal 的 best-effort whole-operation rollback。Rollback failure 会
 明确报告，并保留 verified backup 供 manual recovery。
 
-## Codex Host Bridge
+## 独立 Codex Assurance Bridge
 
 Codex 有两套相互独立的 OAW installation surface：
 
 ```text
 oaw install --target codex
-oaw bridge install codex
+oaw-bridge install codex
 ```
 
 第一条命令按选定 scope 安装 Policy Set 与 policy adapter。Project scope 的文件自包含于
-`.oaw/policy/`，user scope 的文件自包含于 XDG `open-agent-workflow/` root；它不安装 executable Plugin，
-也不声明 current-session Host evidence。第二条命令是经过审计的 Codex Host Bridge
-的显式 opt-in transaction。两者都不会为任何请求激活 OAW。它的 management surface 是：
+`.oaw/policy/`，user scope 的文件自包含于 XDG `open-agent-workflow/` root；它不安装
+executable Plugin，也不声明 current-session Host evidence。第二条命令属于独立构建的
+可选 executable，用于安装 Codex Assurance Plugin。两者都不会为任何请求激活 OAW。
+默认 `oaw` 不管理 Bridge；独立 management surface 为：
 
 ```text
-oaw bridge check codex
-oaw bridge update codex
-oaw bridge uninstall codex
-oaw bridge serve codex
-oaw bridge hook codex
+oaw-bridge check codex
+oaw-bridge update codex
+oaw-bridge uninstall codex
+oaw-bridge serve codex
+oaw-bridge hook codex
 ```
 
 Bridge 在 `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/codex-bridge`
@@ -232,16 +233,10 @@ Bridge 在 `${XDG_STATE_HOME:-$HOME/.local/state}/open-agent-workflow/codex-brid
 与其他 Host state。OAW 只通过固定 argument vector 调用官方 Codex Plugin command，
 不编辑 Codex config 或 cache，不创建隔离用户主目录，也不投影 Host configuration。
 
-使用 Bridge 前，在 Codex `/hooks` 中检查并信任 rendered `hooks/hooks.json` 的四个
-精确 `PreToolUse` matcher 与 `SubagentStart` matcher。安装或 update 后启动新的 Codex
-session。只有该新 session 中成功的 `observe_current` 才能证明 current-session evidence；
-`bridge check` 永远
-报告 `current_session_loaded: false`。
-
-仅启动新 session 不会证明 `child-delegation`。当用户已显式请求 Profile/topology（例如
-`SP-FULL / CURRENT`），且唯一阻断是 reviewer child requirement 时，Startup Gate 可在该
-session 中仅启动一次零项目副作用的原生 child capability probe。child 只报告已启动并立即
-终止；随后重新调用 `observe_current`，再重复 `core_inspect`。
+使用 Bridge 前，在 Codex `/hooks` 中检查并信任 rendered `hooks/hooks.json` 的唯一精确
+`PreToolUse` matcher：`mcp__oaw_codex_bridge__observe_profile`。Install 或 update 后启动
+新的 Codex session。`oaw-bridge check` 永远报告 `current_session_loaded: false`，因为它
+只证明安装完整性，不证明 live protocol execution。
 
 Bridge install 与 update 是 transactional。它们渲染 running binary 的
 digest-pinned copy，使用 OAW-owned local marketplace；official Codex registration
@@ -250,11 +245,10 @@ digest-pinned copy，使用 OAW-owned local marketplace；official Codex registr
 clean 的 recorded OAW file 与 state，保留无关 Codex config、user file 与 drifted
 content。
 
-Bridge 只支持 `CURRENT`。当前 Codex session 调用 Skill 与 tool；OAW 观察
-allowlisted metadata、编译 policy 并交换 Coordinator record。它不创建 child session、
-不调用 model，也不复制或重建 MCP、Hook、Skill、Plugin、authentication、sandbox
-或 approval configuration，除非这些是 Host 报告的 fact。完整 Hook 与 recovery
-契约见 [Codex Host Bridge 指南](codex-bridge.md)。
+Bridge v3 只暴露 `observe_profile`。它读取当前 `skills/list` metadata，并返回绑定所选
+Markdown Profile 的可选 Assurance Overlay。它不选择或执行 Profile、不证明 topology
+或 delegation、不调用 Core 或 Coordinator，也不重建 Host configuration。完整 Hook、
+安装与恢复契约见 [Codex Assurance Bridge 指南](codex-bridge.md)。
 
 ## 退出码
 

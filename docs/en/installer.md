@@ -244,29 +244,30 @@ Each destination uses atomic replacement. A later apply failure triggers the
 Go mutation journal's best-effort whole-operation rollback; a rollback failure
 is explicit and leaves the verified backup available for manual recovery.
 
-## Codex Host Bridge
+## Standalone Codex Assurance Bridge
 
 Codex has two separate OAW installation surfaces:
 
 ```text
 oaw install --target codex
-oaw bridge install codex
+oaw-bridge install codex
 ```
 
 The first command installs the Policy Set and policy adapter for the selected
 scope. In project scope the files are self-contained under `.oaw/policy/`; in
 user scope they are self-contained under the XDG `open-agent-workflow/` root.
-It does not install an
-executable Plugin or claim current-session Host evidence.
-The second command is an explicit opt-in transaction for the audited Codex Host
-Bridge. Neither command activates OAW for a request. Its management surface is:
+It does not install an executable Plugin or claim current-session Host evidence.
+The second command belongs to a separately built optional executable and
+installs the Codex Assurance Plugin. Neither command activates OAW for a
+request. The default `oaw` executable does not manage Bridge. Its standalone
+management surface is:
 
 ```text
-oaw bridge check codex
-oaw bridge update codex
-oaw bridge uninstall codex
-oaw bridge serve codex
-oaw bridge hook codex
+oaw-bridge check codex
+oaw-bridge update codex
+oaw-bridge uninstall codex
+oaw-bridge serve codex
+oaw-bridge hook codex
 ```
 
 The Bridge owns install state below
@@ -278,19 +279,11 @@ Host state. OAW invokes official Codex Plugin commands through fixed argument
 vectors; it never edits Codex config or cache, creates an alternate user home, or
 projects Host configuration.
 
-Review the exact four `PreToolUse` matchers and the `SubagentStart` matcher in
-rendered `hooks/hooks.json`, then trust them in Codex `/hooks` before using the
-Bridge. Start a new Codex session after install or update. Only successful
-`observe_current` in that new session proves current-session evidence;
-`bridge check` always reports
-`current_session_loaded: false`.
-
-Starting a new session does not by itself attest `child-delegation`. When the
-user explicitly requests a Profile/topology such as `SP-FULL / CURRENT` and
-its only blocker is the reviewer child requirement, the Startup Gate may start
-exactly one zero-project-effect native child capability probe in that session.
-The child only reports that it started and terminates. Run `observe_current`
-again before repeating `core_inspect`.
+Review the one exact `PreToolUse` matcher,
+`mcp__oaw_codex_bridge__observe_profile`, in rendered `hooks/hooks.json`, then
+trust it in Codex `/hooks`. Start a new Codex session after install or update.
+`oaw-bridge check` always reports `current_session_loaded: false` because it
+proves installation integrity, not live protocol execution.
 
 Bridge install and update are transactional. They render a digest-pinned copy
 of the running binary, use an OAW-owned local marketplace, and roll back
@@ -300,12 +293,12 @@ Uninstall invokes official Plugin and marketplace removal first, then deletes
 only clean recorded OAW files and state. It preserves unrelated Codex config,
 user files, and drifted content.
 
-The Bridge supports `CURRENT` only. The current Codex session invokes Skills
-and tools; OAW observes allowlisted metadata, compiles policy, and exchanges
-Coordinator records. It does not create a child session, invoke a model, or
-inherit or reconstruct MCP, Hooks, Skills, Plugins, authentication, sandbox,
-or approval configuration beyond facts the Host reports. See the dedicated
-[Codex Host Bridge guide](codex-bridge.md) for Hook and recovery contracts.
+Bridge v3 exposes only `observe_profile`. It reads current `skills/list`
+metadata and returns an optional Assurance Overlay bound to the selected
+Markdown Profile. It does not select or execute a Profile, attest topology or
+delegation, invoke Core or the Coordinator, or reconstruct Host configuration.
+See the dedicated [Codex Assurance Bridge guide](codex-bridge.md) for the Hook,
+installation, and recovery contracts.
 
 ## Exit Codes
 

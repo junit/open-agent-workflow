@@ -30,14 +30,15 @@ User scope 默认安装 core adapter：`claude,codex,gemini,opencode`。Project 
 
 ## Host Integration Surface
 
-Adapter 安装与 Host execution 是两个不同问题。Codex 默认暴露 `oaw/codex-policy`，
-并通过独立且经过审计的 `oaw/codex-host` host-native Bridge 提供显式 opt-in。Bridge
-只支持 `CURRENT` 与 `skill` binding。其他内置 target 仍是 policy surface，除非它们各自
-的 Host-native integration 被显式安装并验证。
+Adapter 安装与 Host execution 是两个不同问题。所有默认 target，包括
+`oaw/codex-policy`，都是 Policy surface。独立构建的 `oaw-bridge` 是可选 Assurance
+integration，不在默认 Host Integration set 中。它只为一份 Markdown Profile 观察当前
+精确 Codex Skill Binding，不会把 Codex Policy adapter 变成 host-native workflow
+integration。
 
-Codex Bridge 不能从 `codex` target adapter 推断出来。它必须单独安装并信任，并且只有
-trusted Hook observation 成功后才报告 current-session fact。`host-native` integration
-是明确的 Host 能力，不能从 target name 推断。
+Assurance Bridge 绝不能从 `codex` target adapter 推断出来。它有独立 executable、安装
+生命周期、Plugin、Hook、测试与文档。删除或运行失败只会移除可选 Assurance Overlay。
+host-native workflow integration 需要另一份明确的 Host contract。
 
 `CURRENT` 表示 active Agent session 保持不变。`SUBAGENT` 表示 active Agent Host 通过
 原生 Subagent facility 创建 child。可用性是 session-dependent；facility 缺失时返回
@@ -57,10 +58,10 @@ disabled skill、symlink 或局部文件 hash 均 fail closed。
 
 Binding kind 为 `skill`、`agent`、`role` 与 `instruction`。Skill、Claude custom Agent、
 Codex Role、Instruction、Hooks 与 tools 绝不相互替代。Static adapter 或 multi-agent
-metadata 最多是 `host-configured`，不能把 live delegation 报为 available。当前 Codex
-observation 证明 `skill`/`CURRENT`；有效的官方 `SubagentStart` event 后再 fresh observation
-还可以只为精确 session/CWD 证明 `child-delegation`。其他 kind、parallel/nested delegation
-与 action 需要独立的稳定 Host API。
+metadata 最多是 `host-configured`，不能把 live delegation 报为 available。当前
+`oaw-bridge` observation 只可声明所选 Markdown Profile 引用的精确 `skill` Binding。
+它不证明 `CURRENT`、child 或 nested-child delegation、Host action、receipt 或 workflow
+execution。这些能力需要另一份稳定 Host API 与 contract。
 
 Host 可以报告 `inherited`、`host-configured`、`restricted`、`unknown` 或 `unavailable`
 environment observation。Receipt 只是 Host attested outcome 的 evidence，不声称 OAW

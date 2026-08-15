@@ -232,52 +232,47 @@ They prevent instruction-only cooperation from inventing machine authority:
 | `POLICY_ONLY_EXECUTION_UNCERTAIN` | Do not retry an external or destructive effect. Reconcile its actual result, then record an Execution Note or require operator recovery. |
 | `POLICY_ONLY_CONTEXT_UNCERTAIN` | Ask the user to reconfirm activation, selection, and known progress; do not reconstruct them from stale conversation or Markdown. |
 
-## Codex Host Bridge Diagnostics
+## Codex Assurance Bridge Diagnostics
 
-Start with the read-only management projection:
+The Assurance Bridge is an optional standalone component. Start with its
+read-only installation projection:
 
 ```bash
-oaw bridge check codex --format json
+oaw-bridge check codex --format json
 ```
 
-The management check proves file and registration state only. It always reports
-`current_session_loaded: false`; that means the management command did not
-observe the active session, not that the active session is unloaded. Only
-trusted `observe_current` Hook input can establish current-session evidence.
+The default `oaw` executable does not manage Bridge. The check above proves
+only owned-file and Codex Plugin registration state. It always reports
+`current_session_loaded: false` because a management command does not inspect
+the active Agent session. Text mode likewise reports
+`proof_scope: installation-integrity` and `live_protocol_proof: false`; neither
+value is a current Binding claim.
 
-Text mode states `proof_scope: installation-integrity` and
-`live_protocol_proof: false`. Never cite that result as live Bridge proof. A
-reported installation drift, real installed-version mismatch, or
-installation-authority mismatch stops START. A management-only
-`requires_new_session` value is operator advice and does not block a fresh
-`observe_current` call in the same active session. A successful
-`observe_current` response with canonical VersionEvidence is authoritative for
-the active session. Stop if live observation instead returns
-`HOST_BRIDGE_PROTOCOL_MISMATCH` or another version/authority diagnostic.
+Bridge v3 exposes only `observe_profile`. Its PreToolUse Hook injects private
+`oaw.codex-hook-context/v3` context for the exact
+`mcp__oaw_codex_bridge__observe_profile` call. A successful call returns an
+`oaw.assurance-overlay/v1` artifact for one source-qualified Markdown Profile.
+There is no evidence handle, Core operation, Coordinator operation, delegation
+attestation, or Workflow runtime behind that result.
 
 | Reason | Diagnosis and recovery |
 | --- | --- |
-| `HOST_BRIDGE_UNAVAILABLE` | The Plugin or MCP Bridge is unavailable. Install or enable it, inspect Codex `/hooks`, and start a new session. |
-| `HOST_BRIDGE_CONTEXT_REQUIRED` | `observe_current` was called without trusted `PreToolUse` Hook context. Review its exact tool matcher plus `SubagentStart`, trust them, then start a new session. Later operations use the opaque evidence handle and do not accept public Hook context. |
-| `HOST_BRIDGE_PROTOCOL_MISMATCH` | The complete v4/v3/v2 VersionEvidence tuple differs. Stop; after explicit operator authorization, update the Bridge, review Hooks, start a new session, and observe again. |
-| `HOST_EVIDENCE_HANDLE_REQUIRED` | A later operation omitted its current handle. Call `observe_current` and retry with the returned handle. |
-| `HOST_EVIDENCE_HANDLE_INVALID` | The handle is malformed, edited, unknown, evicted, or from a restarted Bridge. Discard it and call `observe_current` again. |
-| `HOST_EVIDENCE_EXPIRED` | The handle exceeded its bounded TTL. Call `observe_current` before retrying `core_inspect` or `core_compile`. |
-| `HOST_EVIDENCE_SESSION_MISMATCH` | The handle belongs to another session or working directory. Stop before mutation and observe again in the current session. |
-| `HOST_OBSERVATION_FAILED` | Required stable metadata, especially `skills/list`, failed. Repair the local Codex/App Server capability; affected Providers remain unverified. |
-| `HOST_OBSERVATION_PARTIAL` | Optional Hook or configuration metadata is incomplete. Keep unavailable fields `unknown`; do not infer inheritance. |
-| `HOST_SESSION_CHANGED` | Stable reporter identity changed, or refreshed authority facts cannot issue the next Dispatch. Recovery commands remain reachable. Converge an already issued Dispatch with its matching Receipt from the original reporter; otherwise observe again and compile a new generation before `PREPARE`. |
-| `PROVIDER_BINDING_CONTENT_MISMATCH` | The exact enabled Skill or complete Binding tree differs from the pinned Distribution evidence. Repair or select the exact trusted installation; never accept a same-name or partial-tree match. |
-| `BINDING_EXPLICIT_INVOCATION_REQUIRED` | A human-explicit Binding lacks current Host/user invocation attestation. Obtain that exact invocation or stop; prompt text is not attestation. |
-| `HOST_FEATURE_UNATTESTED` | A Recipe needs child, nested-child, or another live feature that the current Host did not attest. If the user explicitly requested the Profile/topology and its only blocker is a child-only reviewer requirement, the Startup Gate may run one zero-project-effect bounded native child probe as a Governance observation, then call `observe_current` and inspect again. Otherwise use an eligible Recipe/topology or repair stable Host evidence. A new session alone does not attest delegation. |
-| `HOST_ACTION_UNAVAILABLE` | A required `workspace.prepare-or-confirm`, `verification.execute`, or `closeout.execute` action is unavailable. Supply an exact verified Host procedure or choose another eligible Recipe. |
+| `HOST_BRIDGE_UNAVAILABLE` | The standalone executable, Plugin, MCP service, or local Codex App Server is unavailable. Repair the optional installation, or continue through the normal Policy Profile path without an Overlay. |
+| `HOST_BRIDGE_CONTEXT_REQUIRED` | `observe_profile` lacks valid trusted PreToolUse context for its exact matcher. Review the installed Hook and start a Codex session that loaded the Plugin; never hand-author reserved context. |
+| `HOST_BRIDGE_PROTOCOL_MISMATCH` | The caller, Hook, App Server projection, or Bridge does not satisfy `oaw.codex-bridge/v3` and `oaw.codex-hook-context/v3`. Update the standalone component and reload Codex; do not translate an older record. |
+| `HOST_OBSERVATION_FAILED` | Required read-only `skills/list` observation or exact Binding resolution failed. Repair current Codex metadata access, or continue without the optional machine claim. |
+| `HOST_OBSERVATION_PARTIAL` | One or more current Binding observations are incomplete. Treat only the affected claims as unavailable and call `observe_profile` again after repairing metadata. |
+| `PROFILE_SELECTION_INVALID` | Supply one syntactically valid source-qualified selector such as `project:<id>` or `user:<id>`. |
+| `PROFILE_NOT_FOUND` | The selected source contains no Profile with that ID. Inspect the current Profile inventory and select an existing source-qualified ID. |
+| `PROFILE_AMBIGUOUS` | The selected source contains duplicate Profile IDs. Remove or rename the duplicate before requesting an Overlay. |
+| `ASSURANCE_BINDING_UNAVAILABLE` | The selected Profile declares a Skill Binding that is not exactly installed and enabled in the current Codex observation. Repair that Binding, or use the Profile without the optional Overlay. |
 
-`skills/list` is the required v2 Skill-observation authority; optional
-`hooks/list` and `config/read` complete the metadata allowlist. `plugin/list` is
-not a production dependency. Do not repair these reasons by editing a handle,
-inventing a binding, copying Host configuration, or launching another process.
-The [Codex Host Bridge guide](codex-bridge.md) defines installation, Hook, and
-rollback behavior.
+Never edit an Overlay, Hook context, or installation state to bypass a
+diagnostic. A missing or failed Overlay cannot veto the Policy Offer, Profile
+selection, or rule-driven execution path. Agent Host security policy may still
+refuse a physical Skill invocation independently. The
+[Codex Assurance Bridge guide](codex-bridge.md) defines the protocol, security
+boundary, installation, and rollback behavior.
 
 ## Workflow Coordination Errors
 

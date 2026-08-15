@@ -23,8 +23,8 @@ const maximumSkillEvidenceBytes int64 = 4 << 20
 func BuildBindingInventory(value catalog.Catalog, report discovery.Report, metadata appserver.MetadataObservation, cwd string) (host.BindingInventory, []Diagnostic, error) {
 	diagnostics := make([]Diagnostic, 0)
 	add := func(code, detail string, providerIDs ...string) {
-		diagnostic := NewDiagnostic(code, "binding", detail, true)
-		diagnostic.AffectedProviders, diagnostic.AffectedProfiles = diagnosticOwnership(value, providerIDs)
+		diagnostic := NewDiagnostic(code, "binding", detail)
+		diagnostic.AffectedProviders = sortedUniqueDiagnosticOwners(providerIDs)
 		diagnostics = append(diagnostics, diagnostic)
 	}
 	empty := func() (host.BindingInventory, []Diagnostic, error) {
@@ -163,61 +163,6 @@ func candidateProviderIDs(values []discovery.Candidate) []string {
 		providerIDs = append(providerIDs, value.ProviderID)
 	}
 	return sortedUniqueDiagnosticOwners(providerIDs)
-}
-
-func diagnosticOwnership(value catalog.Catalog, providerIDs []string) ([]string, []string) {
-	providers := sortedUniqueDiagnosticOwners(providerIDs)
-	providerSet := make(map[string]struct{}, len(providers))
-	for _, providerID := range providers {
-		providerSet[providerID] = struct{}{}
-	}
-	recipeProfiles := make(map[string][]string)
-	for _, alias := range value.Aliases() {
-		recipeProfiles[alias.RecipeID] = append(recipeProfiles[alias.RecipeID], alias.Alias)
-	}
-	profiles := make([]string, 0)
-	for _, recipe := range value.Recipes() {
-		if recipeUsesProvider(recipe, providerSet) {
-			aliases := recipeProfiles[recipe.ID]
-			profiles = append(profiles, aliases...)
-			if len(aliases) == 0 && !strings.HasPrefix(recipe.ID, "oaw/") {
-				profiles = append(profiles, "USER-DEFINED")
-			}
-		}
-	}
-	return providers, sortedUniqueDiagnosticOwners(profiles)
-}
-
-func recipeUsesProvider(recipe catalog.ProfileRecipeRecord, providers map[string]struct{}) bool {
-	uses := func(providerID string) bool {
-		_, found := providers[providerID]
-		return found
-	}
-	for _, slot := range recipe.Slots {
-		for _, step := range slot.Pipeline {
-			if uses(step.Selector.ProviderID) {
-				return true
-			}
-		}
-	}
-	for _, addOn := range recipe.AddOns {
-		if uses(addOn.Selector.ProviderID) {
-			return true
-		}
-	}
-	for _, route := range recipe.IncidentRoutes {
-		if uses(route.Handler.ProviderID) {
-			return true
-		}
-	}
-	for _, overlay := range recipe.Overlays {
-		for _, paused := range overlay.PausedBindings {
-			if uses(paused.ProviderID) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func canonicalSkillPath(value string) (string, error) {

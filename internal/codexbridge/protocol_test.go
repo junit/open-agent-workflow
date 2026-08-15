@@ -5,76 +5,50 @@ import (
 	"testing"
 )
 
-func TestProtocolRejectsUnknownOperation(t *testing.T) {
-	if _, err := ParseOperation("plugin/list"); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
-		t.Fatalf("ParseOperation() error = %v", err)
+func TestBridgeV3AcceptsOnlyObserveProfile(t *testing.T) {
+	got, err := ParseOperation("observe_profile")
+	if err != nil || got != OperationObserveProfile {
+		t.Fatalf("ParseOperation(observe_profile) = %q, %v", got, err)
 	}
-}
-
-func TestBridgeV2ProtocolConstantsAreHardCut(t *testing.T) {
-	if BridgeProtocolVersion != "oaw.codex-bridge/v2" ||
-		HookContextSchemaV2 != "oaw.codex-hook-context/v2" ||
-		EvidenceHandleVersion != "oaw.host-evidence-handle/v2" ||
-		BridgeIntegrationVersion != "2.0.0" {
-		t.Fatalf("bridge tuple = %q, %q, %q, %q", BridgeProtocolVersion, HookContextSchemaV2, EvidenceHandleVersion, BridgeIntegrationVersion)
-	}
-}
-
-func TestProtocolAcceptsOnlyBridgeOperations(t *testing.T) {
-	allowed := []Operation{
-		OperationObserveCurrent,
-		OperationCoreInspect,
-		OperationCoreCompile,
-		OperationWorkflowExchange,
-	}
-	for _, operation := range allowed {
-		got, err := ParseOperation(string(operation))
-		if err != nil || got != operation {
-			t.Fatalf("ParseOperation(%q) = %q, %v", operation, got, err)
+	for _, retired := range []string{"observe_current", "core.inspect", "core.compile", "workflow_exchange"} {
+		if _, err := ParseOperation(retired); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
+			t.Fatalf("ParseOperation(%q) error = %v", retired, err)
 		}
 	}
+	if BridgeProtocolVersion != "oaw.codex-bridge/v3" || HookContextSchemaV3 != "oaw.codex-hook-context/v3" ||
+		BridgeIntegrationVersion != "3.0.0" {
+		t.Fatalf("Bridge tuple = %q, %q, %q", BridgeProtocolVersion, HookContextSchemaV3, BridgeIntegrationVersion)
+	}
 }
 
-func TestBridgeV2ProtocolRejectsV1OperationSurface(t *testing.T) {
-	for _, operation := range []string{"provider.inspect", "provider.compile", "workflow.start", "workflow.receipt"} {
-		if _, err := ParseOperation(operation); Code(err) != "HOST_BRIDGE_PROTOCOL_MISMATCH" {
-			t.Fatalf("ParseOperation(%q) error = %v", operation, err)
-		}
+func TestHookContextIsSessionAndProjectBound(t *testing.T) {
+	context := bridgeTestContext("/repo")
+	firstSession, firstCWD, err := ContextDigestHeaders(context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	context.SessionID = "session-other"
+	secondSession, secondCWD, err := ContextDigestHeaders(context)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstSession == secondSession || firstCWD != secondCWD {
+		t.Fatalf("context digests = %q/%q and %q/%q", firstSession, firstCWD, secondSession, secondCWD)
+	}
+	context.SchemaVersion = "oaw.codex-hook-context/v2"
+	if Code(ValidateHookContext(context)) != "HOST_BRIDGE_CONTEXT_REQUIRED" {
+		t.Fatal("ValidateHookContext accepted the retired v2 context")
 	}
 }
 
 func TestNewErrorCarriesLayerAndCause(t *testing.T) {
-	cause := errFixture{}
-	err := NewError("HOST_EVIDENCE_HANDLE_INVALID", "invalid handle", cause)
+	cause := errors.New("fixture")
+	err := NewError("HOST_OBSERVATION_FAILED", "observation failed", cause)
 	value, ok := err.(*Error)
-	if !ok {
-		t.Fatalf("NewError() type = %T", err)
+	if !ok || value.Cause != cause || Code(err) != "HOST_OBSERVATION_FAILED" || !errors.Is(err, cause) {
+		t.Fatalf("error = %#v", err)
 	}
-	if value.Layer != "evidence" || value.Cause != cause || Code(err) != "HOST_EVIDENCE_HANDLE_INVALID" {
-		t.Fatalf("error = %#v", value)
-	}
-}
-
-type errFixture struct{}
-
-func (errFixture) Error() string { return "fixture" }
-
-func TestErrorFormattingUnwrapAndExternalCode(t *testing.T) {
-	cause := errFixture{}
-	withDetail := NewError("HOST_OBSERVATION_FAILED", "observation failed", cause)
-	if withDetail.Error() != "HOST_OBSERVATION_FAILED: observation failed" || !errors.Is(withDetail, cause) {
-		t.Fatalf("error=%v", withDetail)
-	}
-	withoutDetail := NewError("HOST_OBSERVATION_FAILED", "", nil)
-	if withoutDetail.Error() != "HOST_OBSERVATION_FAILED" {
-		t.Fatalf("error=%v", withoutDetail)
-	}
-	if Code(externalCodeError{}) != "EXTERNAL_CODE" || Code(errors.New("plain")) != "" || Code(nil) != "" {
-		t.Fatal("Code() did not preserve the external error boundary")
+	if err.Error() != "HOST_OBSERVATION_FAILED: observation failed" || Code(errors.New("plain")) != "" || Code(nil) != "" {
+		t.Fatal("error formatting or code projection changed")
 	}
 }
-
-type externalCodeError struct{}
-
-func (externalCodeError) Error() string     { return "external" }
-func (externalCodeError) ErrorCode() string { return "EXTERNAL_CODE" }

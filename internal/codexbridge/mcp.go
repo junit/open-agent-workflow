@@ -4,27 +4,23 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"strings"
-	"unicode"
-	"unicode/utf8"
 
 	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/wifibaby4u/open-agent-workflow/internal/coordinator"
-	"github.com/wifibaby4u/open-agent-workflow/internal/core"
 )
 
 const privateHookContextField = "_oaw_host_context"
 
 func NewMCPServer(service *Service, version string) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "oaw-codex-bridge", Version: version}, nil)
-	server.AddTool(closedTool[ObserveCurrentInput, ObserveCurrentOutput]("observe_current", "Observe the current Codex Host facts", true), service.observeTool)
-	server.AddTool(closedTool[CoreInspectInput, CoreInspectOutput]("core_inspect", "Inspect verified Providers and Profile eligibility", true), service.inspectTool)
-	server.AddTool(closedTool[CoreCompileInput, core.LifecycleBundle]("core_compile", "Compile one explicit Lifecycle Bundle", true), service.compileTool)
-	server.AddTool(closedTool[WorkflowExchangeInput, coordinator.Result]("workflow_exchange", "Exchange one Coordinator command", false), service.workflowTool)
+	server.AddTool(
+		closedTool[ObserveProfileInput, ObserveProfileOutput](
+			"observe_profile", "Issue an Assurance Overlay from current Codex Binding observations",
+		),
+		service.observeProfileTool,
+	)
 	return server
 }
 
@@ -32,12 +28,12 @@ func ServeStdio(ctx context.Context, service *Service, version string) error {
 	return NewMCPServer(service, version).Run(ctx, &mcp.StdioTransport{})
 }
 
-func closedTool[Input, Output any](name, description string, readOnly bool) *mcp.Tool {
+func closedTool[Input, Output any](name, description string) *mcp.Tool {
 	closedWorld := false
 	return &mcp.Tool{
 		Name: name, Description: description,
 		InputSchema: closedSchema[Input](), OutputSchema: closedSchema[Output](),
-		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: readOnly, OpenWorldHint: &closedWorld},
+		Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true, OpenWorldHint: &closedWorld},
 	}
 }
 
@@ -74,56 +70,20 @@ func closeObjectSchemas(value any) {
 	}
 }
 
-func (service *Service) observeTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (service *Service) observeProfileTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	public, hostContext, err := observeArguments(request)
 	if err != nil {
-		return service.toolError(err, HostEvidenceHandle{}), nil
+		return toolError(err), nil
 	}
-	input, err := DecodeObserveCurrentInput(public)
+	input, err := DecodeObserveProfileInput(public)
 	if err != nil {
-		return service.toolError(err, HostEvidenceHandle{}), nil
+		return toolError(err), nil
 	}
-	output, err := service.ObserveCurrent(ctx, input, hostContext)
+	output, err := service.ObserveProfile(ctx, input, hostContext)
 	if err != nil {
-		return service.toolError(err, HostEvidenceHandle{}), nil
+		return toolError(err), nil
 	}
-	return successfulToolResult(output, "Observed current Codex Host facts."), nil
-}
-
-func (service *Service) inspectTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	input, err := DecodeCoreInspectInput(rawToolArguments(request))
-	if err != nil {
-		return service.toolError(err, HostEvidenceHandle{}), nil
-	}
-	output, err := service.CoreInspect(ctx, input)
-	if err != nil {
-		return service.toolError(err, input.HostEvidenceHandle), nil
-	}
-	return successfulToolResult(output, "Inspected current Provider and Profile eligibility."), nil
-}
-
-func (service *Service) compileTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	input, err := DecodeCoreCompileInput(rawToolArguments(request))
-	if err != nil {
-		return service.toolError(err, HostEvidenceHandle{}), nil
-	}
-	output, err := service.CoreCompile(ctx, input)
-	if err != nil {
-		return service.toolError(err, input.HostEvidenceHandle), nil
-	}
-	return successfulToolResult(output, "Compiled the selected Lifecycle Bundle."), nil
-}
-
-func (service *Service) workflowTool(ctx context.Context, request *mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	input, err := DecodeWorkflowExchangeInput(rawToolArguments(request))
-	if err != nil {
-		return service.toolError(err, HostEvidenceHandle{}), nil
-	}
-	output, err := service.WorkflowExchange(ctx, input)
-	if err != nil {
-		return service.toolError(err, input.HostEvidenceHandle), nil
-	}
-	return successfulToolResult(output, "Processed the Workflow Coordinator command."), nil
+	return successfulToolResult(output, "Issued an Assurance Overlay from current Codex Binding observations."), nil
 }
 
 func observeArguments(request *mcp.CallToolRequest) ([]byte, HookContext, error) {
@@ -131,11 +91,11 @@ func observeArguments(request *mcp.CallToolRequest) ([]byte, HookContext, error)
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	var fields map[string]json.RawMessage
 	if err := decoder.Decode(&fields); err != nil {
-		return nil, HookContext{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "observe_current arguments are malformed", err)
+		return nil, HookContext{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "observe_profile arguments are malformed", err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
-		return nil, HookContext{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "observe_current has trailing arguments", err)
+		return nil, HookContext{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "observe_profile has trailing arguments", err)
 	}
 	contextRaw, found := fields[privateHookContextField]
 	if !found {
@@ -143,29 +103,17 @@ func observeArguments(request *mcp.CallToolRequest) ([]byte, HookContext, error)
 	}
 	delete(fields, privateHookContextField)
 	hostContext, err := decodePublicInput[HookContext](contextRaw)
-	if err != nil || !validInjectedHookContext(hostContext) {
+	if err != nil {
+		return nil, HookContext{}, NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "trusted Hook context is malformed", err)
+	}
+	if err := ValidateHookContext(hostContext); err != nil {
 		return nil, HookContext{}, NewError("HOST_BRIDGE_CONTEXT_REQUIRED", "trusted Hook context is malformed", err)
 	}
 	public, err := json.Marshal(fields)
 	if err != nil {
-		return nil, HookContext{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "observe_current arguments cannot be projected", err)
+		return nil, HookContext{}, NewError("HOST_BRIDGE_PROTOCOL_MISMATCH", "observe_profile arguments cannot be projected", err)
 	}
 	return public, hostContext, nil
-}
-
-func validInjectedHookContext(value HookContext) bool {
-	if value.SchemaVersion != HookContextSchemaV2 || value.BridgeProtocolVersion != BridgeProtocolVersion {
-		return false
-	}
-	if _, _, err := ContextDigestHeaders(value); err != nil {
-		return false
-	}
-	for _, field := range []string{value.TurnID, value.ToolUseID, value.Model, value.PermissionMode} {
-		if !utf8.ValidString(field) || field == "" || len(field) > 4096 || strings.IndexFunc(field, unicode.IsControl) >= 0 {
-			return false
-		}
-	}
-	return true
 }
 
 func rawToolArguments(request *mcp.CallToolRequest) []byte {
@@ -181,14 +129,8 @@ func successfulToolResult(output any, summary string) *mcp.CallToolResult {
 	}
 }
 
-func (service *Service) toolError(err error, handle HostEvidenceHandle) *mcp.CallToolResult {
-	evidenceDigest := ""
-	if handle.Token != "" {
-		if facts, getErr := service.getFacts(handle); getErr == nil {
-			evidenceDigest = facts.FactDigests.Session
-		}
-	}
-	diagnostic := ProjectDiagnostic(normalizeToolError(err), evidenceDigest, true)
+func toolError(err error) *mcp.CallToolResult {
+	diagnostic := ProjectDiagnostic(normalizeToolError(err))
 	text := diagnostic.Code + ": " + diagnostic.Detail + ". Recovery: " + diagnostic.RecoveryAction
 	return &mcp.CallToolResult{
 		Content: []mcp.Content{&mcp.TextContent{Text: text}}, StructuredContent: diagnostic, IsError: true,
@@ -199,12 +141,5 @@ func normalizeToolError(err error) error {
 	if err == nil || Code(err) != "" {
 		return err
 	}
-	if code := coordinator.ErrorCode(err); code != "" {
-		return NewError(code, "Workflow Coordinator rejected the operation", err)
-	}
-	var coreErr *core.Error
-	if errors.As(err, &coreErr) && coreErr.Code != "" {
-		return NewError(coreErr.Code, "OAW Core rejected the operation", err)
-	}
-	return NewError("HOST_BRIDGE_OPERATION_FAILED", "Bridge operation failed", err)
+	return NewError("HOST_BRIDGE_OPERATION_FAILED", "Bridge observation failed", err)
 }

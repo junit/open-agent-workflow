@@ -81,7 +81,7 @@ func TestInstallRollsBackMarketplaceWhenPluginAddFails(t *testing.T) {
 	if _, statErr := os.Stat(environment.StateFile); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Fatalf("state remains: %v", statErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(environment.DataRoot, "bin", "oaw")); !errors.Is(statErr, fs.ErrNotExist) {
+	if _, statErr := os.Stat(filepath.Join(environment.DataRoot, "bin", "oaw-bridge")); !errors.Is(statErr, fs.ErrNotExist) {
 		t.Fatalf("managed binary remains: %v", statErr)
 	}
 }
@@ -163,13 +163,13 @@ func TestManagedPayloadInspectionRejectsUnsafeFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer root.Close()
-	if err := writeNewRootFile(root, "bin/oaw", []byte("binary"), 0o700); err != nil {
+	if err := writeNewRootFile(root, "bin/oaw-bridge", []byte("binary"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if err := ensureRootDirectories(root, "marketplace"); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink("../bin/oaw", filepath.Join(environment.DataRoot, "marketplace", "linked")); err != nil {
+	if err := os.Symlink("../bin/oaw-bridge", filepath.Join(environment.DataRoot, "marketplace", "linked")); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := listPayloadFiles(root); Code(err) != "BRIDGE_INSTALL_PATH_UNSAFE" {
@@ -209,7 +209,7 @@ func TestInstallPreservesRecoveryStateWhenRollbackCommandFails(t *testing.T) {
 	if _, stateErr := ReadState(environment); stateErr != nil {
 		t.Fatalf("recovery state missing: %v", stateErr)
 	}
-	if _, statErr := os.Stat(filepath.Join(environment.DataRoot, "bin", "oaw")); statErr != nil {
+	if _, statErr := os.Stat(filepath.Join(environment.DataRoot, "bin", "oaw-bridge")); statErr != nil {
 		t.Fatalf("recovery files missing: %v", statErr)
 	}
 }

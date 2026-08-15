@@ -12,20 +12,20 @@ import (
 
 const (
 	testMarketplace = "oaw-local"
-	testPlugin      = "oaw-codex-host"
+	testPlugin      = "oaw-codex-assurance"
 	testVersion     = "1.0.0"
 )
 
 var expectedRenderedPaths = []string{
 	".agents/plugins/marketplace.json",
-	"plugins/oaw-codex-host/.codex-plugin/plugin.json",
-	"plugins/oaw-codex-host/.mcp.json",
-	"plugins/oaw-codex-host/hooks/hooks.json",
-	"plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md",
+	"plugins/oaw-codex-assurance/.codex-plugin/plugin.json",
+	"plugins/oaw-codex-assurance/.mcp.json",
+	"plugins/oaw-codex-assurance/hooks/hooks.json",
+	"plugins/oaw-codex-assurance/skills/oaw-codex-bridge/SKILL.md",
 }
 
 func TestRenderPluginHasExactSurface(t *testing.T) {
-	files, err := Render(validRenderOptions("/state/bin/oaw"))
+	files, err := Render(validRenderOptions("/state/bin/oaw-bridge"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,24 +41,23 @@ func TestRenderPluginHasExactSurface(t *testing.T) {
 		}
 	}
 
-	assertPluginManifest(t, files["plugins/oaw-codex-host/.codex-plugin/plugin.json"])
-	assertDirectMCPMap(t, files["plugins/oaw-codex-host/.mcp.json"], "/state/bin/oaw")
-	assertExactMatchers(t, files["plugins/oaw-codex-host/hooks/hooks.json"], quotePOSIX("/state/bin/oaw")+" bridge hook codex")
-	skill := string(files["plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md"])
+	assertPluginManifest(t, files["plugins/oaw-codex-assurance/.codex-plugin/plugin.json"])
+	assertDirectMCPMap(t, files["plugins/oaw-codex-assurance/.mcp.json"], "/state/bin/oaw-bridge")
+	assertExactMatchers(t, files["plugins/oaw-codex-assurance/hooks/hooks.json"], quotePOSIX("/state/bin/oaw-bridge")+" hook codex")
+	skill := string(files["plugins/oaw-codex-assurance/skills/oaw-codex-bridge/SKILL.md"])
 	for _, required := range []string{
-		"Startup Gate selection",
-		"cooperative same-user evidence",
-		"does not",
-		"authenticate Hook provenance",
-		"hand-authored JSON",
-		"with copied Host fields",
+		"optional current Codex Binding assurance",
+		"Assurance Overlay",
+		"does not select or run",
+		"hand-authored Hook JSON",
+		"machine claim",
 	} {
 		if !strings.Contains(skill, required) {
 			t.Fatalf("Bridge Skill is missing trust-boundary text %q", required)
 		}
 	}
-	if strings.Contains(skill, "already selected Open Agent Workflow") {
-		t.Fatal("Bridge Skill trigger excludes Startup Gate selection")
+	if strings.Contains(skill, "core_compile") || strings.Contains(skill, "workflow_exchange") {
+		t.Fatal("Bridge Skill retains machine workflow operations")
 	}
 	assertMarketplaceSource(t, files[".agents/plugins/marketplace.json"])
 }
@@ -108,52 +107,43 @@ func TestRenderEscapesBinaryPathForJSONAndHookShell(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	assertDirectMCPMap(t, files["plugins/oaw-codex-host/.mcp.json"], binary)
-	assertExactMatchers(t, files["plugins/oaw-codex-host/hooks/hooks.json"], quotePOSIX(binary)+" bridge hook codex")
+	assertDirectMCPMap(t, files["plugins/oaw-codex-assurance/.mcp.json"], binary)
+	assertExactMatchers(t, files["plugins/oaw-codex-assurance/hooks/hooks.json"], quotePOSIX(binary)+" hook codex")
 }
 
 func TestRenderedProjectionRejectsEverySurfaceDrift(t *testing.T) {
-	options := validRenderOptions("/state/bin/oaw")
-	hookCommand := quotePOSIX(options.Binary) + " bridge hook codex"
+	options := validRenderOptions("/state/bin/oaw-bridge")
+	hookCommand := quotePOSIX(options.Binary) + " hook codex"
 	tests := []struct {
 		name   string
 		mutate func(map[string][]byte)
 	}{
 		{name: "manifest", mutate: func(files map[string][]byte) {
-			path := "plugins/oaw-codex-host/.codex-plugin/plugin.json"
+			path := "plugins/oaw-codex-assurance/.codex-plugin/plugin.json"
 			files[path] = bytes.Replace(files[path], []byte(`"./skills/"`), []byte(`"./other/"`), 1)
 		}},
 		{name: "mcp", mutate: func(files map[string][]byte) {
-			path := "plugins/oaw-codex-host/.mcp.json"
-			files[path] = bytes.Replace(files[path], []byte(`"bridge", "serve", "codex"`), []byte(`"bridge", "serve", "other"`), 1)
+			path := "plugins/oaw-codex-assurance/.mcp.json"
+			files[path] = bytes.Replace(files[path], []byte(`"serve", "codex"`), []byte(`"serve", "other"`), 1)
 		}},
 		{name: "hooks", mutate: func(files map[string][]byte) {
-			path := "plugins/oaw-codex-host/hooks/hooks.json"
+			path := "plugins/oaw-codex-assurance/hooks/hooks.json"
 			var document hookDocument
 			if err := json.Unmarshal(files[path], &document); err != nil {
 				t.Fatal(err)
 			}
-			document.Hooks.PreToolUse = document.Hooks.PreToolUse[:3]
-			files[path], _ = json.Marshal(document)
-		}},
-		{name: "subagent start hook", mutate: func(files map[string][]byte) {
-			path := "plugins/oaw-codex-host/hooks/hooks.json"
-			var document hookDocument
-			if err := json.Unmarshal(files[path], &document); err != nil {
-				t.Fatal(err)
-			}
-			document.Hooks.SubagentStart = nil
+			document.Hooks.PreToolUse = nil
 			files[path], _ = json.Marshal(document)
 		}},
 		{name: "marketplace", mutate: func(files map[string][]byte) {
 			path := ".agents/plugins/marketplace.json"
-			files[path] = bytes.Replace(files[path], []byte(`"./plugins/oaw-codex-host"`), []byte(`"./plugins/other"`), 1)
+			files[path] = bytes.Replace(files[path], []byte(`"./plugins/oaw-codex-assurance"`), []byte(`"./plugins/other"`), 1)
 		}},
 		{name: "skill", mutate: func(files map[string][]byte) {
-			files["plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md"] = nil
+			files["plugins/oaw-codex-assurance/skills/oaw-codex-bridge/SKILL.md"] = nil
 		}},
 		{name: "unknown manifest field", mutate: func(files map[string][]byte) {
-			path := "plugins/oaw-codex-host/.codex-plugin/plugin.json"
+			path := "plugins/oaw-codex-assurance/.codex-plugin/plugin.json"
 			files[path] = bytes.Replace(files[path], []byte("{"), []byte(`{"unknown":true,`), 1)
 		}},
 	}
@@ -245,7 +235,7 @@ func assertDirectMCPMap(t *testing.T, content []byte, binary string) {
 	if !ok {
 		t.Fatalf("MCP server oaw_codex_bridge missing: %#v", servers)
 	}
-	if server.Command != binary || !slices.Equal(server.Args, []string{"bridge", "serve", "codex"}) || server.CWD != "." || len(server.EnvVars) != 0 {
+	if server.Command != binary || !slices.Equal(server.Args, []string{"serve", "codex"}) || server.CWD != "." || len(server.EnvVars) != 0 {
 		t.Fatalf("MCP server = %#v", server)
 	}
 }
@@ -261,8 +251,7 @@ func assertExactMatchers(t *testing.T, content []byte, command string) {
 		Hooks   []handlerProjection `json:"hooks"`
 	}
 	type hooksProjection struct {
-		PreToolUse    []matcherProjection `json:"PreToolUse"`
-		SubagentStart []matcherProjection `json:"SubagentStart"`
+		PreToolUse []matcherProjection `json:"PreToolUse"`
 	}
 	type documentProjection struct {
 		Hooks hooksProjection `json:"hooks"`
@@ -270,12 +259,7 @@ func assertExactMatchers(t *testing.T, content []byte, command string) {
 	var document documentProjection
 	decodeClosedJSON(t, content, &document)
 
-	want := []string{
-		"mcp__oaw_codex_bridge__observe_current",
-		"mcp__oaw_codex_bridge__core_inspect",
-		"mcp__oaw_codex_bridge__core_compile",
-		"mcp__oaw_codex_bridge__workflow_exchange",
-	}
+	want := []string{"mcp__oaw_codex_bridge__observe_profile"}
 	got := make([]string, 0, len(document.Hooks.PreToolUse))
 	for _, matcher := range document.Hooks.PreToolUse {
 		got = append(got, matcher.Matcher)
@@ -285,11 +269,6 @@ func assertExactMatchers(t *testing.T, content []byte, command string) {
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("PreToolUse matchers = %q, want %q", got, want)
-	}
-	if len(document.Hooks.SubagentStart) != 1 || document.Hooks.SubagentStart[0].Matcher != "*" ||
-		len(document.Hooks.SubagentStart[0].Hooks) != 1 || document.Hooks.SubagentStart[0].Hooks[0].Type != "command" ||
-		document.Hooks.SubagentStart[0].Hooks[0].Command != command {
-		t.Fatalf("SubagentStart hook = %#v", document.Hooks.SubagentStart)
 	}
 }
 
@@ -314,7 +293,7 @@ func assertMarketplaceSource(t *testing.T, content []byte) {
 		t.Fatalf("marketplace = %#v", marketplace)
 	}
 	plugin := marketplace.Plugins[0]
-	if plugin.Name != testPlugin || plugin.Source.Source != "local" || plugin.Source.Path != "./plugins/oaw-codex-host" || plugin.Version != testVersion {
+	if plugin.Name != testPlugin || plugin.Source.Source != "local" || plugin.Source.Path != "./plugins/oaw-codex-assurance" || plugin.Version != testVersion {
 		t.Fatalf("marketplace plugin = %#v", plugin)
 	}
 }

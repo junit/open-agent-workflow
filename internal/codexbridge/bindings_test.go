@@ -6,7 +6,6 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/wifibaby4u/open-agent-workflow/internal/builtin"
 	"github.com/wifibaby4u/open-agent-workflow/internal/catalog"
 	"github.com/wifibaby4u/open-agent-workflow/internal/codexbridge/appserver"
 	"github.com/wifibaby4u/open-agent-workflow/internal/discovery"
@@ -144,17 +143,6 @@ func TestBuildBindingInventoryAggregatesRepeatedSkillDiagnosticsWithOwnership(t 
 	}
 	if !slices.Equal(diagnostics[0].AffectedProviders, []string{"acme/suite"}) {
 		t.Fatalf("affected providers=%q", diagnostics[0].AffectedProviders)
-	}
-}
-
-func TestDiagnosticOwnershipIncludesProfilesForKnownProvider(t *testing.T) {
-	value, err := builtin.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	providers, profiles := diagnosticOwnership(value, []string{"oaw/superpowers"})
-	if !slices.Equal(providers, []string{"oaw/superpowers"}) || !slices.Equal(profiles, []string{"MATT-SP-HYBRID", "SP-FULL"}) {
-		t.Fatalf("providers=%q profiles=%q", providers, profiles)
 	}
 }
 

@@ -38,8 +38,11 @@ replace = false
 	if !found || loaded.Digest != integration.Digest {
 		t.Fatalf("HostIntegration() = %#v, %t", loaded, found)
 	}
-	if got := len(snapshot.HostIntegrations()); got != 11 {
-		t.Fatalf("HostIntegrations() count = %d, want 11", got)
+	if got := len(snapshot.HostIntegrations()); got != 10 {
+		t.Fatalf("HostIntegrations() count = %d, want 10", got)
+	}
+	if _, found := snapshot.HostIntegration("oaw/codex-host"); found {
+		t.Fatal("retired default Bridge Host Integration is still present")
 	}
 	loaded.Manifest.SupportedTopologies[0] = execution.TopologySubagent
 	fresh, found := snapshot.HostIntegration("acme/codex-policy")

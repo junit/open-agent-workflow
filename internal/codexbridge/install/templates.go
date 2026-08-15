@@ -18,7 +18,7 @@ import (
 
 const (
 	MarketplaceName = "oaw-local"
-	PluginName      = "oaw-codex-host"
+	PluginName      = "oaw-codex-assurance"
 )
 
 var (
@@ -28,16 +28,13 @@ var (
 		target string
 	}{
 		{source: ".agents/plugins/marketplace.json", target: ".agents/plugins/marketplace.json"},
-		{source: ".codex-plugin/plugin.json", target: "plugins/oaw-codex-host/.codex-plugin/plugin.json"},
-		{source: ".mcp.json", target: "plugins/oaw-codex-host/.mcp.json"},
-		{source: "hooks/hooks.json", target: "plugins/oaw-codex-host/hooks/hooks.json"},
-		{source: "skills/oaw-codex-bridge/SKILL.md", target: "plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md"},
+		{source: ".codex-plugin/plugin.json", target: "plugins/oaw-codex-assurance/.codex-plugin/plugin.json"},
+		{source: ".mcp.json", target: "plugins/oaw-codex-assurance/.mcp.json"},
+		{source: "hooks/hooks.json", target: "plugins/oaw-codex-assurance/hooks/hooks.json"},
+		{source: "skills/oaw-codex-bridge/SKILL.md", target: "plugins/oaw-codex-assurance/skills/oaw-codex-bridge/SKILL.md"},
 	}
 	expectedHookMatchers = []string{
-		"mcp__oaw_codex_bridge__observe_current",
-		"mcp__oaw_codex_bridge__core_inspect",
-		"mcp__oaw_codex_bridge__core_compile",
-		"mcp__oaw_codex_bridge__workflow_exchange",
+		"mcp__oaw_codex_bridge__observe_profile",
 	}
 )
 
@@ -88,7 +85,7 @@ func Render(options RenderOptions) (map[string][]byte, error) {
 		return nil, installError("BRIDGE_INSTALL_UNSUPPORTED", "Codex Hook command rendering is not verified on Windows", nil)
 	}
 
-	hookCommand := quotePOSIX(options.Binary) + " bridge hook codex"
+	hookCommand := quotePOSIX(options.Binary) + " hook codex"
 	replacements := map[string]string{
 		"{{OAW_BINARY}}":       options.Binary,
 		"{{OAW_HOOK_COMMAND}}": hookCommand,
@@ -186,8 +183,7 @@ type hookMatcher struct {
 }
 
 type hookEvents struct {
-	PreToolUse    []hookMatcher `json:"PreToolUse"`
-	SubagentStart []hookMatcher `json:"SubagentStart"`
+	PreToolUse []hookMatcher `json:"PreToolUse"`
 }
 
 type hookDocument struct {
@@ -212,7 +208,7 @@ type marketplaceManifest struct {
 
 func validateRenderedFiles(files map[string][]byte, options RenderOptions, hookCommand string) error {
 	manifest := pluginManifest{}
-	if err := decodeClosed(files["plugins/oaw-codex-host/.codex-plugin/plugin.json"], &manifest); err != nil {
+	if err := decodeClosed(files["plugins/oaw-codex-assurance/.codex-plugin/plugin.json"], &manifest); err != nil {
 		return invalidTemplate("decode Plugin manifest", err)
 	}
 	if manifest.Name != options.Plugin || manifest.Version != options.Version || manifest.Description == "" ||
@@ -222,31 +218,26 @@ func validateRenderedFiles(files map[string][]byte, options RenderOptions, hookC
 	}
 
 	servers := map[string]mcpServer{}
-	if err := decodeClosed(files["plugins/oaw-codex-host/.mcp.json"], &servers); err != nil {
+	if err := decodeClosed(files["plugins/oaw-codex-assurance/.mcp.json"], &servers); err != nil {
 		return invalidTemplate("decode MCP server map", err)
 	}
 	server, ok := servers["oaw_codex_bridge"]
-	if !ok || len(servers) != 1 || server.Command != options.Binary || !slices.Equal(server.Args, []string{"bridge", "serve", "codex"}) || server.CWD != "." || len(server.EnvVars) != 0 {
+	if !ok || len(servers) != 1 || server.Command != options.Binary || !slices.Equal(server.Args, []string{"serve", "codex"}) || server.CWD != "." || len(server.EnvVars) != 0 {
 		return invalidTemplate("MCP server map does not match the locked Bridge surface", nil)
 	}
 
 	hooks := hookDocument{}
-	if err := decodeClosed(files["plugins/oaw-codex-host/hooks/hooks.json"], &hooks); err != nil {
+	if err := decodeClosed(files["plugins/oaw-codex-assurance/hooks/hooks.json"], &hooks); err != nil {
 		return invalidTemplate("decode Hook configuration", err)
 	}
 	if len(hooks.Hooks.PreToolUse) != len(expectedHookMatchers) {
-		return invalidTemplate("Hook configuration must contain exactly four PreToolUse matchers", nil)
+		return invalidTemplate("Hook configuration must contain exactly one PreToolUse matcher", nil)
 	}
 	for index, matcher := range hooks.Hooks.PreToolUse {
 		if matcher.Matcher != expectedHookMatchers[index] || len(matcher.Hooks) != 1 || matcher.Hooks[0].Type != "command" || matcher.Hooks[0].Command != hookCommand {
 			return invalidTemplate("Hook matcher does not match the locked Bridge surface", nil)
 		}
 	}
-	if len(hooks.Hooks.SubagentStart) != 1 || hooks.Hooks.SubagentStart[0].Matcher != "*" || len(hooks.Hooks.SubagentStart[0].Hooks) != 1 ||
-		hooks.Hooks.SubagentStart[0].Hooks[0].Type != "command" || hooks.Hooks.SubagentStart[0].Hooks[0].Command != hookCommand {
-		return invalidTemplate("Hook configuration must contain the locked SubagentStart matcher", nil)
-	}
-
 	marketplace := marketplaceManifest{}
 	if err := decodeClosed(files[".agents/plugins/marketplace.json"], &marketplace); err != nil {
 		return invalidTemplate("decode marketplace manifest", err)
@@ -255,10 +246,10 @@ func validateRenderedFiles(files map[string][]byte, options RenderOptions, hookC
 		return invalidTemplate("marketplace identity does not match the locked Bridge surface", nil)
 	}
 	entry := marketplace.Plugins[0]
-	if entry.Name != options.Plugin || entry.Source.Source != "local" || entry.Source.Path != "./plugins/oaw-codex-host" || entry.Version != options.Version {
+	if entry.Name != options.Plugin || entry.Source.Source != "local" || entry.Source.Path != "./plugins/oaw-codex-assurance" || entry.Version != options.Version {
 		return invalidTemplate("marketplace Plugin does not match the locked Bridge surface", nil)
 	}
-	if len(files["plugins/oaw-codex-host/skills/oaw-codex-bridge/SKILL.md"]) == 0 {
+	if len(files["plugins/oaw-codex-assurance/skills/oaw-codex-bridge/SKILL.md"]) == 0 {
 		return invalidTemplate("Bridge Skill must not be empty", nil)
 	}
 	return nil

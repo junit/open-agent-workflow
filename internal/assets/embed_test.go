@@ -1,14 +1,9 @@
 package assets
 
 import (
-	"bytes"
 	"encoding/json"
 	"io/fs"
-	"strings"
 	"testing"
-
-	"github.com/wifibaby4u/open-agent-workflow/internal/canonicaljson"
-	"github.com/wifibaby4u/open-agent-workflow/internal/host"
 )
 
 func TestEmbeddedSchemasHaveStableMetadata(t *testing.T) {
@@ -124,56 +119,6 @@ func TestWorkflowSnapshotV2RequiresRuntimeProjectionFields(t *testing.T) {
 		"project_status", "project_reason", "settings", "provider_installations", "bounded_capability_defaults",
 		"required_providers", "recommended_providers", "untrusted_provider_ids", "host_integrations", "digest",
 	})
-}
-
-func TestEmbeddedCodexHostEvidenceCarriesActiveConformanceV4(t *testing.T) {
-	transcriptRaw, err := fs.ReadFile(FS(), "conformance/codex-host-v3.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var transcript host.ConformanceTranscript
-	if err := json.Unmarshal(transcriptRaw, &transcript); err != nil {
-		t.Fatal(err)
-	}
-	if transcript.SchemaVersion != host.HostConformanceTranscriptSchemaV4 || len(transcript.Receipts) == 0 ||
-		transcript.Receipts[0].SchemaVersion != host.HostInvocationReceiptSchemaV3 {
-		t.Fatalf("expected active Host v3 / Conformance v4 evidence, got %#v", transcript)
-	}
-	rebuiltTranscript, err := host.NewConformanceTranscript(transcript)
-	if err != nil || !bytes.Equal(transcriptRaw, canonicalAssetBytes(t, rebuiltTranscript)) {
-		t.Fatalf("active embedded Transcript is invalid: %v", err)
-	}
-
-	// The v1 audit remains historical evidence only and is not active authority.
-	auditRaw, err := fs.ReadFile(FS(), "audits/codex-host-v1.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var audit host.AuditEvidence
-	if err := json.Unmarshal(auditRaw, &audit); err != nil {
-		t.Fatal(err)
-	}
-	rebuiltAudit, err := host.NewAuditEvidence(audit)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if rebuiltAudit.Status != host.AuditPassed || !bytes.Equal(auditRaw, canonicalAssetBytes(t, rebuiltAudit)) {
-		t.Fatalf("embedded Codex audit is not canonical: %#v", rebuiltAudit)
-	}
-	for _, reference := range rebuiltAudit.References {
-		if !strings.HasPrefix(reference.Reference, "repo://") {
-			t.Fatalf("audit reference is not repository-relative: %q", reference.Reference)
-		}
-	}
-}
-
-func canonicalAssetBytes(t *testing.T, value any) []byte {
-	t.Helper()
-	raw, err := canonicaljson.Marshal(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return append(raw, '\n')
 }
 
 func assertClosedObjects(t *testing.T, path string, value any) {

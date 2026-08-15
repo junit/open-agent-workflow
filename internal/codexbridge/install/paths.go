@@ -322,7 +322,7 @@ func validateStateBinding(environment Environment, state InstallState) error {
 	if err := ValidateEnvironment(environment); err != nil {
 		return err
 	}
-	if state.BinaryPath != filepath.Join(environment.DataRoot, "bin", "oaw") ||
+	if state.BinaryPath != filepath.Join(environment.DataRoot, "bin", "oaw-bridge") ||
 		state.MarketplacePath != filepath.Join(environment.DataRoot, "marketplace") {
 		return invalidState("install state coordinates are outside the OAW data root", nil)
 	}

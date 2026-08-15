@@ -377,22 +377,23 @@ sandbox.
 
 The Agent Host owns physical execution authority. A Lifecycle Bundle,
 Capability Grant, or Resource Lease expresses logical workflow authority only.
-Codex has a policy integration by default and a separate audited host-native
-Bridge at `oaw/codex-host` that must be explicitly installed and trusted. The
-Bridge supports `CURRENT` and `skill` bindings only; all other Host surfaces
-remain unknown unless the Host reports stable evidence.
+Codex has a Policy integration by default. The separately built `oaw-bridge`
+is optional Machine Assurance, not a host-native Workflow path. It can issue an
+Assurance Overlay for exact current Skill Bindings without selecting a Profile
+or changing lifecycle ownership.
 
-For a Codex Host-native Workflow, the evidence path is:
+The optional evidence path is independent from execution:
 
 ```text
-observe_current -> Core inspect -> explicit Startup Gate
-                -> Core compile / Coordinator START
-                -> current Codex session executes Skills and tools
+Markdown Profile -> rule-driven Policy lifecycle
+       |
+       +-> observe_profile -> Assurance Overlay for exact Skill Bindings
 ```
 
-Other built-in integrations remain policy surfaces unless their own Host-native
-integration is explicitly installed and verified. None of these logical
-records transfer physical execution authority from the Agent Host.
+Bridge absence or failure removes only the Overlay. Other built-in integrations
+remain Policy surfaces unless their own Host-native integration is explicitly
+installed and verified. None of these logical records transfer physical
+execution authority from the Agent Host.
 
 ## Matt-Superpowers Composition Notes
 

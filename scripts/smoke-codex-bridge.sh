@@ -48,11 +48,13 @@ require_json_help marketplace-add plugin marketplace add
 require_json_help marketplace-list plugin marketplace list
 require_json_help marketplace-remove plugin marketplace remove
 
-(cd "$REPOSITORY" && go run ./cmd/oaw bridge check codex --format json) \
+(cd "$REPOSITORY" && go run ./cmd/oaw-bridge check codex --format json) \
   >"$SMOKE_TEMP/bridge-check.json" || fail 'Bridge management check failed'
 grep -F '"current_session_loaded":false' "$SMOKE_TEMP/bridge-check.json" >/dev/null ||
   fail 'Bridge management check inferred a loaded current session'
 
+(cd "$REPOSITORY" && bash tests/17-codex-bridge-management-test.sh) ||
+  fail 'standalone Bridge management smoke failed'
 (cd "$REPOSITORY" && bash tests/18-codex-bridge-protocol-test.sh) ||
   fail 'fake-transcript protocol smoke failed'
 

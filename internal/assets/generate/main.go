@@ -16,9 +16,7 @@ func main() {
 }
 
 func generateActiveAssets(root string) error {
-	// The v4 cutover has one active Host generator. Historical audit and
-	// superseded schema assets are intentionally not regeneration inputs.
-	generators := [...]func(string) error{generateCodexHost}
+	generators := [...]func(string) error{generatePolicyIntegrations}
 	for _, generate := range generators {
 		if err := generate(root); err != nil {
 			return err

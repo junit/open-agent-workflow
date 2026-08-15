@@ -54,7 +54,7 @@ docker run --rm --network none --read-only \
   --mount "type=bind,src=$MODULE_CACHE,dst=/go/pkg/mod,readonly" \
   --mount "type=bind,src=$REPOSITORY,dst=/src,readonly" \
   -w /src \
-  "$IMAGE" sh -c 'go test -mod=readonly ./internal/codexbridge/... ./internal/integration'
+  "$IMAGE" sh -c 'go test -mod=readonly ./cmd/oaw-bridge ./internal/assurance ./internal/bridgecli ./internal/codexbridge/... ./internal/profileinspect ./internal/integration'
 DOCKER_STATUS=$?
 set -e
 

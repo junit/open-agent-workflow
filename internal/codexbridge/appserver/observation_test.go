@@ -12,37 +12,24 @@ import (
 	"time"
 )
 
-func TestClientUsesOnlyAllowlistedMetadataMethods(t *testing.T) {
+func TestClientObservesOnlyCurrentSkillMetadata(t *testing.T) {
 	transport := newTranscriptTransport(t, "complete.jsonl")
 	client := NewClient(ClientOptions{Transport: transport, MaximumMessageBytes: 8 << 20, RequestTimeout: time.Second})
 	got, err := client.Observe(context.Background(), "/repo")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(got.Methods, []string{"config/read", "hooks/list", "skills/list"}) {
-		t.Fatalf("methods = %#v", got.Methods)
-	}
-	if requested := requestMethods(transport.Requests()); !slices.Equal(requested, []string{"initialize", "skills/list", "hooks/list", "config/read"}) {
+	if requested := requestMethods(transport.Requests()); !slices.Equal(requested, []string{"initialize", "skills/list"}) {
 		t.Fatalf("requested methods = %#v", requested)
 	}
-	if got.Config.SandboxDisposition != "host-configured" || got.Config.MCPDisposition != "host-configured" ||
-		got.Config.HookDisposition != "host-configured" || got.Config.ApprovalDisposition != "host-configured" || !got.Config.CWDObserved {
-		t.Fatalf("config projection = %#v", got.Config)
-	}
-	raw, err := json.Marshal(got.Hooks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, forbidden := range [][]byte{[]byte("discarded-command"), []byte("private-hook"), []byte("private-warning"), []byte("fixture-private")} {
-		if bytes.Contains(raw, forbidden) {
-			t.Fatalf("Hook projection retained private metadata: %s", raw)
-		}
+	if got.CodexVersion != "codex-cli/0.146.1" || got.Skills.CWD != "/repo" || len(got.Skills.Skills) != 1 {
+		t.Fatalf("observation = %#v", got)
 	}
 	observationRaw, err := json.Marshal(got)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, inferred := range [][]byte{[]byte(`"roles"`), []byte(`"agents"`), []byte(`"delegation"`), []byte(`"tools"`)} {
+	for _, inferred := range [][]byte{[]byte(`"hooks"`), []byte(`"config"`), []byte(`"roles"`), []byte(`"agents"`), []byte(`"delegation"`), []byte(`"tools"`)} {
 		if bytes.Contains(observationRaw, inferred) {
 			t.Fatalf("stable metadata projection inferred unsupported surface %s: %s", inferred, observationRaw)
 		}
@@ -62,54 +49,6 @@ func TestObserveSendsExactCWDAndForceReload(t *testing.T) {
 	}
 	if !bytes.Contains(raw, []byte(`"cwds":["/repo"]`)) || !bytes.Contains(raw, []byte(`"forceReload":true`)) {
 		t.Fatalf("skills request = %s", raw)
-	}
-	hooks := findRequest(t, transport.Requests(), "hooks/list")
-	raw, err = json.Marshal(hooks.Params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(raw, []byte(`"cwds":["/repo"]`)) {
-		t.Fatalf("hooks request = %s", raw)
-	}
-	config := findRequest(t, transport.Requests(), "config/read")
-	raw, err = json.Marshal(config.Params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Contains(raw, []byte(`"cwd":"/repo"`)) || !bytes.Contains(raw, []byte(`"includeLayers":false`)) {
-		t.Fatalf("config request = %s", raw)
-	}
-}
-
-func TestConfigProjectionDropsSecrets(t *testing.T) {
-	projection, err := ProjectConfig(map[string]any{
-		"mcp_servers":     map[string]any{"private_setting": "fixture-value"},
-		"approval_policy": "ask",
-		"sandbox_mode":    "workspace-write",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	raw, err := json.Marshal(projection)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if bytes.Contains(raw, []byte("fixture-value")) || bytes.Contains(raw, []byte("mcp_servers")) || bytes.Contains(raw, []byte("workspace-write")) {
-		t.Fatalf("secret or raw config leaked: %s", raw)
-	}
-}
-
-func TestObserveKeepsOptionalFailuresPartial(t *testing.T) {
-	transport := newTranscriptTransport(t, "partial.jsonl")
-	observation, err := NewClient(ClientOptions{Transport: transport}).Observe(context.Background(), "/repo")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(observation.Methods, []string{"skills/list"}) || len(observation.Diagnostics) != 2 || !hasObservationDiagnostic(observation.Diagnostics, "HOST_OBSERVATION_PARTIAL") {
-		t.Fatalf("observation=%#v", observation)
-	}
-	if observation.Config.MCPDisposition != "unknown" || observation.Hooks.CWD != "/repo" || len(observation.Hooks.Errors) != 1 {
-		t.Fatalf("optional projections were not normalized: %#v", observation)
 	}
 }
 
@@ -231,10 +170,6 @@ func metadataResponse(request Request) []byte {
 		result = json.RawMessage(`{"userAgent":"codex-cli/0.146.1","codexHome":"/host/.codex","platformFamily":"unix","platformOs":"macos"}`)
 	case "skills/list":
 		result = json.RawMessage(`{"data":[{"cwd":"/repo","errors":[],"skills":[{"name":"acme:review","enabled":true,"path":"/plugins/acme/skills/review/SKILL.md","scope":"user","description":"ignored"}]}]}`)
-	case "hooks/list":
-		result = json.RawMessage(`{"data":[{"cwd":"/repo","errors":[],"warnings":["warning at /private-warning/config"],"hooks":[{"currentHash":"abc","enabled":true,"eventName":"preToolUse","pluginId":"oaw-codex-host","source":"plugin","trustStatus":"trusted","command":"discarded","displayOrder":0,"handlerType":"command","isManaged":false,"key":"oaw","sourcePath":"/private/hook.json","timeoutSec":10}]}]}`)
-	case "config/read":
-		result = json.RawMessage(`{"config":{"mcp_servers":{"private_setting":"fixture-value"},"features":{"hooks":true},"approval_policy":"ask","sandbox_mode":"workspace-write"},"origins":{}}`)
 	default:
 		panic("unexpected method " + request.Method)
 	}
@@ -250,8 +185,4 @@ func findRequest(t *testing.T, requests []Request, method string) Request {
 	}
 	t.Fatalf("request %q not found", method)
 	return Request{}
-}
-
-func hasObservationDiagnostic(values []ObservationDiagnostic, code string) bool {
-	return slices.ContainsFunc(values, func(value ObservationDiagnostic) bool { return value.Code == code })
 }

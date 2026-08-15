@@ -4,7 +4,28 @@ All notable changes to Open Agent Workflow will be documented in this file.
 
 ## [Unreleased]
 
-No changes have been recorded after the fixed `0.1.0` source baseline.
+#### Added
+
+- A separately built `oaw-bridge` executable with its own Codex Plugin
+  installation lifecycle, diagnostics, tests, and v3 `observe_profile` MCP
+  protocol.
+- Content-addressed `oaw.assurance-overlay/v1` issuance and verification for
+  exact Skill Bindings declared by one source-qualified Markdown Profile.
+
+#### Changed
+
+- Codex Bridge is now an optional Assurance integration. The default `oaw`
+  executable, installer, Policy integrations, Core, and Coordinator neither
+  install nor depend on it.
+- Bridge observation is read-only and limited to Codex `skills/list`; a
+  missing, revoked, failed, or incomplete Bridge cannot veto the no-Bridge
+  rule-driven Policy path.
+
+#### Removed
+
+- The legacy Bridge Core/Coordinator proxy operations, evidence handles,
+  lifecycle Bundles, Receipts, Leases, delegation observations, and default
+  `oaw/codex-host` host-native integration.
 
 ## [0.1.0] - 2026-08-14
 

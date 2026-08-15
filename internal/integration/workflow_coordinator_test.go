@@ -30,10 +30,7 @@ func TestWorkflowCoordinatorVerticalSliceNeverInvokesHostBinding(t *testing.T) {
 	providerDocument := testProviderDocument(t, "acme/suite", digestIntegrationTree(t, skillRoot), digestIntegrationTree(t, providerRoot))
 	snapshot, _, _, projectRoot := buildTrustedFixture(t, providerDocument)
 	stateRoot := filepath.Join(t.TempDir(), "workflows")
-	integration, found := snapshot.HostIntegration("oaw/codex-host")
-	if !found {
-		t.Fatal("built-in Codex Host integration missing")
-	}
+	integration := workflowTestHostIntegration(t)
 
 	discovered, err := discovery.Discover(snapshot.Catalog(), discovery.Options{HostID: "codex", UserHome: home})
 	if err != nil {
@@ -85,6 +82,25 @@ func TestWorkflowCoordinatorVerticalSliceNeverInvokesHostBinding(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Coordinator invoked a Host binding or process: %v", err)
+	}
+}
+
+func workflowTestHostIntegration(t *testing.T) host.IntegrationRecord {
+	t.Helper()
+	manifest, err := host.NewManifest(host.Manifest{
+		SchemaVersion: host.HostManifestSchemaV3, ManifestVersion: "1.0.0", HostID: "codex",
+		ControlSurface: host.SurfaceHostNative, Protocols: []string{host.WorkflowProtocolV1},
+		BindingKinds:        []catalog.BindingKind{catalog.BindingSkill},
+		SupportedTopologies: []execution.Topology{execution.TopologyCurrent},
+		Features:            []host.Feature{host.FeatureEnvironmentReporting, host.FeatureNormalizedReceipts, host.FeatureProviderBindingInventory},
+		DelegationFeatures:  []host.FeatureID{}, HostActions: []host.HostActionContract{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return host.IntegrationRecord{
+		SchemaVersion: host.HostIntegrationSchemaV3, IntegrationVersion: "1.0.0", ID: "test/codex-host",
+		Manifest: manifest, ManifestDigest: manifest.Digest,
 	}
 }
 

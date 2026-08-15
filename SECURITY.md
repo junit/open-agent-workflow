@@ -57,6 +57,22 @@ destructive filesystem, credential, deployment, data mutation, or Git
 authority, and cannot impersonate Core or Coordinator records. Physical effects
 remain subject to normal Host controls and user approval.
 
+## Optional Assurance Bridge Boundary
+
+The default `oaw` executable and installer do not build, install, manage, or
+depend on Bridge. `oaw-bridge` is a separately built optional Codex component
+whose v3 protocol exposes only `observe_profile`. A missing, revoked, failed,
+or incomplete Bridge removes only its optional Assurance Overlay and cannot
+veto selection or rule-driven use of a Markdown Policy Profile.
+
+Bridge reads only current Codex `skills/list` metadata needed to match exact
+Skill Bindings and asks the standalone Assurance module to issue a secret-free,
+content-addressed Overlay. It does not call Core or the Workflow Coordinator,
+invoke a Skill, attest completion or delegation, grant Host permission, or
+enforce a sandbox. Its PreToolUse context is cooperative Host input rather than
+a cryptographic signature. The Agent Host may independently refuse physical
+invocation under its own security policy.
+
 ## Handling Reports
 
 Maintainers should reproduce in isolated roots, avoid exposing reporter data,

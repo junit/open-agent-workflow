@@ -32,16 +32,18 @@ the registry order shown above. Unsupported user-scope extension adapters are
 
 ## Host Integration Surfaces
 
-Adapter installation and Host execution are separate concerns. Codex exposes
-`oaw/codex-policy` by default and the separate audited `oaw/codex-host`
-host-native Bridge as an explicit opt-in. The Bridge supports `CURRENT` and
-`skill` bindings only. All other built-in targets remain policy surfaces unless
-their own Host-native integration is explicitly installed and verified.
+Adapter installation and Host execution are separate concerns. Every default
+target, including `oaw/codex-policy`, is a Policy surface. The separately built
+`oaw-bridge` is an optional Assurance integration and is absent from the
+default Host Integration set. It observes exact current Codex Skill Bindings
+for one Markdown Profile; it does not turn the Codex Policy adapter into a
+host-native workflow integration.
 
-The Codex Bridge is not inferred from the `codex` target adapter. It must be
-installed and trusted separately, and it reports current-session facts only
-after a trusted Hook observation. A host-native integration is an explicit Host
-feature, not a property inferred from a target name.
+The Assurance Bridge is never inferred from the `codex` target adapter. It has
+its own executable, installation lifecycle, Plugin, Hook, tests, and
+documentation. Removing or failing it removes only its optional Assurance
+Overlay. A host-native workflow integration would require a separate explicit
+Host contract.
 
 `CURRENT` means the active Agent session remains unchanged. `SUBAGENT` means the
 active Agent Host creates a child through its native Subagent facility. Its
@@ -66,11 +68,11 @@ closed.
 Binding kinds are `skill`, `agent`, `role`, and `instruction`. Skills, Claude
 custom Agents, Codex Roles, Instructions, Hooks, and tools never substitute for
 one another. Static adapter or multi-agent metadata can be `host-configured`;
-it cannot report live delegation as available. Current Codex observation proves
-`skill`/`CURRENT`; a valid official `SubagentStart` event followed by a fresh
-observation may additionally prove only `child-delegation` for that exact
-session/CWD. Other kinds, parallel/nested delegation, and actions require a
-separate stable Host API.
+it cannot report live delegation as available. Current `oaw-bridge` observation
+can claim only exact `skill` Bindings referenced by the selected Markdown
+Profile. It does not attest `CURRENT`, child or nested-child delegation, Host
+actions, receipts, or workflow execution. Those require a separate stable Host
+API and contract.
 
 The Host may report `inherited`, `host-configured`, `restricted`, `unknown`, or
 `unavailable` environment observations. A Receipt is evidence of what the Host

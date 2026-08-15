@@ -335,7 +335,7 @@ func testEnvironment(t *testing.T) Environment {
 func stateForEnvironment(t *testing.T, environment Environment) InstallState {
 	t.Helper()
 	state := validInstallState(t)
-	state.BinaryPath = filepath.Join(environment.DataRoot, "bin", "oaw")
+	state.BinaryPath = filepath.Join(environment.DataRoot, "bin", "oaw-bridge")
 	state.MarketplacePath = filepath.Join(environment.DataRoot, "marketplace")
 	return state
 }
@@ -346,13 +346,13 @@ func validInstallState(t *testing.T) InstallState {
 	return InstallState{
 		SchemaVersion:   InstallStateSchemaV1,
 		BridgeVersion:   testVersion,
-		BinaryPath:      filepath.Join(root, "data", "bin", "oaw"),
+		BinaryPath:      filepath.Join(root, "data", "bin", "oaw-bridge"),
 		BinaryDigest:    strings.Repeat("a", 64),
 		MarketplacePath: filepath.Join(root, "data", "marketplace"),
 		MarketplaceName: MarketplaceName,
 		PluginName:      PluginName,
 		Files: []OwnedFile{
-			{Path: "plugins/oaw-codex-host/.mcp.json", Digest: strings.Repeat("b", 64), Mode: 0o600},
+			{Path: "plugins/oaw-codex-assurance/.mcp.json", Digest: strings.Repeat("b", 64), Mode: 0o600},
 		},
 		CodexPluginID: PluginName + "@" + MarketplaceName,
 		InstalledAt:   "2026-08-07T12:00:00Z",

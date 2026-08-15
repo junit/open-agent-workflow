@@ -124,8 +124,8 @@ func TestListPluginsParsesOnlyIdentityAndStatus(t *testing.T) {
 	runner := &recordingRunner{Results: map[string]CLIResult{
 		"plugin list": {Stdout: []byte(`{
 			"installed":[{
-				"pluginId":"oaw-codex-host@oaw-local",
-				"name":"oaw-codex-host",
+				"pluginId":"oaw-codex-assurance@oaw-local",
+				"name":"oaw-codex-assurance",
 				"marketplaceName":"oaw-local",
 				"version":"1.0.0",
 				"installed":true,
