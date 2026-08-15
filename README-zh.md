@@ -353,6 +353,7 @@ vendor、patch、更新、删除、许可或静默替换 provider 内容。Agent
 | 生命周期 | [English](docs/en/lifecycle.md) | [中文](docs/zh/lifecycle.md) |
 | 架构 | [English](docs/en/architecture.md) | [中文](docs/zh/architecture.md) |
 | 安装器 | [English](docs/en/installer.md) | [中文](docs/zh/installer.md) |
+| 机器保证 | [English](docs/en/machine-assurance.md) | [中文](docs/zh/machine-assurance.md) |
 | Codex Host Bridge | [English](docs/en/codex-bridge.md) | [中文](docs/zh/codex-bridge.md) |
 | 适配器 | [English](docs/en/adapters.md) | [中文](docs/zh/adapters.md) |
 | 扩展适配器 | [English](docs/en/extending-adapters.md) | [中文](docs/zh/extending-adapters.md) |

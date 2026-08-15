@@ -419,6 +419,7 @@ func cloneProfile(profile Profile) Profile {
 		responsibilities[responsibility] = action
 	}
 	profile.Metadata.Responsibilities = responsibilities
+	profile.Metadata.Occurrences = append([]oaw.ProfileOccurrence(nil), profile.Metadata.Occurrences...)
 	return profile
 }
 

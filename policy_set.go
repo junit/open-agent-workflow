@@ -2,7 +2,9 @@ package oaw
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"fmt"
 	"io/fs"
 	"path"
@@ -51,6 +53,15 @@ type PolicyProfile struct {
 	ID               string
 	Name             string
 	Responsibilities map[Responsibility]string
+	Occurrences      []ProfileOccurrence
+}
+
+// ProfileOccurrence is an ordered, derived locator for one backtick reference
+// in a Profile Responsibility assignment. The Markdown body remains normative.
+type ProfileOccurrence struct {
+	Ref            string
+	Responsibility Responsibility
+	Reference      string
 }
 
 //go:embed policy/POLICY.md policy/cooperative-protocol.md policy/profiles/*.md policy/adapters/*.md
@@ -105,11 +116,12 @@ func InspectPolicyProfile(profilePath string, content []byte) (PolicyProfile, []
 		return PolicyProfile{}, nil, fmt.Errorf("Profile %q: frontmatter field name contains control characters", profilePath)
 	}
 
-	responsibilities, warnings := inspectResponsibilities(body)
+	responsibilities, occurrences, warnings := inspectResponsibilities(body)
 	return PolicyProfile{
 		ID:               metadata.ID,
 		Name:             metadata.Name,
 		Responsibilities: responsibilities,
+		Occurrences:      occurrences,
 	}, warnings, nil
 }
 
@@ -231,15 +243,16 @@ func splitProfileDocument(content []byte) (profileMetadata, string, error) {
 }
 
 func parseResponsibilities(body string) (map[Responsibility]string, error) {
-	result, warnings := inspectResponsibilities(body)
+	result, _, warnings := inspectResponsibilities(body)
 	if len(warnings) != 0 {
 		return nil, fmt.Errorf("%s", warnings[0])
 	}
 	return result, nil
 }
 
-func inspectResponsibilities(body string) (map[Responsibility]string, []string) {
+func inspectResponsibilities(body string) (map[Responsibility]string, []ProfileOccurrence, []string) {
 	result := make(map[Responsibility]string)
+	var occurrences []ProfileOccurrence
 	var warnings []string
 	inSection := false
 	for _, rawLine := range strings.Split(body, "\n") {
@@ -277,8 +290,48 @@ func inspectResponsibilities(body string) (map[Responsibility]string, []string) 
 			continue
 		}
 		result[responsibility] = action
+		for index, reference := range inlineCodeReferences(action) {
+			occurrences = append(occurrences, ProfileOccurrence{
+				Ref:            profileOccurrenceRef(responsibility, index, reference),
+				Responsibility: responsibility,
+				Reference:      reference,
+			})
+		}
 	}
-	return result, warnings
+	return result, occurrences, warnings
+}
+
+func inlineCodeReferences(value string) []string {
+	var result []string
+	for index := 0; index < len(value); {
+		if value[index] != '`' || index > 0 && value[index-1] == '\\' {
+			index++
+			continue
+		}
+		run := 1
+		for index+run < len(value) && value[index+run] == '`' {
+			run++
+		}
+		delimiter := strings.Repeat("`", run)
+		contentStart := index + run
+		relativeEnd := strings.Index(value[contentStart:], delimiter)
+		if relativeEnd < 0 {
+			break
+		}
+		contentEnd := contentStart + relativeEnd
+		reference := strings.TrimSpace(value[contentStart:contentEnd])
+		if reference != "" {
+			result = append(result, reference)
+		}
+		index = contentEnd + run
+	}
+	return result
+}
+
+func profileOccurrenceRef(responsibility Responsibility, index int, reference string) string {
+	payload := fmt.Sprintf("oaw.profile-occurrence/v1\x00%s\x00%d\x00%s", responsibility, index, reference)
+	digest := sha256.Sum256([]byte(payload))
+	return "profile-occurrence:sha256:" + hex.EncodeToString(digest[:])
 }
 
 func canonicalResponsibility(value string) (Responsibility, bool) {

@@ -109,6 +109,38 @@ func TestInspectPolicyProfileKeepsResponsibilityDiagnosticsAdvisory(t *testing.T
 	}
 }
 
+func TestInspectPolicyProfileDerivesOrderedReferenceOccurrences(t *testing.T) {
+	content := []byte("---\nid: ordered\nname: Ordered\n---\n\n## Responsibilities\n\n| Responsibility | Skill or action |\n| --- | --- |\n| Problem framing | `skill-a`, then `skill-b` |\n| Implementation and TDD | `skill-a` |\n\n## Rules\n\n- `not-a-responsibility-reference` remains normative prose.\n")
+	profile, warnings, err := InspectPolicyProfile("ordered.md", content)
+	if err != nil || len(warnings) != 0 {
+		t.Fatalf("InspectPolicyProfile() = %#v, %q, %v", profile, warnings, err)
+	}
+	wantReferences := []string{"skill-a", "skill-b", "skill-a"}
+	gotReferences := make([]string, 0, len(profile.Occurrences))
+	seenRefs := make(map[string]bool)
+	for _, occurrence := range profile.Occurrences {
+		gotReferences = append(gotReferences, occurrence.Reference)
+		if !strings.HasPrefix(occurrence.Ref, "profile-occurrence:sha256:") {
+			t.Errorf("occurrence Ref = %q", occurrence.Ref)
+		}
+		if seenRefs[occurrence.Ref] {
+			t.Errorf("duplicate occurrence Ref %q", occurrence.Ref)
+		}
+		seenRefs[occurrence.Ref] = true
+	}
+	if !slices.Equal(gotReferences, wantReferences) {
+		t.Fatalf("occurrence references = %q, want %q", gotReferences, wantReferences)
+	}
+	if profile.Occurrences[0].Responsibility != ProblemFraming ||
+		profile.Occurrences[2].Responsibility != ImplementationAndTDD {
+		t.Fatalf("occurrence Responsibilities = %#v", profile.Occurrences)
+	}
+	again, _, err := InspectPolicyProfile("ordered.md", bytes.Clone(content))
+	if err != nil || !slices.Equal(profile.Occurrences, again.Occurrences) {
+		t.Fatalf("occurrences are not deterministic: %#v, %#v, %v", profile.Occurrences, again.Occurrences, err)
+	}
+}
+
 func TestInspectPolicyProfileRejectsMalformedRequiredMetadata(t *testing.T) {
 	for _, content := range [][]byte{
 		[]byte("# no frontmatter\n"),

@@ -79,6 +79,7 @@ docs/en/comparison.md|docs/zh/comparison.md
 docs/en/lifecycle.md|docs/zh/lifecycle.md
 docs/en/architecture.md|docs/zh/architecture.md
 docs/en/installer.md|docs/zh/installer.md
+docs/en/machine-assurance.md|docs/zh/machine-assurance.md
 docs/en/codex-bridge.md|docs/zh/codex-bridge.md
 docs/en/adapters.md|docs/zh/adapters.md
 docs/en/extending-adapters.md|docs/zh/extending-adapters.md
@@ -594,6 +595,7 @@ assert_executable scripts/check-docs.sh
 assert_contains scripts/check-docs.sh "README.md|README-zh.md"
 assert_contains scripts/check-docs.sh "docs/en/background.md|docs/zh/background.md"
 assert_contains scripts/check-docs.sh "docs/en/extending-adapters.md|docs/zh/extending-adapters.md"
+assert_contains scripts/check-docs.sh "docs/en/machine-assurance.md|docs/zh/machine-assurance.md"
 assert_contains scripts/check-docs.sh "docs/en/codex-bridge.md|docs/zh/codex-bridge.md"
 assert_contains scripts/check-docs.sh "for command in check install update uninstall"
 assert_contains scripts/check-docs.sh "experience-based"

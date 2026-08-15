@@ -397,6 +397,7 @@ guides are being completed as part of the local v0.1 documentation ticket:
 | Lifecycle | [English](docs/en/lifecycle.md) | [中文](docs/zh/lifecycle.md) |
 | Architecture | [English](docs/en/architecture.md) | [中文](docs/zh/architecture.md) |
 | Installer | [English](docs/en/installer.md) | [中文](docs/zh/installer.md) |
+| Machine Assurance | [English](docs/en/machine-assurance.md) | [中文](docs/zh/machine-assurance.md) |
 | Codex Host Bridge | [English](docs/en/codex-bridge.md) | [中文](docs/zh/codex-bridge.md) |
 | Adapters | [English](docs/en/adapters.md) | [中文](docs/zh/adapters.md) |
 | Extending adapters | [English](docs/en/extending-adapters.md) | [中文](docs/zh/extending-adapters.md) |

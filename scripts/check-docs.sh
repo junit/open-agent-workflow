@@ -57,6 +57,7 @@ docs/en/comparison.md|docs/zh/comparison.md
 docs/en/lifecycle.md|docs/zh/lifecycle.md
 docs/en/architecture.md|docs/zh/architecture.md
 docs/en/installer.md|docs/zh/installer.md
+docs/en/machine-assurance.md|docs/zh/machine-assurance.md
 docs/en/codex-bridge.md|docs/zh/codex-bridge.md
 docs/en/adapters.md|docs/zh/adapters.md
 docs/en/extending-adapters.md|docs/zh/extending-adapters.md
