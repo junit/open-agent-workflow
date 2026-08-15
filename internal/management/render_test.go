@@ -9,7 +9,7 @@ import (
 func TestRenderTargetMatchesBashBytes(t *testing.T) {
 	policyPath := "/config path/`policy`/POLICY.md"
 	prefix := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. "
-	suffix := " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+	suffix := " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit ends OAW governance for that deliverable.\n"
 	userRouter := prefix + "On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `" + policyPath + "` as the User Policy Set." + suffix
 	projectRouter := prefix + "On explicit activation, read `" + policyPath + "` as the Project Policy Set and do not read or merge the User Policy Set." + suffix
 	tests := []struct {
@@ -71,7 +71,7 @@ func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
 				"ordinary Skill invocation do not activate OAW",
 				"Apply the selected Policy Set only to that deliverable",
 				"Related follow-ups inherit activation; unrelated requests remain native",
-				"explicit exit closes the OAW Engagement",
+				"explicit exit ends OAW governance for that deliverable",
 			} {
 				if !strings.Contains(text, required) {
 					t.Fatalf("%s/%s omits %q: %q", target.scope, target.id, required, text)
@@ -111,7 +111,7 @@ func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `/config/POLICY.md` as the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit closes the OAW Engagement.\n"
+	router := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `/config/POLICY.md` as the User Policy Set. Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit ends OAW governance for that deliverable.\n"
 	want := "<!-- BEGIN OPEN AGENT WORKFLOW -->\n" +
 		router +
 		"<!-- END OPEN AGENT WORKFLOW -->\n"

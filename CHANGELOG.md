@@ -2,7 +2,11 @@
 
 All notable changes to Open Agent Workflow will be documented in this file.
 
-## [Unreleased]
+## [0.1.0] - 2026-08-15
+
+This is the fixed static Policy Profile release baseline. The Policy Set,
+built-in and Custom Profile contract, optional Assurance components, and
+installation behavior described below are the current product behavior.
 
 #### Added
 
@@ -52,11 +56,10 @@ All notable changes to Open Agent Workflow will be documented in this file.
   audit command. Provider JSON identity catalogs remain available to optional
   Assurance and Bridge paths.
 
-## [0.1.0] - 2026-08-14
+## [0.1.0-pre-refactor] - 2026-08-14
 
-The `0.1.0` source baseline is fixed at this repository state. It is prepared
-for a local version commit but is not published and has no remote release or
-tag created by this change.
+This section records the superseded pre-release runtime architecture. It was
+never published and is retained only to explain the hard-cut removal below.
 
 #### Added
 
@@ -141,10 +144,9 @@ product section that names them:
   migration imports policy-only tasks or Profile locks.
 - The Agent Host retains physical execution authority. The Workflow Coordinator
   records no credentials or private extension configuration.
-- The source version is fixed at `0.1.0`, but this change does not publish a
-  release. Available native and Docker smoke must pass; unavailable platform
-  checks return 77 and do not block release readiness. Remote publication and
-  tag creation still require separate owner approval.
+- This pre-release architecture was not a published release and has no
+  compatibility or migration obligation. Its runtime and machine-backed
+  contracts were removed before the static Policy baseline was fixed.
 - Without Bridge, Policy execution supports only the current Host session and
   cannot claim a verified Provider Instance, Lifecycle Bundle, Capability
   Grant, Resource Lease, Host Receipt, atomic revision, idempotency, or
