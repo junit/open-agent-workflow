@@ -3,6 +3,8 @@ package management
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 )
 
 type scope string
@@ -12,7 +14,41 @@ const activationRouterPrefix = "Open Agent Workflow is opt-in. Unless the curren
 
 const activationRouterSuffix = " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit ends OAW governance for that deliverable.\n"
 
-func renderTarget(id targetID, operationScope scope, policyPath string) ([]byte, error) {
+func renderArtifact(id targetID, artifactID string, operationScope scope, policyPath string) ([]byte, error) {
+	candidate, targetFound := findTarget(string(id))
+	artifact, found := findTargetArtifact(string(id), artifactID)
+	if !targetFound || !found {
+		return nil, &Error{Status: 69, Message: fmt.Sprintf("no renderer for %s target '%s' artifact '%s'", operationScope, id, artifactID)}
+	}
+	if !targetSupportsScope(candidate, string(operationScope)) {
+		return nil, &Error{Status: 69, Message: fmt.Sprintf("no renderer for %s target '%s' artifact '%s'", operationScope, id, artifactID)}
+	}
+	if policyPath == "" || hasControl(policyPath) {
+		return nil, integrityError("policy path cannot be rendered")
+	}
+	if artifact.ID == routerArtifactID {
+		return renderRouterTarget(id, operationScope, policyPath)
+	}
+	switch artifact.Kind {
+	case skillArtifactKind:
+		return renderSkillDispatcher(string(id))
+	case geminiCommandArtifactKind:
+		return renderGeminiCommand()
+	case commandArtifactKind:
+		return renderCommandDispatcher(string(id))
+	case workflowArtifactKind:
+		return renderWorkflowDispatcher()
+	case codexPolicyArtifactKind:
+		if string(id) != "codex" || artifact.ID != nativePolicyArtifactID {
+			return nil, &Error{Status: 69, Message: fmt.Sprintf("no renderer for %s target '%s' artifact '%s'", operationScope, id, artifactID)}
+		}
+		return renderCodexPolicyMetadata()
+	default:
+		return nil, &Error{Status: 69, Message: fmt.Sprintf("no renderer for %s target '%s' artifact '%s'", operationScope, id, artifactID)}
+	}
+}
+
+func renderRouterTarget(id targetID, operationScope scope, policyPath string) ([]byte, error) {
 	var rendered string
 	switch string(operationScope) + ":" + string(id) {
 	case "user:claude", "project:claude", "user:codex", "user:gemini", "project:gemini", "user:opencode":
@@ -31,16 +67,93 @@ func renderTarget(id targetID, operationScope scope, policyPath string) ([]byte,
 	return []byte(rendered), nil
 }
 
+func renderSkillDispatcher(id string) ([]byte, error) {
+	header := "---\nname: oaw\ndescription: Explicitly activate the current OAW Policy for a user-requested deliverable.\n"
+	switch id {
+	case "claude":
+		header += "argument-hint: \"[PROFILE] <task>\"\nuser-invocable: true\ndisable-model-invocation: true\n"
+	case "codex":
+		// Codex uses agents/openai.yaml for implicit-invocation policy.
+	case "cursor":
+		header += "disable-model-invocation: true\n"
+	case "copilot":
+		header += "argument-hint: \"[PROFILE] <task>\"\ndisable-model-invocation: true\n"
+	case "cline":
+		// Cline's current Skill format has no disable-model-invocation field.
+	default:
+		return nil, &Error{Status: 69, Message: "no Skill renderer for target '" + id + "'"}
+	}
+	header += "---\n\n"
+	body := renderNativeDispatcher("$ARGUMENTS")
+	if id == "codex" || id == "cursor" || id == "cline" || id == "copilot" {
+		body = renderNativeDispatcher("the remainder of this user request")
+	}
+	return []byte(header + body), nil
+}
+
+func renderGeminiCommand() ([]byte, error) {
+	body := renderNativeDispatcher("{{args}}")
+	return []byte("description = \"Explicitly activate the current OAW Policy for a user-requested deliverable.\"\n" +
+		"prompt = " + strconv.Quote(body) + "\n"), nil
+}
+
+func renderCommandDispatcher(id string) ([]byte, error) {
+	arguments := "the remainder of this user request"
+	metadata := "description: Explicitly activate the current OAW Policy for a user-requested deliverable.\n"
+	if id == "opencode" {
+		arguments = "$ARGUMENTS"
+	} else if id == "roo" {
+		metadata += "argument-hint: \"[PROFILE] <task>\"\n"
+	} else {
+		return nil, &Error{Status: 69, Message: "no Command renderer for target '" + id + "'"}
+	}
+	return []byte("---\n" + metadata + "---\n\n" +
+		renderNativeDispatcher(arguments)), nil
+}
+
+func renderWorkflowDispatcher() ([]byte, error) {
+	return []byte(renderNativeDispatcher("the remainder of this user request")), nil
+}
+
+func renderCodexPolicyMetadata() ([]byte, error) {
+	return []byte("interface:\n  display_name: \"Open Agent Workflow\"\n  short_description: \"Explicitly activate the current OAW Policy\"\npolicy:\n  allow_implicit_invocation: false\n"), nil
+}
+
+func renderNativeDispatcher(arguments string) string {
+	return "Activate OAW only when the current top-level user request itself contains a literal `/oaw` or `$oaw`, explicitly asks to use OAW in natural language, or provides reliable Host metadata that the user, not the model, selected this entrypoint. Invocation or loading of this entrypoint alone is not evidence of user intent. If none of those conditions holds, do not activate OAW and continue as the native Host.\n\n" +
+		"Follow the current OAW Activation Router to select and read one Policy Set. Do not embed or infer a Policy path here.\n\n" +
+		"Pass the optional Profile and task from the invocation to the current Policy and Router. Do not choose a default Profile, lifecycle stages, approval gates, Skills, tools, or permissions here.\n\n" +
+		"Invocation arguments: " + arguments + "\n"
+}
+
 func renderActivationRouter(operationScope scope, policyPath string) string {
-	selection := fmt.Sprintf("On explicit activation, read `%s` as the Project Policy Set and do not read or merge the User Policy Set.", policyPath)
+	policyReference := markdownCodeSpan(policyPath)
+	selection := fmt.Sprintf("On explicit activation, read %s as the Project Policy Set and do not read or merge the User Policy Set.", policyReference)
 	if operationScope == "user" {
-		selection = fmt.Sprintf("On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `%s` as the User Policy Set.", policyPath)
+		selection = fmt.Sprintf("On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read %s as the User Policy Set.", policyReference)
 	}
 	return activationRouterPrefix + selection + activationRouterSuffix
 }
 
+func markdownCodeSpan(value string) string {
+	longestRun := 0
+	currentRun := 0
+	for _, character := range value {
+		if character == '`' {
+			currentRun++
+			if currentRun > longestRun {
+				longestRun = currentRun
+			}
+			continue
+		}
+		currentRun = 0
+	}
+	delimiter := strings.Repeat("`", longestRun+1)
+	return delimiter + value + delimiter
+}
+
 func renderManagedBlock(id targetID, operationScope scope, policyPath string) ([]byte, error) {
-	body, err := renderTarget(id, operationScope, policyPath)
+	body, err := renderArtifact(id, routerArtifactID, operationScope, policyPath)
 	if err != nil {
 		return nil, err
 	}

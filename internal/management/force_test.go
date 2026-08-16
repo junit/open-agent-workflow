@@ -44,6 +44,36 @@ func TestPrepareUpdateForcePlansRecoveryBackup(t *testing.T) {
 	}
 }
 
+func TestPrepareUpdateForceBacksUpDriftedNativeEntrypoint(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+	native := installed.targetActions[1]
+	if native.label != "claude/native-entrypoint" {
+		t.Fatalf("native action = %#v", native)
+	}
+	if err := os.WriteFile(native.destination, []byte("drifted dispatcher\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prepared, err := prepareUpdateWithoutWrites(
+		t, fixture.root, fixture.source, fixture.environment,
+		UpdateRequest{Targets: "claude", Force: true},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if prepared.plan.terminal.status != 0 || !prepared.plan.backup.required {
+		t.Fatalf("forced native recovery plan = %#v", prepared.plan)
+	}
+	want := []string{native.destination, installed.stateActions[0].destination}
+	if got := backupCandidateOriginals(prepared.plan.backup.candidates); !reflect.DeepEqual(got, want) {
+		t.Fatalf("native backup candidates = %v, want %v", got, want)
+	}
+	if len(prepared.plan.targetActions) != 2 || !bytes.Equal(prepared.plan.targetActions[1].data, native.data) {
+		t.Fatalf("native recovery actions = %#v", prepared.plan.targetActions)
+	}
+}
+
 func TestPrepareUpdateForceRepairsSingleMissingMarker(t *testing.T) {
 	for _, missing := range []string{"begin", "end"} {
 		t.Run(missing, func(t *testing.T) {
@@ -271,7 +301,10 @@ func TestPrepareUninstallForceBacksUpFinalArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{installed.policyAction.destination, target}
+	want := []string{installed.policyAction.destination}
+	for _, action := range installed.targetActions {
+		want = append(want, action.destination)
+	}
 	for _, action := range installed.policySetActions {
 		want = append(want, action.destination)
 	}
@@ -279,8 +312,13 @@ func TestPrepareUninstallForceBacksUpFinalArtifacts(t *testing.T) {
 	if got := backupCandidateOriginals(prepared.plan.backup.candidates); !reflect.DeepEqual(got, want) {
 		t.Fatalf("uninstall candidates = %v, want %v", got, want)
 	}
-	if prepared.plan.backup.operation != "uninstall" || prepared.plan.targetActions[0].effect != mutationRemove {
+	if prepared.plan.backup.operation != "uninstall" || len(prepared.plan.targetActions) != len(installed.targetActions) {
 		t.Fatalf("plan = %#v", prepared.plan)
+	}
+	for _, action := range prepared.plan.targetActions {
+		if action.effect != mutationRemove {
+			t.Fatalf("target action was not removed: %#v", action)
+		}
 	}
 }
 
@@ -305,10 +343,26 @@ func TestPrepareMutationForceRejectsUnsafeAndUnselectedDrift(t *testing.T) {
 		}
 	})
 
-	t.Run("selected file missing", func(t *testing.T) {
+	t.Run("selected Router file missing", func(t *testing.T) {
 		fixture := newPrepareFixture(t)
 		installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
 		if err := os.Remove(installed.targetActions[0].destination); err != nil {
+			t.Fatal(err)
+		}
+		_, err := prepareUpdateWithoutWrites(t, fixture.root, fixture.source, fixture.environment, UpdateRequest{Targets: "claude", Force: true})
+		if err == nil || !strings.Contains(err.Error(), "forced target has no recoverable file") {
+			t.Fatalf("error = %v", err)
+		}
+	})
+
+	t.Run("selected owned file missing", func(t *testing.T) {
+		fixture := newPrepareFixture(t)
+		installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+		native := installed.targetActions[1]
+		if native.label != "claude/native-entrypoint" {
+			t.Fatalf("native action = %#v", native)
+		}
+		if err := os.Remove(native.destination); err != nil {
 			t.Fatal(err)
 		}
 		_, err := prepareUpdateWithoutWrites(t, fixture.root, fixture.source, fixture.environment, UpdateRequest{Targets: "claude", Force: true})

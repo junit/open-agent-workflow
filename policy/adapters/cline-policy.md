@@ -27,6 +27,25 @@ For Profile discovery, use these source-qualified locations:
 Use Built-in Profiles only from the selected Policy Set. Keep every Custom
 Profile's source qualifier and never merge same-ID Profiles.
 
+## Explicit Native Entrypoint
+
+Cline recognizes `~/.cline/skills/oaw/SKILL.md` at user scope. The OAW project
+target installs its optional thin dispatcher at `.cline/skills/oaw/SKILL.md`.
+Invoke it as `/oaw` and keep the optional Profile and task in the same user
+request. Cline does not define a portable dispatcher argument-expansion macro.
+
+A user-entered `/oaw` is explicit OAW activation. Cline may also match Skills
+from their descriptions and does not expose a documented per-Skill manual-only
+field, so automatic matching, `use_skill` selection by the model, listing, or
+loading of `oaw` must not activate OAW. The dispatcher must check for explicit
+user intent because invocation alone is not proof. It follows the current
+Activation Router, contains no Policy path, and must not supply a default
+Profile, lifecycle stages, or approval rules. Natural-language activation
+remains equivalent.
+
+Use a new Cline task or reload the active context after installing or changing
+the dispatcher before relying on fresh discovery.
+
 ## Skill Discovery And Invocation
 
 Use Cline's Skills panel, `use_skill` tool, or `/skill-name` invocation first.

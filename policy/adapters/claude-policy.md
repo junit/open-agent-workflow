@@ -32,6 +32,27 @@ Custom Profiles remain candidates in either case, with their source identity
 preserved. Never merge same-ID Profiles or let a Custom Profile shadow a
 Built-in ID.
 
+## Explicit Native Entrypoint
+
+The optional thin dispatcher uses `~/.claude/skills/oaw/SKILL.md` at user scope
+or `.claude/skills/oaw/SKILL.md` at project scope. Invoke it as
+`/oaw [PROFILE] <request>`. Claude expands trailing text through `$ARGUMENTS`,
+so the dispatcher can carry the user's optional Profile and task without
+defining either one.
+
+The dispatcher must set `disable-model-invocation: true`. A user-entered
+`/oaw` is explicit OAW activation; Skill discovery, context loading, or any
+model-led attempt to select an `oaw` Skill is not. Invocation alone is not proof
+of user selection. The dispatcher follows the current Activation Router,
+contains no Policy path, and carries the request. It must not choose a
+default Profile, restate lifecycle stages, or add approval rules. A direct
+natural-language request to use OAW remains equivalent.
+
+Claude still accepts `.claude/commands/oaw.md` as a legacy command, but the
+Skill path is the native artifact contract. Claude watches established Skill
+directories, but after creating a new top-level directory or changing the OAW
+Router, start a new session before relying on the entrypoint.
+
 ## Skill Discovery
 
 Use Claude's current Skill tool, listed Skill surface, or native slash

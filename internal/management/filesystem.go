@@ -14,7 +14,17 @@ import (
 	"syscall"
 )
 
+type createdDirectorySet map[string]fs.FileInfo
+
 func scopedAtomicReplaceMutation(action mutationAction) error {
+	return scopedAtomicReplaceMutationWithDirectories(action, nil, nil)
+}
+
+func scopedAtomicReplaceMutationWithDirectories(
+	action mutationAction,
+	planned map[string]struct{},
+	created createdDirectorySet,
+) error {
 	root, err := openExistingInstallRoot(action.allowedRoot)
 	if err != nil {
 		return err
@@ -24,6 +34,23 @@ func scopedAtomicReplaceMutation(action mutationAction) error {
 		label: action.label, data: action.data, destination: action.destination,
 		mode: action.mode, allowedRoot: action.allowedRoot,
 		relativeSuffix: action.relativeSuffix, before: action.before,
+	}
+	if len(planned) != 0 {
+		if err := requirePlannedMutationDirectories(root, install, planned); err != nil {
+			return err
+		}
+		if err := ensureScopedInstallDirectory(root, install, planned, created); err != nil {
+			return err
+		}
+		refreshed, captureErr := captureMutationPathIdentity(action.allowedRoot, action.destination)
+		if captureErr != nil {
+			return captureErr
+		}
+		if !sameMutationFileIdentity(action.identity.root, refreshed.root) {
+			return integrityError("destination identity changed after preparation: " + action.destination)
+		}
+		action.identity.parent = refreshed.parent
+		action.identity.destination = refreshed.destination
 	}
 	if err := revalidateScopedAction(root, install); err != nil {
 		return err
@@ -52,6 +79,46 @@ func scopedAtomicReplaceMutation(action mutationAction) error {
 	}
 	keepTemporary = false
 	syncScopedDirectory(directoryRoot, ".")
+	return nil
+}
+
+func requirePlannedMutationDirectories(
+	root *os.Root,
+	action installAction,
+	planned map[string]struct{},
+) error {
+	directorySuffix := path.Dir(action.relativeSuffix)
+	if directorySuffix == "." {
+		return nil
+	}
+	consumed := ""
+	for _, component := range strings.Split(directorySuffix, "/") {
+		if consumed == "" {
+			consumed = component
+		} else {
+			consumed += "/" + component
+		}
+		expected, err := validatedDestinationPath(action.allowedRoot, consumed)
+		if err != nil {
+			return err
+		}
+		info, err := root.Lstat(consumed)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return integrityError("destination path contains a symlink: " + expected)
+			}
+			if !info.IsDir() {
+				return integrityError("destination path component is not a directory: " + expected)
+			}
+			continue
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return integrityError("destination path could not be inspected: " + expected)
+		}
+		if _, found := planned[expected]; !found {
+			return integrityError("unplanned destination directory is missing: " + expected)
+		}
+	}
 	return nil
 }
 
@@ -197,7 +264,7 @@ func removeScopedMutationDirectory(root *os.Root, action directoryAction) (bool,
 	return true, nil
 }
 
-func scopedAtomicReplace(action installAction, planned, created map[string]struct{}) error {
+func scopedAtomicReplace(action installAction, planned map[string]struct{}, created createdDirectorySet) error {
 	root, err := openInstallRoot(action.allowedRoot)
 	if err != nil {
 		return err
@@ -343,7 +410,7 @@ func verifyOpenedInstallRoot(name string, inspected fs.FileInfo, root *os.Root) 
 	return nil
 }
 
-func ensureScopedInstallDirectory(root *os.Root, action installAction, planned, created map[string]struct{}) error {
+func ensureScopedInstallDirectory(root *os.Root, action installAction, planned map[string]struct{}, created createdDirectorySet) error {
 	directorySuffix := path.Dir(action.relativeSuffix)
 	if directorySuffix == "." {
 		return nil
@@ -371,10 +438,10 @@ func ensureScopedInstallDirectoryComponent(
 	relative string,
 	expected string,
 	planned map[string]struct{},
-	created map[string]struct{},
+	created createdDirectorySet,
 ) error {
 	_, isPlanned := planned[expected]
-	_, wasCreated := created[expected]
+	createdIdentity, wasCreated := created[expected]
 	info, err := root.Lstat(relative)
 	if err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -382,6 +449,9 @@ func ensureScopedInstallDirectoryComponent(
 		}
 		if isPlanned && !wasCreated {
 			return integrityError("owned directory appeared before creation: " + expected)
+		}
+		if wasCreated && !sameMutationFileIdentity(createdIdentity, info) {
+			return integrityError("created owned directory identity changed: " + expected)
 		}
 		if !info.IsDir() {
 			return integrityError("destination path component is not a directory: " + expected)
@@ -402,7 +472,7 @@ func ensureScopedInstallDirectoryComponent(
 		return integrityError("destination directory changed during creation: " + expected)
 	}
 	if isPlanned {
-		created[expected] = struct{}{}
+		created[expected] = info
 	}
 	return nil
 }
@@ -490,7 +560,7 @@ func installIOError(message string) error {
 	return &Error{Status: 74, Message: message}
 }
 
-func validateCreatedInstallDirectories(planned, created map[string]struct{}) error {
+func validateCreatedInstallDirectories(planned map[string]struct{}, created createdDirectorySet) error {
 	for directory := range planned {
 		if _, exists := created[directory]; !exists {
 			return integrityError("planned owned directory was not created: " + directory)
@@ -499,6 +569,9 @@ func validateCreatedInstallDirectories(planned, created map[string]struct{}) err
 	for directory := range created {
 		if _, exists := planned[directory]; !exists {
 			return integrityError("unplanned owned directory was created: " + directory)
+		}
+		if created[directory] == nil {
+			return integrityError("created owned directory identity is missing: " + directory)
 		}
 	}
 	return nil

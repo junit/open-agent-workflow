@@ -23,7 +23,10 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 	if got := prepared.resolved.targets; !reflect.DeepEqual(got, []string{"claude", "codex"}) {
 		t.Fatalf("resolved targets = %#v", got)
 	}
-	if got := actionLabels(prepared.targetActions); !reflect.DeepEqual(got, []string{"claude", "codex"}) {
+	if got := artifactActionLabels(prepared.targetActions); !reflect.DeepEqual(got, []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+	}) {
 		t.Fatalf("target action labels = %#v", got)
 	}
 	if len(prepared.policyAction.data) == 0 {
@@ -34,7 +37,10 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 	if state.scope != "user" || state.project != "" || state.backupPath != "" {
 		t.Fatalf("prepared state coordinates = %#v", state)
 	}
-	if got := targetRecordIDs(state.targets); !reflect.DeepEqual(got, []string{"claude", "codex"}) {
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+	}) {
 		t.Fatalf("state targets = %#v", got)
 	}
 	wantDirectories := []string{
@@ -42,7 +48,13 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 		filepath.Join(fixture.environment.StateHome, "open-agent-workflow"),
 		filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations"),
 		filepath.Join(fixture.environment.Home, ".claude"),
+		filepath.Join(fixture.environment.Home, ".claude", "skills"),
+		filepath.Join(fixture.environment.Home, ".claude", "skills", "oaw"),
 		filepath.Join(fixture.environment.Home, ".codex"),
+		filepath.Join(fixture.environment.Home, ".agents"),
+		filepath.Join(fixture.environment.Home, ".agents", "skills"),
+		filepath.Join(fixture.environment.Home, ".agents", "skills", "oaw"),
+		filepath.Join(fixture.environment.Home, ".agents", "skills", "oaw", "agents"),
 		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters"),
 		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles"),
 		filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin"),
@@ -69,10 +81,11 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "MATT-FULL.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "MATT-SP-HYBRID.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "SP-FULL.md"),
-		"oaw: would-create: " + filepath.Join(fixture.environment.Home, ".claude", "CLAUDE.md"),
-		"oaw: would-create: " + filepath.Join(fixture.environment.Home, ".codex", "AGENTS.md"),
-		"oaw: would-create: " + filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "user.state"),
 	}
+	for _, action := range prepared.targetActions {
+		wantLines = append(wantLines, "oaw: would-create: "+action.destination)
+	}
+	wantLines = append(wantLines, "oaw: would-create: "+filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "user.state"))
 	if !reflect.DeepEqual(prepared.predicted.Lines, wantLines) {
 		t.Fatalf("dry-run lines = %#v, want %#v", prepared.predicted.Lines, wantLines)
 	}
@@ -84,12 +97,21 @@ func TestPrepareInstallFreshUserDefaultsCoverEveryUserTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := actionLabels(prepared.targetActions); !reflect.DeepEqual(got, []string{"claude", "codex", "gemini", "opencode"}) {
+	if got := artifactActionLabels(prepared.targetActions); !reflect.DeepEqual(got, []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+		"gemini/router", "gemini/native-entrypoint",
+		"opencode/router", "opencode/native-entrypoint",
+	}) {
 		t.Fatalf("default user actions = %#v", got)
 	}
-	opencode := prepared.targetActions[3]
-	if opencode.allowedRoot != fixture.environment.ConfigHome || opencode.relativeSuffix != "opencode/AGENTS.md" {
-		t.Fatalf("OpenCode coordinates = %#v", opencode)
+	opencodeRouter := prepared.targetActions[7]
+	if opencodeRouter.allowedRoot != fixture.environment.ConfigHome || opencodeRouter.relativeSuffix != "opencode/AGENTS.md" {
+		t.Fatalf("OpenCode router coordinates = %#v", opencodeRouter)
+	}
+	opencodeNative := prepared.targetActions[8]
+	if opencodeNative.allowedRoot != fixture.environment.ConfigHome || opencodeNative.relativeSuffix != "opencode/commands/oaw.md" {
+		t.Fatalf("OpenCode native coordinates = %#v", opencodeNative)
 	}
 }
 
@@ -152,15 +174,41 @@ func TestPrepareInstallProjectUsesPhysicalRootAndDeduplicatesSharedDestination(t
 	if prepared.resolved.projectRoot != physical {
 		t.Fatalf("project root = %q, want %q", prepared.resolved.projectRoot, physical)
 	}
-	if len(prepared.targetActions) != 8 {
-		t.Fatalf("target action count = %d, want 8", len(prepared.targetActions))
+	if len(prepared.targetActions) != 18 {
+		t.Fatalf("target action count = %d, want 18", len(prepared.targetActions))
+	}
+	if got := artifactActionLabels(prepared.targetActions); !reflect.DeepEqual(got, []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+		"gemini/router", "gemini/native-entrypoint",
+		"opencode/native-entrypoint",
+		"cursor/router", "cursor/native-entrypoint",
+		"windsurf/router", "windsurf/native-entrypoint",
+		"cline/router", "cline/native-entrypoint",
+		"roo/router", "roo/native-entrypoint",
+		"copilot/router", "copilot/native-entrypoint",
+	}) {
+		t.Fatalf("project target action order = %#v", got)
 	}
 	state := parsePreparedState(t, prepared.stateActions[0])
-	if len(state.targets) != 9 {
-		t.Fatalf("state target count = %d, want 9", len(state.targets))
+	if len(state.targets) != 19 {
+		t.Fatalf("state target count = %d, want 19", len(state.targets))
 	}
-	codex := findPreparedRecord(t, state.targets, "codex")
-	opencode := findPreparedRecord(t, state.targets, "opencode")
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+		"gemini/router", "gemini/native-entrypoint",
+		"opencode/router", "opencode/native-entrypoint",
+		"cursor/router", "cursor/native-entrypoint",
+		"windsurf/router", "windsurf/native-entrypoint",
+		"cline/router", "cline/native-entrypoint",
+		"roo/router", "roo/native-entrypoint",
+		"copilot/router", "copilot/native-entrypoint",
+	}) {
+		t.Fatalf("project state target order = %#v", got)
+	}
+	codex := findPreparedArtifactRecord(t, state.targets, "codex", routerArtifactID)
+	opencode := findPreparedArtifactRecord(t, state.targets, "opencode", routerArtifactID)
 	if codex.path != filepath.Join(physical, "AGENTS.md") || codex.path != opencode.path || codex.mode != opencode.mode || codex.checksum != opencode.checksum || codex.origin != opencode.origin {
 		t.Fatalf("shared records: codex=%#v opencode=%#v", codex, opencode)
 	}
@@ -213,7 +261,10 @@ func TestPrepareInstallRepeatedAdditiveAndForcePreserveState(t *testing.T) {
 	for _, action := range repeated.policySetActions {
 		wantRepeated = append(wantRepeated, "oaw: unchanged: "+action.label)
 	}
-	wantRepeated = append(wantRepeated, "oaw: unchanged: claude", "oaw: unchanged: state")
+	for _, action := range repeated.targetActions {
+		wantRepeated = append(wantRepeated, "oaw: unchanged: "+action.label)
+	}
+	wantRepeated = append(wantRepeated, "oaw: unchanged: state")
 	if got := repeated.predicted.Lines; !reflect.DeepEqual(got, wantRepeated) {
 		t.Fatalf("repeated predictions = %#v", got)
 	}
@@ -226,7 +277,10 @@ func TestPrepareInstallRepeatedAdditiveAndForcePreserveState(t *testing.T) {
 		t.Fatal(err)
 	}
 	additiveState := parsePreparedState(t, additive.stateActions[0])
-	if got := targetRecordIDs(additiveState.targets); !reflect.DeepEqual(got, []string{"claude", "codex"}) {
+	if got := targetArtifactIDs(additiveState.targets); !reflect.DeepEqual(got, []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+	}) {
 		t.Fatalf("additive targets = %#v", got)
 	}
 	if additiveState.backupPath != state.backupPath {
@@ -263,11 +317,14 @@ func TestPrepareInstallAddsASecondSharedProjectTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 	state := parsePreparedState(t, opencode.stateActions[0])
-	if got := targetRecordIDs(state.targets); !reflect.DeepEqual(got, []string{"codex", "opencode"}) {
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, []string{
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+		"opencode/router", "opencode/native-entrypoint",
+	}) {
 		t.Fatalf("shared additive targets = %#v", got)
 	}
-	first := findPreparedRecord(t, state.targets, "codex")
-	second := findPreparedRecord(t, state.targets, "opencode")
+	first := findPreparedArtifactRecord(t, state.targets, "codex", routerArtifactID)
+	second := findPreparedArtifactRecord(t, state.targets, "opencode", routerArtifactID)
 	if first.path != second.path || first.checksum != second.checksum || first.origin != second.origin {
 		t.Fatalf("shared records differ: %#v %#v", first, second)
 	}
@@ -290,7 +347,7 @@ func TestPrepareInstallRejectsConflictsAndInvalidLaterTargetsWithoutWrites(t *te
 				}
 				writePrepareFile(t, filepath.Join(project, ".cursor", "rules", "open-agent-workflow.mdc"), []byte("foreign\n"), 0o644)
 			},
-			message: "owned target already exists",
+			message: "owned target artifact already exists",
 		},
 		{
 			name:    "partial markers",
@@ -331,6 +388,42 @@ func TestPrepareInstallRejectsConflictsAndInvalidLaterTargetsWithoutWrites(t *te
 			_, forceErr := prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, request)
 			if forceErr == nil || forceErr.Error() != err.Error() {
 				t.Fatalf("forced error = %v, want %v", forceErr, err)
+			}
+		})
+	}
+}
+
+func TestPrepareInstallKeepsHostPreprocessedPolicyPathsOutOfNativeTemplates(t *testing.T) {
+	tests := []struct {
+		name       string
+		target     string
+		pathSuffix string
+	}{
+		{name: "Claude", target: "claude", pathSuffix: "$1-${CLAUDE_SESSION_ID}-!`policy-command`"},
+		{name: "OpenCode", target: "opencode", pathSuffix: "$1-@policy-file-!`policy-command`"},
+		{name: "Gemini", target: "gemini", pathSuffix: "@{policy-file}-!{policy-command}-{{args}}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fixture := newPrepareFixture(t)
+			fixture.environment.ConfigHome = filepath.Join(fixture.root, "config-"+tt.pathSuffix)
+			if err := os.MkdirAll(fixture.environment.ConfigHome, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			prepared, err := prepareWithoutWrites(
+				t, fixture.root, fixture.source, fixture.environment,
+				InstallRequest{Targets: tt.target},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			native := findInstallActionByLabel(t, prepared.targetActions, tt.target+"/native-entrypoint")
+			if strings.Contains(string(native.data), fixture.environment.ConfigHome) {
+				t.Fatalf("native dispatcher embeds Policy path: %q", native.data)
+			}
+			router := findInstallActionByLabel(t, prepared.targetActions, tt.target+"/router")
+			if !strings.Contains(string(router.data), fixture.environment.ConfigHome) {
+				t.Fatalf("Activation Router omits Policy path: %q", router.data)
 			}
 		})
 	}
@@ -414,7 +507,7 @@ func TestPrepareInstallRejectsInvalidDriftedAndCheckoutMismatchedState(t *testin
 		}
 		writePrepareFile(t, fresh.stateActions[0].destination, data, 0o600)
 		_, err = prepareWithoutWrites(t, fixture.root, fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-		if err == nil || !strings.Contains(err.Error(), "installed target path does not match") {
+		if err == nil || !strings.Contains(err.Error(), "installed target artifact path does not match") {
 			t.Fatalf("PrepareInstall() error = %v", err)
 		}
 	})
@@ -577,10 +670,10 @@ func TestInstallActionValuesAreDefensiveAndFailClosed(t *testing.T) {
 		t.Fatal("conflicting shared action was accepted")
 	}
 	coords := coordinates{environment: Environment{Home: root, ConfigHome: root}}
-	if _, _, err := targetInstallCoordinates(coords, resolvedRequest{scope: "user"}, "cursor"); err == nil {
+	if _, _, err := artifactInstallCoordinates(coords, "user", "", "cursor", routerArtifactID); err == nil {
 		t.Fatal("unsupported user target coordinates were accepted")
 	}
-	if _, _, err := targetInstallCoordinates(coords, resolvedRequest{scope: "user"}, "unknown"); err == nil {
+	if _, _, err := artifactInstallCoordinates(coords, "user", "", "unknown", routerArtifactID); err == nil {
 		t.Fatal("unknown target coordinates were accepted")
 	}
 	typed := integrityError("typed")
@@ -637,4 +730,12 @@ func TestSharedDestinationValuesRejectMissingAndConflictingRecords(t *testing.T)
 	if _, err := sharedDestinationChecksum(nil, destination); err == nil {
 		t.Fatal("missing shared checksum was accepted")
 	}
+}
+
+func artifactActionLabels(actions []installAction) []string {
+	result := make([]string, len(actions))
+	for index, action := range actions {
+		result[index] = action.label
+	}
+	return result
 }

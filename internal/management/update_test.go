@@ -136,7 +136,11 @@ func TestPrepareUpdateUsesCurrentCheckoutWithoutWrites(t *testing.T) {
 	if prepared.plan.operation != mutationUpdate {
 		t.Fatalf("operation = %v", prepared.plan.operation)
 	}
-	if got := mutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{"claude", "codex"}) {
+	wantTargetLabels := []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+	}
+	if got := artifactMutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, wantTargetLabels) {
 		t.Fatalf("target labels = %v", got)
 	}
 	if prepared.plan.policyAction.effect != mutationReplace || !bytes.Contains(prepared.plan.policyAction.data, []byte("updated canonical policy")) {
@@ -155,7 +159,10 @@ func TestPrepareUpdateUsesCurrentCheckoutWithoutWrites(t *testing.T) {
 	if !reflect.DeepEqual(state.directories, parsePreparedState(t, installed.stateActions[0]).directories) {
 		t.Fatalf("directories changed: %v", state.directories)
 	}
-	wantLines := []string{"oaw: unchanged: claude", "oaw: unchanged: codex"}
+	wantLines := make([]string, 0, len(prepared.plan.predicted.Lines))
+	for _, action := range prepared.plan.targetActions {
+		wantLines = append(wantLines, predictMutationAction(action)...)
+	}
 	wantLines = append(wantLines, predictMutationAction(prepared.plan.policyAction)...)
 	for _, action := range prepared.plan.policySetActions {
 		wantLines = append(wantLines, predictMutationAction(action)...)
@@ -178,7 +185,7 @@ func TestPrepareUpdateRejectsMissingUninstalledAndDriftedStateWithoutWrites(t *t
 		path := filepath.Join(fixture.environment.Home, ".claude", "CLAUDE.md")
 		writePrepareFile(t, path, []byte(beginMarker+"\nforeign\n"+endMarker+"\n"), 0o644)
 		_, err := prepareUpdateWithoutWrites(t, fixture.root, fixture.source, fixture.environment, UpdateRequest{Targets: "claude"})
-		assertManagementError(t, err, 65, "untracked OAW markers already exist: claude at "+path)
+		assertManagementError(t, err, 65, "untracked OAW markers already exist: claude/router at "+path)
 	})
 
 	t.Run("selected target not installed", func(t *testing.T) {
@@ -205,7 +212,7 @@ func TestPrepareUpdateRejectsMissingUninstalledAndDriftedStateWithoutWrites(t *t
 			t.Fatal(err)
 		}
 		_, err := prepareUpdateWithoutWrites(t, fixture.root, fixture.source, fixture.environment, UpdateRequest{Targets: "claude"})
-		if err == nil || !strings.Contains(err.Error(), "managed target block has drifted: claude at ") {
+		if err == nil || !strings.Contains(err.Error(), "managed target block has drifted: claude/router at ") {
 			t.Fatalf("error = %v", err)
 		}
 	})
@@ -265,17 +272,84 @@ func TestPrepareUpdateEveryInstalledTarget(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got := mutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{candidate.ID}) {
+				wantLabels := make([]string, 0, len(candidate.Artifacts))
+				for _, artifact := range candidate.Artifacts {
+					wantLabels = append(wantLabels, targetArtifactLabel(candidate.ID, artifact.ID))
+				}
+				if got := artifactMutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, wantLabels) {
 					t.Fatalf("target actions = %v", got)
 				}
 				state, err := parseInstallationState(prepared.plan.stateActions[0].data)
 				if err != nil {
 					t.Fatal(err)
 				}
-				if state.version != "0.2.0" || len(state.targets) != 1 || state.targets[0].id != candidate.ID {
+				if state.version != "0.2.0" || len(state.targets) != len(candidate.Artifacts) {
 					t.Fatalf("state = %#v", state)
 				}
+				if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, wantLabels) {
+					t.Fatalf("state target artifacts = %v, want %v", got, wantLabels)
+				}
 			})
+		}
+	}
+}
+
+func TestPrepareUpdateSelectedHostIncludesEveryArtifactAndRetainsOthers(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	installed := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude,codex"})
+	updated := policySetSource(t, "0.2.0", "\nupdated policy\n")
+
+	prepared, err := prepareUpdateWithoutWrites(
+		t, fixture.root, updated, fixture.environment, UpdateRequest{Targets: "claude"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantSelected := []string{"claude/router", "claude/native-entrypoint"}
+	if got := artifactMutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, wantSelected) {
+		t.Fatalf("selected target actions = %v, want %v", got, wantSelected)
+	}
+
+	state, err := parseInstallationState(prepared.plan.stateActions[0].data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantState := []string{
+		"claude/router", "claude/native-entrypoint",
+		"codex/router", "codex/native-entrypoint", "codex/native-policy",
+	}
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, wantState) {
+		t.Fatalf("updated state artifacts = %v, want %v", got, wantState)
+	}
+	if !reflect.DeepEqual(state.directories, parsePreparedState(t, installed.stateActions[0]).directories) {
+		t.Fatalf("selective update changed owned directories: %v", state.directories)
+	}
+}
+
+func TestMergeInstallRecordsPropagatesSharedDestinationChecksum(t *testing.T) {
+	fixture := newPrepareFixture(t)
+	project := filepath.Join(fixture.root, "project")
+	if err := os.Mkdir(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	installed := materializeInstallRequest(
+		t, fixture, InstallRequest{Project: project, Targets: "codex,opencode"},
+	)
+	state := parsePreparedState(t, installed.stateActions[0])
+	codexRouter, found := findTargetArtifactRecord(state.targets, "codex", routerArtifactID)
+	if !found {
+		t.Fatal("installed state has no Codex Router")
+	}
+	codexRouter.checksum = "9:9"
+
+	merged, err := mergeInstallRecords(state.targets, []targetRecord{codexRouter}, "project")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"codex", "opencode"} {
+		router, found := findTargetArtifactRecord(merged, id, routerArtifactID)
+		if !found || router.path != codexRouter.path || router.checksum != codexRouter.checksum {
+			t.Fatalf("shared %s Router = %#v", id, router)
 		}
 	}
 }
@@ -346,7 +420,7 @@ func TestPrepareUpdateRejectsInvalidMutationBindings(t *testing.T) {
 		}
 		writePrepareFile(t, coords.stateFile, []byte("format\t2\n"), 0o600)
 		_, err = prepareUpdateWithoutWrites(t, fixture.root, fixture.source, fixture.environment, UpdateRequest{Targets: "claude"})
-		assertManagementError(t, err, 65, "invalid state format")
+		assertManagementError(t, err, 65, "state is incomplete or duplicated")
 	})
 
 	t.Run("invalid request", func(t *testing.T) {
@@ -398,6 +472,20 @@ func TestPrepareUpdateRejectsInvalidMutationBindings(t *testing.T) {
 }
 
 func mutationActionLabels(actions []mutationAction) []string {
+	result := make([]string, 0, len(actions))
+	seen := make(map[string]struct{}, len(actions))
+	for _, action := range actions {
+		label := strings.SplitN(action.label, "/", 2)[0]
+		if _, exists := seen[label]; exists {
+			continue
+		}
+		seen[label] = struct{}{}
+		result = append(result, label)
+	}
+	return result
+}
+
+func artifactMutationActionLabels(actions []mutationAction) []string {
 	result := make([]string, len(actions))
 	for index, action := range actions {
 		result[index] = action.label

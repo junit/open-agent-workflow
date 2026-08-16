@@ -259,7 +259,10 @@ OAW_POLICY_BEFORE=$(artifact_snapshot "$OAW_POLICY")
 
 run_oaw update --target codex
 assert_status 0 "scope-independent user update"
-assert_contains "unchanged: codex" "scope-independent update keeps the user adapter unchanged"
+for OAW_CODEX_ARTIFACT in router native-entrypoint native-policy; do
+  printf '%s\n' "$OAW_OUTPUT" | grep -Fx "oaw: unchanged: codex/$OAW_CODEX_ARTIFACT" >/dev/null ||
+    fail "scope-independent update does not report codex/$OAW_CODEX_ARTIFACT unchanged"
+done
 [ -L "$OAW_PROJECT_STATE" ] || fail "scope-independent update replaced the unrelated project state symlink"
 assert_artifact_snapshot "$OAW_OUTSIDE_STATE" "$OAW_OUTSIDE_STATE_BEFORE" \
   "scope-independent update with unrelated project state"

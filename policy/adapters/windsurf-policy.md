@@ -31,6 +31,27 @@ For Profile discovery, use these source-qualified locations:
 Use Built-in Profiles only from the selected Policy Set. Keep Custom Profile
 source identity and do not merge or shadow IDs.
 
+## Explicit Native Entrypoint
+
+Windsurf recognizes user Workflows at
+`~/.codeium/windsurf/global_workflows/oaw.md`. The OAW project target installs
+its optional thin Workflow at `.windsurf/workflows/oaw.md`. Invoke it from
+Cascade as `/oaw` and place any optional Profile and task in the same user
+request. Windsurf documents Workflows as manual slash entrypoints but does not
+define a portable argument-substitution macro for this file, so the dispatcher
+must not claim one.
+
+A user-entered `/oaw` is explicit OAW activation. Loading the always-on Router,
+discovering Skills, or model-led selection of an `oaw`-named Skill is not. The
+Workflow treats invocation alone as insufficient proof of user selection. It
+follows the current Activation Router, contains no Policy path, and must not
+choose a default Profile, restate lifecycle stages, or add approval gates. A
+natural-language activation request remains valid without a Workflow.
+
+Start a new Cascade task or reload the workspace after installing or changing
+the Workflow. The `.devin/rules/open-agent-workflow.md` Router and the
+`.windsurf/workflows/oaw.md` entrypoint are distinct Host surfaces.
+
 ## Skill Discovery And Invocation
 
 Use Cascade's current Skill surface first. If a declared procedure is absent

@@ -49,8 +49,20 @@ grep -F 'ordinary Skill invocation do not activate OAW' "$OAW_CLAUDE" >/dev/null
 if grep -F "@$OAW_POLICY" "$OAW_CLAUDE" >/dev/null; then
   fail "Claude entrypoint incorrectly imports the canonical policy"
 fi
-grep -F 'format' "$OAW_INSTALL_STATE" >/dev/null ||
-  fail "installation state has no format record"
+grep -Fx "$(printf 'format\t2')" "$OAW_INSTALL_STATE" >/dev/null ||
+  fail "installation state is not format 2"
+OAW_STATE_ARTIFACTS=$(awk -F '\t' '
+  $1 == "target" {
+    if (artifacts == "") {
+      artifacts = $2 "/" $3
+    } else {
+      artifacts = artifacts "," $2 "/" $3
+    }
+  }
+  END { print artifacts }
+' "$OAW_INSTALL_STATE")
+[ "$OAW_STATE_ARTIFACTS" = "claude/router,claude/native-entrypoint" ] ||
+  fail "Claude installation state does not contain its complete artifact set"
 
 pass "fresh Claude installation creates policy, entrypoint, and install state"
 
@@ -60,7 +72,10 @@ OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 sleep 1
 run_oaw install --target claude
 assert_status 0 "repeated Claude install"
-assert_contains "unchanged: claude" "repeated install reports unchanged target"
+for OAW_CLAUDE_ARTIFACT in router native-entrypoint; do
+  printf '%s\n' "$OAW_OUTPUT" | grep -Fx "oaw: unchanged: claude/$OAW_CLAUDE_ARTIFACT" >/dev/null ||
+    fail "repeated install does not report claude/$OAW_CLAUDE_ARTIFACT unchanged"
+done
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "repeated install changed canonical policy bytes"
 [ "$(cksum <"$OAW_CLAUDE")" = "$OAW_CLAUDE_BEFORE" ] ||
@@ -128,7 +143,7 @@ esac
 
 run_oaw uninstall --target claude
 assert_status 0 "repeated uninstall"
-assert_contains "unchanged: claude" "repeated uninstall reports unchanged"
+assert_output_equals "oaw: unchanged: claude" "repeated uninstall reports unchanged"
 pass "uninstall preserves an existing Claude file and is idempotent"
 
 cleanup_sandbox

@@ -102,8 +102,10 @@ run_wrapper_contract() {
   run_entrypoint "$release_dir/install.sh" "$RELEASE_TEMP/update" update --target claude
   [ "$ENTRYPOINT_STATUS" -eq 0 ] ||
     fail "wrapper update exited $ENTRYPOINT_STATUS: $(cat "$RELEASE_TEMP/update.stderr")"
-  grep -F 'oaw: unchanged: claude' "$RELEASE_TEMP/update.stdout" >/dev/null ||
-    fail "wrapper did not forward update arguments"
+  for artifact in router native-entrypoint; do
+    grep -Fx "oaw: unchanged: claude/$artifact" "$RELEASE_TEMP/update.stdout" >/dev/null ||
+      fail "wrapper update omitted unchanged claude/$artifact"
+  done
   run_entrypoint "$release_dir/install.sh" "$RELEASE_TEMP/uninstall" uninstall --target claude
   [ "$ENTRYPOINT_STATUS" -eq 0 ] ||
     fail "wrapper uninstall exited $ENTRYPOINT_STATUS: $(cat "$RELEASE_TEMP/uninstall.stderr")"

@@ -88,6 +88,11 @@ func applyMutationPlan(plan mutationPlan, injector mutationFaultInjector) (Resul
 	if err := validateMutationPlan(plan); err != nil {
 		return Result{}, err
 	}
+	planned := make(map[string]struct{}, len(plan.plannedDirectories))
+	for _, directory := range plan.plannedDirectories {
+		planned[directory.destination] = struct{}{}
+	}
+	created := make(createdDirectorySet, len(planned))
 	if plan.request.dryRun {
 		result := cloneManagementResult(plan.predicted)
 		if plan.terminal.status != 0 {
@@ -105,7 +110,7 @@ func applyMutationPlan(plan mutationPlan, injector mutationFaultInjector) (Resul
 			result.Lines = append(result.Lines, line)
 		}
 		if err != nil {
-			return failMutationApplication(result, nil, err)
+			return failMutationApplication(result, nil, plan.plannedDirectories, created, err)
 		}
 	}
 	if plan.terminal.status != 0 {
@@ -113,12 +118,15 @@ func applyMutationPlan(plan mutationPlan, injector mutationFaultInjector) (Resul
 	}
 	journal := make([]mutationInverse, 0)
 	for _, stage := range mutationApplicationStages(plan) {
-		lines, inverses, err := applyMutationStage(plan, stage, injector)
+		lines, inverses, err := applyMutationStageWithDirectories(plan, stage, injector, planned, created)
 		result.Lines = append(result.Lines, lines...)
 		journal = append(journal, inverses...)
 		if err != nil {
-			return failMutationApplication(result, journal, err)
+			return failMutationApplication(result, journal, plan.plannedDirectories, created, err)
 		}
+	}
+	if err := validateCreatedInstallDirectories(planned, created); err != nil {
+		return failMutationApplication(result, journal, plan.plannedDirectories, created, err)
 	}
 	return result, nil
 }
@@ -159,10 +167,20 @@ func applyMutationStage(
 	stage mutationApplicationStage,
 	injector mutationFaultInjector,
 ) ([]string, []mutationInverse, error) {
+	return applyMutationStageWithDirectories(plan, stage, injector, nil, nil)
+}
+
+func applyMutationStageWithDirectories(
+	plan mutationPlan,
+	stage mutationApplicationStage,
+	injector mutationFaultInjector,
+	planned map[string]struct{},
+	created createdDirectorySet,
+) ([]string, []mutationInverse, error) {
 	if stage.directories {
 		return applyMutationDirectories(plan.directoryActions, stage, injector)
 	}
-	return applyMutationActions(plan, stage.actions, stage.phase, injector)
+	return applyMutationActionsWithDirectories(plan, stage.actions, stage.phase, injector, planned, created)
 }
 
 func applyMutationActions(
@@ -171,6 +189,17 @@ func applyMutationActions(
 	phase mutationPhase,
 	injector mutationFaultInjector,
 ) ([]string, []mutationInverse, error) {
+	return applyMutationActionsWithDirectories(plan, actions, phase, injector, nil, nil)
+}
+
+func applyMutationActionsWithDirectories(
+	plan mutationPlan,
+	actions []mutationAction,
+	phase mutationPhase,
+	injector mutationFaultInjector,
+	planned map[string]struct{},
+	created createdDirectorySet,
+) ([]string, []mutationInverse, error) {
 	lines := make([]string, 0, len(actions))
 	inverses := make([]mutationInverse, 0, len(actions))
 	for index, action := range actions {
@@ -178,7 +207,7 @@ func applyMutationActions(
 		if err := injectMutationFault(injector, point); err != nil {
 			return lines, inverses, err
 		}
-		line, changed, err := applyMutationAction(plan, action)
+		line, changed, err := applyMutationActionWithDirectories(plan, action, planned, created)
 		if err != nil {
 			return lines, inverses, err
 		}
@@ -239,9 +268,20 @@ func injectMutationFault(injector mutationFaultInjector, point mutationFaultPoin
 	return injector(point)
 }
 
-func failMutationApplication(result Result, journal []mutationInverse, err error) (Result, error) {
-	if rollbackErr := rollbackMutationJournal(journal); rollbackErr != nil {
+func failMutationApplication(
+	result Result,
+	journal []mutationInverse,
+	planned []plannedDirectory,
+	created createdDirectorySet,
+	err error,
+) (Result, error) {
+	rollbackErr := rollbackMutationJournal(journal)
+	directoryErr := cleanupCreatedMutationDirectories(planned, created)
+	if rollbackErr != nil {
 		return result, &Error{Status: 74, Message: err.Error() + "; rollback failed: " + rollbackErr.Error()}
+	}
+	if directoryErr != nil {
+		return result, &Error{Status: 74, Message: err.Error() + "; rollback failed: " + directoryErr.Error()}
 	}
 	return result, err
 }
@@ -256,11 +296,53 @@ func validateMutationPlan(plan mutationPlan) error {
 	if err := validatePreparedDirectoryActions(plan.directoryActions); err != nil {
 		return err
 	}
+	if err := validatePlannedMutationDirectories(plan); err != nil {
+		return err
+	}
 	if plan.backup.required {
 		if _, err := renderBackupManifest(plan.backup); err != nil {
 			return err
 		}
 		return revalidateBackupSources(plan.backup)
+	}
+	return nil
+}
+
+func validatePlannedMutationDirectories(plan mutationPlan) error {
+	if len(plan.plannedDirectories) != 0 && plan.operation != mutationUpdate {
+		return integrityError("only updates may create owned directories")
+	}
+	seen := make(map[string]struct{}, len(plan.plannedDirectories))
+	for _, directory := range plan.plannedDirectories {
+		if directory.destination == "" || directory.allowedRoot == "" || directory.relativeSuffix == "" {
+			return integrityError("planned owned directory cannot be serialized")
+		}
+		rebuilt, err := validatedDestinationPath(directory.allowedRoot, directory.relativeSuffix)
+		if err != nil || rebuilt != directory.destination {
+			return integrityError("planned owned directory does not match its root: " + directory.destination)
+		}
+		if _, found := seen[directory.destination]; found {
+			return integrityError("duplicate planned owned directory: " + directory.destination)
+		}
+		seen[directory.destination] = struct{}{}
+		current, err := inspectInstallPath(directory.destination)
+		if err != nil || current.kind != installPathMissing {
+			return integrityError("planned owned directory changed after preparation: " + directory.destination)
+		}
+		currentIdentity, err := captureMutationPathIdentity(directory.allowedRoot, directory.destination)
+		if err != nil || !directory.identity.captured || !sameMutationFileIdentity(directory.identity.root, currentIdentity.root) {
+			return integrityError("planned owned directory identity changed after preparation: " + directory.destination)
+		}
+		claimed := false
+		for _, action := range plan.targetActions {
+			if action.allowedRoot == directory.allowedRoot && containedStrictly(directory.destination, action.destination) {
+				claimed = true
+				break
+			}
+		}
+		if !claimed {
+			return integrityError("planned owned directory has no target artifact: " + directory.destination)
+		}
 	}
 	return nil
 }
@@ -340,6 +422,15 @@ func compareMutationPathIdentity(expected, current mutationPathIdentity, destina
 }
 
 func applyMutationAction(plan mutationPlan, action mutationAction) (string, bool, error) {
+	return applyMutationActionWithDirectories(plan, action, nil, nil)
+}
+
+func applyMutationActionWithDirectories(
+	plan mutationPlan,
+	action mutationAction,
+	planned map[string]struct{},
+	created createdDirectorySet,
+) (string, bool, error) {
 	if action.effect == mutationRetain {
 		return "", false, nil
 	}
@@ -361,7 +452,7 @@ func applyMutationAction(plan mutationPlan, action mutationAction) (string, bool
 		if err := verifyActiveMutationBackup(plan, action); err != nil {
 			return "", false, err
 		}
-		if err := scopedAtomicReplaceMutation(action); err != nil {
+		if err := scopedAtomicReplaceMutationWithDirectories(action, planned, created); err != nil {
 			return "", false, err
 		}
 		verb := "update"
@@ -383,6 +474,48 @@ func applyMutationAction(plan mutationPlan, action mutationAction) (string, bool
 	default:
 		return "", false, integrityError("invalid mutation effect")
 	}
+}
+
+func cleanupCreatedMutationDirectories(planned []plannedDirectory, created createdDirectorySet) error {
+	var first error
+	for index := len(planned) - 1; index >= 0; index-- {
+		directory := planned[index]
+		createdIdentity, found := created[directory.destination]
+		if !found {
+			continue
+		}
+		action, err := newDirectoryAction(
+			directory.destination, directory.allowedRoot, directory.relativeSuffix, false,
+		)
+		if err != nil {
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		if action.before.kind == installPathMissing {
+			continue
+		}
+		if !planned[index].identity.captured ||
+			!sameMutationFileIdentity(planned[index].identity.root, action.identity.root) ||
+			!sameMutationFileIdentity(createdIdentity, action.identity.destination) {
+			if first == nil {
+				first = integrityError("created owned directory identity changed during rollback: " + directory.destination)
+			}
+			continue
+		}
+		removed, err := scopedRemoveMutationDirectory(action)
+		if err != nil {
+			if first == nil {
+				first = err
+			}
+			continue
+		}
+		if !removed && first == nil {
+			first = integrityError("created owned directory is not empty during rollback: " + directory.destination)
+		}
+	}
+	return first
 }
 
 func verifyActiveMutationBackup(plan mutationPlan, action mutationAction) error {

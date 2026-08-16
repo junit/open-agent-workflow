@@ -27,20 +27,33 @@ func TestApplyInstallCreatesTargetsPolicyStateModesAndOwnership(t *testing.T) {
 	for _, action := range prepared.policySetActions {
 		wantLines = append(wantLines, "oaw: create: "+action.destination)
 	}
-	wantLines = append(wantLines,
-		"oaw: update: "+prepared.targetActions[0].destination,
-		"oaw: create: "+prepared.stateActions[0].destination,
-	)
+	for index, action := range prepared.targetActions {
+		verb := "create"
+		if index == 0 {
+			verb = "update"
+		}
+		wantLines = append(wantLines, "oaw: "+verb+": "+action.destination)
+	}
+	wantLines = append(wantLines, "oaw: create: "+prepared.stateActions[0].destination)
 	if !reflect.DeepEqual(result.Lines, wantLines) {
 		t.Fatalf("result lines = %#v, want %#v", result.Lines, wantLines)
 	}
-	assertAppliedAction(t, prepared.targetActions[0], 0o644)
+	for _, action := range prepared.targetActions {
+		assertAppliedAction(t, action, 0o644)
+	}
 	assertAppliedAction(t, prepared.policyAction, 0o644)
 	assertAppliedAction(t, prepared.stateActions[0], 0o600)
 	if !bytes.HasPrefix(prepared.targetActions[0].data, []byte("user content\n")) {
 		t.Fatalf("target did not preserve existing bytes: %q", prepared.targetActions[0].data)
 	}
 	state := parsePreparedState(t, prepared.stateActions[0])
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, []string{"claude/router", "claude/native-entrypoint"}) {
+		t.Fatalf("state targets = %#v", got)
+	}
+	if state.targets[0].mode != "managed-block" || state.targets[0].origin != "existing-file" ||
+		state.targets[1].mode != "owned-file" || state.targets[1].origin != "created-file" {
+		t.Fatalf("target ownership = %#v", state.targets)
+	}
 	if containsString(state.directories, filepath.Join(fixture.environment.Home, ".claude")) {
 		t.Fatalf("state claimed pre-existing directory: %#v", state.directories)
 	}
@@ -52,7 +65,7 @@ func TestApplyInstallCreatesTargetsPolicyStateModesAndOwnership(t *testing.T) {
 func TestApplyInstallIsIdempotentWithoutMtimeChanges(t *testing.T) {
 	fixture := newPrepareFixture(t)
 	first, err := Install(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
-	if err != nil || len(first.Lines) != len(fixture.source.policySet)+2 {
+	if err != nil || len(first.Lines) != len(fixture.source.policySet)+3 {
 		t.Fatalf("Install() result=%#v error=%v", first, err)
 	}
 	prepared, err := PrepareInstall(fixture.source, fixture.environment, InstallRequest{Targets: "claude"})
@@ -64,12 +77,15 @@ func TestApplyInstallIsIdempotentWithoutMtimeChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := make([]string, 0, len(fixture.source.policySet)+2)
+	want := make([]string, 0, len(fixture.source.policySet)+3)
 	want = append(want, "oaw: unchanged: policy")
 	for _, action := range prepared.policySetActions {
 		want = append(want, "oaw: unchanged: "+action.label)
 	}
-	want = append(want, "oaw: unchanged: claude", "oaw: unchanged: state")
+	for _, action := range prepared.targetActions {
+		want = append(want, "oaw: unchanged: "+action.label)
+	}
+	want = append(want, "oaw: unchanged: state")
 	if got := result.Lines; !reflect.DeepEqual(got, want) {
 		t.Fatalf("idempotent lines = %#v", got)
 	}
@@ -95,12 +111,15 @@ func TestApplyInstallIsIdempotentWithRedundantStateRootSeparator(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := make([]string, 0, len(fixture.source.policySet)+2)
+	want := make([]string, 0, len(fixture.source.policySet)+3)
 	want = append(want, "oaw: unchanged: policy")
 	for _, action := range prepared.policySetActions {
 		want = append(want, "oaw: unchanged: "+action.label)
 	}
-	want = append(want, "oaw: unchanged: claude", "oaw: unchanged: state")
+	for _, action := range prepared.targetActions {
+		want = append(want, "oaw: unchanged: "+action.label)
+	}
+	want = append(want, "oaw: unchanged: state")
 	if got := result.Lines; !reflect.DeepEqual(got, want) {
 		t.Fatalf("repeated Install() lines = %#v", got)
 	}
@@ -255,7 +274,7 @@ func TestInstallAndActionApplicationRejectChangedInputs(t *testing.T) {
 		label: "artifact", data: []byte("replacement\n"), destination: destination, mode: 0o644,
 		allowedRoot: fixture.environment.Home, relativeSuffix: "artifact", before: installPathSnapshot{kind: installPathMissing},
 	}
-	if line, err := applyPreparedInstallAction(action, nil, make(map[string]struct{})); err == nil || line != "" || !strings.Contains(err.Error(), "changed after preparation") {
+	if line, err := applyPreparedInstallAction(action, nil, make(createdDirectorySet)); err == nil || line != "" || !strings.Contains(err.Error(), "changed after preparation") {
 		t.Fatalf("applyPreparedInstallAction() line=%q error=%v", line, err)
 	}
 }

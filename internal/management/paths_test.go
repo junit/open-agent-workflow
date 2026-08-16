@@ -128,11 +128,21 @@ func TestValidateOwnedDirectoriesAcceptsOnlyNamespacesAndCreatedTargetAncestors(
 		directories: []string{
 			coords.configDir, coords.stateDir, coords.installations, coords.projects,
 			filepath.Join(environment.Home, ".claude"),
+			filepath.Join(environment.Home, ".claude", "skills"),
+			filepath.Join(environment.Home, ".claude", "skills", "oaw"),
 		},
-		targets: []targetRecord{{
-			id: "claude", path: filepath.Join(environment.Home, ".claude", "CLAUDE.md"),
-			mode: "managed-block", checksum: "1:1", origin: "created-file",
-		}},
+		targets: []targetRecord{
+			{
+				id: "claude", artifact: routerArtifactID,
+				path: filepath.Join(environment.Home, ".claude", "CLAUDE.md"),
+				mode: "managed-block", checksum: "1:1", origin: "created-file",
+			},
+			{
+				id: "claude", artifact: nativeEntrypointArtifactID,
+				path: filepath.Join(environment.Home, ".claude", "skills", "oaw", "SKILL.md"),
+				mode: "owned-file", checksum: "2:2", origin: "created-file",
+			},
+		},
 	}
 	if err := validateOwnedDirectories(state, coords); err != nil {
 		t.Fatalf("validateOwnedDirectories(valid): %v", err)
@@ -147,7 +157,7 @@ func TestValidateOwnedDirectoriesAcceptsOnlyNamespacesAndCreatedTargetAncestors(
 	}
 }
 
-func TestTargetDestinationRejectsUnsupportedCoordinates(t *testing.T) {
+func TestArtifactDestinationRejectsUnsupportedCoordinates(t *testing.T) {
 	root := t.TempDir()
 	coords := coordinates{environment: Environment{Home: root, ConfigHome: root}}
 	for _, test := range []struct {
@@ -157,9 +167,95 @@ func TestTargetDestinationRejectsUnsupportedCoordinates(t *testing.T) {
 		{scope: "unknown", id: "claude"},
 		{scope: "user", id: "unknown"},
 	} {
-		if _, err := targetDestination(coords, test.scope, root, test.id); err == nil {
-			t.Errorf("targetDestination(%q, %q) accepted", test.scope, test.id)
+		if _, err := artifactDestination(coords, test.scope, root, test.id, routerArtifactID); err == nil {
+			t.Errorf("artifactDestination(%q, %q) accepted", test.scope, test.id)
 		}
+	}
+}
+
+func TestArtifactDestinationUsesVerifiedHostCoordinates(t *testing.T) {
+	root := t.TempDir()
+	environment := Environment{
+		Home:       filepath.Join(root, "home"),
+		ConfigHome: filepath.Join(root, "config"),
+		StateHome:  filepath.Join(root, "state"),
+	}
+	for _, directory := range []string{environment.Home, environment.ConfigHome, environment.StateHome} {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	coords := coordinates{environment: environment}
+	project := filepath.Join(root, "project")
+	if err := os.Mkdir(project, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, scope, target, artifact, want string
+	}{
+		{name: "Claude user router", scope: "user", target: "claude", artifact: routerArtifactID, want: filepath.Join(environment.Home, ".claude", "CLAUDE.md")},
+		{name: "Claude user Skill", scope: "user", target: "claude", artifact: nativeEntrypointArtifactID, want: filepath.Join(environment.Home, ".claude", "skills", "oaw", "SKILL.md")},
+		{name: "Codex user router", scope: "user", target: "codex", artifact: routerArtifactID, want: filepath.Join(environment.Home, ".codex", "AGENTS.md")},
+		{name: "Codex user Skill", scope: "user", target: "codex", artifact: nativeEntrypointArtifactID, want: filepath.Join(environment.Home, ".agents", "skills", "oaw", "SKILL.md")},
+		{name: "Codex user metadata", scope: "user", target: "codex", artifact: nativePolicyArtifactID, want: filepath.Join(environment.Home, ".agents", "skills", "oaw", "agents", "openai.yaml")},
+		{name: "Gemini user command", scope: "user", target: "gemini", artifact: nativeEntrypointArtifactID, want: filepath.Join(environment.Home, ".gemini", "commands", "oaw.toml")},
+		{name: "OpenCode user router", scope: "user", target: "opencode", artifact: routerArtifactID, want: filepath.Join(environment.ConfigHome, "opencode", "AGENTS.md")},
+		{name: "OpenCode user command", scope: "user", target: "opencode", artifact: nativeEntrypointArtifactID, want: filepath.Join(environment.ConfigHome, "opencode", "commands", "oaw.md")},
+		{name: "Claude project Skill", scope: "project", target: "claude", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".claude", "skills", "oaw", "SKILL.md")},
+		{name: "Codex project Skill", scope: "project", target: "codex", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".agents", "skills", "oaw", "SKILL.md")},
+		{name: "Codex project metadata", scope: "project", target: "codex", artifact: nativePolicyArtifactID, want: filepath.Join(project, ".agents", "skills", "oaw", "agents", "openai.yaml")},
+		{name: "Gemini project command", scope: "project", target: "gemini", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".gemini", "commands", "oaw.toml")},
+		{name: "OpenCode project command", scope: "project", target: "opencode", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".opencode", "commands", "oaw.md")},
+		{name: "Cursor project Skill", scope: "project", target: "cursor", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".cursor", "skills", "oaw", "SKILL.md")},
+		{name: "Windsurf project workflow", scope: "project", target: "windsurf", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".windsurf", "workflows", "oaw.md")},
+		{name: "Cline project Skill", scope: "project", target: "cline", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".cline", "skills", "oaw", "SKILL.md")},
+		{name: "Roo project command", scope: "project", target: "roo", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".roo", "commands", "oaw.md")},
+		{name: "Copilot project Skill", scope: "project", target: "copilot", artifact: nativeEntrypointArtifactID, want: filepath.Join(project, ".github", "skills", "oaw", "SKILL.md")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := artifactDestination(coords, tt.scope, project, tt.target, tt.artifact)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tt.want {
+				t.Fatalf("artifact destination = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestArtifactDestinationRejectsUnsupportedUnknownAndSymlinkedCoordinates(t *testing.T) {
+	root := t.TempDir()
+	home := filepath.Join(root, "home")
+	config := filepath.Join(root, "config")
+	if err := os.MkdirAll(filepath.Join(home, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(config, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	coords := coordinates{environment: Environment{Home: home, ConfigHome: config}}
+	for name, test := range map[string]struct {
+		scope, target, artifact string
+	}{
+		"project-only user target": {scope: "user", target: "cursor", artifact: nativeEntrypointArtifactID},
+		"unknown target":           {scope: "project", target: "missing", artifact: routerArtifactID},
+		"unknown artifact":         {scope: "user", target: "claude", artifact: "missing"},
+		"unknown scope":            {scope: "machine", target: "claude", artifact: routerArtifactID},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := artifactDestination(coords, test.scope, root, test.target, test.artifact); err == nil {
+				t.Fatalf("artifactDestination(%q, %q, %q) succeeded", test.scope, test.target, test.artifact)
+			}
+		})
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(home, ".claude", "skills")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := artifactDestination(coords, "user", "", "claude", nativeEntrypointArtifactID); err == nil || !strings.Contains(err.Error(), "contains a symlink") {
+		t.Fatalf("symlinked native path error = %v", err)
 	}
 }
 
@@ -182,12 +278,6 @@ func TestWriteReturnsOutputFailure(t *testing.T) {
 func TestWriteReturnsTrailingOutputFailure(t *testing.T) {
 	if err := WriteResult(Result{Trailing: "partial"}, failingWriter{}); err == nil {
 		t.Fatal("WriteResult() ignored trailing output failure")
-	}
-}
-
-func TestUnknownTargetHasNoRegistryPosition(t *testing.T) {
-	if targetPosition("unknown") != 0 {
-		t.Fatal("unknown target received a registry position")
 	}
 }
 

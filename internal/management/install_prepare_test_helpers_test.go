@@ -154,9 +154,22 @@ func actionLabels(actions []installAction) []string {
 }
 
 func targetRecordIDs(records []targetRecord) []string {
+	result := make([]string, 0, len(records))
+	seen := make(map[string]struct{}, len(records))
+	for _, record := range records {
+		if _, exists := seen[record.id]; exists {
+			continue
+		}
+		seen[record.id] = struct{}{}
+		result = append(result, record.id)
+	}
+	return result
+}
+
+func targetArtifactIDs(records []targetRecord) []string {
 	result := make([]string, len(records))
 	for index, record := range records {
-		result[index] = record.id
+		result[index] = record.id + "/" + record.artifact
 	}
 	return result
 }
@@ -169,6 +182,17 @@ func findPreparedRecord(t *testing.T, records []targetRecord, id string) targetR
 		}
 	}
 	t.Fatalf("record %q not found", id)
+	return targetRecord{}
+}
+
+func findPreparedArtifactRecord(t *testing.T, records []targetRecord, id, artifact string) targetRecord {
+	t.Helper()
+	for _, record := range records {
+		if record.id == id && record.artifact == artifact {
+			return record
+		}
+	}
+	t.Fatalf("record %q/%q not found", id, artifact)
 	return targetRecord{}
 }
 

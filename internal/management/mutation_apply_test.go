@@ -26,7 +26,10 @@ func TestApplyUpdateAndUninstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Lines) != len(updated.policySet)+2 || !strings.HasPrefix(result.Lines[0], "oaw: unchanged: cursor") || !strings.HasPrefix(result.Lines[1], "oaw: update: ") {
+	if len(result.Lines) != len(updated.policySet)+3 ||
+		result.Lines[0] != "oaw: unchanged: cursor/router" ||
+		result.Lines[1] != "oaw: unchanged: cursor/native-entrypoint" ||
+		!strings.HasPrefix(result.Lines[2], "oaw: update: ") {
 		t.Fatalf("update result = %v", result.Lines)
 	}
 	policy, err := os.ReadFile(installed.policyAction.destination)
@@ -49,7 +52,11 @@ func TestApplyUpdateAndUninstall(t *testing.T) {
 	if len(result.Lines) == 0 || !strings.HasPrefix(result.Lines[0], "oaw: remove: ") {
 		t.Fatalf("uninstall result = %v", result.Lines)
 	}
-	paths := []string{installed.targetActions[0].destination, installed.policyAction.destination, installed.stateActions[0].destination}
+	paths := make([]string, 0, len(installed.targetActions)+len(installed.policySetActions)+2)
+	for _, action := range installed.targetActions {
+		paths = append(paths, action.destination)
+	}
+	paths = append(paths, installed.policyAction.destination, installed.stateActions[0].destination)
 	for _, action := range installed.policySetActions {
 		paths = append(paths, action.destination)
 	}
@@ -161,7 +168,7 @@ func TestUpdateAndUninstallComposePrepareAndApply(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Lines) == 0 || result.Lines[0] != "oaw: unchanged: claude" {
+	if len(result.Lines) < 2 || result.Lines[0] != "oaw: unchanged: claude/router" || result.Lines[1] != "oaw: unchanged: claude/native-entrypoint" {
 		t.Fatalf("update result = %#v", result)
 	}
 

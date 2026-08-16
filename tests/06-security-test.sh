@@ -118,7 +118,7 @@ OAW_PROJECT_STATE=$OAW_STATE/open-agent-workflow/installations/projects/$OAW_PRO
 OAW_TAMPERED_STATE=$OAW_SANDBOX/conflicting-destination.state
 awk -F '\t' '
   BEGIN { OFS = "\t" }
-  $1 == "target" && $2 == "opencode" { $5 = "1:1" }
+  $1 == "target" && $2 == "opencode" && $3 == "router" { $6 = "1:1" }
   { print }
 ' "$OAW_PROJECT_STATE" >"$OAW_TAMPERED_STATE"
 mv "$OAW_TAMPERED_STATE" "$OAW_PROJECT_STATE"
@@ -248,7 +248,7 @@ assert_project_drift_blocks_mutation() {
     state-checksum-mismatch)
       awk -F '\t' '
         BEGIN { OFS = "\t" }
-        $1 == "target" { $5 = "1:1" }
+        $1 == "target" && $3 == "router" { $6 = "1:1" }
         { print }
       ' "$project_state" >"$mutated_file"
       mv "$mutated_file" "$project_state"

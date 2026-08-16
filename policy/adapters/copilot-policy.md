@@ -32,6 +32,29 @@ For Profile discovery, use these source-qualified locations:
 Use Built-in Profiles only from the selected Policy Set. Retain Custom Profile
 source qualification and never merge or shadow same-ID Profiles.
 
+## Explicit Native Entrypoint
+
+Copilot recognizes `~/.copilot/skills/oaw/SKILL.md` at user scope. The OAW
+project target installs its optional thin dispatcher at
+`.github/skills/oaw/SKILL.md`. Explicitly reference `/oaw` in the user request;
+compatible Copilot Agent surfaces may also expose the Skill in their slash
+picker. Keep the optional Profile and task in that same request. Do not assume
+a cross-surface `$ARGUMENTS` expansion. The Copilot CLI Skill sets
+`disable-model-invocation: true` and provides an `argument-hint` for the
+optional Profile and task.
+
+A user's explicit `/oaw` reference or picker selection activates OAW. Skill
+discovery, automatic relevance matching, or model-led loading of the same
+Skill does not. Invocation alone is not proof of user selection. The dispatcher
+follows the current Activation Router, contains no Policy path, and must not
+select a default Profile, duplicate lifecycle stages, or impose approval gates.
+Natural-language activation remains equivalent. A VS Code Prompt File under
+`.github/prompts/` is not the portable Copilot entrypoint for this Adapter.
+
+Use `/skills reload` after changing the Skill in an active Copilot CLI session.
+For an IDE or other Agent surface, start a fresh chat or reload that Host before
+relying on the new dispatcher.
+
 ## Skill Discovery And Invocation
 
 Use `/skills list`, `/skills info <name>`, `copilot skill list`, or an exposed

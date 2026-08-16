@@ -179,27 +179,42 @@ func matchesValidatedDestination(rebuilt, destination string) bool {
 	return rebuilt == destination || filepath.Clean(rebuilt) == destination
 }
 
-func targetDestination(coords coordinates, scope, project, id string) (string, error) {
-	candidate, found := findTarget(id)
-	if !found {
-		return "", integrityError("unknown target '" + id + "'")
-	}
-	var root, suffix string
-	switch scope {
-	case "user":
-		if !candidate.User {
-			return "", integrityError(fmt.Sprintf("target '%s' is not implemented for user scope", id))
-		}
-		root = coords.environment.Home
-		suffix = candidate.UserSuffix
-		if id == "opencode" {
-			root = coords.environment.ConfigHome
-		}
-	case "project":
-		root = project
-		suffix = candidate.ProjectSuffix
-	default:
-		return "", integrityError("unknown operation scope: " + scope)
+func artifactDestination(coords coordinates, operationScope, project, targetID, artifactID string) (string, error) {
+	root, suffix, err := artifactInstallCoordinates(coords, operationScope, project, targetID, artifactID)
+	if err != nil {
+		return "", err
 	}
 	return validatedDestinationPath(root, suffix)
+}
+
+func artifactInstallCoordinates(coords coordinates, operationScope, project, targetID, artifactID string) (string, string, error) {
+	candidate, found := findTarget(targetID)
+	if !found {
+		return "", "", integrityError("unknown target '" + targetID + "'")
+	}
+	artifact, found := findTargetArtifact(targetID, artifactID)
+	if !found {
+		return "", "", integrityError(fmt.Sprintf("unknown artifact '%s' for target '%s'", artifactID, targetID))
+	}
+	if !targetSupportsScope(candidate, operationScope) {
+		return "", "", integrityError(fmt.Sprintf("target '%s' is not implemented for %s scope", targetID, operationScope))
+	}
+
+	switch operationScope {
+	case "user":
+		root := ""
+		switch artifact.UserRoot {
+		case userRootHome:
+			root = coords.environment.Home
+		case userRootConfig:
+			root = coords.environment.ConfigHome
+		default:
+			return "", "", integrityError(fmt.Sprintf("target '%s' artifact '%s' has an invalid user root", targetID, artifactID))
+		}
+		return root, artifact.UserSuffix, nil
+	case "project":
+		return project, artifact.ProjectSuffix, nil
+	default:
+		return "", "", integrityError("unknown operation scope: " + operationScope)
+	}
 }

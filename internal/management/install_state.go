@@ -67,7 +67,11 @@ func serializeInstallState(state installationState) ([]byte, error) {
 	}
 
 	var result bytes.Buffer
-	result.WriteString("format\t1\n")
+	if state.legacy {
+		result.WriteString("format\t1\n")
+	} else {
+		result.WriteString("format\t2\n")
+	}
 	fmt.Fprintf(&result, "version\t%s\n", state.version)
 	fmt.Fprintf(&result, "scope\t%s\n", state.scope)
 	if state.scope == "project" {
@@ -84,7 +88,17 @@ func serializeInstallState(state installationState) ([]byte, error) {
 		fmt.Fprintf(&result, "directory\t%s\n", directory)
 	}
 	for _, record := range state.targets {
-		fmt.Fprintf(&result, "target\t%s\t%s\t%s\t%s\t%s\n", record.id, record.path, record.mode, record.checksum, record.origin)
+		if state.legacy {
+			fmt.Fprintf(
+				&result, "target\t%s\t%s\t%s\t%s\t%s\n",
+				record.id, record.path, record.mode, record.checksum, record.origin,
+			)
+		} else {
+			fmt.Fprintf(
+				&result, "target\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				record.id, record.artifact, record.path, record.mode, record.checksum, record.origin,
+			)
+		}
 	}
 	return result.Bytes(), nil
 }

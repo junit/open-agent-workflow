@@ -19,7 +19,7 @@ func TestAtomicReplaceCreatesScopedDirectoriesAndPrivateFile(t *testing.T) {
 		filepath.Join(root, "one"):        {},
 		filepath.Join(root, "one", "two"): {},
 	}
-	created := make(map[string]struct{})
+	created := make(createdDirectorySet)
 	if err := scopedAtomicReplace(action, planned, created); err != nil {
 		t.Fatalf("scopedAtomicReplace() error = %v", err)
 	}
@@ -62,7 +62,7 @@ func TestAtomicReplaceRejectsSymlinkAndNonDirectoryComponents(t *testing.T) {
 			label: "artifact", data: []byte("content\n"), destination: filepath.Join(root, "linked", "artifact"), mode: 0o644,
 			allowedRoot: root, relativeSuffix: "linked/artifact",
 		}
-		if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "symlink") {
+		if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "symlink") {
 			t.Fatalf("scopedAtomicReplace() error = %v", err)
 		}
 		if _, err := os.Stat(filepath.Join(outside, "artifact")); !os.IsNotExist(err) {
@@ -77,7 +77,7 @@ func TestAtomicReplaceRejectsSymlinkAndNonDirectoryComponents(t *testing.T) {
 			label: "artifact", data: []byte("content\n"), destination: filepath.Join(root, "file", "artifact"), mode: 0o644,
 			allowedRoot: root, relativeSuffix: "file/artifact",
 		}
-		if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "not a directory") {
+		if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "not a directory") {
 			t.Fatalf("scopedAtomicReplace() error = %v", err)
 		}
 	})
@@ -93,7 +93,7 @@ func TestAtomicReplaceRefusesPlannedDirectoryThatAppeared(t *testing.T) {
 		label: "artifact", data: []byte("content\n"), destination: filepath.Join(directory, "artifact"), mode: 0o644,
 		allowedRoot: root, relativeSuffix: "planned/artifact",
 	}
-	if err := scopedAtomicReplace(action, map[string]struct{}{directory: {}}, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "appeared before creation") {
+	if err := scopedAtomicReplace(action, map[string]struct{}{directory: {}}, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "appeared before creation") {
 		t.Fatalf("scopedAtomicReplace() error = %v", err)
 	}
 }
@@ -107,7 +107,7 @@ func TestAtomicReplaceRefusesDestinationThatChangedAfterValidation(t *testing.T)
 		allowedRoot: root, relativeSuffix: "artifact", before: installPathSnapshot{kind: installPathMissing},
 	}
 
-	if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "changed after preparation") {
+	if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "changed after preparation") {
 		t.Fatalf("scopedAtomicReplace() error = %v", err)
 	}
 	if data, err := os.ReadFile(destination); err != nil || string(data) != "foreign\n" {
@@ -136,7 +136,7 @@ func TestAtomicReplaceCreatesMissingAllowedRoot(t *testing.T) {
 		label: "artifact", data: []byte("content\n"), destination: destination, mode: 0o644,
 		allowedRoot: root, relativeSuffix: "artifact", before: installPathSnapshot{kind: installPathMissing},
 	}
-	if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err != nil {
+	if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err != nil {
 		t.Fatal(err)
 	}
 	if data, err := os.ReadFile(destination); err != nil || string(data) != "content\n" {
@@ -153,7 +153,7 @@ func TestAtomicReplaceRejectsUnsafeAllowedRoots(t *testing.T) {
 			t.Fatal(err)
 		}
 		action := installAction{label: "artifact", data: []byte("x"), destination: filepath.Join(root, "artifact"), mode: 0o644, allowedRoot: root, relativeSuffix: "artifact"}
-		if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "root is a symlink") {
+		if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "root is a symlink") {
 			t.Fatalf("scopedAtomicReplace() error = %v", err)
 		}
 	})
@@ -162,7 +162,7 @@ func TestAtomicReplaceRejectsUnsafeAllowedRoots(t *testing.T) {
 		root := filepath.Join(t.TempDir(), "root")
 		writePrepareFile(t, root, []byte("file\n"), 0o644)
 		action := installAction{label: "artifact", data: []byte("x"), destination: filepath.Join(root, "artifact"), mode: 0o644, allowedRoot: root, relativeSuffix: "artifact"}
-		if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "root is not a directory") {
+		if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "root is not a directory") {
 			t.Fatalf("scopedAtomicReplace() error = %v", err)
 		}
 	})
@@ -197,7 +197,7 @@ func TestInstallDirectorySetsFailClosed(t *testing.T) {
 	if err := validateCreatedInstallDirectories(map[string]struct{}{root: {}}, nil); err == nil {
 		t.Fatal("missing created directory was accepted")
 	}
-	if err := validateCreatedInstallDirectories(nil, map[string]struct{}{root: {}}); err == nil {
+	if err := validateCreatedInstallDirectories(nil, createdDirectorySet{root: nil}); err == nil {
 		t.Fatal("unplanned created directory was accepted")
 	}
 }
@@ -208,7 +208,7 @@ func TestScopedFilesystemHelpersRejectInvalidCoordinatesAndMissingTempDirectory(
 		label: "artifact", data: []byte("x"), destination: filepath.Join(rootPath, "other"), mode: 0o644,
 		allowedRoot: rootPath, relativeSuffix: "artifact",
 	}
-	if err := scopedAtomicReplace(action, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "changed after preparation") {
+	if err := scopedAtomicReplace(action, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "changed after preparation") {
 		t.Fatalf("mismatched scoped action error = %v", err)
 	}
 	root, err := os.OpenRoot(rootPath)
@@ -228,7 +228,7 @@ func TestScopedFilesystemCreatesUnplannedManagedDirectory(t *testing.T) {
 		label: "artifact", data: []byte("x"), destination: filepath.Join(root, "compat", "artifact"), mode: 0o644,
 		allowedRoot: root, relativeSuffix: "compat/artifact",
 	}
-	created := make(map[string]struct{})
+	created := make(createdDirectorySet)
 	if err := scopedAtomicReplace(action, nil, created); err != nil {
 		t.Fatal(err)
 	}
@@ -276,7 +276,7 @@ func TestScopedFilesystemDetectsChangedDirectoryHandleAndFinalSymlink(t *testing
 		label: "artifact", data: []byte("replacement\n"), destination: link, mode: 0o644,
 		allowedRoot: rootPath, relativeSuffix: "artifact-link", before: linkBefore,
 	}
-	if err := scopedAtomicReplace(linkAction, nil, make(map[string]struct{})); err == nil || !strings.Contains(err.Error(), "symlink") {
+	if err := scopedAtomicReplace(linkAction, nil, make(createdDirectorySet)); err == nil || !strings.Contains(err.Error(), "symlink") {
 		t.Fatalf("final symlink error = %v", err)
 	}
 	if data, err := os.ReadFile(outside); err != nil || string(data) != "outside\n" {

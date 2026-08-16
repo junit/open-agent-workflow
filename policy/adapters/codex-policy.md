@@ -31,6 +31,27 @@ Custom Profiles remain candidates in either case, with their source identity
 preserved. Never merge same-ID Profiles or let a Custom Profile shadow a
 Built-in ID.
 
+## Explicit Native Entrypoint
+
+The optional thin dispatcher uses `~/.agents/skills/oaw/SKILL.md` at user scope
+or `.agents/skills/oaw/SKILL.md` at project scope. Invoke it as
+`$oaw [PROFILE] <request>`, or select `oaw` from `/skills` and keep the optional
+Profile and task in the same user prompt. Codex does not define a portable
+`$ARGUMENTS` expansion for a Skill, so the dispatcher must use the actual user
+request rather than inventing one.
+
+The Skill's `agents/openai.yaml` metadata should set
+`policy.allow_implicit_invocation: false`. A user-entered `$oaw` or explicit
+selection from `/skills` activates OAW; indexing, preloading, or model-led
+selection of the same Skill does not. Invocation alone is not proof of user
+selection. The dispatcher follows the current Activation Router, contains no
+Policy path, and must not select a default Profile, reproduce Profile
+Responsibilities, lifecycle stages, or approval gates. Natural-language
+activation remains valid without the Skill.
+
+Codex normally detects Skill changes automatically. If a new or changed
+dispatcher is not visible, restart the Codex session before relying on it.
+
 ## Skill Discovery
 
 Use Codex's current Skill index first, but treat it as an optimization rather

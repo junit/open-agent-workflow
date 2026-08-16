@@ -16,6 +16,7 @@ var checksumPattern = regexp.MustCompile(`^[0-9]+:[0-9]+$`)
 
 type targetRecord struct {
 	id       string
+	artifact string
 	path     string
 	mode     string
 	checksum string
@@ -28,6 +29,7 @@ type policyFileRecord struct {
 }
 
 type installationState struct {
+	legacy         bool
 	version        string
 	scope          string
 	project        string
@@ -91,6 +93,20 @@ func parseInstallationState(data []byte) (installationState, error) {
 	if len(lines) != 0 {
 		lines = lines[:len(lines)-1]
 	}
+	format := ""
+	for _, line := range lines {
+		fields := strings.FieldsFunc(line, func(character rune) bool {
+			return character == '\t'
+		})
+		if len(fields) == 0 || fields[0] != "format" {
+			continue
+		}
+		if len(fields) != 2 || (fields[1] != "1" && fields[1] != "2") || format != "" {
+			return installationState{}, fmt.Errorf("invalid state format")
+		}
+		format = fields[1]
+	}
+	state.legacy = format == "1"
 	for _, line := range lines {
 		fields := strings.FieldsFunc(line, func(character rune) bool {
 			return character == '\t'
@@ -102,7 +118,7 @@ func parseInstallationState(data []byte) (installationState, error) {
 		counts[kind]++
 		switch kind {
 		case "format":
-			if len(fields) != 2 || fields[1] != "1" {
+			if len(fields) != 2 || fields[1] != format {
 				return installationState{}, fmt.Errorf("invalid state format")
 			}
 		case "version":
@@ -141,10 +157,24 @@ func parseInstallationState(data []byte) (installationState, error) {
 			}
 			state.directories = append(state.directories, fields[1])
 		case "target":
-			if len(fields) != 6 {
-				return installationState{}, fmt.Errorf("invalid target state")
+			var record targetRecord
+			if state.legacy {
+				if len(fields) != 6 {
+					return installationState{}, fmt.Errorf("invalid target state")
+				}
+				record = targetRecord{
+					id: fields[1], artifact: routerArtifactID, path: fields[2],
+					mode: fields[3], checksum: fields[4], origin: fields[5],
+				}
+			} else {
+				if len(fields) != 7 {
+					return installationState{}, fmt.Errorf("invalid target state")
+				}
+				record = targetRecord{
+					id: fields[1], artifact: fields[2], path: fields[3],
+					mode: fields[4], checksum: fields[5], origin: fields[6],
+				}
 			}
-			record := targetRecord{id: fields[1], path: fields[2], mode: fields[3], checksum: fields[4], origin: fields[5]}
 			state.targets = append(state.targets, record)
 		default:
 			return installationState{}, fmt.Errorf("invalid state record type: %s", kind)
@@ -274,22 +304,36 @@ func validatePolicySetTree(state installationState, coords coordinates) error {
 }
 
 func validateTargetRecords(state installationState) error {
-	seen := make(map[string]bool)
+	type targetArtifactIdentity struct {
+		target   string
+		artifact string
+	}
+
+	seen := make(map[targetArtifactIdentity]bool)
+	installedTargets := make(map[string]bool)
 	position := 0
 	for _, record := range state.targets {
-		if !safeStateField(record.id) || !safeStateField(record.path) ||
+		if !safeStateField(record.id) || !safeStateField(record.artifact) ||
+			!safeStateField(record.path) ||
 			!safeStateField(record.mode) || !safeStateField(record.checksum) ||
 			!safeStateField(record.origin) {
 			return fmt.Errorf("target record cannot be serialized")
 		}
 		candidate, found := findTarget(record.id)
-		if !found || (state.scope == "user" && !candidate.User) {
+		if !found || !targetSupportsScope(candidate, state.scope) {
 			return fmt.Errorf("invalid target state")
+		}
+		artifact, found := findTargetArtifact(record.id, record.artifact)
+		if !found {
+			return fmt.Errorf("invalid target state")
+		}
+		if state.legacy && artifact.ID != routerArtifactID {
+			return fmt.Errorf("invalid legacy target state")
 		}
 		if record.path == "" || !filepath.IsAbs(record.path) {
 			return fmt.Errorf("invalid target path")
 		}
-		if record.mode != candidate.Ownership {
+		if record.mode != artifact.Ownership {
 			return fmt.Errorf("invalid target ownership")
 		}
 		if !validChecksum(record.checksum) {
@@ -298,15 +342,37 @@ func validateTargetRecords(state installationState) error {
 		if record.origin != "created-file" && record.origin != "existing-file" {
 			return fmt.Errorf("invalid target ownership")
 		}
-		if seen[record.id] {
-			return fmt.Errorf("duplicate target state: %s", record.id)
+		if record.mode == "owned-file" && record.origin != "created-file" {
+			return fmt.Errorf("invalid target ownership")
 		}
-		currentPosition := targetPosition(record.id)
+		identity := targetArtifactIdentity{target: record.id, artifact: record.artifact}
+		if seen[identity] {
+			return fmt.Errorf("duplicate target artifact state: %s/%s", record.id, record.artifact)
+		}
+		currentPosition := targetArtifactPosition(record.id, record.artifact)
 		if currentPosition <= position {
 			return fmt.Errorf("target state is not in registry order")
 		}
-		seen[record.id] = true
+		seen[identity] = true
+		installedTargets[record.id] = true
 		position = currentPosition
+	}
+	if !state.legacy {
+		for _, candidate := range targetRegistry {
+			if !installedTargets[candidate.ID] {
+				continue
+			}
+			artifacts, err := targetArtifactsForScope(candidate.ID, state.scope)
+			if err != nil {
+				return fmt.Errorf("invalid target state")
+			}
+			for _, artifact := range artifacts {
+				identity := targetArtifactIdentity{target: candidate.ID, artifact: artifact.ID}
+				if !seen[identity] {
+					return fmt.Errorf("incomplete target artifact state: %s/%s", candidate.ID, artifact.ID)
+				}
+			}
+		}
 	}
 	shared := make(map[string]targetRecord)
 	for _, record := range state.targets {
@@ -338,11 +404,9 @@ func validateOwnedDirectories(state installationState, coords coordinates) error
 			if record.origin != "created-file" {
 				continue
 			}
-			root := coords.environment.Home
-			if state.scope == "project" {
-				root = state.project
-			} else if record.id == "opencode" {
-				root = coords.environment.ConfigHome
+			root, _, err := artifactInstallCoordinates(coords, state.scope, state.project, record.id, record.artifact)
+			if err != nil {
+				continue
 			}
 			if recordedCoordinateMatches(root, directory) && containedStrictly(directory, record.path) {
 				matched = true
@@ -378,15 +442,6 @@ func userCustomProfilePath(coords coordinates, candidate string) bool {
 	}
 	builtin := filepath.Join(customProfilesDir, "builtin")
 	return candidate != builtin && !containedStrictly(builtin, candidate)
-}
-
-func targetPosition(id string) int {
-	for index, candidate := range targetRegistry {
-		if candidate.ID == id {
-			return index + 1
-		}
-	}
-	return 0
 }
 
 func safeStateField(value string) bool {

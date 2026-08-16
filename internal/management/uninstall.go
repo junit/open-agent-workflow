@@ -145,10 +145,14 @@ func prepareUninstallTarget(
 	if repaired, found := force.repaired[record.path]; found {
 		renderCurrent = cloneInstallPathSnapshot(repaired)
 	}
-	root, suffix, err := targetInstallCoordinates(preparation.coordinates, preparation.resolved, record.id)
+	root, suffix, err := artifactInstallCoordinates(
+		preparation.coordinates, preparation.resolved.scope, preparation.resolved.projectRoot,
+		record.id, record.artifact,
+	)
 	if err != nil {
 		return mutationAction{}, err
 	}
+	label := targetArtifactLabel(record.id, record.artifact)
 	switch record.mode {
 	case "managed-block":
 		rendered, err := renderManagedFileWithoutBlock(renderCurrent.data)
@@ -156,14 +160,14 @@ func prepareUninstallTarget(
 			return mutationAction{}, integrityError("managed markers are invalid: " + record.path)
 		}
 		if record.origin == "created-file" && len(rendered) == 0 {
-			return newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
+			return newMutationAction(mutationRemove, label, nil, record.path, 0, root, suffix, current)
 		}
-		return newMutationAction(mutationReplace, record.id, rendered, record.path, 0o644, root, suffix, current)
+		return newMutationAction(mutationReplace, label, rendered, record.path, 0o644, root, suffix, current)
 	case "owned-file":
 		if record.origin != "created-file" {
 			return mutationAction{}, integrityError("invalid owned target origin")
 		}
-		return newMutationAction(mutationRemove, record.id, nil, record.path, 0, root, suffix, current)
+		return newMutationAction(mutationRemove, label, nil, record.path, 0, root, suffix, current)
 	default:
 		return mutationAction{}, integrityError("unknown target ownership mode: " + record.mode)
 	}
@@ -320,11 +324,9 @@ func directoryMatchesTargetRecords(directory string, records []targetRecord, sta
 		if record.origin != "created-file" {
 			continue
 		}
-		root := coords.environment.Home
-		if state.scope == "project" {
-			root = state.project
-		} else if record.id == "opencode" {
-			root = coords.environment.ConfigHome
+		root, _, err := artifactInstallCoordinates(coords, state.scope, state.project, record.id, record.artifact)
+		if err != nil {
+			continue
 		}
 		if recordedCoordinateMatches(root, directory) && containedStrictly(directory, record.path) {
 			return true
@@ -350,11 +352,9 @@ func ownedDirectoryMutationRoot(directory string, state installationState, coord
 		if record.origin != "created-file" {
 			continue
 		}
-		root := coords.environment.Home
-		if state.scope == "project" {
-			root = state.project
-		} else if record.id == "opencode" {
-			root = coords.environment.ConfigHome
+		root, _, err := artifactInstallCoordinates(coords, state.scope, state.project, record.id, record.artifact)
+		if err != nil {
+			continue
 		}
 		if recordedCoordinateMatches(root, directory) && containedStrictly(directory, record.path) {
 			return root, nil

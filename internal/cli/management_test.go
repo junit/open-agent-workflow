@@ -134,7 +134,8 @@ func TestRunManagementHelpAndLifecycle(t *testing.T) {
 	if status := runManagement([]string{"update", "--target", "claude"}, &stdout, &stderr); status != 0 {
 		t.Fatalf("update status=%d stdout=%q stderr=%q", status, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "oaw: unchanged: claude\n") || stderr.Len() != 0 {
+	if !strings.Contains(stdout.String(), "oaw: unchanged: claude/router\n") ||
+		!strings.Contains(stdout.String(), "oaw: unchanged: claude/native-entrypoint\n") || stderr.Len() != 0 {
 		t.Fatalf("update stdout=%q stderr=%q", stdout.String(), stderr.String())
 	}
 	stdout.Reset()

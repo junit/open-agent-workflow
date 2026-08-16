@@ -21,7 +21,24 @@ Cline, Roo, and Copilot.
 Native Host behavior is the default. OAW governs a deliverable only when the
 current top-level user request explicitly asks to use OAW or clearly continues
 an active OAW deliverable. Installing OAW, discussing it, quoting its rules,
-task complexity, and ordinary Skill selection do not activate it.
+task complexity, automatic discovery or model-led loading of an OAW-named
+Skill, and ordinary Skill selection do not activate it.
+
+A Host-native OAW entrypoint documented by the current Host Adapter is an
+explicit request only when the current top-level user request contains its
+native invocation, or reliable Host metadata distinguishes a user picker
+selection from model-led invocation. Physical invocation or loading alone is
+not proof of user intent. When the source cannot be distinguished, require the
+literal native form or a natural-language activation request in the top-level
+user request. Natural-language activation remains the portable form; no native
+entrypoint is required.
+
+A native entrypoint is a thin dispatcher, not an engineering method. It may
+carry an explicitly named Profile and the user's task into the selected Policy
+Set. It must not choose a default Profile, duplicate Profile Responsibilities,
+impose lifecycle stages or approval gates, or treat automatic model invocation
+as user intent. It follows the Activation Router for Policy Set selection and
+must not embed a Policy path in a Host-preprocessed command or Skill template.
 
 On activation, load one Canonical Policy Set and select one Profile for the
 deliverable. Related follow-ups continue that selection until completion,

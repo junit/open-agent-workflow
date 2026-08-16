@@ -32,6 +32,11 @@ go build -o ./oaw ./cmd/oaw
 安装的 Policy Set 包含 Claude、Codex、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot
 的完整 Adapter。
 
+每个选中的 target 还会得到一个薄的 Host 原生 OAW 入口。User scope 支持 Claude、Codex、Gemini
+和 OpenCode，Project scope 支持全部九个 Host。Codex 使用 `$oaw`，其余八个 Host 使用 `/oaw`。
+这些 dispatcher 只是显式激活的便捷别名，不是工程工作流副本。精确路径和刷新方式参见
+[Host Adapter](docs/zh/adapters.md)。
+
 ## Canonical Policy Set
 
 安装源是一套不可拆分的文件：
@@ -61,14 +66,32 @@ Policy Set 的 managed activation router。
 
 ## 规则驱动使用
 
-OAW 是 opt-in 的。当前顶层请求必须明确要求 Host 为某个交付物使用 OAW；否则 Host 按原生方式
-工作，OAW 不检查或改变 Skill、Agent、角色、工具或权限选择。
+OAW 是 opt-in 的。当前顶层请求必须通过自然语言或用户主动调用的 Host 原生入口，明确要求 Host
+为某个交付物使用 OAW；否则 Host 按原生方式工作，OAW 不检查或改变 Skill、Agent、角色、工具或
+权限选择。
 
 激活后尽量在同一请求中选择 Profile：
 
 ```text
 Use OAW with MATT-SP-HYBRID to deliver the editor.
 ```
+
+等价的原生形式为：
+
+```text
+# Codex
+$oaw MATT-SP-HYBRID deliver the editor.
+
+# Claude、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 或 Copilot
+/oaw MATT-SP-HYBRID deliver the editor.
+```
+
+自然语言激活始终有效；原生形式既不是必需入口，也没有更高优先级。Dispatcher 只把可选 Profile
+和任务带入选中的 Policy Set，不选择默认 Profile、不复制 Profile Responsibility、不定义生命周期
+阶段，也不增加 approval gate。自动发现或模型主动加载名为 OAW 的 Skill 不代表用户激活。能禁止
+隐式调用的 Host 会使用对应控制；Cline 没有已记录的 per-Skill 控制，因此依赖 Policy self-gating。
+物理调用本身不能证明用户意图。Dispatcher 必须检查顶层用户请求或可靠的 Host 用户选择元数据，再按
+Activation Router 选择 Policy Set；Host 模板中不嵌入 Policy 路径。
 
 模型读取选中的 Profile，并在某项 Responsibility 成为当前工作时读取对应 Skill。Host Skill
 索引只是优化，不是可用性证明。只要规则可读或 Host 提供原生调用面，模型就可以在没有 Bridge

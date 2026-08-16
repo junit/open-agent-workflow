@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestSerializeInstallStateMatchesBashOrderAndRoundTrips(t *testing.T) {
+func TestSerializeInstallStateUsesCanonicalOrderAndRoundTrips(t *testing.T) {
 	state := installationState{
 		version:        "0.1.0",
 		scope:          "project",
@@ -18,13 +18,17 @@ func TestSerializeInstallStateMatchesBashOrderAndRoundTrips(t *testing.T) {
 		backupPath:     "/state/open-agent-workflow/backups/prior",
 		directories:    []string{"/project path/.codex", "/state/open-agent-workflow"},
 		targets: []targetRecord{
-			{id: "codex", path: "/project path/AGENTS.md", mode: "managed-block", checksum: "303:404", origin: "existing-file"},
-			{id: "opencode", path: "/project path/AGENTS.md", mode: "managed-block", checksum: "303:404", origin: "existing-file"},
-			{id: "cursor", path: "/project path/.cursor/rules/open-agent-workflow.mdc", mode: "owned-file", checksum: "505:606", origin: "created-file"},
+			{id: "codex", artifact: routerArtifactID, path: "/project path/AGENTS.md", mode: "managed-block", checksum: "303:404", origin: "existing-file"},
+			{id: "codex", artifact: nativeEntrypointArtifactID, path: "/project path/.agents/skills/oaw/SKILL.md", mode: "owned-file", checksum: "304:405", origin: "created-file"},
+			{id: "codex", artifact: nativePolicyArtifactID, path: "/project path/.agents/skills/oaw/agents/openai.yaml", mode: "owned-file", checksum: "305:406", origin: "created-file"},
+			{id: "opencode", artifact: routerArtifactID, path: "/project path/AGENTS.md", mode: "managed-block", checksum: "303:404", origin: "existing-file"},
+			{id: "opencode", artifact: nativeEntrypointArtifactID, path: "/project path/.opencode/commands/oaw.md", mode: "owned-file", checksum: "505:606", origin: "created-file"},
+			{id: "cursor", artifact: routerArtifactID, path: "/project path/.cursor/rules/open-agent-workflow.mdc", mode: "owned-file", checksum: "507:608", origin: "created-file"},
+			{id: "cursor", artifact: nativeEntrypointArtifactID, path: "/project path/.cursor/skills/oaw/SKILL.md", mode: "owned-file", checksum: "508:609", origin: "created-file"},
 		},
 	}
 	want := strings.Join([]string{
-		"format\t1",
+		"format\t2",
 		"version\t0.1.0",
 		"scope\tproject",
 		"project\t/project path",
@@ -33,9 +37,13 @@ func TestSerializeInstallStateMatchesBashOrderAndRoundTrips(t *testing.T) {
 		"backup\t/state/open-agent-workflow/backups/prior",
 		"directory\t/project path/.codex",
 		"directory\t/state/open-agent-workflow",
-		"target\tcodex\t/project path/AGENTS.md\tmanaged-block\t303:404\texisting-file",
-		"target\topencode\t/project path/AGENTS.md\tmanaged-block\t303:404\texisting-file",
-		"target\tcursor\t/project path/.cursor/rules/open-agent-workflow.mdc\towned-file\t505:606\tcreated-file",
+		"target\tcodex\trouter\t/project path/AGENTS.md\tmanaged-block\t303:404\texisting-file",
+		"target\tcodex\tnative-entrypoint\t/project path/.agents/skills/oaw/SKILL.md\towned-file\t304:405\tcreated-file",
+		"target\tcodex\tnative-policy\t/project path/.agents/skills/oaw/agents/openai.yaml\towned-file\t305:406\tcreated-file",
+		"target\topencode\trouter\t/project path/AGENTS.md\tmanaged-block\t303:404\texisting-file",
+		"target\topencode\tnative-entrypoint\t/project path/.opencode/commands/oaw.md\towned-file\t505:606\tcreated-file",
+		"target\tcursor\trouter\t/project path/.cursor/rules/open-agent-workflow.mdc\towned-file\t507:608\tcreated-file",
+		"target\tcursor\tnative-entrypoint\t/project path/.cursor/skills/oaw/SKILL.md\towned-file\t508:609\tcreated-file",
 	}, "\n") + "\n"
 
 	got, err := serializeInstallState(state)
@@ -63,7 +71,8 @@ func TestSerializeInstallStateRejectsInvalidValues(t *testing.T) {
 		policyFiles:    []policyFileRecord{{path: "/config/open-agent-workflow/POLICY.md", checksum: "1:1"}},
 		directories:    []string{"/home/.claude"},
 		targets: []targetRecord{
-			{id: "claude", path: "/home/.claude/CLAUDE.md", mode: "managed-block", checksum: "2:2", origin: "existing-file"},
+			{id: "claude", artifact: routerArtifactID, path: "/home/.claude/CLAUDE.md", mode: "managed-block", checksum: "2:2", origin: "existing-file"},
+			{id: "claude", artifact: nativeEntrypointArtifactID, path: "/home/.claude/skills/oaw/SKILL.md", mode: "owned-file", checksum: "3:3", origin: "created-file"},
 		},
 	}
 	tests := []struct {
@@ -85,18 +94,31 @@ func TestSerializeInstallStateRejectsInvalidValues(t *testing.T) {
 		{name: "unsafe directory", mutate: func(value *installationState) { value.directories[0] = "/home/bad\tdir" }},
 		{name: "no targets", mutate: func(value *installationState) { value.targets = nil }},
 		{name: "relative target", mutate: func(value *installationState) { value.targets[0].path = ".claude/CLAUDE.md" }},
+		{name: "unsafe artifact", mutate: func(value *installationState) { value.targets[0].artifact = "bad\tartifact" }},
+		{name: "unknown artifact", mutate: func(value *installationState) { value.targets[0].artifact = "unknown" }},
 		{name: "invalid origin", mutate: func(value *installationState) { value.targets[0].origin = "borrowed-file" }},
 		{name: "registry order", mutate: func(value *installationState) {
 			value.targets = []targetRecord{
-				{id: "codex", path: "/home/.codex/AGENTS.md", mode: "managed-block", checksum: "3:3", origin: "existing-file"},
+				{id: "codex", artifact: routerArtifactID, path: "/home/.codex/AGENTS.md", mode: "managed-block", checksum: "3:3", origin: "existing-file"},
+				{id: "codex", artifact: nativeEntrypointArtifactID, path: "/home/.agents/skills/oaw/SKILL.md", mode: "owned-file", checksum: "4:4", origin: "created-file"},
+				{id: "codex", artifact: nativePolicyArtifactID, path: "/home/.agents/skills/oaw/agents/openai.yaml", mode: "owned-file", checksum: "5:5", origin: "created-file"},
 				value.targets[0],
 			}
+		}},
+		{name: "duplicate target artifact", mutate: func(value *installationState) {
+			value.targets = append(value.targets, value.targets[0])
+		}},
+		{name: "incomplete target artifacts", mutate: func(value *installationState) {
+			value.targets = value.targets[:1]
 		}},
 		{name: "conflicting shared destination", mutate: func(value *installationState) {
 			value.scope, value.project = "project", "/project"
 			value.targets = []targetRecord{
-				{id: "codex", path: "/project/AGENTS.md", mode: "managed-block", checksum: "2:2", origin: "existing-file"},
-				{id: "opencode", path: "/project/AGENTS.md", mode: "managed-block", checksum: "3:3", origin: "existing-file"},
+				{id: "codex", artifact: routerArtifactID, path: "/project/AGENTS.md", mode: "managed-block", checksum: "2:2", origin: "existing-file"},
+				{id: "codex", artifact: nativeEntrypointArtifactID, path: "/project/.agents/skills/oaw/SKILL.md", mode: "owned-file", checksum: "4:4", origin: "created-file"},
+				{id: "codex", artifact: nativePolicyArtifactID, path: "/project/.agents/skills/oaw/agents/openai.yaml", mode: "owned-file", checksum: "5:5", origin: "created-file"},
+				{id: "opencode", artifact: routerArtifactID, path: "/project/AGENTS.md", mode: "managed-block", checksum: "3:3", origin: "existing-file"},
+				{id: "opencode", artifact: nativeEntrypointArtifactID, path: "/project/.opencode/commands/oaw.md", mode: "owned-file", checksum: "6:6", origin: "created-file"},
 			}
 		}},
 	}

@@ -21,21 +21,29 @@ type mutationRequest struct {
 }
 
 type mutationPlan struct {
-	operation        mutationOperation
-	source           Source
-	environment      Environment
-	request          mutationRequest
-	resolved         resolvedRequest
-	coordinates      coordinates
-	targetActions    []mutationAction
-	policyAction     mutationAction
-	policySetActions []mutationAction
-	stateActions     []mutationAction
-	directoryActions []directoryAction
-	leadingLines     []string
-	backup           backupPlan
-	terminal         terminalMutation
-	predicted        Result
+	operation          mutationOperation
+	source             Source
+	environment        Environment
+	request            mutationRequest
+	resolved           resolvedRequest
+	coordinates        coordinates
+	targetActions      []mutationAction
+	policyAction       mutationAction
+	policySetActions   []mutationAction
+	stateActions       []mutationAction
+	directoryActions   []directoryAction
+	plannedDirectories []plannedDirectory
+	leadingLines       []string
+	backup             backupPlan
+	terminal           terminalMutation
+	predicted          Result
+}
+
+type plannedDirectory struct {
+	destination    string
+	allowedRoot    string
+	relativeSuffix string
+	identity       mutationPathIdentity
 }
 
 type PreparedUpdate struct {
@@ -97,24 +105,34 @@ func prepareMutationInputs(environment Environment, request mutationRequest) (mu
 
 func verifyUntrackedMutationMarkers(coords coordinates, resolved resolvedRequest) error {
 	for _, id := range resolved.targets {
-		candidate, found := findTarget(id)
-		if !found {
-			return integrityError("unknown target '" + id + "'")
-		}
-		if candidate.Ownership != "managed-block" {
-			continue
-		}
-		destination, err := targetDestination(coords, resolved.scope, resolved.projectRoot, id)
+		artifacts, err := targetArtifactsForScope(id, resolved.scope)
 		if err != nil {
 			return err
 		}
-		current, err := inspectInstallPath(destination)
-		if err != nil {
-			return err
-		}
-		status, _ := managedInstallStatus(current)
-		if status != "absent" {
-			return integrityError("untracked OAW markers already exist: " + id + " at " + destination)
+		for _, artifact := range artifacts {
+			destination, err := artifactDestination(
+				coords, resolved.scope, resolved.projectRoot, id, artifact.ID,
+			)
+			if err != nil {
+				return err
+			}
+			current, err := inspectInstallPath(destination)
+			if err != nil {
+				return err
+			}
+			switch artifact.Ownership {
+			case "managed-block":
+				status, _ := managedInstallStatus(current)
+				if status != "absent" {
+					return integrityError("untracked OAW markers already exist: " + targetArtifactLabel(id, artifact.ID) + " at " + destination)
+				}
+			case "owned-file":
+				if current.kind != installPathMissing {
+					return integrityError("untracked OAW target artifact already exists: " + targetArtifactLabel(id, artifact.ID) + " at " + destination)
+				}
+			default:
+				return integrityError("unknown target ownership mode: " + artifact.Ownership)
+			}
 		}
 	}
 	return nil
@@ -153,13 +171,19 @@ func validateCleanMutationState(state installationState, coords coordinates, res
 }
 
 func selectedInstalledRecords(records []targetRecord, selected []string) ([]targetRecord, error) {
-	result := make([]targetRecord, 0, len(selected))
+	result := make([]targetRecord, 0, len(selected)*2)
 	for _, id := range selected {
-		record, found := findTargetRecord(records, id)
+		found := false
+		for _, record := range records {
+			if record.id != id {
+				continue
+			}
+			result = append(result, record)
+			found = true
+		}
 		if !found {
 			return nil, integrityError("selected target is not installed: " + id)
 		}
-		result = append(result, record)
 	}
 	return result, nil
 }
@@ -306,6 +330,7 @@ func cloneMutationPlan(plan mutationPlan) mutationPlan {
 	plan.policySetActions = cloneMutationActions(plan.policySetActions)
 	plan.stateActions = cloneMutationActions(plan.stateActions)
 	plan.directoryActions = cloneDirectoryActions(plan.directoryActions)
+	plan.plannedDirectories = append([]plannedDirectory(nil), plan.plannedDirectories...)
 	plan.leadingLines = append([]string(nil), plan.leadingLines...)
 	plan.backup = cloneBackupPlan(plan.backup)
 	plan.predicted = cloneManagementResult(plan.predicted)

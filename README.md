@@ -37,6 +37,13 @@ entrypoints, and private Install State. They never execute engineering work.
 The installed Policy Set includes full adapters for Claude, Codex, Gemini,
 OpenCode, Cursor, Windsurf, Cline, Roo, and Copilot.
 
+Each selected target also receives a thin Host-native OAW entrypoint. User
+scope supports Claude, Codex, Gemini, and OpenCode; project scope supports all
+nine Hosts. Codex invokes the entrypoint as `$oaw`; the other eight Hosts use
+`/oaw`. These dispatchers are convenience aliases for explicit activation, not
+copies of the engineering workflow. See [Host Adapters](docs/en/adapters.md)
+for the exact paths and refresh behavior.
+
 ## Canonical Policy Set
 
 The installed source is a single selected set:
@@ -68,14 +75,37 @@ managed activation router that points to the selected set.
 ## Rule-Driven Use
 
 OAW is opt-in. The current top-level request must explicitly ask the host to
-use OAW for a deliverable. Otherwise the host behaves normally and OAW does
-not inspect or change Skill, Agent, role, tool, or permission selection.
+use OAW for a deliverable, either in natural language or through a
+user-invoked Host-native entrypoint. Otherwise the host behaves normally and
+OAW does not inspect or change Skill, Agent, role, tool, or permission
+selection.
 
 After activation, select a Profile in the same request when possible:
 
 ```text
 Use OAW with MATT-SP-HYBRID to deliver the editor.
 ```
+
+The equivalent native forms are:
+
+```text
+# Codex
+$oaw MATT-SP-HYBRID deliver the editor.
+
+# Claude, Gemini, OpenCode, Cursor, Windsurf, Cline, Roo, or Copilot
+/oaw MATT-SP-HYBRID deliver the editor.
+```
+
+Natural-language activation remains fully supported; the native form is not
+mandatory or higher priority. A dispatcher carries the optional Profile and
+task into the selected Policy Set. It never chooses a default Profile,
+duplicates Profile Responsibilities, defines lifecycle stages, or adds an
+approval gate. Automatic discovery or model-led loading of an OAW-named Skill
+is not user activation, and physical invocation alone is not proof of user
+intent. The dispatcher checks the top-level request or reliable Host
+user-selection metadata, then follows the Activation Router; it never embeds a
+Policy path in the Host template. Hosts with an explicit-only control use it;
+Cline, which lacks a documented per-Skill control, relies on Policy self-gating.
 
 The model reads the selected Profile, then reads each declared Skill when its
 Responsibility becomes current. A host Skill index is an optimization, not a

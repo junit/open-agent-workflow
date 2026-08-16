@@ -23,6 +23,11 @@ func PrepareUpdate(source Source, environment Environment, request UpdateRequest
 		}
 		return PreparedUpdate{}, &Error{Status: 66, Message: "no installation state; run install first"}
 	}
+	if preparation.state.legacy {
+		preparation.resolved.targets = includeInstalledTargets(
+			preparation.resolved.targets, preparation.state.targets,
+		)
+	}
 	force, err := prepareMutationForce(
 		preparation.state, preparation.coordinates, preparation.resolved,
 		preparation.policy, request.Force,
@@ -59,12 +64,16 @@ func prepareUpdatePlan(
 	if err != nil {
 		return mutationPlan{}, err
 	}
+	directories, plannedDirectories, err := prepareUpdateDirectories(preparation, targetActions, records)
+	if err != nil {
+		return mutationPlan{}, err
+	}
 	policyAction, policySetActions, policyFiles, policyChecksum, err := prepareUpdatePolicyActions(source, preparation)
 	if err != nil {
 		return mutationPlan{}, err
 	}
 	stateActions, err := prepareUpdateStateActions(
-		source, environment, preparation, force, policyChecksum, policyFiles, records,
+		source, environment, preparation, force, policyChecksum, policyFiles, records, directories,
 	)
 	if err != nil {
 		return mutationPlan{}, err
@@ -83,6 +92,7 @@ func prepareUpdatePlan(
 		targetActions: cloneMutationActions(targetActions), policyAction: cloneMutationAction(policyAction),
 		policySetActions: cloneMutationActions(policySetActions),
 		stateActions:     cloneMutationActions(stateActions), backup: cloneBackupPlan(backup),
+		plannedDirectories: append([]plannedDirectory(nil), plannedDirectories...),
 	}
 	plan.predicted = predictMutationResult(plan)
 	return cloneMutationPlan(plan), nil
@@ -160,22 +170,36 @@ func prepareUpdatePolicyActions(
 }
 
 func prepareUpdateTargets(preparation mutationPreparation, force forcePreparation) ([]mutationAction, []targetRecord, error) {
-	selected, err := selectedInstalledRecords(preparation.state.targets, preparation.resolved.targets)
-	if err != nil {
+	if _, err := selectedInstalledRecords(preparation.state.targets, preparation.resolved.targets); err != nil {
 		return nil, nil, err
 	}
-	actions := make([]mutationAction, 0, len(selected))
-	records := make([]targetRecord, 0, len(selected))
-	for _, record := range selected {
-		action, updated, err := prepareUpdateTarget(preparation, force, record)
+	actions := make([]mutationAction, 0, len(preparation.resolved.targets)*2)
+	records := make([]targetRecord, 0, len(preparation.resolved.targets)*2)
+	for _, id := range preparation.resolved.targets {
+		artifacts, err := targetArtifactsForScope(id, preparation.resolved.scope)
 		if err != nil {
 			return nil, nil, err
 		}
-		actions, err = addMutationAction(actions, action)
-		if err != nil {
-			return nil, nil, err
+		for _, artifact := range artifacts {
+			record, found := findTargetArtifactRecord(preparation.state.targets, id, artifact.ID)
+			var action mutationAction
+			var updated targetRecord
+			if found {
+				action, updated, err = prepareUpdateTarget(preparation, force, record)
+			} else if preparation.state.legacy {
+				action, updated, err = prepareLegacyUpdateArtifact(preparation, artifact, id)
+			} else {
+				return nil, nil, integrityError("installed target artifact is missing from state: " + targetArtifactLabel(id, artifact.ID))
+			}
+			if err != nil {
+				return nil, nil, err
+			}
+			actions, err = addMutationAction(actions, action)
+			if err != nil {
+				return nil, nil, err
+			}
+			records = append(records, updated)
 		}
-		records = append(records, updated)
 	}
 	merged, err := mergeInstallRecords(preparation.state.targets, records, preparation.resolved.scope)
 	if err != nil {
@@ -184,12 +208,119 @@ func prepareUpdateTargets(preparation mutationPreparation, force forcePreparatio
 	return actions, merged, nil
 }
 
+func prepareLegacyUpdateArtifact(
+	preparation mutationPreparation,
+	artifact targetArtifact,
+	id string,
+) (mutationAction, targetRecord, error) {
+	if artifact.ID == routerArtifactID || artifact.Ownership != "owned-file" {
+		return mutationAction{}, targetRecord{}, integrityError("legacy state is missing its activation router")
+	}
+	destination, err := artifactDestination(
+		preparation.coordinates, preparation.resolved.scope, preparation.resolved.projectRoot,
+		id, artifact.ID,
+	)
+	if err != nil {
+		return mutationAction{}, targetRecord{}, err
+	}
+	current, err := inspectInstallPath(destination)
+	if err != nil {
+		return mutationAction{}, targetRecord{}, err
+	}
+	if current.kind != installPathMissing {
+		return mutationAction{}, targetRecord{}, integrityError("owned target artifact already exists: " + destination)
+	}
+	root, suffix, err := artifactInstallCoordinates(
+		preparation.coordinates, preparation.resolved.scope, preparation.resolved.projectRoot,
+		id, artifact.ID,
+	)
+	if err != nil {
+		return mutationAction{}, targetRecord{}, err
+	}
+	rendered, err := renderArtifact(
+		targetID(id), artifact.ID, scope(preparation.resolved.scope),
+		policyRouterReference(preparation.coordinates),
+	)
+	if err != nil {
+		return mutationAction{}, targetRecord{}, err
+	}
+	action, err := newMutationAction(
+		mutationReplace, targetArtifactLabel(id, artifact.ID), rendered, destination, 0o644,
+		root, suffix, current,
+	)
+	if err != nil {
+		return mutationAction{}, targetRecord{}, err
+	}
+	return action, targetRecord{
+		id: id, artifact: artifact.ID, path: destination, mode: artifact.Ownership,
+		checksum: checksumBytes(rendered), origin: "created-file",
+	}, nil
+}
+
+func prepareUpdateDirectories(
+	preparation mutationPreparation,
+	actions []mutationAction,
+	records []targetRecord,
+) ([]string, []plannedDirectory, error) {
+	if !preparation.state.legacy {
+		return append([]string(nil), preparation.state.directories...), nil, nil
+	}
+	installActions := make([]installAction, 0, len(actions))
+	for _, action := range actions {
+		converted, err := installActionFromMutation(action)
+		if err != nil {
+			return nil, nil, err
+		}
+		installActions = append(installActions, converted)
+	}
+	directories, planned, err := prepareInstallDirectories(
+		preparation.coordinates, preparation.resolved, preparation.state.directories,
+		installActions, records,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+	state := cloneInstallationStateValue(preparation.state)
+	state.legacy = false
+	state.targets = cloneTargetRecords(records)
+	state.directories = append([]string(nil), directories...)
+	result := make([]plannedDirectory, 0, len(planned))
+	for _, directory := range planned {
+		root, err := ownedDirectoryMutationRoot(directory, state, preparation.coordinates)
+		if err != nil {
+			return nil, nil, err
+		}
+		suffix, err := stateActionRelativeSuffix(root, directory)
+		if err != nil {
+			return nil, nil, err
+		}
+		var identity mutationPathIdentity
+		for _, action := range actions {
+			if action.allowedRoot == root && containedStrictly(directory, action.destination) {
+				identity = action.identity
+				break
+			}
+		}
+		if !identity.captured {
+			return nil, nil, integrityError("planned owned directory has no target identity: " + directory)
+		}
+		result = append(result, plannedDirectory{
+			destination: directory, allowedRoot: root, relativeSuffix: suffix,
+			identity: identity,
+		})
+	}
+	return directories, result, nil
+}
+
 func prepareUpdateTarget(
 	preparation mutationPreparation,
 	force forcePreparation,
 	record targetRecord,
 ) (mutationAction, targetRecord, error) {
-	candidate, _ := findTarget(record.id)
+	artifact, found := findTargetArtifact(record.id, record.artifact)
+	if !found {
+		return mutationAction{}, targetRecord{}, integrityError("unknown target artifact: " + targetArtifactLabel(record.id, record.artifact))
+	}
 	current, err := inspectInstallPath(record.path)
 	if err != nil {
 		return mutationAction{}, targetRecord{}, err
@@ -198,16 +329,19 @@ func prepareUpdateTarget(
 	if repaired, found := force.repaired[record.path]; found {
 		renderCurrent = cloneInstallPathSnapshot(repaired)
 	}
-	root, suffix, err := targetInstallCoordinates(preparation.coordinates, preparation.resolved, record.id)
+	root, suffix, err := artifactInstallCoordinates(
+		preparation.coordinates, preparation.resolved.scope, preparation.resolved.projectRoot,
+		record.id, record.artifact,
+	)
 	if err != nil {
 		return mutationAction{}, targetRecord{}, err
 	}
-	rendered, renderedChecksum, err := renderUpdatedTarget(candidate, record, preparation, renderCurrent)
+	rendered, renderedChecksum, err := renderUpdatedTarget(artifact, record, preparation, renderCurrent)
 	if err != nil {
 		return mutationAction{}, targetRecord{}, err
 	}
 	action, err := newMutationAction(
-		mutationReplace, record.id, rendered, record.path, 0o644,
+		mutationReplace, targetArtifactLabel(record.id, record.artifact), rendered, record.path, 0o644,
 		root, suffix, current,
 	)
 	if err != nil {
@@ -218,13 +352,16 @@ func prepareUpdateTarget(
 }
 
 func renderUpdatedTarget(
-	candidate target,
+	artifact targetArtifact,
 	record targetRecord,
 	preparation mutationPreparation,
 	current installPathSnapshot,
 ) ([]byte, string, error) {
-	switch candidate.Ownership {
+	switch artifact.Ownership {
 	case "managed-block":
+		if artifact.ID != routerArtifactID {
+			return nil, "", integrityError("managed target artifact is not an activation router")
+		}
 		block, err := renderManagedBlock(targetID(record.id), scope(preparation.resolved.scope), policyRouterReference(preparation.coordinates))
 		if err != nil {
 			return nil, "", err
@@ -232,10 +369,13 @@ func renderUpdatedTarget(
 		rendered, err := renderManagedFile(current.data, block)
 		return rendered, checksumBytes(block), err
 	case "owned-file":
-		rendered, err := renderTarget(targetID(record.id), scope(preparation.resolved.scope), policyRouterReference(preparation.coordinates))
+		rendered, err := renderArtifact(
+			targetID(record.id), record.artifact, scope(preparation.resolved.scope),
+			policyRouterReference(preparation.coordinates),
+		)
 		return rendered, checksumBytes(rendered), err
 	default:
-		return nil, "", integrityError("unknown target ownership mode: " + candidate.Ownership)
+		return nil, "", integrityError("unknown target ownership mode: " + artifact.Ownership)
 	}
 }
 
@@ -247,9 +387,11 @@ func prepareUpdateStateActions(
 	policyChecksum string,
 	policyFiles []policyFileRecord,
 	records []targetRecord,
+	directories []string,
 ) ([]mutationAction, error) {
 	current := cloneInstallationStateValue(preparation.state)
 	current.targets = cloneTargetRecords(records)
+	current.directories = append([]string(nil), directories...)
 	action, err := newUpdatedStateMutationAction(
 		"state", current, source.version, policyChecksum, policyFiles, preparation.backupPath,
 		force.backupRequired, preparation.coordinates.stateFile, environment.StateHome,
@@ -272,6 +414,7 @@ func newUpdatedStateMutationAction(
 	root string,
 ) (mutationAction, error) {
 	updated := cloneInstallationStateValue(state)
+	updated.legacy = false
 	updated.version = version
 	updated.policyChecksum = policyChecksum
 	updated.policyFiles = append([]policyFileRecord(nil), policyFiles...)

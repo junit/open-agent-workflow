@@ -30,6 +30,27 @@ For Profile discovery, use these source-qualified locations:
 Use Built-in Profiles only from the selected Policy Set. Retain every Custom
 Profile's source identity and never merge or shadow same-ID Profiles.
 
+## Explicit Native Entrypoint
+
+Cursor recognizes `~/.cursor/skills/oaw/SKILL.md` at user scope. The OAW
+project target installs its optional thin dispatcher at
+`.cursor/skills/oaw/SKILL.md`. Set `disable-model-invocation: true` and invoke
+it from Agent chat as `/oaw`, with the optional Profile and task in the same
+user request. Cursor defines no dispatcher-wide `$ARGUMENTS` contract here, so
+do not claim template expansion.
+
+A user-selected `/oaw` is explicit OAW activation. Rule loading, Skill
+discovery, automatic relevance matching, or model-led Skill selection is not.
+Invocation alone is not proof of user selection. The dispatcher follows the
+current Activation Router, contains no Policy path, and must not choose a
+default Profile, reproduce lifecycle stages, or impose approval gates.
+Natural-language activation remains equivalent, and `@oaw` is not the
+Adapter's invocation contract.
+
+Start a fresh Agent chat after installing or changing the Skill. Reload the
+workspace if Cursor has not discovered the new artifact. The always-applied
+Project Rule remains an Activation Router, not the native command itself.
+
 ## Skill Discovery And Invocation
 
 Use Cursor's visible Skill list or native slash invocation first. When a

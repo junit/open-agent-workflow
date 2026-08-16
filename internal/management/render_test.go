@@ -2,16 +2,18 @@ package management
 
 import (
 	"bytes"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-func TestRenderTargetMatchesBashBytes(t *testing.T) {
+func TestRenderTargetMatchesAdapterContract(t *testing.T) {
 	policyPath := "/config path/`policy`/POLICY.md"
+	policyReference := markdownCodeSpan(policyPath)
 	prefix := "Open Agent Workflow is opt-in. Unless the current top-level user request explicitly asks to use OAW, or clearly continues an active OAW task, behave as the native Host: do not read the OAW Policy, classify the request, inspect OAW Providers, mention OAW, create OAW state, or change normal Skill, Agent, role, instruction, or tool selection. Installing OAW, discussing or quoting OAW, task complexity, and ordinary Skill invocation do not activate OAW. "
 	suffix := " Apply the selected Policy Set only to that deliverable. Related follow-ups inherit activation; unrelated requests remain native. Completion, cancellation, or explicit exit ends OAW governance for that deliverable.\n"
-	userRouter := prefix + "On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read `" + policyPath + "` as the User Policy Set." + suffix
-	projectRouter := prefix + "On explicit activation, read `" + policyPath + "` as the Project Policy Set and do not read or merge the User Policy Set." + suffix
+	userRouter := prefix + "On explicit activation, if the current project contains `.oaw/policy/POLICY.md`, read that Project Policy Set and do not read or merge the User Policy Set; otherwise read " + policyReference + " as the User Policy Set." + suffix
+	projectRouter := prefix + "On explicit activation, read " + policyReference + " as the Project Policy Set and do not read or merge the User Policy Set." + suffix
 	tests := []struct {
 		name  string
 		scope scope
@@ -35,12 +37,12 @@ func TestRenderTargetMatchesBashBytes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := renderTarget(tt.id, tt.scope, policyPath)
+			got, err := renderArtifact(tt.id, routerArtifactID, tt.scope, policyPath)
 			if err != nil {
-				t.Fatalf("renderTarget() error = %v", err)
+				t.Fatalf("renderArtifact() error = %v", err)
 			}
 			if !bytes.Equal(got, []byte(tt.want)) {
-				t.Fatalf("renderTarget() = %q, want %q", got, tt.want)
+				t.Fatalf("renderArtifact() = %q, want %q", got, tt.want)
 			}
 		})
 	}
@@ -58,7 +60,7 @@ func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
 	}
 	for _, target := range targets {
 		t.Run(string(target.scope)+"/"+string(target.id), func(t *testing.T) {
-			rendered, err := renderTarget(target.id, target.scope, policyPath)
+			rendered, err := renderArtifact(target.id, routerArtifactID, target.scope, policyPath)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -106,6 +108,150 @@ func TestRenderTargetEnforcesActivationRouterContract(t *testing.T) {
 	}
 }
 
+func TestRenderNativeArtifactsAreThinExplicitDispatchers(t *testing.T) {
+	tests := []struct {
+		name       string
+		scope      scope
+		id         targetID
+		artifact   string
+		required   []string
+		forbidden  []string
+		policyPath string
+	}{
+		{name: "user Claude Skill", scope: "user", id: "claude", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"name: oaw", "user-invocable: true", "disable-model-invocation: true", "$ARGUMENTS"}},
+		{name: "user Codex Skill", scope: "user", id: "codex", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"name: oaw", "the remainder of this user request"}},
+		{name: "Codex native policy", scope: "project", id: "codex", artifact: nativePolicyArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"display_name: \"Open Agent Workflow\"", "allow_implicit_invocation: false"}, forbidden: []string{"MATT-SP-HYBRID", "Spec", "TDD"}},
+		{name: "user Gemini command", scope: "user", id: "gemini", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"prompt = \"", "{{args}}"}, forbidden: []string{"prompt = \"\"\""}},
+		{name: "user OpenCode command", scope: "user", id: "opencode", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"$ARGUMENTS"}, forbidden: []string{"argument-hint:"}},
+		{name: "project Cursor Skill", scope: "project", id: "cursor", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"name: oaw", "disable-model-invocation: true", "the remainder of this user request"}},
+		{name: "project Windsurf workflow", scope: "project", id: "windsurf", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"the remainder of this user request"}},
+		{name: "project Cline Skill", scope: "project", id: "cline", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"name: oaw", "the remainder of this user request"}},
+		{name: "project Roo command", scope: "project", id: "roo", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"argument-hint:", "the remainder of this user request"}},
+		{name: "project Copilot Skill", scope: "project", id: "copilot", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"name: oaw", "argument-hint:", "disable-model-invocation: true", "the remainder of this user request"}, forbidden: []string{"user-invocable:"}},
+	}
+	commonRequired := []string{
+		"current top-level user request",
+		"literal `/oaw` or `$oaw`",
+		"reliable Host metadata that the user, not the model, selected this entrypoint",
+		"Invocation or loading of this entrypoint alone is not evidence of user intent",
+		"do not activate OAW and continue as the native Host",
+		"Follow the current OAW Activation Router to select and read one Policy Set",
+		"Do not embed or infer a Policy path here",
+		"Pass the optional Profile and task",
+	}
+	commonForbidden := []string{
+		"MATT-SP-HYBRID", "SP-FULL", "MATT-FULL", "ECC-FULL",
+		"Spec -> Plan", "Spec → Plan", "TDD ->", "must wait for approval",
+		"without an explicit `/oaw`, `$oaw`, or natural-language request",
+		"An explicit native invocation or user selection",
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, err := renderArtifact(tt.id, tt.artifact, tt.scope, tt.policyPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			text := string(rendered)
+			required := tt.required
+			forbidden := tt.forbidden
+			if tt.artifact != nativePolicyArtifactID {
+				required = append(append([]string(nil), commonRequired...), required...)
+				forbidden = append(append([]string(nil), commonForbidden...), forbidden...)
+				forbidden = append(forbidden, tt.policyPath)
+			}
+			for _, fragment := range required {
+				if !strings.Contains(text, fragment) {
+					t.Fatalf("rendered %s/%s omits %q: %q", tt.id, tt.artifact, fragment, text)
+				}
+			}
+			for _, fragment := range forbidden {
+				if strings.Contains(text, fragment) {
+					t.Fatalf("rendered %s/%s contains forbidden %q: %q", tt.id, tt.artifact, fragment, text)
+				}
+			}
+		})
+	}
+}
+
+func TestRenderRouterQuotesSpecialPolicyPaths(t *testing.T) {
+	policyPath := "/config/with`ticks/and\"\"\"quotes/POLICY.md"
+	wantReference := markdownCodeSpan(policyPath)
+
+	markdown, err := renderArtifact("claude", routerArtifactID, "user", policyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(markdown), wantReference) {
+		t.Fatalf("Activation Router does not preserve quoted policy path: %q", markdown)
+	}
+}
+
+func TestRenderNativeArtifactsDoNotEmbedHostPreprocessedPolicyPaths(t *testing.T) {
+	tests := []struct {
+		name      string
+		id        targetID
+		path      string
+		forbidden []string
+	}{
+		{name: "Claude", id: "claude", path: "/config/$1/${CLAUDE_SESSION_ID}/!`policy-command`/POLICY.md", forbidden: []string{"$1", "${CLAUDE_SESSION_ID}", "!`policy-command`"}},
+		{name: "OpenCode", id: "opencode", path: "/config/$1/@policy-file/!`policy-command`/POLICY.md", forbidden: []string{"$1", "@policy-file", "!`policy-command`"}},
+		{name: "Gemini", id: "gemini", path: "/config/@{policy-file}/!{policy-command}/{{args}}/POLICY.md", forbidden: []string{"@{policy-file}", "!{policy-command}"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rendered, err := renderArtifact(tt.id, nativeEntrypointArtifactID, "user", tt.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(string(rendered), tt.path) {
+				t.Fatalf("native dispatcher embeds Policy path: %q", rendered)
+			}
+			for _, fragment := range tt.forbidden {
+				if strings.Contains(string(rendered), fragment) {
+					t.Fatalf("native dispatcher contains Host-preprocessed path fragment %q: %q", fragment, rendered)
+				}
+			}
+		})
+	}
+
+	geminiPath := "/config/@{policy-file}/!{policy-command}/{{args}}/POLICY.md"
+	gemini, err := renderArtifact("gemini", nativeEntrypointArtifactID, "user", geminiPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, encodedPrompt, found := strings.Cut(string(gemini), "prompt = ")
+	if !found {
+		t.Fatalf("Gemini command has no prompt: %q", gemini)
+	}
+	decodedPrompt, err := strconv.Unquote(strings.TrimSpace(encodedPrompt))
+	if err != nil {
+		t.Fatalf("Gemini prompt is not a quoted TOML-compatible basic string: %v: %q", err, gemini)
+	}
+	if strings.Contains(decodedPrompt, geminiPath) || !strings.Contains(decodedPrompt, "{{args}}") {
+		t.Fatalf("Gemini prompt lost dispatcher content: %q", decodedPrompt)
+	}
+}
+
+func TestRenderArtifactRejectsUnknownAndUnsupportedPairs(t *testing.T) {
+	for name, test := range map[string]struct {
+		id       targetID
+		artifact string
+		scope    scope
+		policy   string
+	}{
+		"unknown target":   {id: "missing", artifact: routerArtifactID, scope: "project", policy: ".oaw/policy/POLICY.md"},
+		"unknown artifact": {id: "claude", artifact: "missing", scope: "user", policy: "/config/POLICY.md"},
+		"unsupported user": {id: "cursor", artifact: nativeEntrypointArtifactID, scope: "user", policy: "/config/POLICY.md"},
+		"empty policy":     {id: "claude", artifact: nativeEntrypointArtifactID, scope: "user"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := renderArtifact(test.id, test.artifact, test.scope, test.policy); err == nil {
+				t.Fatalf("renderArtifact(%q, %q, %q) succeeded", test.id, test.artifact, test.scope)
+			}
+		})
+	}
+}
+
 func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
 	got, err := renderManagedBlock("codex", "user", "/config/POLICY.md")
 	if err != nil {
@@ -120,7 +266,7 @@ func TestRenderManagedBlockWrapsExactRendererBytes(t *testing.T) {
 	}
 }
 
-func TestRenderManagedFileMatchesBashPlacementRules(t *testing.T) {
+func TestRenderManagedFilePreservesPlacementRules(t *testing.T) {
 	block := []byte("<!-- BEGIN OPEN AGENT WORKFLOW -->\nnew body\n<!-- END OPEN AGENT WORKFLOW -->\n")
 	old := "<!-- BEGIN OPEN AGENT WORKFLOW -->\nold body\n<!-- END OPEN AGENT WORKFLOW -->"
 	tests := []struct {
@@ -163,8 +309,8 @@ func TestRenderManagedFileRejectsInvalidMarkers(t *testing.T) {
 	}
 }
 
-func TestRenderTargetRejectsUnsupportedPair(t *testing.T) {
-	if _, err := renderTarget("cursor", "user", "/config/POLICY.md"); err == nil {
-		t.Fatal("renderTarget() accepted user cursor")
+func TestRenderRouterRejectsUnsupportedPair(t *testing.T) {
+	if _, err := renderArtifact("cursor", routerArtifactID, "user", "/config/POLICY.md"); err == nil {
+		t.Fatal("renderArtifact() accepted user cursor Router")
 	}
 }

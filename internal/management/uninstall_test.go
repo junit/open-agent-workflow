@@ -49,6 +49,14 @@ func TestProjectUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
 	if err != nil || string(gotAgents) != "user instructions\n" {
 		t.Fatalf("uninstall changed surrounding Host instructions: content=%q error=%v", gotAgents, err)
 	}
+	for _, native := range []string{
+		filepath.Join(project, ".agents", "skills", "oaw", "SKILL.md"),
+		filepath.Join(project, ".agents", "skills", "oaw", "agents", "openai.yaml"),
+	} {
+		if _, err := os.Lstat(native); !os.IsNotExist(err) {
+			t.Fatalf("uninstall retained Codex native artifact %q: %v", native, err)
+		}
+	}
 }
 
 func TestUserUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
@@ -87,6 +95,14 @@ func TestUserUninstallRemovesOnlyManagedPolicyContent(t *testing.T) {
 	gotAgents, err := os.ReadFile(agents)
 	if err != nil || string(gotAgents) != "user instructions\n" {
 		t.Fatalf("uninstall changed surrounding user Host instructions: content=%q error=%v", gotAgents, err)
+	}
+	for _, native := range []string{
+		filepath.Join(fixture.environment.Home, ".agents", "skills", "oaw", "SKILL.md"),
+		filepath.Join(fixture.environment.Home, ".agents", "skills", "oaw", "agents", "openai.yaml"),
+	} {
+		if _, err := os.Lstat(native); !os.IsNotExist(err) {
+			t.Fatalf("uninstall retained user Codex native artifact %q: %v", native, err)
+		}
 	}
 }
 
@@ -170,11 +186,13 @@ func TestPrepareUninstallPartialManagedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := mutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{"claude"}) {
+	if got := uninstallActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{"claude/router", "claude/native-entrypoint"}) {
 		t.Fatalf("target actions = %v", got)
 	}
-	if prepared.plan.targetActions[0].effect != mutationRemove {
-		t.Fatalf("target action = %#v", prepared.plan.targetActions[0])
+	for _, action := range prepared.plan.targetActions {
+		if action.effect != mutationRemove {
+			t.Fatalf("target action = %#v", action)
+		}
 	}
 	if prepared.plan.policyAction.effect != mutationRetain {
 		t.Fatalf("policy action = %#v", prepared.plan.policyAction)
@@ -186,7 +204,7 @@ func TestPrepareUninstallPartialManagedTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := targetRecordIDs(state.targets); !reflect.DeepEqual(got, []string{"codex"}) {
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, []string{"codex/router", "codex/native-entrypoint", "codex/native-policy"}) {
 		t.Fatalf("remaining targets = %v", got)
 	}
 	if state.version != parsePreparedState(t, installed.stateActions[0]).version {
@@ -211,8 +229,11 @@ func TestPrepareUninstallPreservesExistingManagedContent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(prepared.plan.targetActions) != 1 || prepared.plan.targetActions[0].effect != mutationReplace {
+			if got := uninstallActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{"claude/router", "claude/native-entrypoint"}) {
 				t.Fatalf("target action = %#v", prepared.plan.targetActions)
+			}
+			if prepared.plan.targetActions[0].effect != mutationReplace || prepared.plan.targetActions[1].effect != mutationRemove {
+				t.Fatalf("target effects = %#v", prepared.plan.targetActions)
 			}
 			if !bytes.Equal(prepared.plan.targetActions[0].data, fixtureCase.personal) {
 				t.Fatalf("rendered = %q, want %q", prepared.plan.targetActions[0].data, fixtureCase.personal)
@@ -236,24 +257,36 @@ func TestPrepareUninstallSharedDestinationUsesLastReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(partial.plan.targetActions) != 0 {
+	if got := uninstallActionLabels(partial.plan.targetActions); !reflect.DeepEqual(got, []string{"codex/native-entrypoint", "codex/native-policy"}) {
 		t.Fatalf("partial shared actions = %#v", partial.plan.targetActions)
+	}
+	for _, action := range partial.plan.targetActions {
+		if action.effect != mutationRemove {
+			t.Fatalf("partial target was not removed: %#v", action)
+		}
 	}
 	state, err := parseInstallationState(partial.plan.stateActions[0].data)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := targetRecordIDs(state.targets); !reflect.DeepEqual(got, []string{"opencode"}) {
+	if got := targetArtifactIDs(state.targets); !reflect.DeepEqual(got, []string{"opencode/router", "opencode/native-entrypoint"}) {
 		t.Fatalf("remaining targets = %v", got)
 	}
 
-	materializeMutationStateForTest(t, partial.plan.stateActions)
+	if _, err := ApplyUninstall(partial); err != nil {
+		t.Fatal(err)
+	}
 	final, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Project: project, Targets: "opencode"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(final.plan.targetActions) != 1 || final.plan.targetActions[0].effect != mutationRemove {
+	if got := uninstallActionLabels(final.plan.targetActions); !reflect.DeepEqual(got, []string{"opencode/router", "opencode/native-entrypoint"}) {
 		t.Fatalf("final shared action = %#v", final.plan.targetActions)
+	}
+	for _, action := range final.plan.targetActions {
+		if action.effect != mutationRemove {
+			t.Fatalf("final target was not removed: %#v", action)
+		}
 	}
 }
 
@@ -279,8 +312,13 @@ func TestPrepareUninstallPlansOwnedDirectoriesDeepestFirst(t *testing.T) {
 			t.Fatalf("directories are not deepest first: %q before %q", previous, current)
 		}
 	}
-	if prepared.plan.targetActions[0].effect != mutationRemove || prepared.plan.policyAction.effect != mutationRemove || prepared.plan.stateActions[0].effect != mutationRemove {
+	if len(prepared.plan.targetActions) != len(installed.targetActions) || prepared.plan.policyAction.effect != mutationRemove || prepared.plan.stateActions[0].effect != mutationRemove {
 		t.Fatalf("final effects target=%#v policy=%#v state=%#v", prepared.plan.targetActions, prepared.plan.policyAction, prepared.plan.stateActions)
+	}
+	for _, action := range prepared.plan.targetActions {
+		if action.effect != mutationRemove {
+			t.Fatalf("target action was not removed: %#v", action)
+		}
 	}
 }
 
@@ -292,15 +330,24 @@ func TestPrepareUninstallDryRunPredictsRemovalWithLexicalRootAlias(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(prepared.plan.targetActions) != 1 || prepared.plan.targetActions[0].effect != mutationRemove {
+	if got := uninstallActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{"claude/router", "claude/native-entrypoint"}) {
 		t.Fatalf("target actions = %#v", prepared.plan.targetActions)
+	}
+	for _, action := range prepared.plan.targetActions {
+		if action.effect != mutationRemove {
+			t.Fatalf("target action was not removed: %#v", action)
+		}
 	}
 	targetDirectory := filepath.Dir(installed.targetActions[0].destination)
 	entries, err := os.ReadDir(targetDirectory)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(entries) != 1 || entries[0].Name() != filepath.Base(installed.targetActions[0].destination) {
+	entryNames := make([]string, len(entries))
+	for index, entry := range entries {
+		entryNames[index] = entry.Name()
+	}
+	if want := []string{filepath.Base(installed.targetActions[0].destination), "skills"}; !reflect.DeepEqual(entryNames, want) {
 		t.Fatalf("target directory entries = %#v", entries)
 	}
 	predictedDirectory := ""
@@ -332,7 +379,7 @@ func TestPrepareUninstallRejectsDriftWithoutWrites(t *testing.T) {
 	if err == nil {
 		t.Fatal("drifted uninstall succeeded")
 	}
-	assertManagementError(t, err, 65, "managed target block has drifted: claude at "+installed.targetActions[0].destination)
+	assertManagementError(t, err, 65, "managed target block has drifted: claude/router at "+installed.targetActions[0].destination)
 }
 
 func TestPrepareUninstallEveryInstalledTarget(t *testing.T) {
@@ -358,11 +405,20 @@ func TestPrepareUninstallEveryInstalledTarget(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if got := mutationActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, []string{candidate.ID}) {
+				wantLabels := make([]string, 0, len(candidate.Artifacts))
+				for _, artifact := range candidate.Artifacts {
+					wantLabels = append(wantLabels, targetArtifactLabel(candidate.ID, artifact.ID))
+				}
+				if got := uninstallActionLabels(prepared.plan.targetActions); !reflect.DeepEqual(got, wantLabels) {
 					t.Fatalf("target actions = %v", got)
 				}
-				if prepared.plan.targetActions[0].effect != mutationRemove || prepared.plan.policyAction.effect != mutationRemove || prepared.plan.stateActions[0].effect != mutationRemove {
+				if len(prepared.plan.targetActions) != len(candidate.Artifacts) || prepared.plan.policyAction.effect != mutationRemove || prepared.plan.stateActions[0].effect != mutationRemove {
 					t.Fatalf("effects target=%#v policy=%#v state=%#v", prepared.plan.targetActions, prepared.plan.policyAction, prepared.plan.stateActions)
+				}
+				for _, action := range prepared.plan.targetActions {
+					if action.effect != mutationRemove {
+						t.Fatalf("target action was not removed: %#v", action)
+					}
 				}
 			})
 		}
@@ -405,7 +461,7 @@ func TestPrepareUninstallRejectsInvalidInputsAndOwnership(t *testing.T) {
 		path := filepath.Join(fixture.environment.Home, ".claude", "CLAUDE.md")
 		writePrepareFile(t, path, []byte(beginMarker+"\nforeign\n"+endMarker+"\n"), 0o644)
 		_, err := prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Targets: "claude"})
-		assertManagementError(t, err, 65, "untracked OAW markers already exist: claude at "+path)
+		assertManagementError(t, err, 65, "untracked OAW markers already exist: claude/router at "+path)
 	})
 
 	t.Run("invalid state", func(t *testing.T) {
@@ -416,7 +472,7 @@ func TestPrepareUninstallRejectsInvalidInputsAndOwnership(t *testing.T) {
 		}
 		writePrepareFile(t, coords.stateFile, []byte("format\t2\n"), 0o600)
 		_, err = prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Targets: "claude"})
-		assertManagementError(t, err, 65, "invalid state format")
+		assertManagementError(t, err, 65, "state is incomplete or duplicated")
 	})
 
 	t.Run("missing policy", func(t *testing.T) {
@@ -440,21 +496,14 @@ func TestPrepareUninstallRejectsInvalidInputsAndOwnership(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		state.targets[0].origin = "existing-file"
-		namespaces := make([]string, 0)
-		for _, directory := range state.directories {
-			if installNamespaceDirectory(installed.coordinates, directory) {
-				namespaces = append(namespaces, directory)
-			}
-		}
-		state.directories = namespaces
 		rendered, err := serializeInstallState(state)
 		if err != nil {
 			t.Fatal(err)
 		}
+		rendered = bytes.Replace(rendered, []byte("\tcreated-file\n"), []byte("\texisting-file\n"), 1)
 		writePrepareFile(t, installed.stateActions[0].destination, rendered, 0o600)
 		_, err = prepareUninstallWithoutWrites(t, fixture.root, fixture.environment, UninstallRequest{Project: project, Targets: "cursor"})
-		assertManagementError(t, err, 65, "invalid owned target origin")
+		assertManagementError(t, err, 65, "invalid target ownership")
 	})
 }
 
@@ -474,7 +523,10 @@ func TestUninstallDirectoryOwnershipHelpersRejectUnboundPaths(t *testing.T) {
 		t.Fatal(err)
 	}
 	unbound := filepath.Join(fixture.root, "unbound")
-	state := installationState{scope: "user", targets: []targetRecord{{id: "claude", path: filepath.Join(fixture.environment.Home, ".claude", "CLAUDE.md"), mode: "managed-block", origin: "existing-file"}}}
+	state := installationState{scope: "user", targets: []targetRecord{
+		{id: "claude", artifact: routerArtifactID, path: filepath.Join(fixture.environment.Home, ".claude", "CLAUDE.md"), mode: "managed-block", origin: "existing-file"},
+		{id: "claude", artifact: nativeEntrypointArtifactID, path: filepath.Join(fixture.environment.Home, ".claude", "skills", "oaw", "SKILL.md"), mode: "owned-file", origin: "created-file"},
+	}}
 	if directoryMatchesTargetRecords(unbound, state.targets, state, coords) {
 		t.Fatal("unbound directory matched target records")
 	}
@@ -483,11 +535,10 @@ func TestUninstallDirectoryOwnershipHelpersRejectUnboundPaths(t *testing.T) {
 	}
 }
 
-func materializeMutationStateForTest(t *testing.T, actions []mutationAction) {
-	t.Helper()
-	for _, action := range actions {
-		if action.effect == mutationReplace {
-			writePrepareFile(t, action.destination, action.data, action.mode)
-		}
+func uninstallActionLabels(actions []mutationAction) []string {
+	result := make([]string, len(actions))
+	for index, action := range actions {
+		result[index] = action.label
 	}
+	return result
 }

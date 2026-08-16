@@ -11,9 +11,9 @@ resolves readable Skills at the moment each Responsibility becomes current.
 This keeps arbitration in readable rules instead of a hidden executable.
 
 OAW also installs thin native instruction entrypoints for multiple hosts. The
-entrypoints point to the same Policy Set while retaining each host's format,
-scope, and reload behavior. The installer owns only those files and its
-private bookkeeping.
+entrypoints follow the same Activation Router without embedding a Policy path,
+while retaining each host's format, scope, and reload behavior. The installer
+owns only those files and its private bookkeeping.
 
 The Host remains the execution authority. OAW does not emulate a model,
 start child processes, or promise physical containment. Optional Machine

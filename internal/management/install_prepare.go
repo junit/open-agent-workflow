@@ -96,6 +96,9 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		if !policySetMatchesSource(existingState, source, coords, resolved) {
 			return PreparedInstall{}, integrityError("installed content differs from this checkout; run update")
 		}
+		if existingState.legacy {
+			resolved.targets = includeInstalledTargets(resolved.targets, existingState.targets)
+		}
 	}
 
 	existingRecords := []targetRecord(nil)
@@ -107,109 +110,121 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 		backupPath = existingState.backupPath
 	}
 
-	selectedRecords := make([]targetRecord, 0, len(resolved.targets))
-	targetActions := make([]installAction, 0, len(resolved.targets))
+	selectedRecords := make([]targetRecord, 0, len(resolved.targets)*2)
+	targetActions := make([]installAction, 0, len(resolved.targets)*2)
 	for _, id := range resolved.targets {
-		destination, err := targetDestination(coords, resolved.scope, resolved.projectRoot, id)
+		artifacts, err := targetArtifactsForScope(id, resolved.scope)
 		if err != nil {
 			return PreparedInstall{}, err
 		}
-		allowedRoot, relativeSuffix, err := targetInstallCoordinates(coords, resolved, id)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-		current, err := inspectInstallPath(destination)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-		candidate, found := findTarget(id)
-		if !found {
-			return PreparedInstall{}, integrityError("unknown target '" + id + "'")
-		}
-
-		origin := "existing-file"
-		recorded, wasInstalled := findTargetRecord(existingRecords, id)
-		sharedChecksum := ""
-		joinsShared := false
-		if wasInstalled {
-			if recorded.path != destination {
-				return PreparedInstall{}, integrityError("installed target path does not match")
+		for _, artifact := range artifacts {
+			destination, err := artifactDestination(coords, resolved.scope, resolved.projectRoot, id, artifact.ID)
+			if err != nil {
+				return PreparedInstall{}, err
 			}
-			origin = recorded.origin
-		} else {
-			switch candidate.Ownership {
+			allowedRoot, relativeSuffix, err := artifactInstallCoordinates(
+				coords, resolved.scope, resolved.projectRoot, id, artifact.ID,
+			)
+			if err != nil {
+				return PreparedInstall{}, err
+			}
+			current, err := inspectInstallPath(destination)
+			if err != nil {
+				return PreparedInstall{}, err
+			}
+
+			origin := "existing-file"
+			recorded, wasInstalled := findTargetArtifactRecord(existingRecords, id, artifact.ID)
+			sharedChecksum := ""
+			joinsShared := false
+			if wasInstalled {
+				if recorded.path != destination {
+					return PreparedInstall{}, integrityError("installed target artifact path does not match")
+				}
+				origin = recorded.origin
+			} else {
+				switch artifact.Ownership {
+				case "managed-block":
+					status, _ := managedInstallStatus(current)
+					if destinationReferenced(existingRecords, destination) {
+						if status != "present" {
+							return PreparedInstall{}, integrityError("managed target block has drifted")
+						}
+						origin, err = sharedDestinationOrigin(existingRecords, destination)
+						if err != nil {
+							return PreparedInstall{}, err
+						}
+						sharedChecksum, err = sharedDestinationChecksum(existingRecords, destination)
+						if err != nil {
+							return PreparedInstall{}, err
+						}
+						joinsShared = true
+					} else {
+						if status != "absent" {
+							return PreparedInstall{}, integrityError("untracked OAW markers already exist: " + destination)
+						}
+						if current.kind == installPathMissing {
+							origin = "created-file"
+						}
+					}
+				case "owned-file":
+					if current.kind != installPathMissing {
+						return PreparedInstall{}, integrityError("owned target artifact already exists: " + destination)
+					}
+					origin = "created-file"
+				default:
+					return PreparedInstall{}, integrityError("unknown target ownership mode: " + artifact.Ownership)
+				}
+			}
+
+			var rendered []byte
+			var renderedChecksum string
+			switch artifact.Ownership {
 			case "managed-block":
-				status, _ := managedInstallStatus(current)
-				if destinationReferenced(existingRecords, destination) {
-					if status != "present" {
-						return PreparedInstall{}, integrityError("managed target block has drifted")
-					}
-					origin, err = sharedDestinationOrigin(existingRecords, destination)
-					if err != nil {
-						return PreparedInstall{}, err
-					}
-					sharedChecksum, err = sharedDestinationChecksum(existingRecords, destination)
-					if err != nil {
-						return PreparedInstall{}, err
-					}
-					joinsShared = true
-				} else {
-					if status != "absent" {
-						return PreparedInstall{}, integrityError("untracked OAW markers already exist: " + destination)
-					}
-					if current.kind == installPathMissing {
-						origin = "created-file"
-					}
+				if artifact.ID != routerArtifactID {
+					return PreparedInstall{}, integrityError("managed target artifact is not an activation router")
 				}
+				block, err := renderManagedBlock(targetID(id), scope(resolved.scope), policyRouterReference(coords))
+				if err != nil {
+					return PreparedInstall{}, err
+				}
+				rendered, err = renderManagedFile(current.data, block)
+				if err != nil {
+					return PreparedInstall{}, err
+				}
+				renderedChecksum = checksumBytes(block)
 			case "owned-file":
-				if current.kind != installPathMissing {
-					return PreparedInstall{}, integrityError("owned target already exists: " + destination)
+				rendered, err = renderArtifact(
+					targetID(id), artifact.ID, scope(resolved.scope), policyRouterReference(coords),
+				)
+				if err != nil {
+					return PreparedInstall{}, err
 				}
-				origin = "created-file"
-			default:
-				return PreparedInstall{}, integrityError("unknown target ownership mode: " + candidate.Ownership)
+				renderedChecksum = checksumBytes(rendered)
 			}
-		}
+			if joinsShared && renderedChecksum != sharedChecksum {
+				return PreparedInstall{}, integrityError("conflicting target renders for " + destination)
+			}
+			if wasInstalled && renderedChecksum != recorded.checksum {
+				return PreparedInstall{}, integrityError("installed content differs from this checkout; run update")
+			}
 
-		var rendered []byte
-		var renderedChecksum string
-		switch candidate.Ownership {
-		case "managed-block":
-			block, err := renderManagedBlock(targetID(id), scope(resolved.scope), policyRouterReference(coords))
+			action, err := newInstallAction(
+				targetArtifactLabel(id, artifact.ID), rendered, destination, 0o644,
+				allowedRoot, relativeSuffix, current,
+			)
 			if err != nil {
 				return PreparedInstall{}, err
 			}
-			rendered, err = renderManagedFile(current.data, block)
+			targetActions, err = addInstallAction(targetActions, action)
 			if err != nil {
 				return PreparedInstall{}, err
 			}
-			renderedChecksum = checksumBytes(block)
-		case "owned-file":
-			rendered, err = renderTarget(targetID(id), scope(resolved.scope), policyRouterReference(coords))
-			if err != nil {
-				return PreparedInstall{}, err
-			}
-			renderedChecksum = checksumBytes(rendered)
+			selectedRecords = append(selectedRecords, targetRecord{
+				id: id, artifact: artifact.ID, path: destination, mode: artifact.Ownership,
+				checksum: renderedChecksum, origin: origin,
+			})
 		}
-		if joinsShared && renderedChecksum != sharedChecksum {
-			return PreparedInstall{}, integrityError("conflicting target renders for " + destination)
-		}
-		if wasInstalled && renderedChecksum != recorded.checksum {
-			return PreparedInstall{}, integrityError("installed content differs from this checkout; run update")
-		}
-
-		action, err := newInstallAction(id, rendered, destination, 0o644, allowedRoot, relativeSuffix, current)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-		targetActions, err = addInstallAction(targetActions, action)
-		if err != nil {
-			return PreparedInstall{}, err
-		}
-		selectedRecords = append(selectedRecords, targetRecord{
-			id: id, path: destination, mode: candidate.Ownership,
-			checksum: renderedChecksum, origin: origin,
-		})
 	}
 
 	finalRecords, err := mergeInstallRecords(existingRecords, selectedRecords, resolved.scope)
@@ -251,6 +266,23 @@ func PrepareInstall(source Source, environment Environment, request InstallReque
 	}
 	prepared.predicted = predictInstallResult(prepared)
 	return prepared, nil
+}
+
+func includeInstalledTargets(selected []string, records []targetRecord) []string {
+	wanted := make(map[string]struct{}, len(selected)+len(records))
+	for _, id := range selected {
+		wanted[id] = struct{}{}
+	}
+	for _, record := range records {
+		wanted[record.id] = struct{}{}
+	}
+	result := make([]string, 0, len(wanted))
+	for _, candidate := range targetRegistry {
+		if _, found := wanted[candidate.ID]; found {
+			result = append(result, candidate.ID)
+		}
+	}
+	return result
 }
 
 func requireUnclaimedPolicySetDirectory(coords coordinates) error {
@@ -426,16 +458,16 @@ func validateLiveTargetRecords(records []targetRecord, coords coordinates, recor
 }
 
 func validateLiveTargetRecord(record targetRecord, coords coordinates, recordScope, project string) error {
-	expected, err := targetDestination(coords, recordScope, project, record.id)
+	expected, err := artifactDestination(coords, recordScope, project, record.id, record.artifact)
 	if err != nil {
 		return err
 	}
 	if record.path != expected {
-		return integrityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
+		return integrityError(fmt.Sprintf("installed target artifact path does not match: %s/%s at %s", record.id, record.artifact, record.path))
 	}
-	candidate, _ := findTarget(record.id)
-	if record.mode != candidate.Ownership {
-		return integrityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
+	artifact, found := findTargetArtifact(record.id, record.artifact)
+	if !found || record.mode != artifact.Ownership {
+		return integrityError(fmt.Sprintf("installed target artifact ownership does not match: %s/%s at %s", record.id, record.artifact, record.path))
 	}
 	current, err := inspectInstallPath(record.path)
 	if err != nil {
@@ -445,11 +477,11 @@ func validateLiveTargetRecord(record targetRecord, coords coordinates, recordSco
 	case "managed-block":
 		status, checksum := managedInstallStatus(current)
 		if status != "present" || checksum != record.checksum {
-			return integrityError(fmt.Sprintf("managed target block has drifted: %s at %s", record.id, record.path))
+			return integrityError(fmt.Sprintf("managed target block has drifted: %s/%s at %s", record.id, record.artifact, record.path))
 		}
 	case "owned-file":
 		if current.kind != installPathRegular || checksumBytes(current.data) != record.checksum {
-			return integrityError(fmt.Sprintf("owned target file has drifted: %s at %s", record.id, record.path))
+			return integrityError(fmt.Sprintf("owned target file has drifted: %s/%s at %s", record.id, record.artifact, record.path))
 		}
 	default:
 		return integrityError("unknown target ownership mode: " + record.mode)
@@ -514,14 +546,18 @@ func prepareInstallDirectories(
 }
 
 func mergeInstallRecords(existing, selected []targetRecord, recordScope string) ([]targetRecord, error) {
-	existingByID := make(map[string]targetRecord, len(existing))
-	selectedByID := make(map[string]targetRecord, len(selected))
+	type recordIdentity struct {
+		target   string
+		artifact string
+	}
+	existingByID := make(map[recordIdentity]targetRecord, len(existing))
+	selectedByID := make(map[recordIdentity]targetRecord, len(selected))
 	changedChecksums := make(map[string]string)
 	for _, record := range existing {
-		existingByID[record.id] = record
+		existingByID[recordIdentity{target: record.id, artifact: record.artifact}] = record
 	}
 	for _, record := range selected {
-		selectedByID[record.id] = record
+		selectedByID[recordIdentity{target: record.id, artifact: record.artifact}] = record
 		if previous, exists := changedChecksums[record.path]; exists && previous != record.checksum {
 			return nil, integrityError("selected targets render conflicting checksums for " + record.path)
 		}
@@ -529,40 +565,26 @@ func mergeInstallRecords(existing, selected []targetRecord, recordScope string) 
 	}
 	result := make([]targetRecord, 0, len(existing)+len(selected))
 	for _, candidate := range targetRegistry {
-		record, exists := selectedByID[candidate.ID]
-		if !exists {
-			record, exists = existingByID[candidate.ID]
+		for _, artifact := range candidate.Artifacts {
+			identity := recordIdentity{target: candidate.ID, artifact: artifact.ID}
+			record, exists := selectedByID[identity]
+			if !exists {
+				record, exists = existingByID[identity]
+			}
+			if !exists {
+				continue
+			}
+			if checksum, changed := changedChecksums[record.path]; changed {
+				record.checksum = checksum
+			}
+			result = append(result, record)
 		}
-		if !exists {
-			continue
-		}
-		if checksum, changed := changedChecksums[record.path]; changed {
-			record.checksum = checksum
-		}
-		result = append(result, record)
 	}
 	state := installationState{scope: recordScope, targets: result}
 	if err := validateTargetRecords(state); err != nil {
 		return nil, integrityError(err.Error())
 	}
 	return result, nil
-}
-
-func targetInstallCoordinates(coords coordinates, resolved resolvedRequest, id string) (string, string, error) {
-	candidate, found := findTarget(id)
-	if !found {
-		return "", "", integrityError("unknown target '" + id + "'")
-	}
-	if resolved.scope == "project" {
-		return resolved.projectRoot, candidate.ProjectSuffix, nil
-	}
-	if !candidate.User {
-		return "", "", &Error{Status: 69, Message: fmt.Sprintf("target '%s' is not implemented for user scope", id)}
-	}
-	if id == "opencode" {
-		return coords.environment.ConfigHome, candidate.UserSuffix, nil
-	}
-	return coords.environment.Home, candidate.UserSuffix, nil
 }
 
 func newStateInstallAction(label string, data []byte, destination, root string) (installAction, error) {
@@ -824,10 +846,18 @@ func sharedDestinationChecksum(records []targetRecord, destination string) (stri
 }
 
 func findTargetRecord(records []targetRecord, id string) (targetRecord, bool) {
+	return findTargetArtifactRecord(records, id, routerArtifactID)
+}
+
+func findTargetArtifactRecord(records []targetRecord, id, artifact string) (targetRecord, bool) {
 	for _, record := range records {
-		if record.id == id {
+		if record.id == id && record.artifact == artifact {
 			return record, true
 		}
 	}
 	return targetRecord{}, false
+}
+
+func targetArtifactLabel(id, artifact string) string {
+	return id + "/" + artifact
 }

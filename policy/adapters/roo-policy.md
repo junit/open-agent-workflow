@@ -28,6 +28,26 @@ For Profile discovery, use these source-qualified locations:
 Use Built-in Profiles only from the selected Policy Set. Retain Custom Profile
 sources and never merge or shadow IDs.
 
+## Explicit Native Entrypoint
+
+Roo recognizes `~/.roo/commands/oaw.md` at user scope. The OAW project target
+installs its optional thin Custom Command at `.roo/commands/oaw.md`. Invoke it
+as `/oaw [PROFILE] <request>`. The command may provide `description` and
+`argument-hint` metadata for the picker, but the hint is not an
+argument-substitution macro; the dispatcher must use the current user request
+without inventing expanded arguments.
+
+A user-entered `/oaw` is explicit OAW activation. If an experimental Host
+setting allows the model to invoke slash commands, that model-led invocation is
+not activation and remains subject to Roo's command approval. Invocation alone
+is not proof of user selection. The command follows the current Activation
+Router, contains no Policy path, and must not choose a default Profile,
+duplicate lifecycle stages, or add approval rules. Natural-language activation
+remains equivalent.
+
+Start a fresh Roo task after installing or changing the command. If it is not
+visible, use Roo's documented VS Code window reload before relying on it.
+
 ## Skill Discovery And Invocation
 
 Use Roo's current Skill inventory or native selection first. If a declared

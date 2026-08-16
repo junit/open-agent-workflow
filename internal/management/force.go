@@ -118,8 +118,12 @@ func prepareForcedTargetRecords(
 	resolved resolvedRequest,
 ) (forcePreparation, error) {
 	selectedPaths := make(map[string]struct{})
+	selectedTargets := make(map[string]struct{}, len(resolved.targets))
 	for _, id := range resolved.targets {
-		if record, found := findTargetRecord(state.targets, id); found {
+		selectedTargets[id] = struct{}{}
+	}
+	for _, record := range state.targets {
+		if _, selected := selectedTargets[record.id]; selected {
 			selectedPaths[record.path] = struct{}{}
 		}
 	}
@@ -155,16 +159,16 @@ func verifyForcedTargetRecord(record targetRecord, coords coordinates, state ins
 	changed bool,
 	err error,
 ) {
-	expected, err := targetDestination(coords, state.scope, state.project, record.id)
+	expected, err := artifactDestination(coords, state.scope, state.project, record.id, record.artifact)
 	if err != nil {
 		return current, repaired, false, false, err
 	}
 	if record.path != expected {
-		return current, repaired, false, false, integrityError(fmt.Sprintf("installed target path does not match: %s at %s", record.id, record.path))
+		return current, repaired, false, false, integrityError(fmt.Sprintf("installed target artifact path does not match: %s/%s at %s", record.id, record.artifact, record.path))
 	}
-	candidate, _ := findTarget(record.id)
-	if record.mode != candidate.Ownership {
-		return current, repaired, false, false, integrityError(fmt.Sprintf("installed target ownership does not match: %s at %s", record.id, record.path))
+	artifact, found := findTargetArtifact(record.id, record.artifact)
+	if !found || record.mode != artifact.Ownership {
+		return current, repaired, false, false, integrityError(fmt.Sprintf("installed target artifact ownership does not match: %s/%s at %s", record.id, record.artifact, record.path))
 	}
 	current, err = inspectInstallPath(record.path)
 	if err != nil {
@@ -175,6 +179,9 @@ func verifyForcedTargetRecord(record targetRecord, coords coordinates, state ins
 	}
 	switch record.mode {
 	case "managed-block":
+		if artifact.ID != routerArtifactID {
+			return current, repaired, false, false, integrityError("managed target artifact is not an activation router")
+		}
 		status, actual := managedInstallStatus(current)
 		if status == "present" {
 			return current, repaired, false, actual != record.checksum, nil
@@ -298,7 +305,9 @@ func prepareManualRecoveryBackup(
 	policy installPathSnapshot,
 	recovery manualRecovery,
 ) (backupPlan, error) {
-	targetRoot, targetSuffix, err := targetInstallCoordinates(coords, resolved, recovery.record.id)
+	targetRoot, targetSuffix, err := artifactInstallCoordinates(
+		coords, resolved.scope, resolved.projectRoot, recovery.record.id, recovery.record.artifact,
+	)
 	if err != nil {
 		return backupPlan{}, err
 	}

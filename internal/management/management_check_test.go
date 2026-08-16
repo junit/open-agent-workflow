@@ -116,6 +116,42 @@ func TestCheckManagementDomainExercisesDiagnosticsAndHealth(t *testing.T) {
 		}
 	})
 
+	for _, mutation := range []struct {
+		name  string
+		apply func(*testing.T, string)
+	}{
+		{
+			name: "missing native entrypoint",
+			apply: func(t *testing.T, path string) {
+				if err := os.Remove(path); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "drifted native entrypoint",
+			apply: func(t *testing.T, path string) {
+				writePrepareFile(t, path, []byte("foreign dispatcher\n"), 0o644)
+			},
+		},
+	} {
+		mutation := mutation
+		t.Run(mutation.name, func(t *testing.T) {
+			fixture := newPrepareFixture(t)
+			prepared := materializeInstallRequest(t, fixture, InstallRequest{Targets: "claude"})
+			native := prepared.targetActions[1]
+			if native.label != "claude/native-entrypoint" {
+				t.Fatalf("native action = %#v", native)
+			}
+			mutation.apply(t, native.destination)
+
+			result, err := Check(fixture.environment, CheckRequest{Targets: "claude"})
+			if err != nil || !resultContainsLine(result, "installed claude: drift") {
+				t.Fatalf("native artifact Check() result=%#v error=%v", result, err)
+			}
+		})
+	}
+
 	t.Run("invalid state and untracked target", func(t *testing.T) {
 		fixture := newPrepareFixture(t)
 		statePath := filepath.Join(fixture.environment.StateHome, "open-agent-workflow", "installations", "user.state")

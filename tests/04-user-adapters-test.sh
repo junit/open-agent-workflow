@@ -45,23 +45,46 @@ assert_lazy_router_file() {
   fi
 }
 
-assert_state_targets() {
+assert_state_artifacts() {
   state_file=$1
-  expected_targets=$2
+  expected_artifacts=$2
   description=$3
-  actual_targets=$(awk -F '\t' '
+  grep -Fx "$(printf 'format\t2')" "$state_file" >/dev/null ||
+    fail "$description (state format is not 2)"
+  actual_artifacts=$(awk -F '\t' '
     $1 == "target" {
-      if (targets == "") {
-        targets = $2
+      if (artifacts == "") {
+        artifacts = $2 "/" $3
       } else {
-        targets = targets "," $2
+        artifacts = artifacts "," $2 "/" $3
       }
     }
-    END { print targets }
+    END { print artifacts }
   ' "$state_file")
-  if [ "$actual_targets" != "$expected_targets" ]; then
-    fail "$description (expected $expected_targets, got $actual_targets)"
+  if [ "$actual_artifacts" != "$expected_artifacts" ]; then
+    fail "$description (expected $expected_artifacts, got $actual_artifacts)"
   fi
+}
+
+assert_state_artifact() {
+  state_file=$1
+  target_id=$2
+  artifact_id=$3
+  expected_path=$4
+  expected_mode=$5
+  expected_origin=$6
+  description=$7
+  awk -F '\t' \
+    -v target_id="$target_id" \
+    -v artifact_id="$artifact_id" \
+    -v expected_path="$expected_path" \
+    -v expected_mode="$expected_mode" \
+    -v expected_origin="$expected_origin" '
+      $1 == "target" && $2 == target_id && $3 == artifact_id &&
+        $4 == expected_path && $5 == expected_mode && length($6) != 0 &&
+        $7 == expected_origin && NF == 7 { found++ }
+      END { exit(found == 1 ? 0 : 1) }
+    ' "$state_file" || fail "$description"
 }
 
 target_path_for_test() {
@@ -72,6 +95,73 @@ target_path_for_test() {
     opencode) printf '%s/opencode/AGENTS.md\n' "$OAW_CONFIG" ;;
     *) fail "unknown test target $1" ;;
   esac
+}
+
+native_path_for_test() {
+  case "$1" in
+    claude) printf '%s/.claude/skills/oaw/SKILL.md\n' "$OAW_HOME" ;;
+    codex) printf '%s/.agents/skills/oaw/SKILL.md\n' "$OAW_HOME" ;;
+    gemini) printf '%s/.gemini/commands/oaw.toml\n' "$OAW_HOME" ;;
+    opencode) printf '%s/opencode/commands/oaw.md\n' "$OAW_CONFIG" ;;
+    *) fail "unknown user native target $1" ;;
+  esac
+}
+
+native_policy_path_for_test() {
+  if [ "$1" = codex ]; then
+    printf '%s/.agents/skills/oaw/agents/openai.yaml\n' "$OAW_HOME"
+  fi
+}
+
+assert_native_entrypoint() {
+  entrypoint=$1
+  target_id=$2
+  policy_path=$3
+  [ -f "$entrypoint" ] || fail "$target_id native entrypoint is missing"
+  grep -F 'current top-level user request' "$entrypoint" >/dev/null ||
+    fail "$target_id native entrypoint does not inspect top-level user intent"
+  grep -F 'reliable Host metadata that the user, not the model, selected this entrypoint' "$entrypoint" >/dev/null ||
+    fail "$target_id native entrypoint does not distinguish user and model selection"
+  grep -F 'Invocation or loading of this entrypoint alone is not evidence of user intent' "$entrypoint" >/dev/null ||
+    fail "$target_id native entrypoint treats physical invocation as user intent"
+  grep -F 'do not activate OAW and continue as the native Host' "$entrypoint" >/dev/null ||
+    fail "$target_id native entrypoint lacks its automatic-load no-op"
+  grep -F 'Follow the current OAW Activation Router to select and read one Policy Set' "$entrypoint" >/dev/null ||
+    fail "$target_id native entrypoint bypasses the Activation Router"
+  if grep -F "$policy_path" "$entrypoint" >/dev/null; then
+    fail "$target_id native entrypoint embeds a Host-preprocessed Policy path"
+  fi
+  grep -F 'Pass the optional Profile and task' "$entrypoint" >/dev/null ||
+    fail "$target_id native entrypoint does not pass invocation input through"
+  for forbidden_profile in MATT-FULL MATT-SP-HYBRID SP-FULL ECC-FULL; do
+    if grep -F "$forbidden_profile" "$entrypoint" >/dev/null; then
+      fail "$target_id native entrypoint hard-codes Profile $forbidden_profile"
+    fi
+  done
+}
+
+assert_user_host_artifacts() {
+  state_file=$1
+  target_id=$2
+  policy_path=$3
+  router_origin=$4
+  router_path=$(target_path_for_test "$target_id")
+  native_path=$(native_path_for_test "$target_id")
+
+  assert_state_artifact "$state_file" "$target_id" router "$router_path" \
+    managed-block "$router_origin" "$target_id Router state row is missing or invalid"
+  assert_state_artifact "$state_file" "$target_id" native-entrypoint "$native_path" \
+    owned-file created-file "$target_id native-entrypoint state row is missing or invalid"
+  assert_native_entrypoint "$native_path" "$target_id" "$policy_path"
+
+  native_policy=$(native_policy_path_for_test "$target_id")
+  if [ -n "$native_policy" ]; then
+    assert_state_artifact "$state_file" "$target_id" native-policy "$native_policy" \
+      owned-file created-file "$target_id native-policy state row is missing or invalid"
+    [ -f "$native_policy" ] || fail "$target_id native policy metadata is missing"
+    grep -F 'allow_implicit_invocation: false' "$native_policy" >/dev/null ||
+      fail "$target_id native policy permits implicit invocation"
+  fi
 }
 
 seed_target_for_test() {
@@ -118,22 +208,32 @@ if grep -Fx "@$OAW_POLICY" "$OAW_CODEX" >/dev/null; then
   fail "Codex instructions incorrectly use a standalone Markdown import"
 fi
 assert_lazy_router_file "$OAW_CODEX" "$OAW_POLICY" "Codex instructions"
-awk -F '\t' -v expected_path="$OAW_CODEX" '
-  $1 == "target" && $2 == "codex" && $3 == expected_path &&
-    $4 == "managed-block" && $6 == "existing-file" { found++ }
-  END { exit(found == 1 ? 0 : 1) }
-' "$OAW_INSTALL_STATE" || fail "Codex state target row is missing or invalid"
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "codex/router,codex/native-entrypoint,codex/native-policy" \
+  "Codex state does not contain its complete artifact set"
+assert_user_host_artifacts "$OAW_INSTALL_STATE" codex "$OAW_POLICY" existing-file
 
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_CODEX_BEFORE=$(cksum <"$OAW_CODEX")
+OAW_CODEX_NATIVE=$(native_path_for_test codex)
+OAW_CODEX_NATIVE_POLICY=$(native_policy_path_for_test codex)
+OAW_CODEX_NATIVE_BEFORE=$(cksum <"$OAW_CODEX_NATIVE")
+OAW_CODEX_NATIVE_POLICY_BEFORE=$(cksum <"$OAW_CODEX_NATIVE_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 run_oaw install --target codex
 assert_status 0 "repeated Codex install"
-assert_contains "unchanged: codex" "repeated Codex install reports an unchanged target"
+for OAW_CODEX_ARTIFACT in router native-entrypoint native-policy; do
+  assert_contains "unchanged: codex/$OAW_CODEX_ARTIFACT" \
+    "repeated Codex install reports $OAW_CODEX_ARTIFACT unchanged"
+done
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "repeated Codex install changed canonical policy bytes"
 [ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
   fail "repeated Codex install changed instruction bytes"
+[ "$(cksum <"$OAW_CODEX_NATIVE")" = "$OAW_CODEX_NATIVE_BEFORE" ] ||
+  fail "repeated Codex install changed native entrypoint bytes"
+[ "$(cksum <"$OAW_CODEX_NATIVE_POLICY")" = "$OAW_CODEX_NATIVE_POLICY_BEFORE" ] ||
+  fail "repeated Codex install changed native policy bytes"
 [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
   fail "repeated Codex install changed state bytes"
 
@@ -175,22 +275,28 @@ if grep -Fx "@$OAW_POLICY" "$OAW_GEMINI" >/dev/null; then
   fail "Gemini instructions incorrectly use a standalone Markdown import"
 fi
 assert_lazy_router_file "$OAW_GEMINI" "$OAW_POLICY" "Gemini instructions"
-awk -F '\t' -v expected_path="$OAW_GEMINI" '
-  $1 == "target" && $2 == "gemini" && $3 == expected_path &&
-    $4 == "managed-block" && $6 == "existing-file" { found++ }
-  END { exit(found == 1 ? 0 : 1) }
-' "$OAW_INSTALL_STATE" || fail "Gemini state target row is missing or invalid"
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "gemini/router,gemini/native-entrypoint" \
+  "Gemini state does not contain its complete artifact set"
+assert_user_host_artifacts "$OAW_INSTALL_STATE" gemini "$OAW_POLICY" existing-file
 
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_GEMINI_BEFORE=$(cksum <"$OAW_GEMINI")
+OAW_GEMINI_NATIVE=$(native_path_for_test gemini)
+OAW_GEMINI_NATIVE_BEFORE=$(cksum <"$OAW_GEMINI_NATIVE")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 run_oaw install --target gemini
 assert_status 0 "repeated Gemini install"
-assert_contains "unchanged: gemini" "repeated Gemini install reports an unchanged target"
+for OAW_GEMINI_ARTIFACT in router native-entrypoint; do
+  assert_contains "unchanged: gemini/$OAW_GEMINI_ARTIFACT" \
+    "repeated Gemini install reports $OAW_GEMINI_ARTIFACT unchanged"
+done
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "repeated Gemini install changed canonical policy bytes"
 [ "$(cksum <"$OAW_GEMINI")" = "$OAW_GEMINI_BEFORE" ] ||
   fail "repeated Gemini install changed instruction bytes"
+[ "$(cksum <"$OAW_GEMINI_NATIVE")" = "$OAW_GEMINI_NATIVE_BEFORE" ] ||
+  fail "repeated Gemini install changed native entrypoint bytes"
 [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
   fail "repeated Gemini install changed state bytes"
 
@@ -232,22 +338,28 @@ if grep -Fx "@$OAW_POLICY" "$OAW_OPENCODE" >/dev/null; then
   fail "OpenCode instructions incorrectly use a standalone Markdown import"
 fi
 assert_lazy_router_file "$OAW_OPENCODE" "$OAW_POLICY" "OpenCode instructions"
-awk -F '\t' -v expected_path="$OAW_OPENCODE" '
-  $1 == "target" && $2 == "opencode" && $3 == expected_path &&
-    $4 == "managed-block" && $6 == "existing-file" { found++ }
-  END { exit(found == 1 ? 0 : 1) }
-' "$OAW_INSTALL_STATE" || fail "OpenCode state target row is missing or invalid"
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "opencode/router,opencode/native-entrypoint" \
+  "OpenCode state does not contain its complete artifact set"
+assert_user_host_artifacts "$OAW_INSTALL_STATE" opencode "$OAW_POLICY" existing-file
 
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_OPENCODE_BEFORE=$(cksum <"$OAW_OPENCODE")
+OAW_OPENCODE_NATIVE=$(native_path_for_test opencode)
+OAW_OPENCODE_NATIVE_BEFORE=$(cksum <"$OAW_OPENCODE_NATIVE")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 run_oaw install --target opencode
 assert_status 0 "repeated OpenCode install"
-assert_contains "unchanged: opencode" "repeated OpenCode install reports an unchanged target"
+for OAW_OPENCODE_ARTIFACT in router native-entrypoint; do
+  assert_contains "unchanged: opencode/$OAW_OPENCODE_ARTIFACT" \
+    "repeated OpenCode install reports $OAW_OPENCODE_ARTIFACT unchanged"
+done
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "repeated OpenCode install changed canonical policy bytes"
 [ "$(cksum <"$OAW_OPENCODE")" = "$OAW_OPENCODE_BEFORE" ] ||
   fail "repeated OpenCode install changed instruction bytes"
+[ "$(cksum <"$OAW_OPENCODE_NATIVE")" = "$OAW_OPENCODE_NATIVE_BEFORE" ] ||
+  fail "repeated OpenCode install changed native entrypoint bytes"
 [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
   fail "repeated OpenCode install changed state bytes"
 
@@ -273,8 +385,11 @@ OAW_GEMINI=$OAW_HOME/.gemini/GEMINI.md
 OAW_OPENCODE=$OAW_CONFIG/opencode/AGENTS.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 
-assert_state_targets "$OAW_INSTALL_STATE" "claude,codex" \
-  "fresh multi-target state is not in registry order"
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "claude/router,claude/native-entrypoint,codex/router,codex/native-entrypoint,codex/native-policy" \
+  "fresh multi-target artifact state is not in registry order"
+assert_user_host_artifacts "$OAW_INSTALL_STATE" claude "$OAW_POLICY" existing-file
+assert_user_host_artifacts "$OAW_INSTALL_STATE" codex "$OAW_POLICY" existing-file
 grep -Fx 'personal Claude instruction' "$OAW_CLAUDE" >/dev/null ||
   fail "multi-target install did not preserve Claude content"
 grep -Fx 'personal Codex instruction' "$OAW_CODEX" >/dev/null ||
@@ -291,8 +406,10 @@ OAW_OPENCODE_BEFORE=$(cksum <"$OAW_OPENCODE")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 run_oaw install --target gemini
 assert_status 0 "add one target to an existing installation"
-assert_state_targets "$OAW_INSTALL_STATE" "claude,codex,gemini" \
-  "merged target state is not unique and registry ordered"
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "claude/router,claude/native-entrypoint,codex/router,codex/native-entrypoint,codex/native-policy,gemini/router,gemini/native-entrypoint" \
+  "merged artifact state is not unique and registry ordered"
+assert_user_host_artifacts "$OAW_INSTALL_STATE" gemini "$OAW_POLICY" existing-file
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "adding Gemini changed the canonical policy"
 [ "$(cksum <"$OAW_CLAUDE")" = "$OAW_CLAUDE_BEFORE" ] ||
@@ -314,10 +431,15 @@ OAW_OPENCODE_BEFORE=$(cksum <"$OAW_OPENCODE")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 run_oaw install --target codex,claude,claude
 assert_status 0 "repeat a deduplicated multi-target selection"
-assert_contains "unchanged: claude" "deduplicated repeat reports Claude unchanged"
-assert_contains "unchanged: codex" "deduplicated repeat reports Codex unchanged"
-assert_state_targets "$OAW_INSTALL_STATE" "claude,codex,gemini" \
-  "deduplicated repeat changed retained target state"
+for OAW_REPEAT_ARTIFACT in claude/router claude/native-entrypoint \
+  codex/router codex/native-entrypoint codex/native-policy
+do
+  assert_contains "unchanged: $OAW_REPEAT_ARTIFACT" \
+    "deduplicated repeat does not report $OAW_REPEAT_ARTIFACT unchanged"
+done
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "claude/router,claude/native-entrypoint,codex/router,codex/native-entrypoint,codex/native-policy,gemini/router,gemini/native-entrypoint" \
+  "deduplicated repeat changed retained artifact state"
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "deduplicated repeat changed the canonical policy"
 [ "$(cksum <"$OAW_CLAUDE")" = "$OAW_CLAUDE_BEFORE" ] ||
@@ -338,8 +460,9 @@ setup_sandbox
 run_oaw install
 assert_status 0 "default user target install"
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
-assert_state_targets "$OAW_INSTALL_STATE" "claude,codex,gemini,opencode" \
-  "default install did not select the four user targets"
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "claude/router,claude/native-entrypoint,codex/router,codex/native-entrypoint,codex/native-policy,gemini/router,gemini/native-entrypoint,opencode/router,opencode/native-entrypoint" \
+  "default install did not select every artifact for the four user targets"
 for OAW_DEFAULT_TARGET in \
   "$OAW_HOME/.claude/CLAUDE.md" \
   "$OAW_HOME/.codex/AGENTS.md" \
@@ -347,6 +470,9 @@ for OAW_DEFAULT_TARGET in \
   "$OAW_CONFIG/opencode/AGENTS.md"
 do
   [ -f "$OAW_DEFAULT_TARGET" ] || fail "default install omitted $OAW_DEFAULT_TARGET"
+done
+for OAW_DEFAULT_HOST in claude codex gemini opencode; do
+  assert_user_host_artifacts "$OAW_INSTALL_STATE" "$OAW_DEFAULT_HOST" "$OAW_CONFIG/open-agent-workflow/POLICY.md" created-file
 done
 pass "default install selects all user targets"
 
@@ -363,6 +489,8 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   setup_sandbox
   OAW_INSTALLER=$OAW_BASE_INSTALLER
   OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_NATIVE=$(native_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_NATIVE_POLICY=$(native_policy_path_for_test "$OAW_MATRIX_TARGET")
   OAW_MATRIX_EXPECTED=$OAW_SANDBOX/expected-$OAW_MATRIX_TARGET
   seed_target_for_test "$OAW_MATRIX_TARGET" "$OAW_MATRIX_EXPECTED"
 
@@ -377,11 +505,16 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
     fail "$OAW_MATRIX_TARGET install dry run created the canonical policy"
   [ ! -e "$OAW_STATE/open-agent-workflow/installations/user.state" ] ||
     fail "$OAW_MATRIX_TARGET install dry run created installation state"
+  [ ! -e "$OAW_MATRIX_NATIVE" ] ||
+    fail "$OAW_MATRIX_TARGET install dry run created its native entrypoint"
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] || [ ! -e "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    fail "$OAW_MATRIX_TARGET install dry run created native policy metadata"
 
   run_oaw install --target "$OAW_MATRIX_TARGET"
   assert_status 0 "$OAW_MATRIX_TARGET install before update"
   OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
   OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+  assert_user_host_artifacts "$OAW_INSTALL_STATE" "$OAW_MATRIX_TARGET" "$OAW_POLICY" existing-file
 
   OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-$OAW_MATRIX_TARGET
   cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
@@ -393,6 +526,10 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
 
   OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
   OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  OAW_MATRIX_NATIVE_BEFORE=$(cksum <"$OAW_MATRIX_NATIVE")
+  OAW_MATRIX_NATIVE_POLICY_BEFORE=
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    OAW_MATRIX_NATIVE_POLICY_BEFORE=$(cksum <"$OAW_MATRIX_NATIVE_POLICY")
   OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
   run_oaw update --target "$OAW_MATRIX_TARGET" --dry-run
   assert_status 0 "$OAW_MATRIX_TARGET update dry run"
@@ -401,6 +538,11 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
     fail "$OAW_MATRIX_TARGET update dry run changed the canonical policy"
   [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
     fail "$OAW_MATRIX_TARGET update dry run changed user instructions"
+  [ "$(cksum <"$OAW_MATRIX_NATIVE")" = "$OAW_MATRIX_NATIVE_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET update dry run changed its native entrypoint"
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    [ "$(cksum <"$OAW_MATRIX_NATIVE_POLICY")" = "$OAW_MATRIX_NATIVE_POLICY_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET update dry run changed native policy metadata"
   [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
     fail "$OAW_MATRIX_TARGET update dry run changed installation state"
 
@@ -413,9 +555,17 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   grep -Fx "personal $OAW_MATRIX_TARGET instruction" "$OAW_MATRIX_PATH" >/dev/null ||
     fail "$OAW_MATRIX_TARGET update did not preserve user instructions"
   assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET updated instructions"
+  assert_native_entrypoint "$OAW_MATRIX_NATIVE" "$OAW_MATRIX_TARGET" "$OAW_POLICY"
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    grep -F 'allow_implicit_invocation: false' "$OAW_MATRIX_NATIVE_POLICY" >/dev/null ||
+    fail "$OAW_MATRIX_TARGET update lost native policy metadata"
 
   OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
   OAW_MATRIX_BEFORE=$(cksum <"$OAW_MATRIX_PATH")
+  OAW_MATRIX_NATIVE_BEFORE=$(cksum <"$OAW_MATRIX_NATIVE")
+  OAW_MATRIX_NATIVE_POLICY_BEFORE=
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    OAW_MATRIX_NATIVE_POLICY_BEFORE=$(cksum <"$OAW_MATRIX_NATIVE_POLICY")
   OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
   run_oaw uninstall --target "$OAW_MATRIX_TARGET" --dry-run
   assert_status 0 "$OAW_MATRIX_TARGET uninstall dry run"
@@ -424,6 +574,11 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
     fail "$OAW_MATRIX_TARGET uninstall dry run changed the canonical policy"
   [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
     fail "$OAW_MATRIX_TARGET uninstall dry run changed user instructions"
+  [ "$(cksum <"$OAW_MATRIX_NATIVE")" = "$OAW_MATRIX_NATIVE_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET uninstall dry run changed its native entrypoint"
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    [ "$(cksum <"$OAW_MATRIX_NATIVE_POLICY")" = "$OAW_MATRIX_NATIVE_POLICY_BEFORE" ] ||
+    fail "$OAW_MATRIX_TARGET uninstall dry run changed native policy metadata"
   [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
     fail "$OAW_MATRIX_TARGET uninstall dry run changed installation state"
 
@@ -431,6 +586,10 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   assert_status 0 "$OAW_MATRIX_TARGET final uninstall"
   cmp -s "$OAW_MATRIX_PATH" "$OAW_MATRIX_EXPECTED" ||
     fail "$OAW_MATRIX_TARGET final uninstall changed user content"
+  [ ! -e "$OAW_MATRIX_NATIVE" ] ||
+    fail "$OAW_MATRIX_TARGET final uninstall retained its native entrypoint"
+  [ -z "$OAW_MATRIX_NATIVE_POLICY" ] || [ ! -e "$OAW_MATRIX_NATIVE_POLICY" ] ||
+    fail "$OAW_MATRIX_TARGET final uninstall retained native policy metadata"
   [ ! -e "$OAW_POLICY" ] || fail "$OAW_MATRIX_TARGET final uninstall retained policy"
   [ ! -e "$OAW_INSTALL_STATE" ] || fail "$OAW_MATRIX_TARGET final uninstall retained state"
 done
@@ -458,12 +617,20 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   OAW_MATRIX_BEFORE=$(cat "$OAW_SANDBOX/default-$OAW_MATRIX_TARGET-before")
   [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
     fail "default install dry run changed $OAW_MATRIX_TARGET instructions"
+  [ ! -e "$(native_path_for_test "$OAW_MATRIX_TARGET")" ] ||
+    fail "default install dry run created $OAW_MATRIX_TARGET native entrypoint"
 done
 
 run_oaw install
 assert_status 0 "default install before management matrix"
 OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "claude/router,claude/native-entrypoint,codex/router,codex/native-entrypoint,codex/native-policy,gemini/router,gemini/native-entrypoint,opencode/router,opencode/native-entrypoint" \
+  "default management fixture does not record every user artifact"
+for OAW_MATRIX_TARGET in claude codex gemini opencode; do
+  assert_user_host_artifacts "$OAW_INSTALL_STATE" "$OAW_MATRIX_TARGET" "$OAW_POLICY" existing-file
+done
 OAW_UPDATE_CHECKOUT=$OAW_SANDBOX/update-default
 cp -R "$OAW_REPOSITORY" "$OAW_UPDATE_CHECKOUT"
 printf '0.1.1-default\n' >"$OAW_UPDATE_CHECKOUT/VERSION"
@@ -490,14 +657,22 @@ grep -F "$(printf 'version\t0.1.1-default')" "$OAW_INSTALL_STATE" >/dev/null ||
 for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
   assert_lazy_router_file "$OAW_MATRIX_PATH" "$OAW_POLICY" "$OAW_MATRIX_TARGET default updated instructions"
+  assert_native_entrypoint "$(native_path_for_test "$OAW_MATRIX_TARGET")" \
+    "$OAW_MATRIX_TARGET" "$OAW_POLICY"
 done
+OAW_CODEX_NATIVE_POLICY=$(native_policy_path_for_test codex)
+grep -F 'allow_implicit_invocation: false' "$OAW_CODEX_NATIVE_POLICY" >/dev/null ||
+  fail "default update lost Codex native policy metadata"
 
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
   cksum <"$OAW_MATRIX_PATH" >"$OAW_SANDBOX/installed-$OAW_MATRIX_TARGET-before"
+  OAW_MATRIX_NATIVE=$(native_path_for_test "$OAW_MATRIX_TARGET")
+  cksum <"$OAW_MATRIX_NATIVE" >"$OAW_SANDBOX/installed-native-$OAW_MATRIX_TARGET-before"
 done
+cksum <"$OAW_CODEX_NATIVE_POLICY" >"$OAW_SANDBOX/installed-native-policy-codex-before"
 run_oaw uninstall --dry-run
 assert_status 0 "default uninstall dry run"
 assert_contains "would-" "default uninstall dry run reports planned writes"
@@ -510,17 +685,29 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   OAW_MATRIX_BEFORE=$(cat "$OAW_SANDBOX/installed-$OAW_MATRIX_TARGET-before")
   [ "$(cksum <"$OAW_MATRIX_PATH")" = "$OAW_MATRIX_BEFORE" ] ||
     fail "default uninstall dry run changed $OAW_MATRIX_TARGET instructions"
+  OAW_MATRIX_NATIVE=$(native_path_for_test "$OAW_MATRIX_TARGET")
+  OAW_MATRIX_NATIVE_BEFORE=$(cat "$OAW_SANDBOX/installed-native-$OAW_MATRIX_TARGET-before")
+  [ "$(cksum <"$OAW_MATRIX_NATIVE")" = "$OAW_MATRIX_NATIVE_BEFORE" ] ||
+    fail "default uninstall dry run changed $OAW_MATRIX_TARGET native entrypoint"
 done
+[ "$(cksum <"$OAW_CODEX_NATIVE_POLICY")" = \
+  "$(cat "$OAW_SANDBOX/installed-native-policy-codex-before")" ] ||
+  fail "default uninstall dry run changed Codex native policy metadata"
 
 run_oaw uninstall --target codex
 assert_status 0 "selected Codex uninstall from default state"
-assert_state_targets "$OAW_INSTALL_STATE" "claude,gemini,opencode" \
+assert_state_artifacts "$OAW_INSTALL_STATE" \
+  "claude/router,claude/native-entrypoint,gemini/router,gemini/native-entrypoint,opencode/router,opencode/native-entrypoint" \
   "selected uninstall did not retain remaining target rows"
 [ -f "$OAW_POLICY" ] || fail "selected uninstall removed the shared policy"
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "selected uninstall changed the shared policy"
 cmp -s "$OAW_HOME/.codex/AGENTS.md" "$OAW_SANDBOX/default-codex" ||
   fail "selected uninstall did not preserve Codex user content"
+[ ! -e "$(native_path_for_test codex)" ] ||
+  fail "selected uninstall retained the Codex native entrypoint"
+[ ! -e "$OAW_CODEX_NATIVE_POLICY" ] ||
+  fail "selected uninstall retained Codex native policy metadata"
 for OAW_RETAINED_TARGET in claude gemini opencode; do
   OAW_RETAINED_PATH=$(target_path_for_test "$OAW_RETAINED_TARGET")
   OAW_RETAINED_BEFORE=$(cat "$OAW_SANDBOX/installed-$OAW_RETAINED_TARGET-before")
@@ -528,6 +715,10 @@ for OAW_RETAINED_TARGET in claude gemini opencode; do
     fail "selected uninstall changed retained $OAW_RETAINED_TARGET content"
   grep -F '<!-- BEGIN OPEN AGENT WORKFLOW -->' "$OAW_RETAINED_PATH" >/dev/null ||
     fail "selected uninstall removed retained $OAW_RETAINED_TARGET content"
+  OAW_RETAINED_NATIVE=$(native_path_for_test "$OAW_RETAINED_TARGET")
+  OAW_RETAINED_NATIVE_BEFORE=$(cat "$OAW_SANDBOX/installed-native-$OAW_RETAINED_TARGET-before")
+  [ "$(cksum <"$OAW_RETAINED_NATIVE")" = "$OAW_RETAINED_NATIVE_BEFORE" ] ||
+    fail "selected uninstall changed retained $OAW_RETAINED_TARGET native entrypoint"
 done
 
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
@@ -549,6 +740,8 @@ for OAW_MATRIX_TARGET in claude codex gemini opencode; do
   OAW_MATRIX_PATH=$(target_path_for_test "$OAW_MATRIX_TARGET")
   cmp -s "$OAW_MATRIX_PATH" "$OAW_SANDBOX/default-$OAW_MATRIX_TARGET" ||
     fail "final default uninstall changed $OAW_MATRIX_TARGET user content"
+  [ ! -e "$(native_path_for_test "$OAW_MATRIX_TARGET")" ] ||
+    fail "final default uninstall retained $OAW_MATRIX_TARGET native entrypoint"
 done
 pass "default management supports selected removal and final cleanup"
 
@@ -562,7 +755,11 @@ OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 for OAW_HEALTH_TARGET in claude codex gemini opencode; do
   OAW_HEALTH_PATH=$(target_path_for_test "$OAW_HEALTH_TARGET")
   cksum <"$OAW_HEALTH_PATH" >"$OAW_SANDBOX/health-$OAW_HEALTH_TARGET-before"
+  OAW_HEALTH_NATIVE=$(native_path_for_test "$OAW_HEALTH_TARGET")
+  cksum <"$OAW_HEALTH_NATIVE" >"$OAW_SANDBOX/health-native-$OAW_HEALTH_TARGET-before"
 done
+OAW_HEALTH_CODEX_POLICY=$(native_policy_path_for_test codex)
+cksum <"$OAW_HEALTH_CODEX_POLICY" >"$OAW_SANDBOX/health-native-policy-codex-before"
 OAW_POLICY_BEFORE=$(cksum <"$OAW_POLICY")
 OAW_STATE_BEFORE=$(cksum <"$OAW_INSTALL_STATE")
 
@@ -577,7 +774,14 @@ for OAW_HEALTH_TARGET in claude codex gemini opencode; do
   OAW_HEALTH_BEFORE=$(cat "$OAW_SANDBOX/health-$OAW_HEALTH_TARGET-before")
   [ "$(cksum <"$OAW_HEALTH_PATH")" = "$OAW_HEALTH_BEFORE" ] ||
     fail "clean check changed $OAW_HEALTH_TARGET instructions"
+  OAW_HEALTH_NATIVE=$(native_path_for_test "$OAW_HEALTH_TARGET")
+  OAW_HEALTH_NATIVE_BEFORE=$(cat "$OAW_SANDBOX/health-native-$OAW_HEALTH_TARGET-before")
+  [ "$(cksum <"$OAW_HEALTH_NATIVE")" = "$OAW_HEALTH_NATIVE_BEFORE" ] ||
+    fail "clean check changed $OAW_HEALTH_TARGET native entrypoint"
 done
+[ "$(cksum <"$OAW_HEALTH_CODEX_POLICY")" = \
+  "$(cat "$OAW_SANDBOX/health-native-policy-codex-before")" ] ||
+  fail "clean check changed Codex native policy metadata"
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "clean check changed the canonical policy"
 [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
@@ -606,6 +810,12 @@ assert_contains "target codex: detected (user, project)" \
 assert_contains "installed codex: drift" "check reports Codex managed drift"
 [ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
   fail "drift check changed Codex instructions"
+[ "$(cksum <"$(native_path_for_test codex)")" = \
+  "$(cat "$OAW_SANDBOX/health-native-codex-before")" ] ||
+  fail "drift check changed Codex native entrypoint"
+[ "$(cksum <"$OAW_HEALTH_CODEX_POLICY")" = \
+  "$(cat "$OAW_SANDBOX/health-native-policy-codex-before")" ] ||
+  fail "drift check changed Codex native policy metadata"
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||
   fail "drift check changed the canonical policy"
 [ "$(cksum <"$OAW_INSTALL_STATE")" = "$OAW_STATE_BEFORE" ] ||
@@ -620,7 +830,14 @@ assert_status 0 "check with invalid installation state"
 for OAW_HEALTH_TARGET in claude codex gemini opencode; do
   assert_contains "installed $OAW_HEALTH_TARGET: invalid-state" \
     "check reports invalid state for $OAW_HEALTH_TARGET"
+  OAW_HEALTH_NATIVE=$(native_path_for_test "$OAW_HEALTH_TARGET")
+  OAW_HEALTH_NATIVE_BEFORE=$(cat "$OAW_SANDBOX/health-native-$OAW_HEALTH_TARGET-before")
+  [ "$(cksum <"$OAW_HEALTH_NATIVE")" = "$OAW_HEALTH_NATIVE_BEFORE" ] ||
+    fail "invalid-state check changed $OAW_HEALTH_TARGET native entrypoint"
 done
+[ "$(cksum <"$OAW_HEALTH_CODEX_POLICY")" = \
+  "$(cat "$OAW_SANDBOX/health-native-policy-codex-before")" ] ||
+  fail "invalid-state check changed Codex native policy metadata"
 [ "$(cksum <"$OAW_CODEX")" = "$OAW_CODEX_BEFORE" ] ||
   fail "invalid-state check changed Codex instructions"
 [ "$(cksum <"$OAW_POLICY")" = "$OAW_POLICY_BEFORE" ] ||

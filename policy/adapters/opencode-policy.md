@@ -29,6 +29,25 @@ For Profile discovery, use these source-qualified locations:
 Use Built-in Profiles only from the selected Policy Set. Preserve Custom
 Profile source identity and never merge same-ID Profiles.
 
+## Explicit Native Entrypoint
+
+The optional thin dispatcher is an OpenCode Custom Command at
+`${XDG_CONFIG_HOME:-$HOME/.config}/opencode/commands/oaw.md` for user scope or
+`.opencode/commands/oaw.md` for project scope. Invoke it as
+`/oaw [PROFILE] <request>`. OpenCode commands may use `$ARGUMENTS` for all
+trailing text or positional forms such as `$1`; the dispatcher should carry
+the complete optional Profile and task without interpreting their semantics.
+
+A user-entered `/oaw` is explicit OAW activation. Merely loading a command,
+matching a Skill description, or letting the model select an `oaw`-named
+surface is not. Invocation alone is not proof of user selection. The command
+follows the current Activation Router, contains no Policy path, and must not
+define a default Profile, lifecycle stages, Responsibility owners, or approval
+gates. The user may always activate OAW directly in natural language instead.
+
+OpenCode loads commands and configuration at startup. Restart OpenCode after
+installing or changing the dispatcher before relying on the new entrypoint.
+
 ## Skill Discovery And Invocation
 
 Start with `opencode debug skill`; `opencode debug paths` and
