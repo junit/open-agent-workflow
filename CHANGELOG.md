@@ -4,6 +4,8 @@ All notable changes to Open Agent Workflow are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-17
+
 #### Added
 
 - A bilingual release operations manual covering validation, cross-platform
@@ -28,8 +30,9 @@ All notable changes to Open Agent Workflow are documented in this file.
   dispatchers carry only explicit user intent, an optional Profile, and the
   task; they do not define a default Profile, Responsibilities, lifecycle
   stages, or approval gates.
-- Hosts use documented explicit-only controls when available. Cline relies on
-  Policy self-gating because it has no documented per-Skill manual-only field.
+- Hosts use documented explicit-only controls when available. Cline and Roo
+  remain inert when independently observable original user input or reliable
+  user-selection metadata is unavailable.
 - Copilot CLI entrypoints now use `disable-model-invocation` and an argument
   hint documented by the Host's Agent Skill format.
 - Install State format 1 from 0.1.0 and 0.1.1 is a bounded upgrade input:
@@ -42,8 +45,11 @@ All notable changes to Open Agent Workflow are documented in this file.
 #### Fixed
 
 - Native dispatchers no longer treat physical invocation or loading as proof of
-  user intent. They require the top-level user request or reliable Host
-  user-selection metadata and remain inert under model-led invocation.
+  user intent. Evidence must originate outside the dispatcher artifact and its
+  Host-expanded text through Host-enforced manual-only selection, a documented
+  pre-expansion user-command or Workflow event, independently observable
+  original user input, or reliable user-selection metadata. Quoted or discussed
+  invocations and model-led loading remain inert.
 - Native dispatchers follow the Activation Router without embedding a Policy
   path, so Host argument, file-inclusion, and command-expansion preprocessing
   cannot rewrite or execute path fragments.
