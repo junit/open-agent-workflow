@@ -72,11 +72,14 @@ lifecycle stages, or impose approval gates.
 
 Automatic discovery, relevance matching, or model-led loading of an
 OAW-named Skill is not explicit activation. Claude, Codex, and other Hosts with
-a documented explicit-only control use it. Cline does not expose a documented
-per-Skill manual-only field, so its entrypoint relies on Policy self-gating: it
-must observe explicit user intent before activating OAW. Physical invocation
-alone is not evidence: the top-level request or reliable Host metadata must
-identify user selection. Every dispatcher follows the Activation Router and
+a documented explicit-only control use it. Gemini, OpenCode, and Windsurf rely
+on their documented user-command or Workflow event before template expansion.
+Cline and Roo accept only independently observable pre-expansion user input or
+reliable user-selection metadata; without either source their entrypoints stay
+inert and natural-language Router activation remains available. A dispatcher's
+own name, description, body, argument hints, and Host-expanded text are never
+activation evidence. Quoted or discussed invocations and physical loading
+alone are not evidence. Every dispatcher follows the Activation Router and
 contains no Policy path, keeping Host template preprocessing away from install
 coordinates.
 

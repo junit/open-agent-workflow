@@ -25,13 +25,17 @@ task complexity, automatic discovery or model-led loading of an OAW-named
 Skill, and ordinary Skill selection do not activate it.
 
 A Host-native OAW entrypoint documented by the current Host Adapter is an
-explicit request only when the current top-level user request contains its
-native invocation, or reliable Host metadata distinguishes a user picker
-selection from model-led invocation. Physical invocation or loading alone is
-not proof of user intent. When the source cannot be distinguished, require the
-literal native form or a natural-language activation request in the top-level
-user request. Natural-language activation remains the portable form; no native
-entrypoint is required.
+explicit request only when evidence outside the entrypoint artifact identifies
+user selection. That evidence is either the original top-level user input,
+observed before Host template expansion, using the native form as a command
+rather than quoting or discussing it, or reliable Host metadata distinguishing
+a user picker selection from model-led invocation. The entrypoint's name,
+description, body, argument hints, and expanded template text never supply this
+evidence. Automatic matching, model-led invocation, and physical loading alone
+are not proof of user intent. When the source cannot be distinguished, remain
+in Native Host behavior. A direct natural-language activation request in the
+original top-level user input remains the portable form and does not require a
+native entrypoint.
 
 A native entrypoint is a thin dispatcher, not an engineering method. It may
 carry an explicitly named Profile and the user's task into the selected Policy

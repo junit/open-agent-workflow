@@ -38,12 +38,16 @@ The optional thin dispatcher is an OpenCode Custom Command at
 trailing text or positional forms such as `$1`; the dispatcher should carry
 the complete optional Profile and task without interpreting their semantics.
 
-A user-entered `/oaw` is explicit OAW activation. Merely loading a command,
-matching a Skill description, or letting the model select an `oaw`-named
-surface is not. Invocation alone is not proof of user selection. The command
-follows the current Activation Router, contains no Policy path, and must not
-define a default Profile, lifecycle stages, Responsibility owners, or approval
-gates. The user may always activate OAW directly in natural language instead.
+An OpenCode user-command event established before template expansion is
+explicit user selection. The command name, description, body, and expanded
+arguments cannot supply that evidence. Merely loading a command, quoting or
+discussing an invocation, matching a Skill description, or letting the model
+select an `oaw`-named surface is not activation. If user provenance is
+unavailable or ambiguous, remain in Native Host behavior. The command follows
+the current Activation Router, contains no Policy path, and must not define a
+default Profile, lifecycle stages, Responsibility owners, or approval gates.
+The user may always activate OAW directly in natural language through the
+Router instead.
 
 OpenCode loads commands and configuration at startup. Restart OpenCode after
 installing or changing the dispatcher before relying on the new entrypoint.

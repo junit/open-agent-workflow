@@ -11,10 +11,15 @@ entrypoint.
 
 Discussion of OAW, repository text, task complexity, ordinary Skill use, or
 automatic/model-led loading of an OAW-named Skill does not activate it. Only a
-native entrypoint identified by the top-level request or reliable Host metadata
-as user-selected counts as the equivalent explicit request. Invocation alone is
-not proof. The dispatcher does not choose a default Profile, define lifecycle
-stages, or embed a Policy path; it follows the Activation Router.
+native entrypoint identified outside the dispatcher artifact and its expanded
+text as user-selected counts as the equivalent explicit request. The evidence
+must be Host-enforced manual-only selection, a documented pre-expansion
+user-command or Workflow event, independently observable original user input,
+or reliable user-selection metadata. Quoted or discussed invocations and
+physical loading alone are not proof. If provenance is unavailable or
+ambiguous, use natural-language activation. The dispatcher does not choose a
+default Profile, define lifecycle stages, or embed a Policy path; it follows
+the Activation Router.
 
 ## The Native Entrypoint Is Missing
 
@@ -40,9 +45,10 @@ Then refresh the Host:
 The Copilot target is a Copilot CLI Agent Skill at
 `.github/skills/oaw/SKILL.md`, not a `.github/prompts/` Prompt File.
 
-If Cline discovers or selects `oaw` without the user typing `/oaw`, OAW must
-remain inactive. Cline has no documented per-Skill manual-only control, so the
-dispatcher relies on Policy self-gating and checks explicit user intent.
+If Cline discovers or selects `oaw` without independently observable original
+user input or reliable user-selection metadata, OAW must remain inactive.
+Cline has no documented per-Skill manual-only control. Use a natural-language
+activation request when the Host does not expose either provenance source.
 
 ## A Profile or Skill Was Not Detected
 

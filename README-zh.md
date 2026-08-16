@@ -89,9 +89,11 @@ $oaw MATT-SP-HYBRID deliver the editor.
 自然语言激活始终有效；原生形式既不是必需入口，也没有更高优先级。Dispatcher 只把可选 Profile
 和任务带入选中的 Policy Set，不选择默认 Profile、不复制 Profile Responsibility、不定义生命周期
 阶段，也不增加 approval gate。自动发现或模型主动加载名为 OAW 的 Skill 不代表用户激活。能禁止
-隐式调用的 Host 会使用对应控制；Cline 没有已记录的 per-Skill 控制，因此依赖 Policy self-gating。
-物理调用本身不能证明用户意图。Dispatcher 必须检查顶层用户请求或可靠的 Host 用户选择元数据，再按
-Activation Router 选择 Policy Set；Host 模板中不嵌入 Policy 路径。
+隐式调用的 Host 会使用对应控制。用户选择证据必须来自 Dispatcher artifact 及其 Host 展开文本之外：
+Host 强制的 manual-only 选择、已记录的 user-command/Workflow 事件，或可以独立观察的模板展开前用户
+输入或可靠的用户选择元数据。Dispatcher 自身、引用或讨论的调用形式以及物理加载都不是证明；来源缺失
+或含糊时保持 Native Host，用户仍可通过 Activation Router 自然语言激活。Host 模板中不嵌入 Policy
+路径。
 
 模型读取选中的 Profile，并在某项 Responsibility 成为当前工作时读取对应 Skill。Host Skill
 索引只是优化，不是可用性证明。只要规则可读或 Host 提供原生调用面，模型就可以在没有 Bridge

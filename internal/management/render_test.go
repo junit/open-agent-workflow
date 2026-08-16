@@ -114,26 +114,29 @@ func TestRenderNativeArtifactsAreThinExplicitDispatchers(t *testing.T) {
 		scope      scope
 		id         targetID
 		artifact   string
+		source     string
 		required   []string
 		forbidden  []string
 		policyPath string
 	}{
-		{name: "user Claude Skill", scope: "user", id: "claude", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"name: oaw", "user-invocable: true", "disable-model-invocation: true", "$ARGUMENTS"}},
-		{name: "user Codex Skill", scope: "user", id: "codex", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"name: oaw", "the remainder of this user request"}},
+		{name: "user Claude Skill", scope: "user", id: "claude", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", source: "Claude manual-only Skill selection", required: []string{"name: oaw", "user-invocable: true", "disable-model-invocation: true", "$ARGUMENTS"}},
+		{name: "user Codex Skill", scope: "user", id: "codex", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", source: "Codex explicit Skill selection", required: []string{"name: oaw", "the remainder of this user request"}},
 		{name: "Codex native policy", scope: "project", id: "codex", artifact: nativePolicyArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"display_name: \"Open Agent Workflow\"", "allow_implicit_invocation: false"}, forbidden: []string{"MATT-SP-HYBRID", "Spec", "TDD"}},
-		{name: "user Gemini command", scope: "user", id: "gemini", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"prompt = \"", "{{args}}"}, forbidden: []string{"prompt = \"\"\""}},
-		{name: "user OpenCode command", scope: "user", id: "opencode", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", required: []string{"$ARGUMENTS"}, forbidden: []string{"argument-hint:"}},
-		{name: "project Cursor Skill", scope: "project", id: "cursor", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"name: oaw", "disable-model-invocation: true", "the remainder of this user request"}},
-		{name: "project Windsurf workflow", scope: "project", id: "windsurf", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"the remainder of this user request"}},
-		{name: "project Cline Skill", scope: "project", id: "cline", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"name: oaw", "the remainder of this user request"}},
-		{name: "project Roo command", scope: "project", id: "roo", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"argument-hint:", "the remainder of this user request"}},
-		{name: "project Copilot Skill", scope: "project", id: "copilot", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", required: []string{"name: oaw", "argument-hint:", "disable-model-invocation: true", "the remainder of this user request"}, forbidden: []string{"user-invocable:"}},
+		{name: "user Gemini command", scope: "user", id: "gemini", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", source: "Gemini user-command event", required: []string{"prompt = \"", "{{args}}"}, forbidden: []string{"prompt = \"\"\""}},
+		{name: "user OpenCode command", scope: "user", id: "opencode", artifact: nativeEntrypointArtifactID, policyPath: "/config/open-agent-workflow/POLICY.md", source: "OpenCode user-command event", required: []string{"$ARGUMENTS"}, forbidden: []string{"argument-hint:"}},
+		{name: "project Cursor Skill", scope: "project", id: "cursor", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", source: "Cursor manual-only Skill selection", required: []string{"name: oaw", "disable-model-invocation: true", "the remainder of this user request"}},
+		{name: "project Windsurf workflow", scope: "project", id: "windsurf", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", source: "Windsurf user-Workflow event", required: []string{"the remainder of this user request"}},
+		{name: "project Cline Skill", scope: "project", id: "cline", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", source: "original pre-expansion Cline user input", required: []string{"name: oaw", "the remainder of this user request"}},
+		{name: "project Roo command", scope: "project", id: "roo", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", source: "original pre-expansion Roo user input", required: []string{"argument-hint:", "the remainder of this user request"}},
+		{name: "project Copilot Skill", scope: "project", id: "copilot", artifact: nativeEntrypointArtifactID, policyPath: ".oaw/policy/POLICY.md", source: "Copilot manual-only Agent Skill selection", required: []string{"name: oaw", "argument-hint:", "disable-model-invocation: true", "the remainder of this user request"}, forbidden: []string{"user-invocable:"}},
 	}
 	commonRequired := []string{
-		"current top-level user request",
-		"literal `/oaw` or `$oaw`",
-		"reliable Host metadata that the user, not the model, selected this entrypoint",
-		"Invocation or loading of this entrypoint alone is not evidence of user intent",
+		"evidence must come from outside this dispatcher's bytes and any Host-expanded template text",
+		"name, description, body, argument hint, and expanded text are never activation evidence",
+		"quoted or discussed invocation text",
+		"automatic discovery or matching",
+		"model-led invocation or loading",
+		"user provenance is unavailable or ambiguous",
 		"do not activate OAW and continue as the native Host",
 		"Follow the current OAW Activation Router to select and read one Policy Set",
 		"Do not embed or infer a Policy path here",
@@ -141,6 +144,8 @@ func TestRenderNativeArtifactsAreThinExplicitDispatchers(t *testing.T) {
 	}
 	commonForbidden := []string{
 		"MATT-SP-HYBRID", "SP-FULL", "MATT-FULL", "ECC-FULL",
+		"/oaw", "$oaw", "literal native form", "natural-language activation request",
+		"Explicitly activate", "explicitly activate",
 		"Spec -> Plan", "Spec → Plan", "TDD ->", "must wait for approval",
 		"without an explicit `/oaw`, `$oaw`, or natural-language request",
 		"An explicit native invocation or user selection",
@@ -156,6 +161,7 @@ func TestRenderNativeArtifactsAreThinExplicitDispatchers(t *testing.T) {
 			forbidden := tt.forbidden
 			if tt.artifact != nativePolicyArtifactID {
 				required = append(append([]string(nil), commonRequired...), required...)
+				required = append(required, tt.source)
 				forbidden = append(append([]string(nil), commonForbidden...), forbidden...)
 				forbidden = append(forbidden, tt.policyPath)
 			}

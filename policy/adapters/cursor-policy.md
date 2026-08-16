@@ -39,11 +39,14 @@ it from Agent chat as `/oaw`, with the optional Profile and task in the same
 user request. Cursor defines no dispatcher-wide `$ARGUMENTS` contract here, so
 do not claim template expansion.
 
-A user-selected `/oaw` is explicit OAW activation. Rule loading, Skill
-discovery, automatic relevance matching, or model-led Skill selection is not.
-Invocation alone is not proof of user selection. The dispatcher follows the
-current Activation Router, contains no Policy path, and must not choose a
-default Profile, reproduce lifecycle stages, or impose approval gates.
+A Cursor manual-only Skill selection recorded before the Skill body is loaded
+is explicit user selection. The Skill name, description, body, metadata, and
+expanded request cannot supply that evidence. Rule loading, Skill discovery,
+quoted or discussed invocations, automatic relevance matching, and model-led
+Skill selection are not activation. If user provenance is unavailable or
+ambiguous, remain in Native Host behavior. The dispatcher follows the current
+Activation Router, contains no Policy path, and must not choose a default
+Profile, reproduce lifecycle stages, or impose approval gates.
 Natural-language activation remains equivalent, and `@oaw` is not the
 Adapter's invocation contract.
 

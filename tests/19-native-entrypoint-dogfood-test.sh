@@ -104,12 +104,14 @@ assert_thin_entrypoint() {
   policy_reference=$3
 
   [ -f "$entrypoint" ] || fail "missing native entrypoint for $host: $entrypoint"
-  grep -F 'current top-level user request' "$entrypoint" >/dev/null ||
-    fail "$host native entrypoint does not inspect top-level user intent"
-  grep -F 'reliable Host metadata that the user, not the model, selected this entrypoint' "$entrypoint" >/dev/null ||
-    fail "$host native entrypoint does not distinguish user and model selection"
-  grep -F 'Invocation or loading of this entrypoint alone is not evidence of user intent' "$entrypoint" >/dev/null ||
-    fail "$host native entrypoint treats physical invocation as user intent"
+  grep -F "evidence must come from outside this dispatcher's bytes and any Host-expanded template text" "$entrypoint" >/dev/null ||
+    fail "$host native entrypoint accepts self-originating activation evidence"
+  grep -F 'quoted or discussed invocation text' "$entrypoint" >/dev/null ||
+    fail "$host native entrypoint does not reject quoted or discussed invocations"
+  grep -F 'model-led invocation or loading' "$entrypoint" >/dev/null ||
+    fail "$host native entrypoint does not reject model-led invocation"
+  grep -F 'user provenance is unavailable or ambiguous' "$entrypoint" >/dev/null ||
+    fail "$host native entrypoint lacks ambiguous-source handling"
   grep -F 'do not activate OAW and continue as the native Host' "$entrypoint" >/dev/null ||
     fail "$host native entrypoint lacks the automatic-load no-op behavior"
   grep -F 'Follow the current OAW Activation Router to select and read one Policy Set' "$entrypoint" >/dev/null ||
@@ -119,6 +121,9 @@ assert_thin_entrypoint() {
   if grep -F '.oaw/policy/POLICY.md' "$entrypoint" >/dev/null ||
     grep -F "$policy_reference" "$entrypoint" >/dev/null; then
     fail "$host native entrypoint embeds a Host-preprocessed Policy path"
+  fi
+  if grep -F '/oaw' "$entrypoint" >/dev/null || grep -F '$oaw' "$entrypoint" >/dev/null; then
+    fail "$host native entrypoint contains a self-authorizing invocation literal"
   fi
 
   case "$host" in

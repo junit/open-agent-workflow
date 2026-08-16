@@ -128,18 +128,23 @@ assert_native_entrypoint() {
   entrypoint=$1
   target_id=$2
   [ -f "$entrypoint" ] || fail "$target_id project native entrypoint is missing"
-  grep -F 'current top-level user request' "$entrypoint" >/dev/null ||
-    fail "$target_id project native entrypoint does not inspect top-level user intent"
-  grep -F 'reliable Host metadata that the user, not the model, selected this entrypoint' "$entrypoint" >/dev/null ||
-    fail "$target_id project native entrypoint does not distinguish user and model selection"
-  grep -F 'Invocation or loading of this entrypoint alone is not evidence of user intent' "$entrypoint" >/dev/null ||
-    fail "$target_id project native entrypoint treats physical invocation as user intent"
+  grep -F "evidence must come from outside this dispatcher's bytes and any Host-expanded template text" "$entrypoint" >/dev/null ||
+    fail "$target_id project native entrypoint accepts self-originating activation evidence"
+  grep -F 'quoted or discussed invocation text' "$entrypoint" >/dev/null ||
+    fail "$target_id project native entrypoint does not reject quoted or discussed invocations"
+  grep -F 'model-led invocation or loading' "$entrypoint" >/dev/null ||
+    fail "$target_id project native entrypoint does not reject model-led invocation"
+  grep -F 'user provenance is unavailable or ambiguous' "$entrypoint" >/dev/null ||
+    fail "$target_id project native entrypoint lacks ambiguous-source handling"
   grep -F 'do not activate OAW and continue as the native Host' "$entrypoint" >/dev/null ||
     fail "$target_id project native entrypoint lacks its automatic-load no-op"
   grep -F 'Follow the current OAW Activation Router to select and read one Policy Set' "$entrypoint" >/dev/null ||
     fail "$target_id project native entrypoint bypasses the Activation Router"
   if grep -F '.oaw/policy/POLICY.md' "$entrypoint" >/dev/null; then
     fail "$target_id project native entrypoint embeds a Policy path"
+  fi
+  if grep -F '/oaw' "$entrypoint" >/dev/null || grep -F '$oaw' "$entrypoint" >/dev/null; then
+    fail "$target_id project native entrypoint contains a self-authorizing invocation literal"
   fi
   grep -F 'Pass the optional Profile and task' "$entrypoint" >/dev/null ||
     fail "$target_id project native entrypoint does not pass invocation input through"

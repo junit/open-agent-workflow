@@ -41,12 +41,15 @@ request. Windsurf documents Workflows as manual slash entrypoints but does not
 define a portable argument-substitution macro for this file, so the dispatcher
 must not claim one.
 
-A user-entered `/oaw` is explicit OAW activation. Loading the always-on Router,
-discovering Skills, or model-led selection of an `oaw`-named Skill is not. The
-Workflow treats invocation alone as insufficient proof of user selection. It
-follows the current Activation Router, contains no Policy path, and must not
-choose a default Profile, restate lifecycle stages, or add approval gates. A
-natural-language activation request remains valid without a Workflow.
+A Windsurf user-Workflow event established before Workflow expansion is
+explicit user selection. The Workflow name, body, and expanded request cannot
+supply that evidence. Loading the always-on Router, quoting or discussing an
+invocation, discovering Skills, or model-led selection of an `oaw`-named Skill
+is not activation. If user provenance is unavailable or ambiguous, remain in
+Native Host behavior. The Workflow follows the current Activation Router,
+contains no Policy path, and must not choose a default Profile, restate
+lifecycle stages, or add approval gates. A natural-language activation request
+remains valid without a Workflow.
 
 Start a new Cascade task or reload the workspace after installing or changing
 the Workflow. The `.devin/rules/open-agent-workflow.md` Router and the

@@ -36,12 +36,15 @@ The optional thin dispatcher is a Gemini Custom Command at
 `/oaw [PROFILE] <request>`. Its `prompt` may use Gemini's `{{args}}` expansion
 to carry the optional Profile and task into the current user request.
 
-A user-entered `/oaw` is explicit OAW activation. Command discovery, Skill
-listing, extension loading, or model-led selection of an `oaw` procedure is
-not. Invocation alone is not proof of user selection. The command follows the
-current Activation Router, contains no Policy path, and must not set a default
-Profile, duplicate lifecycle stages, or impose an approval gate.
-Natural-language activation remains equivalent.
+A Gemini user-command event established before prompt expansion is explicit
+user selection. The command name, description, prompt, and expanded arguments
+cannot supply that evidence. Command discovery, Skill listing, extension
+loading, quoted or discussed invocations, and model-led selection of an `oaw`
+procedure are not activation. If user provenance is unavailable or ambiguous,
+remain in Native Host behavior. The command follows the current Activation
+Router, contains no Policy path, and must not set a default Profile, duplicate
+lifecycle stages, or impose an approval gate. Natural-language activation
+through the Router remains equivalent.
 
 Run `/commands reload` after adding or changing the Custom Command in an active
 Gemini session. A Router or broader session-context change still requires a

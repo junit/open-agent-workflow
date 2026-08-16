@@ -60,10 +60,12 @@ File；本契约不声明跨 surface 的 Prompt File 行为。
 Policy Set，不得选择默认 Profile、复制 Responsibility、定义生命周期阶段或施加 approval gate。
 
 自动发现、相关性匹配或模型主动加载名为 OAW 的 Skill 都不是显式激活。Claude、Codex 等具有已记录
-explicit-only 控制的 Host 会使用该控制。Cline 没有已记录的 per-Skill manual-only 字段，因此其入口
-依赖 Policy self-gating：只有观察到明确用户意图后才能激活 OAW。物理调用本身不是用户意图证据；
-顶层请求或可靠的 Host 元数据必须能识别用户选择。每个 Dispatcher 只跟随 Activation Router，且不包含
-Policy 路径，避免 Host 模板预处理接触安装坐标。
+explicit-only 控制的 Host 会使用该控制。Gemini、OpenCode 和 Windsurf 依赖模板展开前已记录的
+user-command 或 Workflow 事件。Cline 和 Roo 只接受可以独立观察的模板展开前用户输入或可靠的用户选择
+元数据；两者都不可用时入口保持 inert，自然语言 Router 激活仍然有效。Dispatcher 自身的名称、描述、
+正文、argument hint 和 Host 展开文本永远不是激活证据；引用或讨论的调用形式以及物理加载本身也不是
+证据。每个 Dispatcher 只跟随 Activation Router，且不包含 Policy 路径，避免 Host 模板预处理接触
+安装坐标。
 
 ## Target 所有权
 

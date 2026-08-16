@@ -37,13 +37,16 @@ as `/oaw [PROFILE] <request>`. The command may provide `description` and
 argument-substitution macro; the dispatcher must use the current user request
 without inventing expanded arguments.
 
-A user-entered `/oaw` is explicit OAW activation. If an experimental Host
-setting allows the model to invoke slash commands, that model-led invocation is
-not activation and remains subject to Roo's command approval. Invocation alone
-is not proof of user selection. The command follows the current Activation
-Router, contains no Policy path, and must not choose a default Profile,
-duplicate lifecycle stages, or add approval rules. Natural-language activation
-remains equivalent.
+The original pre-expansion Roo user input must independently show that the user
+selected this Custom Command, or reliable Roo metadata must identify that user
+selection. The command name, description, body, argument hint, and expanded
+request cannot supply the evidence. If an experimental Host setting lets the
+model invoke slash commands, that invocation and any quoted or discussed form
+are not activation and remain subject to Roo's command approval. If Roo does
+not expose the original input or reliable user-selection metadata, the command
+remains inert and the user can activate OAW in natural language through the
+Router. It contains no Policy path and must not choose a default Profile,
+duplicate lifecycle stages, or add approval rules.
 
 Start a fresh Roo task after installing or changing the command. If it is not
 visible, use Roo's documented VS Code window reload before relying on it.

@@ -34,14 +34,17 @@ target installs its optional thin dispatcher at `.cline/skills/oaw/SKILL.md`.
 Invoke it as `/oaw` and keep the optional Profile and task in the same user
 request. Cline does not define a portable dispatcher argument-expansion macro.
 
-A user-entered `/oaw` is explicit OAW activation. Cline may also match Skills
-from their descriptions and does not expose a documented per-Skill manual-only
-field, so automatic matching, `use_skill` selection by the model, listing, or
-loading of `oaw` must not activate OAW. The dispatcher must check for explicit
-user intent because invocation alone is not proof. It follows the current
-Activation Router, contains no Policy path, and must not supply a default
-Profile, lifecycle stages, or approval rules. Natural-language activation
-remains equivalent.
+The original pre-expansion Cline user input must independently show that the
+user selected this Skill, or reliable Cline metadata must identify that user
+selection. The Skill name, description, body, and expanded request cannot
+supply the evidence. Cline may match Skills from their descriptions and does
+not expose a documented per-Skill manual-only field, so automatic matching,
+quoted or discussed invocations, `use_skill` selection by the model, listing,
+or loading of `oaw` must not activate OAW. If Cline does not expose the original
+input or reliable user-selection metadata, the dispatcher remains inert and
+the user can activate OAW in natural language through the Router. It contains
+no Policy path and must not supply a default Profile, lifecycle stages, or
+approval rules.
 
 Use a new Cline task or reload the active context after installing or changing
 the dispatcher before relying on fresh discovery.

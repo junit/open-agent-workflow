@@ -43,9 +43,12 @@ a cross-surface `$ARGUMENTS` expansion. The Copilot CLI Skill sets
 `disable-model-invocation: true` and provides an `argument-hint` for the
 optional Profile and task.
 
-A user's explicit `/oaw` reference or picker selection activates OAW. Skill
-discovery, automatic relevance matching, or model-led loading of the same
-Skill does not. Invocation alone is not proof of user selection. The dispatcher
+A Copilot manual-only Agent Skill selection recorded before the Skill body is
+loaded is explicit user selection. The Skill name, description, body, argument
+hint, metadata, and expanded request cannot supply that evidence. Skill
+discovery, quoted or discussed invocations, automatic relevance matching, and
+model-led loading of the same Skill are not activation. If user provenance is
+unavailable or ambiguous, remain in Native Host behavior. The dispatcher
 follows the current Activation Router, contains no Policy path, and must not
 select a default Profile, duplicate lifecycle stages, or impose approval gates.
 Natural-language activation remains equivalent. A VS Code Prompt File under

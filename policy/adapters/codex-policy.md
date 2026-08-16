@@ -41,13 +41,15 @@ Profile and task in the same user prompt. Codex does not define a portable
 request rather than inventing one.
 
 The Skill's `agents/openai.yaml` metadata should set
-`policy.allow_implicit_invocation: false`. A user-entered `$oaw` or explicit
-selection from `/skills` activates OAW; indexing, preloading, or model-led
-selection of the same Skill does not. Invocation alone is not proof of user
-selection. The dispatcher follows the current Activation Router, contains no
-Policy path, and must not select a default Profile, reproduce Profile
-Responsibilities, lifecycle stages, or approval gates. Natural-language
-activation remains valid without the Skill.
+`policy.allow_implicit_invocation: false`. A Codex explicit Skill selection
+recorded before the Skill body is loaded is user selection. The Skill name,
+description, body, metadata, and expanded request cannot supply that evidence.
+Indexing, preloading, quoted or discussed invocations, and model-led selection
+of the same Skill do not activate OAW. If user provenance is unavailable or
+ambiguous, remain in Native Host behavior. The dispatcher follows the current
+Activation Router, contains no Policy path, and must not select a default
+Profile, reproduce Profile Responsibilities, lifecycle stages, or approval
+gates. Natural-language activation remains valid without the Skill.
 
 Codex normally detects Skill changes automatically. If a new or changed
 dispatcher is not visible, restart the Codex session before relying on it.

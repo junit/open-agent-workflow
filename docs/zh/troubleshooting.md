@@ -7,9 +7,11 @@
 `/oaw SP-FULL deliver this change`。自然语言激活始终有效，不依赖原生入口。
 
 讨论 OAW、仓库文本、任务复杂度、普通 Skill 使用，或自动/模型主动加载名为 OAW 的 Skill 都不会
-激活 OAW。只有顶层请求或可靠 Host 元数据能证明由用户选择的原生 OAW 入口，才等价于显式请求；物理
-调用本身不是证明。Dispatcher 不选择默认 Profile、不定义生命周期阶段，也不嵌入 Policy 路径，而是
-跟随 Activation Router。
+激活 OAW。只有来自 Dispatcher artifact 及其展开文本之外的证据能识别用户选择的原生入口，才等价于
+显式请求；证据必须是 Host 强制的 manual-only 选择、模板展开前已记录的 user-command/Workflow 事件、
+可独立观察的原始用户输入或可靠的用户选择元数据。引用或讨论的调用形式与物理加载本身都不是证明。
+来源缺失或含糊时使用自然语言激活。Dispatcher 不选择默认 Profile、不定义生命周期阶段，也不嵌入
+Policy 路径，而是跟随 Activation Router。
 
 ## 原生入口缺失
 
@@ -32,8 +34,9 @@ Gemini 和 OpenCode 安装入口；Cursor、Windsurf、Cline、Roo 和 Copilot �
 Copilot target 是位于 `.github/skills/oaw/SKILL.md` 的 Copilot CLI Agent Skill，不是
 `.github/prompts/` Prompt File。
 
-如果 Cline 在用户没有输入 `/oaw` 时发现或选择了 `oaw`，OAW 必须保持未激活。Cline 没有已记录
-的 per-Skill manual-only 控制，因此 dispatcher 依赖 Policy self-gating 并检查明确用户意图。
+如果 Cline 在没有可独立观察的原始用户输入或可靠用户选择元数据时发现或选择了 `oaw`，OAW 必须
+保持未激活。Cline 没有已记录的 per-Skill manual-only 控制；Host 不暴露任一来源时应使用自然语言
+激活。
 
 ## Profile 或 Skill 没有被发现
 

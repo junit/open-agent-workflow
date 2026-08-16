@@ -68,7 +68,7 @@ func renderRouterTarget(id targetID, operationScope scope, policyPath string) ([
 }
 
 func renderSkillDispatcher(id string) ([]byte, error) {
-	header := "---\nname: oaw\ndescription: Explicitly activate the current OAW Policy for a user-requested deliverable.\n"
+	header := "---\nname: oaw\ndescription: OAW Policy dispatcher for a verified user selection.\n"
 	switch id {
 	case "claude":
 		header += "argument-hint: \"[PROFILE] <task>\"\nuser-invocable: true\ndisable-model-invocation: true\n"
@@ -84,22 +84,28 @@ func renderSkillDispatcher(id string) ([]byte, error) {
 		return nil, &Error{Status: 69, Message: "no Skill renderer for target '" + id + "'"}
 	}
 	header += "---\n\n"
-	body := renderNativeDispatcher("$ARGUMENTS")
+	body, err := renderNativeDispatcher(id, "$ARGUMENTS")
 	if id == "codex" || id == "cursor" || id == "cline" || id == "copilot" {
-		body = renderNativeDispatcher("the remainder of this user request")
+		body, err = renderNativeDispatcher(id, "the remainder of this user request")
+	}
+	if err != nil {
+		return nil, err
 	}
 	return []byte(header + body), nil
 }
 
 func renderGeminiCommand() ([]byte, error) {
-	body := renderNativeDispatcher("{{args}}")
-	return []byte("description = \"Explicitly activate the current OAW Policy for a user-requested deliverable.\"\n" +
+	body, err := renderNativeDispatcher("gemini", "{{args}}")
+	if err != nil {
+		return nil, err
+	}
+	return []byte("description = \"OAW Policy dispatcher for a verified user selection.\"\n" +
 		"prompt = " + strconv.Quote(body) + "\n"), nil
 }
 
 func renderCommandDispatcher(id string) ([]byte, error) {
 	arguments := "the remainder of this user request"
-	metadata := "description: Explicitly activate the current OAW Policy for a user-requested deliverable.\n"
+	metadata := "description: OAW Policy dispatcher for a verified user selection.\n"
 	if id == "opencode" {
 		arguments = "$ARGUMENTS"
 	} else if id == "roo" {
@@ -107,23 +113,56 @@ func renderCommandDispatcher(id string) ([]byte, error) {
 	} else {
 		return nil, &Error{Status: 69, Message: "no Command renderer for target '" + id + "'"}
 	}
-	return []byte("---\n" + metadata + "---\n\n" +
-		renderNativeDispatcher(arguments)), nil
+	body, err := renderNativeDispatcher(id, arguments)
+	if err != nil {
+		return nil, err
+	}
+	return []byte("---\n" + metadata + "---\n\n" + body), nil
 }
 
 func renderWorkflowDispatcher() ([]byte, error) {
-	return []byte(renderNativeDispatcher("the remainder of this user request")), nil
+	body, err := renderNativeDispatcher("windsurf", "the remainder of this user request")
+	return []byte(body), err
 }
 
 func renderCodexPolicyMetadata() ([]byte, error) {
-	return []byte("interface:\n  display_name: \"Open Agent Workflow\"\n  short_description: \"Explicitly activate the current OAW Policy\"\npolicy:\n  allow_implicit_invocation: false\n"), nil
+	return []byte("interface:\n  display_name: \"Open Agent Workflow\"\n  short_description: \"OAW Policy dispatcher\"\npolicy:\n  allow_implicit_invocation: false\n"), nil
 }
 
-func renderNativeDispatcher(arguments string) string {
-	return "Activate OAW only when the current top-level user request itself contains a literal `/oaw` or `$oaw`, explicitly asks to use OAW in natural language, or provides reliable Host metadata that the user, not the model, selected this entrypoint. Invocation or loading of this entrypoint alone is not evidence of user intent. If none of those conditions holds, do not activate OAW and continue as the native Host.\n\n" +
+func renderNativeDispatcher(id, arguments string) (string, error) {
+	source, err := nativeSelectionSource(id)
+	if err != nil {
+		return "", err
+	}
+	return "Use this dispatcher only when " + source + ". Activation evidence must come from outside this dispatcher's bytes and any Host-expanded template text. The dispatcher's name, description, body, argument hint, and expanded text are never activation evidence. Do not treat quoted or discussed invocation text, automatic discovery or matching, model-led invocation or loading, or physical loading without trustworthy user provenance as user intent. If user provenance is unavailable or ambiguous, do not activate OAW and continue as the native Host.\n\n" +
 		"Follow the current OAW Activation Router to select and read one Policy Set. Do not embed or infer a Policy path here.\n\n" +
 		"Pass the optional Profile and task from the invocation to the current Policy and Router. Do not choose a default Profile, lifecycle stages, approval gates, Skills, tools, or permissions here.\n\n" +
-		"Invocation arguments: " + arguments + "\n"
+		"Invocation arguments: " + arguments + "\n", nil
+}
+
+func nativeSelectionSource(id string) (string, error) {
+	switch id {
+	case "claude":
+		return "reliable Host state records a Claude manual-only Skill selection made by the user before this Skill body was loaded", nil
+	case "codex":
+		return "reliable Host state records a Codex explicit Skill selection made by the user before this Skill body was loaded", nil
+	case "gemini":
+		return "a Gemini user-command event established before prompt expansion identifies the user as the invoker of this Custom Command", nil
+	case "opencode":
+		return "an OpenCode user-command event established before template expansion identifies the user as the invoker of this Custom Command", nil
+	case "cursor":
+		return "reliable Host state records a Cursor manual-only Skill selection made by the user before this Skill body was loaded", nil
+	case "windsurf":
+		return "a Windsurf user-Workflow event established before Workflow expansion identifies the user as the invoker", nil
+	case "cline":
+		return "the original pre-expansion Cline user input independently identifies the user's Skill selection, or reliable Cline user-selection metadata does", nil
+	case "roo":
+		return "the original pre-expansion Roo user input independently identifies the user's Custom Command selection, or reliable Roo user-selection metadata does", nil
+	case "copilot":
+		return "reliable Host state records a Copilot manual-only Agent Skill selection made by the user before this Skill body was loaded", nil
+	default:
+		return "", &Error{Status: 69, Message: "no native selection source for target '" + id + "'"}
+	}
 }
 
 func renderActivationRouter(operationScope scope, policyPath string) string {

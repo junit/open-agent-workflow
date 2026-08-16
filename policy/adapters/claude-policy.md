@@ -40,13 +40,16 @@ or `.claude/skills/oaw/SKILL.md` at project scope. Invoke it as
 so the dispatcher can carry the user's optional Profile and task without
 defining either one.
 
-The dispatcher must set `disable-model-invocation: true`. A user-entered
-`/oaw` is explicit OAW activation; Skill discovery, context loading, or any
-model-led attempt to select an `oaw` Skill is not. Invocation alone is not proof
-of user selection. The dispatcher follows the current Activation Router,
-contains no Policy path, and carries the request. It must not choose a
-default Profile, restate lifecycle stages, or add approval rules. A direct
-natural-language request to use OAW remains equivalent.
+The dispatcher must set `disable-model-invocation: true`. A Claude manual-only
+Skill selection recorded before the Skill body is loaded is explicit user
+selection. The Skill name, description, body, argument hint, and expanded
+arguments cannot supply that evidence. Skill discovery, context loading,
+quoted or discussed invocations, and model-led selection are not activation.
+If user provenance is unavailable or ambiguous, remain in Native Host behavior.
+The dispatcher follows the current Activation Router, contains no Policy path,
+and carries the request. It must not choose a default Profile, restate
+lifecycle stages, or add approval rules. A direct natural-language request to
+use OAW through the Activation Router remains equivalent.
 
 Claude still accepts `.claude/commands/oaw.md` as a legacy command, but the
 Skill path is the native artifact contract. Claude watches established Skill

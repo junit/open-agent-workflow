@@ -101,11 +101,14 @@ mandatory or higher priority. A dispatcher carries the optional Profile and
 task into the selected Policy Set. It never chooses a default Profile,
 duplicates Profile Responsibilities, defines lifecycle stages, or adds an
 approval gate. Automatic discovery or model-led loading of an OAW-named Skill
-is not user activation, and physical invocation alone is not proof of user
-intent. The dispatcher checks the top-level request or reliable Host
-user-selection metadata, then follows the Activation Router; it never embeds a
-Policy path in the Host template. Hosts with an explicit-only control use it;
-Cline, which lacks a documented per-Skill control, relies on Policy self-gating.
+is not user activation. Selection evidence must originate outside the
+dispatcher artifact and its Host-expanded text: from Host-enforced manual-only
+selection, a documented user-command or Workflow event, or independently
+observable pre-expansion user input or reliable user-selection metadata. The
+dispatcher itself, quoted or discussed invocations, and physical loading alone
+are not proof. When provenance is unavailable or ambiguous, the Host remains
+native; natural-language activation through the Activation Router still works.
+The dispatcher never embeds a Policy path in the Host template.
 
 The model reads the selected Profile, then reads each declared Skill when its
 Responsibility becomes current. A host Skill index is an optimization, not a
