@@ -25,3 +25,6 @@ OAW 是规则驱动产品。所有改动都必须保持静态 Policy Set 为正�
     bash scripts/check-docs.sh
 
 检查 diff 中是否有 secret、无关生成文件、不安全路径展开、无用兼容代码和缺失的文档对等内容。
+
+正式发布时使用[发布操作手册](docs/zh/releasing.md)，完成版本准备、不可变 tag、跨平台资产、checksum 和
+GitHub 发布。

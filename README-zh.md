@@ -29,6 +29,8 @@ go build -o ./oaw ./cmd/oaw
 
 安装管理以 Go 为权威实现。 `check` 只读；`install`、`update`、`uninstall` 管理 Policy Set
 文件、各 Host 的指令入口和私有 Install State，不执行工程工作。
+安装的 Policy Set 包含 Claude、Codex、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot
+的完整 Adapter。
 
 ## Canonical Policy Set
 
@@ -43,7 +45,15 @@ profiles/
   ECC-FULL.md
   MATT-SP-HYBRID.md
 adapters/
+  claude-policy.md
   codex-policy.md
+  gemini-policy.md
+  opencode-policy.md
+  cursor-policy.md
+  windsurf-policy.md
+  cline-policy.md
+  roo-policy.md
+  copilot-policy.md
 ```
 
 项目中的 `.oaw/policy/` 优先于 User Policy Set；两者不会合并。Host 指令文件只包含指向选中
@@ -127,5 +137,5 @@ bash scripts/check-docs.sh
 bash tests/run.sh
 ```
 
-参见 [CONTEXT.md](CONTEXT.md)、[架构决策](docs/adr/README.md)和
-[Policy Set](policy/POLICY.md)。
+参见 [CONTEXT.md](CONTEXT.md)、[架构决策](docs/adr/README.md)、
+[发布操作手册](docs/zh/releasing.md)和 [Policy Set](policy/POLICY.md)。

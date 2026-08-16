@@ -11,10 +11,23 @@ invocation surfaces. It may mention a readable cache location as a fallback,
 but it must not require a particular cache, lockfile, revision, or digest for
 Policy operation.
 
-The current built-in Policy guidance is the Codex Adapter. Other hosts use the
-same Policy semantics through their native instruction format. To add an
+The Canonical Policy Set currently includes adapters for Claude, Codex, Gemini,
+OpenCode, Cursor, Windsurf, Cline, Roo, and Copilot. Each applies the same
+portable semantics through its own native instruction format. To add an
 installable Host target, add its Adapter guidance under `policy/adapters/` and
 its destination coordinates to `internal/management/targets.go`.
+
+| Host | OAW-managed instruction target |
+| --- | --- |
+| Claude | `~/.claude/CLAUDE.md` or `.claude/CLAUDE.md` |
+| Codex | `~/.codex/AGENTS.md` or `AGENTS.md` |
+| Gemini | `~/.gemini/GEMINI.md` or `GEMINI.md` |
+| OpenCode | `$XDG_CONFIG_HOME/opencode/AGENTS.md` or `AGENTS.md` |
+| Cursor | `.cursor/rules/open-agent-workflow.mdc` |
+| Windsurf | `.devin/rules/open-agent-workflow.md` |
+| Cline | `.clinerules/open-agent-workflow.md` |
+| Roo | `.roo/rules/open-agent-workflow.md` |
+| Copilot | `.github/instructions/open-agent-workflow.instructions.md` |
 
 ## Target Ownership
 

@@ -50,7 +50,8 @@ for pair in \
   "docs/en/troubleshooting.md docs/zh/troubleshooting.md" \
   "docs/en/security.md docs/zh/security.md" \
   "docs/en/codex-bridge.md docs/zh/codex-bridge.md" \
-  "docs/en/machine-assurance.md docs/zh/machine-assurance.md"; do
+  "docs/en/machine-assurance.md docs/zh/machine-assurance.md" \
+  "docs/en/releasing.md docs/zh/releasing.md"; do
   set -- $pair
   require_file "$1"
   require_file "$2"
@@ -62,7 +63,15 @@ for path in \
   docs/adr/0002-optional-machine-evidence.md \
   policy/POLICY.md \
   policy/cooperative-protocol.md \
+  policy/adapters/claude-policy.md \
   policy/adapters/codex-policy.md \
+  policy/adapters/gemini-policy.md \
+  policy/adapters/opencode-policy.md \
+  policy/adapters/cursor-policy.md \
+  policy/adapters/windsurf-policy.md \
+  policy/adapters/cline-policy.md \
+  policy/adapters/roo-policy.md \
+  policy/adapters/copilot-policy.md \
   policy/profiles/SP-FULL.md \
   policy/profiles/MATT-FULL.md \
   policy/profiles/ECC-FULL.md \
@@ -125,6 +134,7 @@ done
 
 for file in \
   README.md README-zh.md \
+  CONTRIBUTING.md CONTRIBUTING-zh.md \
   docs/en/architecture.md docs/zh/architecture.md \
   docs/en/lifecycle.md docs/zh/lifecycle.md \
   docs/en/extending-adapters.md docs/zh/extending-adapters.md; do
@@ -157,5 +167,11 @@ require_text docs/en/extending-adapters.md "Custom"
 require_text docs/zh/extending-adapters.md "Custom"
 require_text docs/en/codex-bridge.md "optional"
 require_text docs/zh/codex-bridge.md "可选"
+require_text docs/en/adapters.md "OpenCode, Cursor, Windsurf, Cline, Roo, and Copilot"
+require_text docs/zh/adapters.md "Claude、Codex、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot"
+require_text docs/en/releasing.md 'six platform archives'
+require_text docs/zh/releasing.md '六个平台归档'
+require_text docs/en/releasing.md 'oaw-bridge'
+require_text docs/zh/releasing.md 'oaw-bridge'
 
 printf 'PASS: documentation and static Policy contracts passed\n'

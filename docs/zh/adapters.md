@@ -8,9 +8,21 @@ Adapter 是某个 Agent Host 的安装与加载指引，不是工程方法，也
 原生 Skill 调用面。可以说明可读 cache 位置作为 fallback，但不能要求特定 cache、lockfile、revision
 或 digest 才能使用 Policy。
 
-当前内置 Policy 指引是 Codex Adapter。其他 Host 通过自己的原生指令格式使用同一 Policy 语义。要增加
-可安装的 Host target，应在 `policy/adapters/` 中加入 Adapter 指引，并在
-`internal/management/targets.go` 中加入 destination 坐标。
+Canonical Policy Set 当前包含 Claude、Codex、Gemini、OpenCode、Cursor、Windsurf、Cline、Roo 和 Copilot
+Adapter。它们通过各自的原生指令格式应用同一套可移植语义。要增加可安装的 Host target，应在
+`policy/adapters/` 中加入 Adapter 指引，并在 `internal/management/targets.go` 中加入 destination 坐标。
+
+| Host | OAW 管理的指令目标 |
+| --- | --- |
+| Claude | `~/.claude/CLAUDE.md` 或 `.claude/CLAUDE.md` |
+| Codex | `~/.codex/AGENTS.md` 或 `AGENTS.md` |
+| Gemini | `~/.gemini/GEMINI.md` 或 `GEMINI.md` |
+| OpenCode | `$XDG_CONFIG_HOME/opencode/AGENTS.md` 或 `AGENTS.md` |
+| Cursor | `.cursor/rules/open-agent-workflow.mdc` |
+| Windsurf | `.devin/rules/open-agent-workflow.md` |
+| Cline | `.clinerules/open-agent-workflow.md` |
+| Roo | `.roo/rules/open-agent-workflow.md` |
+| Copilot | `.github/instructions/open-agent-workflow.instructions.md` |
 
 ## Target 所有权
 

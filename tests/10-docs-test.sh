@@ -21,7 +21,15 @@ for path in \
   docs/adr/0001-static-policy-product.md \
   docs/adr/0002-optional-machine-evidence.md \
   policy/POLICY.md policy/cooperative-protocol.md \
+  policy/adapters/claude-policy.md \
   policy/adapters/codex-policy.md \
+  policy/adapters/gemini-policy.md \
+  policy/adapters/opencode-policy.md \
+  policy/adapters/cursor-policy.md \
+  policy/adapters/windsurf-policy.md \
+  policy/adapters/cline-policy.md \
+  policy/adapters/roo-policy.md \
+  policy/adapters/copilot-policy.md \
   policy/profiles/SP-FULL.md policy/profiles/MATT-FULL.md \
   policy/profiles/ECC-FULL.md policy/profiles/MATT-SP-HYBRID.md; do
   require_file "$path"

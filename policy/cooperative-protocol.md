@@ -67,6 +67,14 @@ For a declared Skill, evaluate these sources in order:
 An index or diagnostic is advisory. A Skill is unavailable only when the Agent
 cannot read its rules and the Host cannot invoke it.
 
+A qualified Profile reference such as `superpowers:brainstorming` or
+`ecc:tdd-workflow` preserves semantic disambiguation; it is not a literal
+filesystem path or machine identity claim. A Host may expose the same procedure
+under a basename, slash command, or different native namespace. Resolve the
+actual readable procedure without discarding the qualifier when that would
+create ambiguity. Unqualified references such as the MATT Skills are resolved
+by their declared procedure, not by inventing a Provider prefix.
+
 Use a declared alternative directly and report it. An undeclared substitution
 may proceed with an explanation only when it preserves the method and
 Responsibility ownership. Obtain user confirmation before changing TDD, review,

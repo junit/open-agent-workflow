@@ -55,7 +55,15 @@ func TestPrepareInstallFreshUserIsImmutableAndDeterministic(t *testing.T) {
 	}
 	wantLines := []string{
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "POLICY.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "claude-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "cline-policy.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "codex-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "copilot-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "cursor-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "gemini-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "opencode-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "roo-policy.md"),
+		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "adapters", "windsurf-policy.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "cooperative-protocol.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "ECC-FULL.md"),
 		"oaw: would-create: " + filepath.Join(fixture.environment.ConfigHome, "open-agent-workflow", "profiles", "builtin", "MATT-FULL.md"),

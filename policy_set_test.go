@@ -12,7 +12,15 @@ import (
 func TestCanonicalPolicySetMatchesRepositoryAndReturnsCopies(t *testing.T) {
 	wantPaths := []string{
 		"POLICY.md",
+		"adapters/claude-policy.md",
+		"adapters/cline-policy.md",
 		"adapters/codex-policy.md",
+		"adapters/copilot-policy.md",
+		"adapters/cursor-policy.md",
+		"adapters/gemini-policy.md",
+		"adapters/opencode-policy.md",
+		"adapters/roo-policy.md",
+		"adapters/windsurf-policy.md",
 		"cooperative-protocol.md",
 		"profiles/ECC-FULL.md",
 		"profiles/MATT-FULL.md",
@@ -259,30 +267,89 @@ func TestValidatePolicySetRejectsBrokenLocalReference(t *testing.T) {
 	}
 }
 
-func TestHostSpecificDetailsLiveOnlyInTheCodexAdapter(t *testing.T) {
-	forbidden := []string{
-		".agents/skills",
-		".codex/skills",
-		".codex/plugins/cache",
-		"openai-api-curated",
-		"Codex /plan",
-		"review-pr",
+func TestHostSpecificDetailsLiveOnlyInTheirAdapters(t *testing.T) {
+	hostDetails := map[string][]string{
+		"adapters/claude-policy.md": {
+			".claude/plugins/cache",
+			"claude plugin list --json",
+			"Claude Plan Mode",
+		},
+		"adapters/cline-policy.md": {
+			".clinerules/skills",
+			"Plan and Act modes",
+		},
+		"adapters/codex-policy.md": {
+			".codex/plugins/cache",
+			"openai-api-curated",
+			"Codex /plan",
+			"review-pr",
+		},
+		"adapters/copilot-policy.md": {
+			"copilot skill list",
+			"copilot plugin list",
+			"/fleet",
+		},
+		"adapters/cursor-policy.md": {
+			".cursor/rules/open-agent-workflow.mdc",
+			"Cursor-compatible",
+			"Team Rule policy",
+		},
+		"adapters/gemini-policy.md": {
+			"gemini skills list --all",
+			"gemini extensions list",
+			"Gemini Plan mode",
+		},
+		"adapters/opencode-policy.md": {
+			"opencode debug skill",
+			"skills.paths",
+			".opencode/agent(s)",
+		},
+		"adapters/roo-policy.md": {
+			"skills-<mode>",
+			"Roo-specific paths",
+			"Roo's mode permissions",
+		},
+		"adapters/windsurf-policy.md": {
+			".devin/rules/open-agent-workflow.md",
+			"~/.codeium/windsurf/skills",
+			"Quick Review",
+		},
 	}
-	var adapter []byte
 	for _, file := range CanonicalPolicySet() {
-		if file.Path == "adapters/codex-policy.md" {
-			adapter = file.Content
-			continue
-		}
-		for _, literal := range forbidden {
-			if bytes.Contains(file.Content, []byte(literal)) {
-				t.Errorf("portable file %q contains Host-specific detail %q", file.Path, literal)
+		for adapterPath, details := range hostDetails {
+			for _, literal := range details {
+				contains := bytes.Contains(file.Content, []byte(literal))
+				if file.Path == adapterPath && !contains {
+					t.Errorf("%s is missing Host-specific detail %q", adapterPath, literal)
+				}
+				if file.Path != adapterPath && contains {
+					t.Errorf("Policy Set file %q contains Host-specific detail %q from %s", file.Path, literal, adapterPath)
+				}
 			}
 		}
 	}
-	for _, literal := range forbidden {
-		if !bytes.Contains(adapter, []byte(literal)) {
-			t.Errorf("Codex Adapter is missing expected Host-specific detail %q", literal)
+}
+
+func TestCooperativeProtocolTreatsQualifiedSkillNamesAsSemanticReferences(t *testing.T) {
+	var protocol []byte
+	for _, file := range CanonicalPolicySet() {
+		if file.Path == "cooperative-protocol.md" {
+			protocol = file.Content
+			break
+		}
+	}
+	if protocol == nil {
+		t.Fatal("cooperative protocol is missing")
+	}
+	for _, required := range []string{
+		"superpowers:brainstorming",
+		"ecc:tdd-workflow",
+		"machine identity claim",
+		"different native namespace",
+		"MATT Skills",
+	} {
+		if !bytes.Contains(protocol, []byte(required)) {
+			t.Errorf("cooperative protocol omits qualified Skill resolution rule %q", required)
 		}
 	}
 }

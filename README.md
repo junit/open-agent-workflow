@@ -34,6 +34,8 @@ not download or build executable code:
 Installation management is Go-authoritative. `check` is read-only; `install`,
 `update`, and `uninstall` manage Policy Set files, target-native instruction
 entrypoints, and private Install State. They never execute engineering work.
+The installed Policy Set includes full adapters for Claude, Codex, Gemini,
+OpenCode, Cursor, Windsurf, Cline, Roo, and Copilot.
 
 ## Canonical Policy Set
 
@@ -48,7 +50,15 @@ profiles/
   ECC-FULL.md
   MATT-SP-HYBRID.md
 adapters/
+  claude-policy.md
   codex-policy.md
+  gemini-policy.md
+  opencode-policy.md
+  cursor-policy.md
+  windsurf-policy.md
+  cline-policy.md
+  roo-policy.md
+  copilot-policy.md
 ```
 
 A project Policy Set under `.oaw/policy/` takes precedence over a user Policy
@@ -146,4 +156,5 @@ bash tests/run.sh
 ```
 
 See [CONTEXT.md](CONTEXT.md), [the architecture decisions](docs/adr/README.md),
-and the [Policy Set](policy/POLICY.md) for normative boundaries.
+the [release operations manual](docs/en/releasing.md), and the
+[Policy Set](policy/POLICY.md) for normative boundaries.

@@ -257,13 +257,31 @@ func TestUserInstallWritesCompletePolicySetWithProjectPrecedence(t *testing.T) {
 	if !bytes.Contains(policy, []byte("profiles/builtin/SP-FULL.md")) {
 		t.Fatalf("user Policy links do not match the builtin Profile layout: %q", policy)
 	}
-	adapter, err := os.ReadFile(filepath.Join(userPolicyRoot, "adapters", "codex-policy.md"))
-	if err != nil {
-		t.Fatal(err)
+	adapterDetails := map[string][]string{
+		"claude":   {".claude/skills", "claude plugin list --json", "Claude Plan Mode"},
+		"codex":    {".codex/skills", ".codex/plugins/cache", "Codex /plan"},
+		"gemini":   {"gemini skills list --all", "gemini extensions list", "Gemini Plan mode"},
+		"opencode": {"opencode debug skill", "skills.paths", ".opencode/command(s)"},
+		"cursor":   {".cursor/skills", ".cursor/rules/open-agent-workflow.mdc", "Team Rule policy"},
+		"windsurf": {".windsurf/skills", ".devin/rules/open-agent-workflow.md", "Quick Review"},
+		"cline":    {".cline/skills", ".clinerules/skills", "Plan and Act modes"},
+		"roo":      {".roo/skills", "skills-<mode>", "Roo's mode permissions"},
+		"copilot":  {".github/skills", "copilot plugin list", "/fleet"},
 	}
-	for _, path := range []string{".oaw/profiles/", "open-agent-workflow/profiles/"} {
-		if !bytes.Contains(adapter, []byte(path)) {
-			t.Fatalf("Codex Adapter omits source-qualified Custom Profile path %q", path)
+	for host, details := range adapterDetails {
+		adapter, err := os.ReadFile(filepath.Join(userPolicyRoot, "adapters", host+"-policy.md"))
+		if err != nil {
+			t.Fatalf("read %s Adapter: %v", host, err)
+		}
+		for _, path := range []string{".oaw/profiles/", "open-agent-workflow/profiles/"} {
+			if !bytes.Contains(adapter, []byte(path)) {
+				t.Errorf("%s Adapter omits source-qualified Custom Profile path %q", host, path)
+			}
+		}
+		for _, detail := range details {
+			if !bytes.Contains(adapter, []byte(detail)) {
+				t.Errorf("%s Adapter omits Host-specific detail %q", host, detail)
+			}
 		}
 	}
 

@@ -4,6 +4,16 @@ All notable changes to Open Agent Workflow are documented in this file.
 
 ## [Unreleased]
 
+#### Added
+
+- A bilingual release operations manual covering validation, cross-platform
+  artifacts, immutable tags, Draft verification, and GitHub publication.
+- A Claude Policy Adapter for Claude-native instruction loading, lazy Skill
+  discovery, invocation reporting, and Host authority boundaries.
+- Complete Policy Adapters for Gemini, OpenCode, Cursor, Windsurf, Cline, Roo,
+  and Copilot, with native instruction paths, lazy Skill discovery, reload
+  behavior, surface separation, and physical-authority boundaries.
+
 ## [0.1.1] - 2026-08-16
 
 #### Changed

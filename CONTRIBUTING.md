@@ -32,3 +32,7 @@ Run:
 
 Review the diff for secrets, unrelated generated files, unsafe path expansion,
 dead compatibility code, and missing documentation parity.
+
+Use the [release operations manual](docs/en/releasing.md) for version
+preparation, immutable tags, cross-platform assets, checksums, and GitHub
+publication.

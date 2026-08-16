@@ -19,11 +19,18 @@ assert_status 0 "fresh Claude install"
 
 OAW_POLICY=$OAW_CONFIG/open-agent-workflow/POLICY.md
 OAW_CLAUDE=$OAW_HOME/.claude/CLAUDE.md
+OAW_CLAUDE_ADAPTER=$OAW_CONFIG/open-agent-workflow/adapters/claude-policy.md
 OAW_INSTALL_STATE=$OAW_STATE/open-agent-workflow/installations/user.state
 
 [ -f "$OAW_POLICY" ] || fail "canonical policy was not created"
 [ -f "$OAW_CLAUDE" ] || fail "Claude instructions were not created"
+[ -f "$OAW_CLAUDE_ADAPTER" ] || fail "Claude Policy Adapter was not installed"
 [ -f "$OAW_INSTALL_STATE" ] || fail "user installation state was not created"
+
+for required in '.claude/skills' 'claude plugin list --json' 'Claude Plan Mode'; do
+  grep -F "$required" "$OAW_CLAUDE_ADAPTER" >/dev/null ||
+    fail "Claude Policy Adapter omits Host detail: $required"
+done
 
 grep -F 'personal instruction' "$OAW_CLAUDE" >/dev/null ||
   fail "existing Claude instructions were not preserved"

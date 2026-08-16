@@ -7,9 +7,11 @@
 
 ## Profile 或 Skill 没有被发现
 
-发现结果是 advisory。使用 oaw profile list 或 oaw profile check 检查 Markdown 元数据，然后要求
-模型直接读取指定 Skill。Codex 先使用当前 Skill 索引，再根据 Codex Adapter 回退到可读 Skill 文档。
-即使生成的索引遗漏了 Matt 或 ECC，只要规则可读仍然可以使用。
+发现结果是 advisory。使用 `oaw profile list` 或 `oaw profile check` 检查 Markdown 元数据，然后要求
+模型直接读取指定 Skill。九份 Host Adapter 都会先使用各自的原生 Skill surface，再回退到该 Host
+原生、cross-agent、extension 或 Plugin 位置中的可读 Skill 文档。即使生成的索引或 Plugin listing
+遗漏了 Matt、ECC 或 Superpowers，只要规则可读仍然可以使用。
+Profile 中的限定名是语义引用；Host 可以用 basename 或不同的原生命名空间暴露同一个过程。
 
 不要为了让 Policy Profile selectable 而添加 Provider pin、cache path、lockfile digest 或 Bridge；这些
 属于可选证据问题。

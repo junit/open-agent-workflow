@@ -33,6 +33,7 @@ for test_script in \
   08-static-product-test.sh \
   09-profile-inspection-test.sh \
   10-docs-test.sh \
+  11-host-adapter-dogfood-test.sh \
   14-release-contract-test.sh \
   15-host-execution-boundary-test.sh \
   17-codex-bridge-management-test.sh \

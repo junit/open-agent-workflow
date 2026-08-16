@@ -11,7 +11,10 @@ require an OAW process or optional machine evidence.
 This file defines portable semantics. Natural-language operation is defined by
 the [cooperative protocol](cooperative-protocol.md). Host-specific discovery
 and invocation guidance belongs in a Host Adapter such as the
-[current reference Adapter](adapters/codex-policy.md).
+[Claude Adapter](adapters/claude-policy.md) or
+[Codex Adapter](adapters/codex-policy.md). The current Canonical Policy Set
+includes adapters for Claude, Codex, Gemini, OpenCode, Cursor, Windsurf,
+Cline, Roo, and Copilot.
 
 ## Explicit Activation and Non-Interference
 

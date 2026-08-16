@@ -9,11 +9,14 @@ activate it.
 
 ## A Profile or Skill Was Not Detected
 
-Detection is advisory. Use oaw profile list or profile check to inspect
-Markdown metadata, then ask the model to read the named Skill directly. Codex
-uses its current Skill index first and falls back to readable Skill documents
-described by the Codex adapter. Matt and ECC Skills are usable when their rules
-are readable even if a generated index omits them.
+Detection is advisory. Use `oaw profile list` or `oaw profile check` to inspect
+Markdown metadata, then ask the model to read the named Skill directly. Each
+of the nine Host Adapters starts with its native Skill surface and then falls
+back to readable Skill documents at that Host's native, cross-agent, extension,
+or Plugin locations. Matt, ECC, and Superpowers Skills are usable when their
+rules are readable even if a generated index or Plugin listing omits them.
+Qualified Profile names are semantic references: a Host may expose the same
+procedure under a basename or different native namespace.
 
 Do not add a Provider pin, cache path, lockfile digest, or Bridge just to make a
 Policy Profile selectable. Those are optional evidence concerns.
